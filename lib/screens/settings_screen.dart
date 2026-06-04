@@ -25,6 +25,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _nameController.text = box.get('name', defaultValue: '');
     _deleteAfterMonths = box.get('deleteAfterMonths', defaultValue: 3);
     _activeSkin = box.get('skin', defaultValue: 'chrome') as String;
+    
+    // Führe automatische Löschung beim Start aus
+    _autoDeleteOldEntries();
   }
 
   @override
@@ -67,6 +70,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _nameController.text = formattedName;
     box.put('name', formattedName);
     box.put('deleteAfterMonths', _deleteAfterMonths);
+    
+    // Nach Änderung der Löschdauer sofort alte Einträge löschen
+    _autoDeleteOldEntries();
+    
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: const Text('Einstellungen gespeichert ✓'),
@@ -77,28 +84,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  void _deleteOldEntries() {
+  void _autoDeleteOldEntries() {
     final box = Hive.box('arbeitszeiten');
-    final cutoff =
-        DateTime.now().subtract(Duration(days: _deleteAfterMonths * 30));
+    final cutoffDays = _deleteAfterMonths * 30;
+    final cutoff = DateTime.now().subtract(Duration(days: cutoffDays));
+    
     final keysToDelete = box.keys.where((key) {
       try {
-        return DateTime.parse(key.toString()).isBefore(cutoff);
+        final date = DateTime.parse(key.toString());
+        return date.isBefore(cutoff);
       } catch (_) {
         return false;
       }
     }).toList();
-    for (final key in keysToDelete) {
-      box.delete(key);
+    
+    if (keysToDelete.isNotEmpty) {
+      for (final key in keysToDelete) {
+        box.delete(key);
+      }
+      debugPrint('${keysToDelete.length} alte Einträge automatisch gelöscht (älter als $_deleteAfterMonths Monate)');
     }
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('${keysToDelete.length} alte Einträge gelöscht ✓'),
-        backgroundColor: const Color(0xFF4ECDC4),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
-    );
   }
 
   String _calcDuration(String kommen, String gehen) {
@@ -593,54 +598,51 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Alte Einträge automatisch löschen nach:',
+                            'Alte Einträge werden automatisch gelöscht nach:',
                             style: TextStyle(
                                 fontSize: 13, color: Colors.white.withValues(alpha: 0.4)),
                           ),
                           const SizedBox(height: 12),
-                          Row(
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
                             children: [1, 3, 6, 12].map((months) {
                               final isSelected = _deleteAfterMonths == months;
-                              return Padding(
-                                padding: const EdgeInsets.only(right: 8),
-                                child: GestureDetector(
-                                  onTap: () => setState(
-                                      () => _deleteAfterMonths = months),
-                                  child: AnimatedContainer(
-                                    duration:
-                                        const Duration(milliseconds: 200),
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 16, vertical: 10),
-                                    decoration: BoxDecoration(
-                                      gradient: isSelected
-                                          ? const LinearGradient(colors: [
-                                              Color(0xFF6C63FF),
-                                              Color(0xFF4ECDC4)
-                                            ])
-                                          : null,
+                              return GestureDetector(
+                                onTap: () => setState(
+                                    () => _deleteAfterMonths = months),
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 200),
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 16, vertical: 10),
+                                  decoration: BoxDecoration(
+                                    gradient: isSelected
+                                        ? const LinearGradient(colors: [
+                                            Color(0xFF6C63FF),
+                                            Color(0xFF4ECDC4)
+                                          ])
+                                        : null,
+                                    color: isSelected
+                                        ? null
+                                        : Colors.white
+                                            .withValues(alpha: 0.05),
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(
                                       color: isSelected
-                                          ? null
+                                          ? Colors.transparent
                                           : Colors.white
-                                              .withValues(alpha: 0.05),
-                                      borderRadius:
-                                          BorderRadius.circular(10),
-                                      border: Border.all(
-                                        color: isSelected
-                                            ? Colors.transparent
-                                            : Colors.white
-                                                .withValues(alpha: 0.08),
-                                      ),
+                                              .withValues(alpha: 0.08),
                                     ),
-                                    child: Text(
-                                      '${months}M',
-                                      style: TextStyle(
-                                        color: isSelected
-                                            ? Colors.white
-                                            : Colors.white
-                                                .withValues(alpha: 0.4),
-                                        fontWeight: FontWeight.w600,
-                                        fontSize: 13,
-                                      ),
+                                  ),
+                                  child: Text(
+                                    '${months} Monat${months > 1 ? 'e' : ''}',
+                                    style: TextStyle(
+                                      color: isSelected
+                                          ? Colors.white
+                                          : Colors.white
+                                              .withValues(alpha: 0.4),
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 13,
                                     ),
                                   ),
                                 ),
@@ -648,29 +650,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             }).toList(),
                           ),
                           const SizedBox(height: 12),
-                          GestureDetector(
-                            onTap: _deleteOldEntries,
-                            child: Container(
-                              width: double.infinity,
-                              padding:
-                                  const EdgeInsets.symmetric(vertical: 14),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFFF6B6B)
-                                    .withValues(alpha: 0.08),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                    color: const Color(0xFFFF6B6B)
-                                        .withValues(alpha: 0.25)),
-                              ),
-                              child: const Center(
-                                child: Text(
-                                  '🗑  Alte Einträge jetzt löschen',
-                                  style: TextStyle(
-                                      color: Color(0xFFFF6B6B),
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 15),
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.03),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(Icons.info_outline,
+                                    color: Colors.white.withValues(alpha: 0.4),
+                                    size: 18),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'Einträge werden automatisch gelöscht, sobald sie älter als die ausgewählte Zeit sind.',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: Colors.white.withValues(alpha: 0.4),
+                                    ),
+                                  ),
                                 ),
-                              ),
+                              ],
                             ),
                           ),
                         ],
