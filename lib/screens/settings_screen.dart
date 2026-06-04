@@ -30,9 +30,43 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.dispose();
   }
 
+  // 🔥 Neue Funktion: Wandelt jeden Wortanfang in Großbuchstaben um
+  String _capitalizeEachWord(String text) {
+    if (text.isEmpty) return text;
+    
+    final words = text.split(' ');
+    final capitalizedWords = words.map((word) {
+      if (word.isEmpty) return word;
+      // Ersten Buchstaben groß, restliche klein
+      return word[0].toUpperCase() + word.substring(1).toLowerCase();
+    }).toList();
+    
+    return capitalizedWords.join(' ');
+  }
+
+  // 🔥 Funktion zum Formatieren während der Eingabe
+  void _onNameChanged(String value) {
+    final cursorPosition = _nameController.selection.baseOffset;
+    final formatted = _capitalizeEachWord(value);
+    
+    if (formatted != value) {
+      _nameController.value = TextEditingValue(
+        text: formatted,
+        selection: TextSelection.collapsed(
+          offset: cursorPosition > formatted.length 
+              ? formatted.length 
+              : cursorPosition,
+        ),
+      );
+    }
+  }
+
   void _saveSettings() {
     final box = Hive.box('einstellungen');
-    box.put('name', _nameController.text);
+    // Vor dem Speichern nochmal formatieren
+    final formattedName = _capitalizeEachWord(_nameController.text);
+    _nameController.text = formattedName;
+    box.put('name', formattedName);
     box.put('deleteAfterMonths', _deleteAfterMonths);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -87,8 +121,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _exportPdf(DateTime month) async {
     final box = Hive.box('arbeitszeiten');
     final settingsBox = Hive.box('einstellungen');
-    final fullName =
+    String fullName =
         settingsBox.get('name', defaultValue: 'Unbekannt') as String;
+    // Namen für PDF formatieren
+    fullName = _capitalizeEachWord(fullName);
     final monthKey = DateFormat('yyyy-MM').format(month);
     final monthName = DateFormat('MMMM yyyy', 'de').format(month);
 
@@ -494,7 +530,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   children: [
                     const SizedBox(height: 8),
 
-                    // Benutzername
+                    // Benutzername - 🔥 Mit automatischer Großschreibung
                     _SettingsCard(
                       emoji: '👤',
                       title: 'Benutzername',
@@ -531,7 +567,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 border: InputBorder.none,
                                 isDense: true,
                               ),
+                              // 🔥 Hier: Automatische Großschreibung bei jeder Eingabe
+                              onChanged: _onNameChanged,
                             ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            '✓ Jeder Wortanfang wird automatisch großgeschrieben',
+                            style: TextStyle(
+                                fontSize: 11,
+                                color: const Color(0xFF4ECDC4).withValues(alpha: 0.6)),
                           ),
                           const SizedBox(height: 12),
                           _GradientButton(

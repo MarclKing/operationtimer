@@ -204,8 +204,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Widget build(BuildContext context) {
     final isToday = DateFormat('yyyy-MM-dd').format(DateTime.now()) == _dateKey;
     final screenHeight = MediaQuery.of(context).size.height;
-    final isSmallPhone = screenHeight < 700; // iPhone SE, 8, etc.
-    final topPadding = MediaQuery.of(context).padding.top;
+    final isSmallPhone = screenHeight < 700;
 
     return GestureDetector(
       onHorizontalDragEnd: (details) {
@@ -224,19 +223,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // 🔥 Verbesserte Abstände für iPhone
-                SizedBox(height: isSmallPhone ? 20 : 30),
+                // 🔥 Verbesserter Abstand - Begrüßung weiter unten
+                SizedBox(height: isSmallPhone ? 50 : 60),
                 
-                // Status Bar Platzhalter (für die Deutschlandflagge & Uhrzeit)
-                SizedBox(height: topPadding > 0 ? 0 : 8),
-                
-                // Begrüßung - Mehr Abstand nach oben
+                // Begrüßung
                 Padding(
-                  padding: EdgeInsets.fromLTRB(24, isSmallPhone ? 8 : 12, 24, 0),
+                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 0),
                   child: RichText(
                     text: TextSpan(
                       style: const TextStyle(
-                        fontSize: 26,
+                        fontSize: 28,
                         fontWeight: FontWeight.w700,
                         color: Colors.white,
                         height: 1.2,
@@ -256,8 +252,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   ),
                 ),
                 
-                // 🔥 Größerer Abstand zwischen Begrüßung und Datum
-                const SizedBox(height: 28),
+                // Abstand zwischen Begrüßung und Datum
+                const SizedBox(height: 32),
 
                 // Datum Navigation
                 Padding(
@@ -385,7 +381,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 24),
                   child: Text(
-                    '↕ Auf Kachel wischen = Minute anpassen  ·  Tippen = iOS-Picker',
+                    '↕ Wischen = Minute anpassen  ·  Tippen = Zeit wählen',
                     style: TextStyle(fontSize: 12, color: Colors.white.withValues(alpha: 0.3)),
                   ),
                 ),
@@ -490,8 +486,9 @@ class _IOSStyleTimePickerState extends State<_IOSStyleTimePicker> {
     super.initState();
     _selectedHour = widget.initialTime.hour;
     _selectedMinute = widget.initialTime.minute;
-    _hourController = FixedExtentScrollController(initialItem: _selectedHour);
-    _minuteController = FixedExtentScrollController(initialItem: _selectedMinute);
+    // 🔥 Unendlich scrollen durch große initiale Werte
+    _hourController = FixedExtentScrollController(initialItem: _selectedHour + 1000);
+    _minuteController = FixedExtentScrollController(initialItem: _selectedMinute + 1000);
   }
 
   @override
@@ -537,15 +534,17 @@ class _IOSStyleTimePickerState extends State<_IOSStyleTimePicker> {
             height: 200,
             child: Row(
               children: [
+                // 🔥 Stunden Picker - unendlich scrollbar
                 Expanded(
                   child: CupertinoPicker(
                     scrollController: _hourController,
                     magnification: 1.2,
                     backgroundColor: Colors.transparent,
                     itemExtent: 40,
+                    looping: true, // 🔥 Endlosschleife für Stunden
                     onSelectedItemChanged: (index) {
                       setState(() {
-                        _selectedHour = index;
+                        _selectedHour = index % 24; // 🔥 Modulo für unendlich
                       });
                     },
                     children: List.generate(24, (hour) {
@@ -555,7 +554,7 @@ class _IOSStyleTimePickerState extends State<_IOSStyleTimePicker> {
                           style: TextStyle(
                             fontSize: 24,
                             fontWeight: FontWeight.w600,
-                            color: _selectedHour == hour 
+                            color: (_selectedHour % 24) == hour 
                                 ? const Color(0xFF6C63FF) 
                                 : Colors.white.withValues(alpha: 0.6),
                           ),
@@ -574,15 +573,17 @@ class _IOSStyleTimePickerState extends State<_IOSStyleTimePicker> {
                   ),
                 ),
                 
+                // 🔥 Minuten Picker - unendlich scrollbar
                 Expanded(
                   child: CupertinoPicker(
                     scrollController: _minuteController,
                     magnification: 1.2,
                     backgroundColor: Colors.transparent,
                     itemExtent: 40,
+                    looping: true, // 🔥 Endlosschleife für Minuten
                     onSelectedItemChanged: (index) {
                       setState(() {
-                        _selectedMinute = index;
+                        _selectedMinute = index % 60; // 🔥 Modulo für unendlich
                       });
                     },
                     children: List.generate(60, (minute) {
@@ -592,7 +593,7 @@ class _IOSStyleTimePickerState extends State<_IOSStyleTimePicker> {
                           style: TextStyle(
                             fontSize: 24,
                             fontWeight: FontWeight.w600,
-                            color: _selectedMinute == minute 
+                            color: (_selectedMinute % 60) == minute 
                                 ? const Color(0xFF6C63FF) 
                                 : Colors.white.withValues(alpha: 0.6),
                           ),
@@ -635,7 +636,10 @@ class _IOSStyleTimePickerState extends State<_IOSStyleTimePicker> {
               Expanded(
                 child: GestureDetector(
                   onTap: () {
-                    widget.onTimeSelected(TimeOfDay(hour: _selectedHour, minute: _selectedMinute));
+                    // 🔥 Korrekte Werte mit Modulo
+                    final finalHour = _selectedHour % 24;
+                    final finalMinute = _selectedMinute % 60;
+                    widget.onTimeSelected(TimeOfDay(hour: finalHour, minute: finalMinute));
                     Navigator.pop(context);
                   },
                   child: Container(
