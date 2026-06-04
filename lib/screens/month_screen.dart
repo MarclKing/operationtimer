@@ -1712,26 +1712,26 @@ class _StatCard extends StatelessWidget {
     final skin = AppTheme.of(context);
     return Expanded(
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: color.withValues(alpha: 0.2)),
-        ),
-        child: Column(
-          children: [
-            Text(value,
-                style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w700,
-                    color: color)),
-            const SizedBox(height: 2),
-            Text(label,
-                style:
-                    TextStyle(fontSize: 11, color: skin.textMuted)),
-          ],
-        ),
-      ),
+  padding: const EdgeInsets.symmetric(vertical: 8),
+  decoration: BoxDecoration(
+    color: color.withValues(alpha: 0.08),
+    borderRadius: BorderRadius.circular(12),
+    border: Border.all(color: color.withValues(alpha: 0.2)),
+  ),
+  child: Row(
+    mainAxisAlignment: MainAxisAlignment.center,
+    children: [
+      Text(value,
+          style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: color)),
+      const SizedBox(width: 5),
+      Text(label,
+          style: TextStyle(fontSize: 11, color: skin.textMuted)),
+    ],
+  ),
+),
     );
   }
 }
@@ -1755,7 +1755,7 @@ class _FadingListView extends StatelessWidget {
       shaderCallback: (bounds) {
         final h = bounds.height;
         final fadeStartPx = fadeFromBottom + 30;
-        final fadeEndPx = fadeFromBottom - 10;
+        final fadeEndPx = fadeFromBottom - 70;
         final startStop = ((h - fadeStartPx) / h).clamp(0.0, 1.0);
         final endStop = ((h - fadeEndPx) / h).clamp(0.0, 1.0);
         return LinearGradient(
