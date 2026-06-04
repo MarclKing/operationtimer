@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
 import '../theme/app_theme.dart';
+import '../services/night_shift_helper.dart';
 
 class HomeScreen extends StatefulWidget {
   final VoidCallback onNavigateToMonth;
@@ -22,7 +23,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   late AnimationController _saveAnimController;
   bool _initialTimeSet = false;
   
-  // Für Swipe-Erkennung
   double _horizontalDragStart = 0;
   bool _isHorizontalSwipe = false;
   final _scrollController = ScrollController();
@@ -81,37 +81,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   void _loadEntry() {
-    final box = Hive.box('arbeitszeiten');
-    final entry = box.get(_dateKey);
     final isToday = _dateKey == DateFormat('yyyy-MM-dd').format(DateTime.now());
     
     setState(() {
-      if (entry != null && entry['gehen'] != null && entry['gehen'].toString().isNotEmpty) {
-        // Vollständiger Eintrag (Gehen ist ausgefüllt) -> lade alles
-        _kommenController.text = entry['kommen'] ?? '';
-        _gehenController.text = entry['gehen'] ?? '';
-        _teamchefController.text = entry['TKF'] ?? '';
-        _notizController.text = entry['notiz'] ?? '';
-        _initialTimeSet = true;
-      } else if (entry != null && isToday && (entry['gehen'] == null || entry['gehen'].toString().isEmpty)) {
-        // Heutiger unvollständiger Eintrag -> nur TKF und Notiz übernehmen, Kommen auf aktuelle Zeit
-        _kommenController.text = _getCurrentTimeFormatted();
-        _gehenController.clear();
-        _teamchefController.text = entry['TKF'] ?? '';
-        _notizController.text = entry['notiz'] ?? '';
-        _initialTimeSet = true;
-      } else if (entry != null && !isToday) {
-        // Vergangener Tag mit unvollständigem Eintrag -> lade trotzdem
-        _kommenController.text = entry['kommen'] ?? '';
-        _gehenController.text = entry['gehen'] ?? '';
-        _teamchefController.text = entry['TKF'] ?? '';
-        _notizController.text = entry['notiz'] ?? '';
-        _initialTimeSet = true;
-      } else {
-        // Kein Eintrag vorhanden
+      if (!isToday) {
         _resetAllFields();
-        _initialTimeSet = true;
+      } else {
+        _resetAllFields();
       }
+      _initialTimeSet = true;
     });
   }
 
@@ -134,90 +112,256 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   void _adjustTime(TextEditingController controller, int minutesDelta) {
+    final isKommen = controller == _kommenController;
+    final isGehen = controller == _gehenController;
+    
     final current = _parseTime(controller.text) ?? TimeOfDay.now();
     final total =
         (current.hour * 60 + current.minute + minutesDelta).clamp(0, 23 * 60 + 59);
+    
+    final newHour = total ~/ 60;
+    final newMinute = total % 60;
+    
+    final nightShiftEnabled = NightShiftHelper.isNightShiftEnabled();
+    if (!nightShiftEnabled && isKommen && _gehenController.text.isNotEmpty) {
+      final gehenTime = _parseTime(_gehenController.text);
+      if (gehenTime != null) {
+        final gehenMinutes = gehenTime.hour * 60 + gehenTime.minute;
+        if (total > gehenMinutes) return;
+      }
+    }
+    
+    if (!nightShiftEnabled && isGehen && _kommenController.text.isNotEmpty) {
+      final kommenTime = _parseTime(_kommenController.text);
+      if (kommenTime != null) {
+        final kommenMinutes = kommenTime.hour * 60 + kommenTime.minute;
+        if (total < kommenMinutes) return;
+      }
+    }
+    
     setState(() {
       controller.text =
-          '${(total ~/ 60).toString().padLeft(2, '0')}:${(total % 60).toString().padLeft(2, '0')}';
+          '${newHour.toString().padLeft(2, '0')}:${newMinute.toString().padLeft(2, '0')}';
     });
     HapticFeedback.selectionClick();
   }
 
   void _saveEntry(BuildContext context) async {
-    await _saveAnimController.forward();
-    await _saveAnimController.reverse();
+    final kommen = _kommenController.text.trim();
+    final gehen = _gehenController.text.trim();
+    final tkf = _teamchefController.text.trim();
+    final notiz = _notizController.text.trim();
     
-    final now = DateTime.now();
-    final isToday = _dateKey == DateFormat('yyyy-MM-dd').format(now);
+    final result = await NightShiftHelper.save(
+      context: context,
+      datum: _selectedDate,
+      kommen: kommen,
+      gehen: gehen,
+      tkf: tkf,
+      notiz: notiz,
+    );
     
-    // Speichere den Eintrag
-    Hive.box('arbeitszeiten').put(_dateKey, {
-      'kommen': _kommenController.text,
-      'gehen': _gehenController.text,
-      'TKF': _teamchefController.text,
-      'notiz': _notizController.text,
-      'datum': _dateKey,
-    });
-    
-    // Nur wenn es der heutige Tag ist, setze die Felder zurück
-    if (isToday) {
-      _resetAllFields();
-    }
-    
-    if (mounted) {
-      final skin = AppTheme.of(context);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: const Text('Eintrag gespeichert ✓'),
-        backgroundColor: skin.primary == Colors.white
-            ? const Color(0xFF3DD6C8)
-            : skin.primary,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        margin: const EdgeInsets.fromLTRB(16, 0, 16, 100),
-      ));
+    if (result == SaveResult.saved || result == SaveResult.splitSaved) {
+      await _saveAnimController.forward();
+      await _saveAnimController.reverse();
+      
+      final isToday = _dateKey == DateFormat('yyyy-MM-dd').format(DateTime.now());
+      if (isToday) {
+        _resetAllFields();
+      }
+      
+      if (mounted) {
+        final skin = AppTheme.of(context);
+        String message;
+        if (result == SaveResult.splitSaved) {
+          message = '✓ Nachtschicht gespeichert (2 Einträge)';
+        } else {
+          message = '✓ Eintrag gespeichert';
+        }
+        
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(message),
+          backgroundColor: skin.primary == Colors.white
+              ? const Color(0xFF3DD6C8)
+              : skin.primary,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+        ));
+      }
     }
   }
 
-  Future<void> _selectDate() async {
+  // 🔥 KORRIGIERT: iOS-ähnlicher Date Picker mit "Heute" Button
+  Future<void> _selectDateWithPicker() async {
     final skin = AppTheme.of(context);
-    final picked = await showDatePicker(
+    DateTime tempDate = _selectedDate;
+    
+    // Erstelle einen Unique Key für den Picker, um ihn neu zu erstellen
+    UniqueKey pickerKey = UniqueKey();
+    
+    await showModalBottomSheet(
       context: context,
-      initialDate: _selectedDate,
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2030),
-      builder: (context, child) => Theme(
-        data: ThemeData.dark().copyWith(
-          colorScheme: ColorScheme.dark(
-            primary: skin.primary == Colors.white
-                ? const Color(0xFF6C63FF)
-                : skin.primary,
-            surface: skin.bgCard,
-          ),
-        ),
-        child: child!,
-      ),
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return Container(
+              decoration: BoxDecoration(
+                color: skin.bgSheet,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                border: Border.all(color: skin.borderMedium),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    margin: const EdgeInsets.only(top: 12),
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: skin.surface(0.2),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Text(
+                    'Datum auswählen',
+                    style: TextStyle(
+                      color: skin.textPrimary,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  // 🔥 Verwende einen Key, um den Picker neu zu erstellen
+                  SizedBox(
+                    height: 200,
+                    child: CupertinoDatePicker(
+                      key: pickerKey,
+                      mode: CupertinoDatePickerMode.date,
+                      initialDateTime: tempDate,
+                      minimumDate: DateTime(2020),
+                      maximumDate: DateTime(2030),
+                      backgroundColor: Colors.transparent,
+                      onDateTimeChanged: (DateTime newDate) {
+                        tempDate = newDate;
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      // 🔥 "Heute" Button - erstellt Picker komplett neu
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () {
+                            tempDate = DateTime.now();
+                            // 🔥 Neuen Key generieren, um Picker neu zu erstellen
+                            pickerKey = UniqueKey();
+                            setDialogState(() {});
+                          },
+                          child: Container(
+                            margin: const EdgeInsets.fromLTRB(16, 0, 4, 0),
+                            padding: const EdgeInsets.symmetric(vertical: 15),
+                            decoration: BoxDecoration(
+                              color: skin.surface(0.06),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(color: skin.borderSubtle),
+                            ),
+                            child: Center(
+                              child: Text(
+                                'Heute',
+                                style: TextStyle(
+                                  color: skin.textPrimary,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      // 🔥 "Übernehmen" Button
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              _selectedDate = tempDate;
+                              _initialTimeSet = false;
+                            });
+                            _loadEntry();
+                            Navigator.pop(context);
+                          },
+                          child: Container(
+                            margin: const EdgeInsets.fromLTRB(4, 0, 16, 0),
+                            padding: const EdgeInsets.symmetric(vertical: 15),
+                            decoration: BoxDecoration(
+                              gradient: skin.gradient,
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: Center(
+                              child: Text(
+                                'Übernehmen',
+                                style: TextStyle(
+                                  color: skin.onGradient,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                ],
+              ),
+            );
+          },
+        );
+      },
     );
-    if (picked != null) {
-      setState(() {
-        _selectedDate = picked;
-        _initialTimeSet = false;
-      });
-      _loadEntry();
-    }
   }
 
   Future<void> _selectTimeWithPicker(TextEditingController controller) async {
+    final isKommen = controller == _kommenController;
+    final isGehen = controller == _gehenController;
+    final nightShiftEnabled = NightShiftHelper.isNightShiftEnabled();
+    final skin = AppTheme.of(context);
+    
     await showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (_) => _IOSTimePicker(
         initialTime: _parseTime(controller.text) ?? TimeOfDay.now(),
-        onTimeSelected: (t) => setState(() {
-          controller.text =
-              '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
-        }),
+        skin: skin,
+        onTimeSelected: (t) {
+          final newMinutes = t.hour * 60 + t.minute;
+          
+          if (!nightShiftEnabled && isKommen && _gehenController.text.isNotEmpty) {
+            final gehenTime = _parseTime(_gehenController.text);
+            if (gehenTime != null) {
+              final gehenMinutes = gehenTime.hour * 60 + gehenTime.minute;
+              if (newMinutes > gehenMinutes) return;
+            }
+          }
+          
+          if (!nightShiftEnabled && isGehen && _kommenController.text.isNotEmpty) {
+            final kommenTime = _parseTime(_kommenController.text);
+            if (kommenTime != null) {
+              final kommenMinutes = kommenTime.hour * 60 + kommenTime.minute;
+              if (newMinutes < kommenMinutes) return;
+            }
+          }
+          
+          setState(() {
+            controller.text =
+                '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+          });
+        },
       ),
     );
   }
@@ -226,6 +370,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Widget build(BuildContext context) {
     final skin = AppTheme.of(context);
     final isToday = DateFormat('yyyy-MM-dd').format(DateTime.now()) == _dateKey;
+    final isChromeSkin = skin.key == 'chrome';
 
     return Scaffold(
       backgroundColor: skin.bgBase,
@@ -260,7 +405,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               children: [
                 const SizedBox(height: 80),
 
-                // ── HEADER ──────────────────────────────────────────────────
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 24),
                   child: Column(
@@ -297,7 +441,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
                 const SizedBox(height: 24),
 
-                // ── Datum Navigation ─────────────────────────────────────────
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 24),
                   child: Row(
@@ -306,7 +449,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       const SizedBox(width: 12),
                       Expanded(
                         child: GestureDetector(
-                          onTap: _selectDate,
+                          onTap: _selectDateWithPicker,
                           onHorizontalDragEnd: (d) {
                             final v = d.primaryVelocity ?? 0;
                             if (v < -300) _changeDate(1);
@@ -361,7 +504,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                   ),
                                 ),
                                 const SizedBox(width: 6),
-                                Icon(Icons.calendar_today_outlined,
+                                Icon(Icons.chevron_right,
                                     color: skin.white(0.3), size: 14),
                               ],
                             ),
@@ -378,7 +521,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
                 const SizedBox(height: 28),
 
-                // ── Kommen & Gehen ───────────────────────────────────────────
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 24),
                   child: Row(
@@ -420,7 +562,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
                 const SizedBox(height: 20),
 
-                // ── TKF ──────────────────────────────────────────────────────
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 24),
                   child: _GlassInput(
@@ -433,7 +574,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
                 const SizedBox(height: 12),
 
-                // ── Notiz ────────────────────────────────────────────────────
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 24),
                   child: _GlassInput(
@@ -446,7 +586,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
                 const SizedBox(height: 28),
 
-                // ── Speichern Button ─────────────────────────────────────────
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 24),
                   child: ScaleTransition(
@@ -459,32 +598,49 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       onTap: () => _saveEntry(context),
                       child: Container(
                         width: double.infinity,
-                        padding: const EdgeInsets.symmetric(
-                            vertical: 14, horizontal: 16),
+                        padding: const EdgeInsets.symmetric(vertical: 16),
                         decoration: BoxDecoration(
-                          gradient: skin.gradient,
-                          borderRadius: BorderRadius.circular(18),
+                          gradient: isChromeSkin
+                              ? const LinearGradient(
+                                  colors: [Color(0xFF333333), Color(0xFF555555)],
+                                  begin: Alignment.centerLeft,
+                                  end: Alignment.centerRight,
+                                )
+                              : const LinearGradient(
+                                  colors: [Color(0xFF6C63FF), Color(0xFF4ECDC4)],
+                                  begin: Alignment.centerLeft,
+                                  end: Alignment.centerRight,
+                                ),
+                          borderRadius: BorderRadius.circular(16),
                           boxShadow: [
                             BoxShadow(
-                              color: skin.primaryWithAlpha(0.3),
-                              blurRadius: 20,
-                              offset: const Offset(0, 8),
+                              color: isChromeSkin
+                                  ? Colors.black.withValues(alpha: 0.3)
+                                  : const Color(0xFF6C63FF).withValues(alpha: 0.4),
+                              blurRadius: 12,
+                              offset: const Offset(0, 4),
                             ),
                           ],
                         ),
-                        child: FittedBox(
-                          fit: BoxFit.scaleDown,
-                          child: Text(
-                            '✓  Eintrag speichern',
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700,
-                              color: skin.primary == Colors.white
-                                  ? Colors.black
-                                  : Colors.white,
-                              letterSpacing: 0.5,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.save_rounded,
+                              color: Colors.white,
+                              size: 20,
                             ),
-                          ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Eintrag speichern',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.white,
+                                letterSpacing: 0.3,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
@@ -500,10 +656,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// HELPER WIDGETS (unverändert)
-// ─────────────────────────────────────────────────────────────────────────────
 
 class _NavBtn extends StatelessWidget {
   final IconData icon;
@@ -603,16 +755,16 @@ class _GlassInput extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// iOS Time Picker mit "Jetzt" Button
-// ─────────────────────────────────────────────────────────────────────────────
-
 class _IOSTimePicker extends StatefulWidget {
   final TimeOfDay initialTime;
+  final AppSkin skin;
   final Function(TimeOfDay) onTimeSelected;
 
-  const _IOSTimePicker(
-      {required this.initialTime, required this.onTimeSelected});
+  const _IOSTimePicker({
+    required this.initialTime,
+    required this.skin,
+    required this.onTimeSelected,
+  });
 
   @override
   State<_IOSTimePicker> createState() => _IOSTimePickerState();
@@ -664,7 +816,7 @@ class _IOSTimePickerState extends State<_IOSTimePicker> {
 
   @override
   Widget build(BuildContext context) {
-    final skin = AppTheme.of(context);
+    final skin = widget.skin;
 
     return Container(
       decoration: BoxDecoration(
@@ -819,9 +971,7 @@ class _IOSTimePickerState extends State<_IOSTimePicker> {
                       child: Text(
                         'Übernehmen',
                         style: TextStyle(
-                          color: skin.primary == Colors.white
-                              ? Colors.black
-                              : Colors.white,
+                          color: skin.onGradient,
                           fontSize: 16,
                           fontWeight: FontWeight.w700,
                         ),

@@ -7,14 +7,61 @@ import 'screens/month_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/support_screen.dart';
 import 'services/pdf_service.dart';
+import 'services/night_shift_helper.dart';
+import 'theme/app_theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Hive.initFlutter();
   await Hive.openBox('arbeitszeiten');
   await Hive.openBox('einstellungen');
+  
+  // Migration: Alte Einträge in neues Format konvertieren
+  _migrateOldEntries();
+  
   await initializeDateFormatting('de', null);
   runApp(const MyApp());
+}
+
+void _migrateOldEntries() {
+  final box = Hive.box('arbeitszeiten');
+  final keys = box.keys.toList();
+  bool changed = false;
+  
+  for (final key in keys) {
+    final data = box.get(key);
+    if (data != null && data is! List) {
+      final entry = Map<String, dynamic>.from(data);
+      if (!entry.containsKey('id')) {
+        entry['id'] = DateTime.now().millisecondsSinceEpoch.toString();
+      }
+      if (!entry.containsKey('createdAt')) {
+        entry['createdAt'] = DateTime.now().toIso8601String();
+      }
+      box.put(key, [entry]);
+      changed = true;
+    } else if (data is List) {
+      bool needsUpdate = false;
+      for (final entry in data) {
+        if (!entry.containsKey('id')) {
+          entry['id'] = DateTime.now().millisecondsSinceEpoch.toString();
+          needsUpdate = true;
+        }
+        if (!entry.containsKey('createdAt')) {
+          entry['createdAt'] = DateTime.now().toIso8601String();
+          needsUpdate = true;
+        }
+      }
+      if (needsUpdate) {
+        box.put(key, data);
+        changed = true;
+      }
+    }
+  }
+  
+  if (changed) {
+    debugPrint('✅ Migration abgeschlossen: Alte Einträge konvertiert');
+  }
 }
 
 class MyApp extends StatelessWidget {
@@ -22,20 +69,50 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'OpTime',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF6C63FF),
-          brightness: Brightness.dark,
-        ),
-        useMaterial3: true,
-      ),
-      home: const MainScreen(),
+    return ValueListenableBuilder(
+      valueListenable: Hive.box('einstellungen').listenable(),
+      builder: (context, box, _) {
+        final skinKey = box.get(AppTheme.hiveKey, defaultValue: 'chrome') as String;
+        final skin = AppTheme.fromKey(skinKey);
+        
+        return SkinProvider(
+          skin: skin,
+          child: MaterialApp(
+            title: 'OpTime',
+            debugShowCheckedModeBanner: false,
+            theme: ThemeData(
+              brightness: skin.isLight ? Brightness.light : Brightness.dark,
+              scaffoldBackgroundColor: skin.bgBase,
+              colorScheme: ColorScheme(
+                brightness: skin.isLight ? Brightness.light : Brightness.dark,
+                primary: skin.primary,
+                onPrimary: skin.onGradient,
+                secondary: skin.secondary,
+                onSecondary: skin.onGradient,
+                error: skin.deleteColor,
+                onError: Colors.white,
+                background: skin.bgBase,
+                onBackground: skin.textPrimary,
+                surface: skin.bgCard,
+                onSurface: skin.textPrimary,
+              ),
+              appBarTheme: AppBarTheme(
+                backgroundColor: skin.bgCard,
+                foregroundColor: skin.textPrimary,
+              ),
+              // 🔥 InputDecorationTheme entfernt – keine störenden Hintergründe mehr
+              useMaterial3: true,
+            ),
+            home: const MainScreen(),
+          ),
+        );
+      },
     );
   }
 }
+
+// Der Rest der main.dart bleibt gleich (MainScreen, _DropdownMenuItem, etc.)
+// ... (den Rest wie in der vorherigen Antwort)
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -117,14 +194,15 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
+    final skin = AppTheme.of(context);
+
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0F),
+      backgroundColor: skin.bgBase,
       body: Stack(
         children: [
-          // ── PageView ersetzt AnimatedSwitcher ────────────────────────────
           PageView(
             controller: _pageController,
-            physics: const NeverScrollableScrollPhysics(), // Wischen wird von den Screens selbst gesteuert
+            physics: const NeverScrollableScrollPhysics(),
             onPageChanged: (index) {
               setState(() => _selectedIndex = index);
             },
@@ -140,7 +218,6 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
             ],
           ),
 
-          // ── Blur overlay when menu open ──────────────────────────────────
           if (_menuOpen)
             GestureDetector(
               onTap: _closeMenu,
@@ -149,7 +226,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
               ),
             ),
 
-          // ── Dropdown Menu ────────────────────────────────────────────────
+          // 🔥 Dropdown Menu mit Skin-Farben
           AnimatedBuilder(
             animation: _menuAnimController,
             builder: (context, child) {
@@ -161,26 +238,64 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                   alignment: Alignment.topRight,
                   child: Opacity(
                     opacity: _menuAnimController.value,
-                    child: _DropdownMenu(
-                      onClose: _closeMenu,
-                      onSettings: () {
-                        _closeMenu();
-                        Navigator.push(
-                          context,
-                          CupertinoPageRoute(
-                            builder: (_) => const SettingsScreen(),
-                          ),
-                        );
-                      },
-                      onSupport: () {
-                        _closeMenu();
-                        Navigator.push(
-                          context,
-                          CupertinoPageRoute(
-                            builder: (_) => const SupportScreen(),
-                          ),
-                        );
-                      },
+                    child: Material(
+                      color: Colors.transparent,
+                      child: Container(
+                        width: 220,
+                        decoration: BoxDecoration(
+                          color: skin.bgCard,
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(color: skin.borderMedium),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.3),
+                              blurRadius: 20,
+                              offset: const Offset(0, 8),
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _DropdownMenuItem(
+                              icon: Icons.picture_as_pdf_outlined,
+                              label: 'Zeiten exportieren',
+                              onTap: () {
+                                _closeMenu();
+                                PdfService.showMonthPickerAndExport(context);
+                              },
+                            ),
+                            _DropdownDivider(),
+                            _DropdownMenuItem(
+                              icon: Icons.settings_outlined,
+                              label: 'Einstellungen',
+                              onTap: () {
+                                _closeMenu();
+                                Navigator.push(
+                                  context,
+                                  CupertinoPageRoute(
+                                    builder: (_) => const SettingsScreen(),
+                                  ),
+                                );
+                              },
+                            ),
+                            _DropdownDivider(),
+                            _DropdownMenuItem(
+                              icon: Icons.support_agent_outlined,
+                              label: 'Support',
+                              onTap: () {
+                                _closeMenu();
+                                Navigator.push(
+                                  context,
+                                  CupertinoPageRoute(
+                                    builder: (_) => const SupportScreen(),
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -188,7 +303,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
             },
           ),
 
-          // ── Top Bar with Hamburger ───────────────────────────────────────
+          // Top Bar
           Positioned(
             top: 0,
             left: 0,
@@ -210,21 +325,20 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                         height: 36,
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(10),
-                          border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.15)),
-                          color: Colors.white.withValues(alpha: 0.05),
+                          border: Border.all(color: skin.surface(0.15)),
+                          color: skin.surface(0.05),
                         ),
-                        child: const Center(
-                          child: Text('🇩🇪', style: TextStyle(fontSize: 20)),
+                        child: Center(
+                          child: Icon(Icons.access_time, color: skin.primary, size: 20),
                         ),
                       ),
                       const SizedBox(width: 10),
-                      const Text(
+                      Text(
                         'OpTime',
                         style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w700,
-                          color: Colors.white,
+                          color: skin.textPrimary,
                         ),
                       ),
                     ],
@@ -239,12 +353,12 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(12),
                           color: _menuOpen
-                              ? const Color(0xFF6C63FF).withValues(alpha: 0.3)
-                              : Colors.white.withValues(alpha: 0.08),
+                              ? skin.primaryWithAlpha(0.3)
+                              : skin.surface(0.08),
                           border: Border.all(
                             color: _menuOpen
-                                ? const Color(0xFF6C63FF).withValues(alpha: 0.5)
-                                : Colors.white.withValues(alpha: 0.1),
+                                ? skin.primaryWithAlpha(0.5)
+                                : skin.surface(0.1),
                           ),
                         ),
                         child: AnimatedRotation(
@@ -252,7 +366,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                           duration: const Duration(milliseconds: 250),
                           child: Icon(
                             _menuOpen ? Icons.close : Icons.menu,
-                            color: Colors.white,
+                            color: skin.textPrimary,
                             size: 20,
                           ),
                         ),
@@ -264,7 +378,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
             ),
           ),
 
-          // ── Bottom Navigation ────────────────────────────────────────────
+          // Bottom Navigation
           Positioned(
             bottom: 0,
             left: 0,
@@ -280,89 +394,40 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   }
 }
 
-class _DropdownMenu extends StatelessWidget {
-  final VoidCallback onClose;
-  final VoidCallback onSettings;
-  final VoidCallback onSupport;
-
-  const _DropdownMenu({
-    required this.onClose,
-    required this.onSettings,
-    required this.onSupport,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 220,
-      decoration: BoxDecoration(
-        color: const Color(0xFF1A1A2E).withValues(alpha: 0.95),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.4),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _MenuItem(
-            emoji: '📤',
-            label: 'Zeiten exportieren',
-            onTap: () {
-              onClose();
-              PdfService.showMonthPickerAndExport(context);
-            },
-          ),
-          _MenuDivider(),
-          _MenuItem(
-            emoji: '⚙️',
-            label: 'Einstellungen',
-            onTap: onSettings,
-          ),
-          _MenuDivider(),
-          _MenuItem(
-            emoji: '🆘',
-            label: 'Support',
-            onTap: onSupport,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _MenuItem extends StatelessWidget {
-  final String emoji;
+// 🔥 Neue Dropdown-Menü-Item-Klasse
+class _DropdownMenuItem extends StatelessWidget {
+  final IconData icon;
   final String label;
   final VoidCallback onTap;
 
-  const _MenuItem({
-    required this.emoji,
+  const _DropdownMenuItem({
+    required this.icon,
     required this.label,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
+    final skin = AppTheme.of(context);
+    
     return GestureDetector(
       onTap: onTap,
+      behavior: HitTestBehavior.opaque,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         child: Row(
           children: [
-            Text(emoji, style: const TextStyle(fontSize: 18)),
+            Icon(icon, size: 20, color: skin.textMuted),
             const SizedBox(width: 12),
-            Text(
-              label,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 15,
-                fontWeight: FontWeight.w500,
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(
+                  color: skin.textPrimary,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
             ),
           ],
@@ -372,12 +437,13 @@ class _MenuItem extends StatelessWidget {
   }
 }
 
-class _MenuDivider extends StatelessWidget {
+class _DropdownDivider extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
+    final skin = AppTheme.of(context);
     return Container(
       height: 0.5,
-      color: Colors.white.withValues(alpha: 0.08),
+      color: skin.borderSubtle,
     );
   }
 }
@@ -390,6 +456,8 @@ class _BottomNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final skin = AppTheme.of(context);
+    
     return Container(
       padding: EdgeInsets.only(
         bottom: MediaQuery.of(context).padding.bottom + 8,
@@ -398,9 +466,9 @@ class _BottomNav extends StatelessWidget {
         right: 40,
       ),
       decoration: BoxDecoration(
-        color: const Color(0xFF0A0A0F).withValues(alpha: 0.9),
+        color: skin.bgBase.withValues(alpha: 0.9),
         border: Border(
-          top: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
+          top: BorderSide(color: skin.borderSubtle),
         ),
       ),
       child: Row(
@@ -443,6 +511,8 @@ class _NavItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final skin = AppTheme.of(context);
+    
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
@@ -450,14 +520,10 @@ class _NavItem extends StatelessWidget {
         curve: Curves.easeInOut,
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
         decoration: BoxDecoration(
-          color: isSelected
-              ? const Color(0xFF6C63FF).withValues(alpha: 0.15)
-              : Colors.transparent,
+          color: isSelected ? skin.primaryWithAlpha(0.15) : Colors.transparent,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: isSelected
-                ? const Color(0xFF6C63FF).withValues(alpha: 0.3)
-                : Colors.transparent,
+            color: isSelected ? skin.primaryWithAlpha(0.3) : Colors.transparent,
           ),
         ),
         child: Column(
@@ -468,9 +534,7 @@ class _NavItem extends StatelessWidget {
               child: Icon(
                 isSelected ? activeIcon : icon,
                 key: ValueKey(isSelected),
-                color: isSelected
-                    ? const Color(0xFF6C63FF)
-                    : Colors.white.withValues(alpha: 0.4),
+                color: isSelected ? skin.primary : skin.surface(0.4),
                 size: 24,
               ),
             ),
@@ -480,9 +544,7 @@ class _NavItem extends StatelessWidget {
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
-                color: isSelected
-                    ? const Color(0xFF6C63FF)
-                    : Colors.white.withValues(alpha: 0.4),
+                color: isSelected ? skin.primary : skin.surface(0.4),
               ),
               child: Text(label),
             ),

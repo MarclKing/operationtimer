@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../theme/app_theme.dart';
 
 class SupportScreen extends StatefulWidget {
   const SupportScreen({super.key});
@@ -25,8 +26,7 @@ class _SupportScreenState extends State<SupportScreen> {
           content: const Text('Bitte eine Nachricht eingeben'),
           backgroundColor: const Color(0xFFFF6B6B),
           behavior: SnackBarBehavior.floating,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
       );
       return;
@@ -36,8 +36,7 @@ class _SupportScreenState extends State<SupportScreen> {
 
     final subject = Uri.encodeComponent('OperationTimer Support Anfrage');
     final body = Uri.encodeComponent(_messageController.text.trim());
-    final uri = Uri.parse(
-        'mailto:iPunched7@gmail.com?subject=$subject&body=$body');
+    final uri = Uri.parse('mailto:iPunched7@gmail.com?subject=$subject&body=$body');
 
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri);
@@ -49,8 +48,7 @@ class _SupportScreenState extends State<SupportScreen> {
             content: const Text('Keine Mail-App gefunden'),
             backgroundColor: const Color(0xFFFF6B6B),
             behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12)),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
         );
       }
@@ -61,8 +59,11 @@ class _SupportScreenState extends State<SupportScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final skin = AppTheme.of(context);
+    final isChromeSkin = skin.key == 'chrome';
+
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0F),
+      backgroundColor: skin.bgBase,
       body: SafeArea(
         child: Column(
           children: [
@@ -77,23 +78,17 @@ class _SupportScreenState extends State<SupportScreen> {
                       width: 40,
                       height: 40,
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.06),
+                        color: skin.surface(0.06),
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.1)),
+                        border: Border.all(color: skin.borderSubtle),
                       ),
-                      child: const Icon(Icons.arrow_back_ios_new,
-                          color: Colors.white, size: 16),
+                      child: Icon(Icons.arrow_back_ios_new, color: skin.textPrimary, size: 16),
                     ),
                   ),
                   const SizedBox(width: 16),
-                  const Text(
+                  Text(
                     'Support',
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.white,
-                    ),
+                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: skin.textPrimary),
                   ),
                 ],
               ),
@@ -111,11 +106,9 @@ class _SupportScreenState extends State<SupportScreen> {
                     Container(
                       padding: const EdgeInsets.all(20),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF6C63FF).withValues(alpha: 0.08),
+                        color: skin.primaryWithAlpha(0.08),
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                            color: const Color(0xFF6C63FF)
-                                .withValues(alpha: 0.2)),
+                        border: Border.all(color: skin.primaryWithAlpha(0.2)),
                       ),
                       child: Row(
                         children: [
@@ -125,22 +118,14 @@ class _SupportScreenState extends State<SupportScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Text(
+                                Text(
                                   'Wir helfen dir gerne!',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w700,
-                                  ),
+                                  style: TextStyle(color: skin.textPrimary, fontSize: 16, fontWeight: FontWeight.w700),
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
                                   'Beschreibe dein Problem oder deine Frage – wir melden uns so schnell wie möglich.',
-                                  style: TextStyle(
-                                    color: Colors.white.withValues(alpha: 0.5),
-                                    fontSize: 13,
-                                    height: 1.4,
-                                  ),
+                                  style: TextStyle(color: skin.textMuted, fontSize: 13, height: 1.4),
                                 ),
                               ],
                             ),
@@ -153,33 +138,23 @@ class _SupportScreenState extends State<SupportScreen> {
                     // Nachricht
                     Text(
                       'DEINE NACHRICHT',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: const Color(0xFF6C63FF),
-                        letterSpacing: 1.0,
-                      ),
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: skin.primary, letterSpacing: 1.0),
                     ),
                     const SizedBox(height: 10),
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.04),
+                        color: skin.surface(0.04),
                         borderRadius: BorderRadius.circular(18),
-                        border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.08)),
+                        border: Border.all(color: skin.borderSubtle),
                       ),
                       child: TextField(
                         controller: _messageController,
                         maxLines: 8,
-                        style: const TextStyle(
-                            color: Colors.white, fontSize: 15, height: 1.5),
+                        style: TextStyle(color: skin.textPrimary, fontSize: 15, height: 1.5),
                         decoration: InputDecoration(
-                          hintText:
-                              'Beschreibe hier dein Anliegen so genau wie möglich...',
-                          hintStyle: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.25),
-                              fontSize: 15),
+                          hintText: 'Beschreibe hier dein Anliegen so genau wie möglich...',
+                          hintStyle: TextStyle(color: skin.textHint, fontSize: 15),
                           border: InputBorder.none,
                           isDense: true,
                           contentPadding: EdgeInsets.zero,
@@ -188,7 +163,7 @@ class _SupportScreenState extends State<SupportScreen> {
                     ),
                     const SizedBox(height: 24),
 
-                    // Send Button
+                    // 🔥 Send Button - Skin-abhängig
                     GestureDetector(
                       onTap: _sending ? null : _sendSupport,
                       child: AnimatedContainer(
@@ -198,45 +173,49 @@ class _SupportScreenState extends State<SupportScreen> {
                         decoration: BoxDecoration(
                           gradient: _sending
                               ? null
-                              : const LinearGradient(
-                                  colors: [
-                                    Color(0xFF6C63FF),
-                                    Color(0xFF4ECDC4)
-                                  ],
-                                ),
-                          color: _sending
-                              ? Colors.white.withValues(alpha: 0.05)
-                              : null,
+                              : (isChromeSkin
+                                  ? const LinearGradient(
+                                      colors: [Color(0xFF333333), Color(0xFF555555)],
+                                      begin: Alignment.centerLeft,
+                                      end: Alignment.centerRight,
+                                    )
+                                  : skin.gradient),
+                          color: _sending ? skin.surface(0.05) : null,
                           borderRadius: BorderRadius.circular(18),
                           boxShadow: _sending
                               ? []
                               : [
                                   BoxShadow(
-                                    color: const Color(0xFF6C63FF)
-                                        .withValues(alpha: 0.3),
+                                    color: isChromeSkin
+                                        ? Colors.black.withValues(alpha: 0.3)
+                                        : skin.primaryWithAlpha(0.3),
                                     blurRadius: 20,
                                     offset: const Offset(0, 8),
-                                  ),
+                                  )
                                 ],
                         ),
                         child: Center(
                           child: _sending
-                              ? const SizedBox(
+                              ? SizedBox(
                                   width: 20,
                                   height: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Colors.white,
-                                  ),
+                                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                                 )
-                              : const Text(
-                                  '📧  Nachricht senden',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w700,
-                                    color: Colors.white,
-                                    letterSpacing: 0.5,
-                                  ),
+                              : Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(Icons.email_outlined, color: Colors.white, size: 20),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      'Nachricht senden',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w700,
+                                        color: Colors.white,
+                                        letterSpacing: 0.5,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                         ),
                       ),
@@ -246,10 +225,7 @@ class _SupportScreenState extends State<SupportScreen> {
                     Center(
                       child: Text(
                         'Die Nachricht wird per Mail gesendet',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.white.withValues(alpha: 0.25),
-                        ),
+                        style: TextStyle(fontSize: 12, color: skin.textHint),
                       ),
                     ),
                   ],

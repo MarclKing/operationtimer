@@ -7,6 +7,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import '../theme/app_theme.dart';
+import '../services/night_shift_helper.dart';
 
 class MonthScreen extends StatefulWidget {
   final VoidCallback onNavigateToHome;
@@ -25,13 +26,39 @@ class _MonthScreenState extends State<MonthScreen> {
     final box = Hive.box('arbeitszeiten');
     final monthKey = DateFormat('yyyy-MM').format(_selectedMonth);
     final List<Map<String, dynamic>> entries = [];
+    
     for (final key in box.keys) {
       if (key.toString().startsWith(monthKey)) {
-        final entry = box.get(key);
-        if (entry != null) entries.add(Map<String, dynamic>.from(entry));
+        final data = box.get(key);
+        if (data != null) {
+          if (data is List) {
+            for (final entry in data) {
+              final entryWithDatum = Map<String, dynamic>.from(entry);
+              if (!entryWithDatum.containsKey('datum')) {
+                entryWithDatum['datum'] = key.toString();
+              }
+              entries.add(entryWithDatum);
+            }
+          } else {
+            final entry = Map<String, dynamic>.from(data);
+            if (!entry.containsKey('datum')) {
+              entry['datum'] = key.toString();
+            }
+            entries.add(entry);
+          }
+        }
       }
     }
-    entries.sort((a, b) => a['datum'].compareTo(b['datum']));
+    
+    entries.sort((a, b) {
+      final aDatum = a['datum'] as String?;
+      final bDatum = b['datum'] as String?;
+      if (aDatum == null && bDatum == null) return 0;
+      if (aDatum == null) return 1;
+      if (bDatum == null) return -1;
+      return aDatum.compareTo(bDatum);
+    });
+    
     return entries;
   }
 
@@ -40,8 +67,7 @@ class _MonthScreenState extends State<MonthScreen> {
     try {
       final k = kommen.split(':');
       final g = gehen.split(':');
-      final start =
-          Duration(hours: int.parse(k[0]), minutes: int.parse(k[1]));
+      final start = Duration(hours: int.parse(k[0]), minutes: int.parse(k[1]));
       final end = Duration(hours: int.parse(g[0]), minutes: int.parse(g[1]));
       final diff = end - start;
       if (diff.isNegative) return '--';
@@ -60,13 +86,13 @@ class _MonthScreenState extends State<MonthScreen> {
   void _changeMonth(int delta) {
     _closeAllRows();
     setState(() {
-      _selectedMonth =
-          DateTime(_selectedMonth.year, _selectedMonth.month + delta);
+      _selectedMonth = DateTime(_selectedMonth.year, _selectedMonth.month + delta);
     });
   }
 
-  void _deleteEntry(String datum) {
-    Hive.box('arbeitszeiten').delete(datum);
+  void _deleteEntry(String datum, String entryId) {
+    final date = DateTime.parse(datum);
+    NightShiftHelper.deleteEntry(date, entryId);
     setState(() {});
     final skin = AppTheme.of(context);
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -79,29 +105,34 @@ class _MonthScreenState extends State<MonthScreen> {
   }
 
   void _editEntry(Map<String, dynamic> entry) {
+    final datum = DateTime.parse(entry['datum']);
     final kommenCtrl = TextEditingController(text: entry['kommen'] ?? '');
     final gehenCtrl = TextEditingController(text: entry['gehen'] ?? '');
     final tkfCtrl = TextEditingController(text: entry['TKF'] ?? '');
     final notizCtrl = TextEditingController(text: entry['notiz'] ?? '');
+    final entryId = entry['id'] as String;
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => _EditSheet(
-        datum: DateTime.parse(entry['datum']),
+        datum: datum,
+        entryId: entryId,
         kommenCtrl: kommenCtrl,
         gehenCtrl: gehenCtrl,
         tkfCtrl: tkfCtrl,
         notizCtrl: notizCtrl,
-        onSave: () {
-          Hive.box('arbeitszeiten').put(entry['datum'], {
-            'kommen': kommenCtrl.text,
-            'gehen': gehenCtrl.text,
-            'TKF': tkfCtrl.text,
-            'notiz': notizCtrl.text,
-            'datum': entry['datum'],
-          });
+        onSave: () async {
+          await NightShiftHelper.save(
+            context: context,
+            datum: datum,
+            kommen: kommenCtrl.text,
+            gehen: gehenCtrl.text,
+            tkf: tkfCtrl.text,
+            notiz: notizCtrl.text,
+            existingId: entryId,
+          );
           setState(() {});
           Navigator.pop(context);
           final skin = AppTheme.of(context);
@@ -111,8 +142,7 @@ class _MonthScreenState extends State<MonthScreen> {
                 ? const Color(0xFF3DD6C8)
                 : skin.primary,
             behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12)),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             margin: const EdgeInsets.fromLTRB(16, 0, 16, 100),
           ));
         },
@@ -122,13 +152,11 @@ class _MonthScreenState extends State<MonthScreen> {
 
   Future<void> _shareEntry(Map<String, dynamic> entry) async {
     final settingsBox = Hive.box('einstellungen');
-    final fullName =
-        settingsBox.get('name', defaultValue: 'Unbekannt') as String;
+    final fullName = settingsBox.get('name', defaultValue: 'Unbekannt') as String;
     final datum = DateTime.parse(entry['datum']);
     final datumStr = DateFormat('EEEE, dd.MM.yyyy', 'de').format(datum);
     final dateKey = DateFormat('yyyy-MM-dd').format(datum);
-    final kommen =
-        (entry['kommen'] ?? '').isEmpty ? '--:--' : entry['kommen'];
+    final kommen = (entry['kommen'] ?? '').isEmpty ? '--:--' : entry['kommen'];
     final gehen = (entry['gehen'] ?? '').isEmpty ? '--:--' : entry['gehen'];
     final tkf = entry['TKF'] ?? '';
     final notiz = entry['notiz'] ?? '';
@@ -153,21 +181,14 @@ class _MonthScreenState extends State<MonthScreen> {
               mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
               children: [
                 pw.Text('OperationTimer',
-                    style: pw.TextStyle(
-                        font: fontBold,
-                        fontSize: 18,
-                        color: PdfColors.white)),
+                    style: pw.TextStyle(font: fontBold, fontSize: 18, color: PdfColors.white)),
                 pw.Text(fullName,
-                    style: pw.TextStyle(
-                        font: font,
-                        fontSize: 13,
-                        color: PdfColors.grey400)),
+                    style: pw.TextStyle(font: font, fontSize: 13, color: PdfColors.grey400)),
               ],
             ),
           ),
           pw.SizedBox(height: 24),
-          pw.Text(datumStr,
-              style: pw.TextStyle(font: fontBold, fontSize: 16)),
+          pw.Text(datumStr, style: pw.TextStyle(font: fontBold, fontSize: 16)),
           pw.SizedBox(height: 16),
           pw.Row(children: [
             pw.Expanded(
@@ -181,14 +202,9 @@ class _MonthScreenState extends State<MonthScreen> {
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
                     pw.Text('KOMMEN',
-                        style: pw.TextStyle(
-                            font: fontBold,
-                            fontSize: 10,
-                            color: PdfColors.teal)),
+                        style: pw.TextStyle(font: fontBold, fontSize: 10, color: PdfColors.teal)),
                     pw.SizedBox(height: 4),
-                    pw.Text(kommen,
-                        style:
-                            pw.TextStyle(font: fontBold, fontSize: 26)),
+                    pw.Text(kommen, style: pw.TextStyle(font: fontBold, fontSize: 26)),
                   ],
                 ),
               ),
@@ -205,14 +221,9 @@ class _MonthScreenState extends State<MonthScreen> {
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
                     pw.Text('GEHEN',
-                        style: pw.TextStyle(
-                            font: fontBold,
-                            fontSize: 10,
-                            color: PdfColors.red)),
+                        style: pw.TextStyle(font: fontBold, fontSize: 10, color: PdfColors.red)),
                     pw.SizedBox(height: 4),
-                    pw.Text(gehen,
-                        style:
-                            pw.TextStyle(font: fontBold, fontSize: 26)),
+                    pw.Text(gehen, style: pw.TextStyle(font: fontBold, fontSize: 26)),
                   ],
                 ),
               ),
@@ -220,27 +231,18 @@ class _MonthScreenState extends State<MonthScreen> {
           ]),
           if (tkf.isNotEmpty) ...[
             pw.SizedBox(height: 16),
-            pw.Text('TKF: $tkf',
-                style: pw.TextStyle(
-                    font: font,
-                    fontSize: 12,
-                    color: PdfColors.grey700)),
+            pw.Text('TKF: $tkf', style: pw.TextStyle(font: font, fontSize: 12, color: PdfColors.grey700)),
           ],
           if (notiz.isNotEmpty) ...[
             pw.SizedBox(height: 8),
-            pw.Text('Notiz: $notiz',
-                style: pw.TextStyle(
-                    font: font,
-                    fontSize: 12,
-                    color: PdfColors.grey700)),
+            pw.Text('Notiz: $notiz', style: pw.TextStyle(font: font, fontSize: 12, color: PdfColors.grey700)),
           ],
           pw.Spacer(),
           pw.Divider(color: PdfColors.grey300),
           pw.SizedBox(height: 6),
           pw.Text(
             'Erstellt am ${DateFormat('dd.MM.yyyy HH:mm').format(DateTime.now())}',
-            style: pw.TextStyle(
-                font: font, fontSize: 9, color: PdfColors.grey400),
+            style: pw.TextStyle(font: font, fontSize: 9, color: PdfColors.grey400),
           ),
         ],
       ),
@@ -253,8 +255,10 @@ class _MonthScreenState extends State<MonthScreen> {
     );
   }
 
+  // 🔥 KORRIGIERT: _showMonthPicker mit Skin-Design
   void _showMonthPicker() {
     final skin = AppTheme.of(context);
+    final isChromeSkin = skin.key == 'chrome';
     int pickedYear = _selectedMonth.year;
     int pickedMonth = _selectedMonth.month - 1;
     final yearCount = DateTime.now().year - 2020 + 2;
@@ -266,9 +270,8 @@ class _MonthScreenState extends State<MonthScreen> {
         builder: (ctx, setSheet) => Container(
           decoration: BoxDecoration(
             color: skin.bgSheet,
-            borderRadius:
-                const BorderRadius.vertical(top: Radius.circular(24)),
-            border: Border.all(color: skin.white(0.08)),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            border: Border.all(color: skin.borderMedium),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -278,16 +281,15 @@ class _MonthScreenState extends State<MonthScreen> {
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: skin.white(0.2),
+                  color: skin.surface(0.2),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
               const SizedBox(height: 20),
-              Text('Monat & Jahr',
-                  style: TextStyle(
-                      color: skin.textPrimary,
-                      fontSize: 17,
-                      fontWeight: FontWeight.w600)),
+              Text(
+                'Monat & Jahr',
+                style: TextStyle(color: skin.textPrimary, fontSize: 17, fontWeight: FontWeight.w600),
+              ),
               const SizedBox(height: 16),
               SizedBox(
                 height: 200,
@@ -296,23 +298,17 @@ class _MonthScreenState extends State<MonthScreen> {
                     Expanded(
                       flex: 2,
                       child: CupertinoPicker(
-                        scrollController: FixedExtentScrollController(
-                            initialItem: pickedMonth + 1000),
+                        scrollController: FixedExtentScrollController(initialItem: pickedMonth + 1000),
                         itemExtent: 44,
                         looping: true,
                         backgroundColor: Colors.transparent,
-                        onSelectedItemChanged: (i) =>
-                            setSheet(() => pickedMonth = i % 12),
+                        onSelectedItemChanged: (i) => setSheet(() => pickedMonth = i % 12),
                         children: List.generate(
                           12,
                           (i) => Center(
                             child: Text(
-                              DateFormat('MMMM', 'de')
-                                  .format(DateTime(2024, i + 1)),
-                              style: TextStyle(
-                                  fontSize: 17,
-                                  fontWeight: FontWeight.w500,
-                                  color: skin.textPrimary),
+                              DateFormat('MMMM', 'de').format(DateTime(2024, i + 1)),
+                              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w500, color: skin.textPrimary),
                             ),
                           ),
                         ),
@@ -320,23 +316,17 @@ class _MonthScreenState extends State<MonthScreen> {
                     ),
                     Expanded(
                       child: CupertinoPicker(
-                        scrollController: FixedExtentScrollController(
-                            initialItem: pickedYear - 2020),
+                        scrollController: FixedExtentScrollController(initialItem: pickedYear - 2020),
                         itemExtent: 44,
                         looping: false,
                         backgroundColor: Colors.transparent,
-                        onSelectedItemChanged: (i) => setSheet(
-                            () => pickedYear =
-                                2020 + i.clamp(0, yearCount - 1)),
+                        onSelectedItemChanged: (i) => setSheet(() => pickedYear = 2020 + i.clamp(0, yearCount - 1)),
                         children: List.generate(
                           yearCount,
                           (i) => Center(
                             child: Text(
                               '${2020 + i}',
-                              style: TextStyle(
-                                  fontSize: 17,
-                                  fontWeight: FontWeight.w500,
-                                  color: skin.textPrimary),
+                              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w500, color: skin.textPrimary),
                             ),
                           ),
                         ),
@@ -353,18 +343,16 @@ class _MonthScreenState extends State<MonthScreen> {
                       onTap: () => Navigator.pop(ctx),
                       child: Container(
                         margin: const EdgeInsets.fromLTRB(16, 0, 8, 0),
-                        padding:
-                            const EdgeInsets.symmetric(vertical: 16),
+                        padding: const EdgeInsets.symmetric(vertical: 16),
                         decoration: BoxDecoration(
-                          color: skin.white(0.06),
+                          color: skin.surface(0.06),
                           borderRadius: BorderRadius.circular(14),
                         ),
                         child: Center(
-                          child: Text('Abbrechen',
-                              style: TextStyle(
-                                  color: skin.white(0.6),
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w600)),
+                          child: Text(
+                            'Abbrechen',
+                            style: TextStyle(color: skin.textPrimary, fontSize: 15, fontWeight: FontWeight.w600),
+                          ),
                         ),
                       ),
                     ),
@@ -372,25 +360,27 @@ class _MonthScreenState extends State<MonthScreen> {
                   Expanded(
                     child: GestureDetector(
                       onTap: () {
-                        setState(() => _selectedMonth =
-                            DateTime(pickedYear, pickedMonth + 1));
+                        setState(() => _selectedMonth = DateTime(pickedYear, pickedMonth + 1));
                         Navigator.pop(ctx);
                       },
                       child: Container(
                         margin: const EdgeInsets.fromLTRB(8, 0, 16, 0),
-                        padding:
-                            const EdgeInsets.symmetric(vertical: 16),
+                        padding: const EdgeInsets.symmetric(vertical: 16),
                         decoration: BoxDecoration(
-                          gradient: skin.gradient,
+                          gradient: isChromeSkin
+                              ? const LinearGradient(
+                                  colors: [Color(0xFF333333), Color(0xFF555555)],
+                                  begin: Alignment.centerLeft,
+                                  end: Alignment.centerRight,
+                                )
+                              : skin.gradient,
                           borderRadius: BorderRadius.circular(14),
                         ),
                         child: Center(
                           child: Text(
                             'Auswählen',
                             style: TextStyle(
-                              color: skin.primary == Colors.white
-                                  ? Colors.black
-                                  : Colors.white,
+                              color: Colors.white,
                               fontSize: 15,
                               fontWeight: FontWeight.w700,
                             ),
@@ -414,8 +404,12 @@ class _MonthScreenState extends State<MonthScreen> {
     final skin = AppTheme.of(context);
     final entries = _getEntriesForMonth();
     final monthName = DateFormat('MMMM yyyy', 'de').format(_selectedMonth);
-    final complete =
-        entries.where((e) => (e['gehen'] ?? '').isNotEmpty).length;
+    
+    final uniqueDays = <String>{};
+    for (final entry in entries) {
+      uniqueDays.add(entry['datum'] as String);
+    }
+    final complete = entries.where((e) => (e['gehen'] ?? '').isNotEmpty).length;
     final open = entries.length - complete;
 
     return Scaffold(
@@ -441,21 +435,15 @@ class _MonthScreenState extends State<MonthScreen> {
                   children: [
                     Text(
                       'Monatsübersicht',
-                      style: TextStyle(
-                          fontSize: 26,
-                          fontWeight: FontWeight.w700,
-                          color: skin.textPrimary),
+                      style: TextStyle(fontSize: 26, fontWeight: FontWeight.w700, color: skin.textPrimary),
                     ),
                     const SizedBox(height: 16),
 
-                    // ── Monat Navigation ───────────────────────────────────
                     Listener(
                       onPointerDown: (_) => _dragOnInteractive = true,
                       child: Row(
                         children: [
-                          _MonthNavBtn(
-                              icon: Icons.chevron_left,
-                              onTap: () => _changeMonth(-1)),
+                          _MonthNavBtn(icon: Icons.chevron_left, onTap: () => _changeMonth(-1)),
                           const SizedBox(width: 10),
                           Expanded(
                             child: GestureDetector(
@@ -466,62 +454,43 @@ class _MonthScreenState extends State<MonthScreen> {
                                 if (v > 300) _changeMonth(-1);
                               },
                               child: Container(
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 13),
+                                padding: const EdgeInsets.symmetric(vertical: 13),
                                 decoration: BoxDecoration(
                                   color: skin.bgCard,
                                   borderRadius: BorderRadius.circular(14),
-                                  border: Border.all(
-                                      color: skin.primaryWithAlpha(0.35)),
+                                  border: Border.all(color: skin.primaryWithAlpha(0.35)),
                                 ),
                                 child: Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.center,
+                                  mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
                                     Text(monthName,
-                                        style: TextStyle(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.w600,
-                                            color: skin.textPrimary)),
+                                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: skin.textPrimary)),
                                     const SizedBox(width: 6),
-                                    Icon(Icons.expand_more,
-                                        color: skin.primary, size: 18),
+                                    Icon(Icons.expand_more, color: skin.primary, size: 18),
                                   ],
                                 ),
                               ),
                             ),
                           ),
                           const SizedBox(width: 10),
-                          _MonthNavBtn(
-                              icon: Icons.chevron_right,
-                              onTap: () => _changeMonth(1)),
+                          _MonthNavBtn(icon: Icons.chevron_right, onTap: () => _changeMonth(1)),
                         ],
                       ),
                     ),
                     const SizedBox(height: 12),
                     Row(
                       children: [
-                        _StatCard(
-                            label: 'Einträge',
-                            value: '${entries.length}',
-                            color: skin.statEntries),
+                        _StatCard(label: 'Tage', value: '${uniqueDays.length}', color: skin.statEntries),
                         const SizedBox(width: 10),
-                        _StatCard(
-                            label: 'Vollständig',
-                            value: '$complete',
-                            color: skin.statComplete),
+                        _StatCard(label: 'Einträge', value: '${entries.length}', color: skin.statComplete),
                         const SizedBox(width: 10),
-                        _StatCard(
-                            label: 'Offen',
-                            value: '$open',
-                            color: skin.statOpen),
+                        _StatCard(label: 'Offen', value: '$open', color: skin.statOpen),
                       ],
                     ),
                     const SizedBox(height: 8),
                     Text(
                       '← Löschen  ·  → Bearbeiten / Teilen',
-                      style: TextStyle(
-                          fontSize: 11, color: skin.white(0.3)),
+                      style: TextStyle(fontSize: 11, color: skin.white(0.3)),
                     ),
                   ],
                 ),
@@ -533,13 +502,10 @@ class _MonthScreenState extends State<MonthScreen> {
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            const Text('📭',
-                                style: TextStyle(fontSize: 48)),
+                            const Text('📭', style: TextStyle(fontSize: 48)),
                             const SizedBox(height: 12),
                             Text('Keine Einträge für diesen Monat',
-                                style: TextStyle(
-                                    color: skin.white(0.3),
-                                    fontSize: 15)),
+                                style: TextStyle(color: skin.white(0.3), fontSize: 15)),
                           ],
                         ),
                       )
@@ -549,29 +515,26 @@ class _MonthScreenState extends State<MonthScreen> {
                           return false;
                         },
                         child: ListView.builder(
-                          padding:
-                              const EdgeInsets.fromLTRB(24, 4, 24, 100),
+                          padding: const EdgeInsets.fromLTRB(24, 4, 24, 100),
                           itemCount: entries.length,
                           itemBuilder: (context, index) {
                             final entry = entries[index];
                             final datum = entry['datum'] as String;
-                            _rowKeys[datum] ??=
-                                GlobalKey<_SlidableRowState>();
+                            final entryId = entry['id'] as String;
+                            _rowKeys[entryId] ??= GlobalKey<_SlidableRowState>();
                             return Padding(
-                              padding:
-                                  const EdgeInsets.only(bottom: 10),
+                              padding: const EdgeInsets.only(bottom: 10),
                               child: _SlidableRow(
-                                key: _rowKeys[datum],
+                                key: _rowKeys[entryId],
                                 entry: entry,
-                                duration: _calcDuration(
-                                    entry['kommen'] ?? '',
-                                    entry['gehen'] ?? ''),
+                                entryId: entryId,
+                                duration: _calcDuration(entry['kommen'] ?? '', entry['gehen'] ?? ''),
                                 onEdit: () => _editEntry(entry),
-                                onDelete: () => _deleteEntry(datum),
+                                onDelete: () => _deleteEntry(datum, entryId),
                                 onShare: () => _shareEntry(entry),
                                 onCloseOthers: () {
                                   for (final k in _rowKeys.entries) {
-                                    if (k.key != datum) {
+                                    if (k.key != entryId) {
                                       k.value.currentState?.close();
                                     }
                                   }
@@ -596,6 +559,7 @@ class _MonthScreenState extends State<MonthScreen> {
 
 class _SlidableRow extends StatefulWidget {
   final Map<String, dynamic> entry;
+  final String entryId;
   final String duration;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
@@ -605,6 +569,7 @@ class _SlidableRow extends StatefulWidget {
   const _SlidableRow({
     super.key,
     required this.entry,
+    required this.entryId,
     required this.duration,
     required this.onEdit,
     required this.onDelete,
@@ -649,8 +614,7 @@ class _SlidableRowState extends State<_SlidableRow> {
 
   void _onDragUpdate(DragUpdateDetails d) {
     setState(() {
-      _offset =
-          (_offset + d.delta.dx).clamp(-_deleteReveal, _editReveal);
+      _offset = (_offset + d.delta.dx).clamp(-_deleteReveal, _editReveal);
     });
   }
 
@@ -662,6 +626,17 @@ class _SlidableRowState extends State<_SlidableRow> {
       _animateTo(_editReveal);
     } else {
       _animateTo(0);
+    }
+  }
+
+  int _getEntryNumber() {
+    try {
+      final datum = DateTime.parse(widget.entry['datum']);
+      final entries = NightShiftHelper.getEntriesForDay(datum);
+      final index = entries.indexWhere((e) => e['id'] == widget.entryId);
+      return index + 1;
+    } catch (e) {
+      return 1;
     }
   }
 
@@ -680,7 +655,13 @@ class _SlidableRowState extends State<_SlidableRow> {
     final borderColor = isComplete
         ? skin.statComplete.withValues(alpha: 0.3)
         : skin.statOpen.withValues(alpha: 0.3);
-    final rowHeight = notiz.isNotEmpty ? 132.0 : 94.0;
+    
+    final entryNumber = _getEntryNumber();
+    final entriesForDay = NightShiftHelper.getEntriesForDay(datum);
+    final showNumber = entriesForDay.length > 1;
+    
+    double rowHeight = 86.0;
+    if (tkf.isNotEmpty) rowHeight += 14.0;
 
     return GestureDetector(
       onHorizontalDragStart: (_) => widget.onCloseOthers(),
@@ -693,7 +674,6 @@ class _SlidableRowState extends State<_SlidableRow> {
         height: rowHeight,
         child: Stack(
           children: [
-            // ── LINKS: Edit + Share ──────────────────────────────────────
             Positioned(
               left: 0,
               top: 0,
@@ -705,9 +685,7 @@ class _SlidableRowState extends State<_SlidableRow> {
                     child: GestureDetector(
                       onTap: () {
                         _animateTo(0);
-                        Future.delayed(
-                            const Duration(milliseconds: 200),
-                            widget.onEdit);
+                        Future.delayed(const Duration(milliseconds: 200), widget.onEdit);
                       },
                       child: Container(
                         decoration: BoxDecoration(
@@ -721,18 +699,14 @@ class _SlidableRowState extends State<_SlidableRow> {
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Icon(Icons.edit_outlined,
-                                color: skin.primary == Colors.white
-                                    ? Colors.black
-                                    : Colors.white,
-                                size: 22),
-                            const SizedBox(height: 4),
+                                color: skin.primary == Colors.white ? Colors.black : Colors.white,
+                                size: 20),
+                            const SizedBox(height: 2),
                             Text(
                               'Bearbeiten',
                               style: TextStyle(
-                                color: skin.primary == Colors.white
-                                    ? Colors.black
-                                    : Colors.white,
-                                fontSize: 11,
+                                color: skin.primary == Colors.white ? Colors.black : Colors.white,
+                                fontSize: 10,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
@@ -745,23 +719,17 @@ class _SlidableRowState extends State<_SlidableRow> {
                     child: GestureDetector(
                       onTap: () {
                         _animateTo(0);
-                        Future.delayed(
-                            const Duration(milliseconds: 200),
-                            widget.onShare);
+                        Future.delayed(const Duration(milliseconds: 200), widget.onShare);
                       },
                       child: Container(
                         color: skin.statComplete,
                         child: const Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.ios_share_outlined,
-                                color: Colors.white, size: 22),
-                            SizedBox(height: 4),
-                            Text('Tag teilen',
-                                style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600)),
+                            Icon(Icons.ios_share_outlined, color: Colors.white, size: 20),
+                            SizedBox(height: 2),
+                            Text('Teilen',
+                                style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w600)),
                           ],
                         ),
                       ),
@@ -771,7 +739,6 @@ class _SlidableRowState extends State<_SlidableRow> {
               ),
             ),
 
-            // ── RECHTS: Löschen ──────────────────────────────────────────
             Positioned(
               right: 0,
               top: 0,
@@ -780,8 +747,7 @@ class _SlidableRowState extends State<_SlidableRow> {
               child: GestureDetector(
                 onTap: () {
                   _animateTo(0);
-                  Future.delayed(
-                      const Duration(milliseconds: 150), widget.onDelete);
+                  Future.delayed(const Duration(milliseconds: 150), widget.onDelete);
                 },
                 child: Container(
                   decoration: BoxDecoration(
@@ -794,21 +760,16 @@ class _SlidableRowState extends State<_SlidableRow> {
                   child: const Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.delete_outline,
-                          color: Colors.white, size: 22),
-                      SizedBox(height: 4),
+                      Icon(Icons.delete_outline, color: Colors.white, size: 20),
+                      SizedBox(height: 2),
                       Text('Löschen',
-                          style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600)),
+                          style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w600)),
                     ],
                   ),
                 ),
               ),
             ),
 
-            // ── Kachel ──────────────────────────────────────────────────
             Positioned.fill(
               child: Transform.translate(
                 offset: Offset(_offset, 0),
@@ -818,102 +779,133 @@ class _SlidableRowState extends State<_SlidableRow> {
                     borderRadius: BorderRadius.circular(18),
                     border: Border.all(color: borderColor),
                   ),
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 14, vertical: 12),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
                           Container(
-                            width: 50,
-                            padding:
-                                const EdgeInsets.symmetric(vertical: 8),
+                            width: 46,
+                            padding: const EdgeInsets.symmetric(vertical: 4),
                             decoration: BoxDecoration(
                               color: skin.primaryWithAlpha(0.12),
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius: BorderRadius.circular(10),
                             ),
                             child: Column(
                               children: [
                                 Text(dayName.toUpperCase(),
-                                    style: TextStyle(
-                                        fontSize: 10,
-                                        color: skin.primary,
-                                        fontWeight: FontWeight.w700)),
+                                    style: TextStyle(fontSize: 9, color: skin.primary, fontWeight: FontWeight.w700)),
                                 Text(dayNum,
-                                    style: TextStyle(
-                                        fontSize: 20,
-                                        fontWeight: FontWeight.w700,
-                                        color: skin.textPrimary)),
+                                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: skin.textPrimary)),
+                                if (showNumber)
+                                  Container(
+                                    margin: const EdgeInsets.only(top: 1),
+                                    padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+                                    decoration: BoxDecoration(
+                                      color: skin.primary.withValues(alpha: 0.2),
+                                      borderRadius: BorderRadius.circular(3),
+                                    ),
+                                    child: Text(
+                                      '${entryNumber}.',
+                                      style: TextStyle(fontSize: 7, fontWeight: FontWeight.w600, color: skin.primary),
+                                    ),
+                                  ),
                               ],
                             ),
                           ),
-                          const SizedBox(width: 12),
+                          const SizedBox(width: 10),
+                          
                           Expanded(
                             child: Column(
-                              crossAxisAlignment:
-                                  CrossAxisAlignment.start,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
                               children: [
                                 Row(
                                   children: [
-                                    _TimeChip(
-                                        time: kommen.isEmpty
-                                            ? '--:--'
-                                            : kommen,
-                                        color: skin.kommenColor),
-                                    Padding(
-                                      padding:
-                                          const EdgeInsets.symmetric(
-                                              horizontal: 6),
-                                      child: Icon(Icons.arrow_forward,
-                                          size: 12,
-                                          color: skin.white(0.3)),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: skin.kommenColor.withValues(alpha: 0.1),
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: Text(
+                                        kommen.isEmpty ? '--:--' : kommen,
+                                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: skin.kommenColor),
+                                      ),
                                     ),
-                                    _TimeChip(
-                                        time: gehen.isEmpty
-                                            ? '--:--'
-                                            : gehen,
-                                        color: skin.gehenColor),
+                                    const SizedBox(width: 4),
+                                    Icon(Icons.arrow_forward, size: 10, color: skin.white(0.3)),
+                                    const SizedBox(width: 4),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: skin.gehenColor.withValues(alpha: 0.1),
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: Text(
+                                        gehen.isEmpty ? '--:--' : gehen,
+                                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: skin.gehenColor),
+                                      ),
+                                    ),
                                   ],
                                 ),
+                                
                                 if (tkf.isNotEmpty) ...[
-                                  const SizedBox(height: 4),
-                                  Text('👤 $tkf',
-                                      style: TextStyle(
-                                          fontSize: 11,
-                                          color: skin.white(0.35))),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    '👤 $tkf',
+                                    style: TextStyle(fontSize: 9, color: skin.white(0.4)),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                                
+                                if (notiz.isNotEmpty) ...[
+                                  const SizedBox(height: 2),
+                                  Row(
+                                    children: [
+                                      Icon(Icons.note_outlined, size: 10, color: skin.white(0.3)),
+                                      const SizedBox(width: 3),
+                                      Expanded(
+                                        child: Text(
+                                          notiz,
+                                          style: TextStyle(fontSize: 9, color: skin.white(0.4)),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ],
                               ],
                             ),
                           ),
+                          
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.end,
+                            mainAxisSize: MainAxisSize.min,
                             children: [
-                              Text(widget.duration,
-                                  style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w700,
-                                      color: skin.textPrimary)),
-                              const SizedBox(height: 4),
+                              Text(
+                                widget.duration,
+                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: skin.textPrimary),
+                              ),
+                              const SizedBox(height: 2),
                               Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 7, vertical: 3),
+                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                                 decoration: BoxDecoration(
                                   color: isComplete
-                                      ? skin.statComplete
-                                          .withValues(alpha: 0.12)
-                                      : skin.statOpen
-                                          .withValues(alpha: 0.12),
-                                  borderRadius: BorderRadius.circular(6),
+                                      ? skin.statComplete.withValues(alpha: 0.12)
+                                      : skin.statOpen.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(4),
                                 ),
                                 child: Text(
                                   isComplete ? '✓ Ok' : '⏳ Offen',
                                   style: TextStyle(
-                                    fontSize: 10,
+                                    fontSize: 8,
                                     fontWeight: FontWeight.w600,
-                                    color: isComplete
-                                        ? skin.statComplete
-                                        : skin.statOpen,
+                                    color: isComplete ? skin.statComplete : skin.statOpen,
                                   ),
                                 ),
                               ),
@@ -921,30 +913,6 @@ class _SlidableRowState extends State<_SlidableRow> {
                           ),
                         ],
                       ),
-                      if (notiz.isNotEmpty) ...[
-                        const SizedBox(height: 8),
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: skin.white(0.04),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Row(
-                            children: [
-                              const Text('📝',
-                                  style: TextStyle(fontSize: 11)),
-                              const SizedBox(width: 6),
-                              Expanded(
-                                child: Text(notiz,
-                                    style: TextStyle(
-                                        fontSize: 11,
-                                        color: skin.white(0.6))),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
                     ],
                   ),
                 ),
@@ -958,11 +926,12 @@ class _SlidableRowState extends State<_SlidableRow> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// EDIT SHEET mit intelligenter Gehen-Zeit
+// EDIT SHEET mit korrigiertem Speichern-Button
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _EditSheet extends StatefulWidget {
   final DateTime datum;
+  final String entryId;
   final TextEditingController kommenCtrl;
   final TextEditingController gehenCtrl;
   final TextEditingController tkfCtrl;
@@ -971,6 +940,7 @@ class _EditSheet extends StatefulWidget {
 
   const _EditSheet({
     required this.datum,
+    required this.entryId,
     required this.kommenCtrl,
     required this.gehenCtrl,
     required this.tkfCtrl,
@@ -993,7 +963,6 @@ class _EditSheetState extends State<_EditSheet> {
     }
   }
 
-  // 🔥 Hilfsfunktion: Addiert Minuten zu einer TimeOfDay
   TimeOfDay _addMinutes(TimeOfDay time, int minutes) {
     final totalMinutes = time.hour * 60 + time.minute + minutes;
     final newHour = (totalMinutes ~/ 60) % 24;
@@ -1001,20 +970,17 @@ class _EditSheetState extends State<_EditSheet> {
     return TimeOfDay(hour: newHour, minute: newMinute);
   }
 
-  // 🔥 Berechnet die Standard-Geh-Zeit: Kommen + 8 Stunden + 12 Minuten
   TimeOfDay _getDefaultGehenTime(TimeOfDay kommenTime) {
-    return _addMinutes(kommenTime, 8 * 60 + 12); // 8 Stunden = 480 Minuten + 12 = 492
+    return _addMinutes(kommenTime, 8 * 60 + 12);
   }
 
   void _adjustTime(TextEditingController controller, int minutesDelta, bool isGehenField) {
     TimeOfDay current;
     
     if (isGehenField && widget.gehenCtrl.text.isEmpty) {
-      // 🔥 Wenn Gehen noch leer ist, basiere auf Kommen-Zeit + 8h12m
       final kommenTime = _parse(widget.kommenCtrl.text);
       if (kommenTime != null) {
         current = _getDefaultGehenTime(kommenTime);
-        // Setze die berechnete Zeit sofort ins Feld
         setState(() {
           widget.gehenCtrl.text = 
               '${current.hour.toString().padLeft(2, '0')}:${current.minute.toString().padLeft(2, '0')}';
@@ -1038,7 +1004,6 @@ class _EditSheetState extends State<_EditSheet> {
     final skin = AppTheme.of(context);
     TimeOfDay initialTime;
     
-    // 🔥 Wenn Gehen leer ist und Kommen existiert, zeige 8h12m später an
     if (isGehenField && widget.gehenCtrl.text.isEmpty) {
       final kommenTime = _parse(widget.kommenCtrl.text);
       if (kommenTime != null) {
@@ -1060,7 +1025,7 @@ class _EditSheetState extends State<_EditSheet> {
         decoration: BoxDecoration(
           color: skin.bgSheet,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-          border: Border.all(color: skin.white(0.08)),
+          border: Border.all(color: skin.borderMedium),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1070,16 +1035,13 @@ class _EditSheetState extends State<_EditSheet> {
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: skin.white(0.2),
+                color: skin.surface(0.2),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
             const SizedBox(height: 20),
             Text('Uhrzeit',
-                style: TextStyle(
-                    color: skin.textPrimary,
-                    fontSize: 17,
-                    fontWeight: FontWeight.w600)),
+                style: TextStyle(color: skin.textPrimary, fontSize: 17, fontWeight: FontWeight.w600)),
             const SizedBox(height: 16),
             SizedBox(
               height: 180,
@@ -1087,8 +1049,7 @@ class _EditSheetState extends State<_EditSheet> {
                 children: [
                   Expanded(
                     child: CupertinoPicker(
-                      scrollController: FixedExtentScrollController(
-                          initialItem: selH + 1000),
+                      scrollController: FixedExtentScrollController(initialItem: selH + 1000),
                       itemExtent: 40,
                       looping: true,
                       backgroundColor: Colors.transparent,
@@ -1097,23 +1058,16 @@ class _EditSheetState extends State<_EditSheet> {
                         24,
                         (h) => Center(
                           child: Text(h.toString().padLeft(2, '0'),
-                              style: TextStyle(
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.w600,
-                                  color: skin.textPrimary)),
+                              style: TextStyle(fontSize: 22, fontWeight: FontWeight.w600, color: skin.textPrimary)),
                         ),
                       ),
                     ),
                   ),
                   Text(':',
-                      style: TextStyle(
-                          fontSize: 26,
-                          fontWeight: FontWeight.w700,
-                          color: skin.primary)),
+                      style: TextStyle(fontSize: 26, fontWeight: FontWeight.w700, color: skin.primary)),
                   Expanded(
                     child: CupertinoPicker(
-                      scrollController: FixedExtentScrollController(
-                          initialItem: selM + 1000),
+                      scrollController: FixedExtentScrollController(initialItem: selM + 1000),
                       itemExtent: 40,
                       looping: true,
                       backgroundColor: Colors.transparent,
@@ -1122,10 +1076,7 @@ class _EditSheetState extends State<_EditSheet> {
                         60,
                         (m) => Center(
                           child: Text(m.toString().padLeft(2, '0'),
-                              style: TextStyle(
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.w600,
-                                  color: skin.textPrimary)),
+                              style: TextStyle(fontSize: 22, fontWeight: FontWeight.w600, color: skin.textPrimary)),
                         ),
                       ),
                     ),
@@ -1143,15 +1094,12 @@ class _EditSheetState extends State<_EditSheet> {
                       margin: const EdgeInsets.fromLTRB(16, 0, 8, 0),
                       padding: const EdgeInsets.symmetric(vertical: 15),
                       decoration: BoxDecoration(
-                        color: skin.white(0.06),
+                        color: skin.surface(0.06),
                         borderRadius: BorderRadius.circular(14),
                       ),
                       child: Center(
                         child: Text('Abbrechen',
-                            style: TextStyle(
-                                color: skin.white(0.6),
-                                fontSize: 15,
-                                fontWeight: FontWeight.w600)),
+                            style: TextStyle(color: skin.textPrimary, fontSize: 15, fontWeight: FontWeight.w600)),
                       ),
                     ),
                   ),
@@ -1176,9 +1124,7 @@ class _EditSheetState extends State<_EditSheet> {
                         child: Text(
                           'Übernehmen',
                           style: TextStyle(
-                            color: skin.primary == Colors.white
-                                ? Colors.black
-                                : Colors.white,
+                            color: skin.onGradient,
                             fontSize: 15,
                             fontWeight: FontWeight.w700,
                           ),
@@ -1199,17 +1145,16 @@ class _EditSheetState extends State<_EditSheet> {
   @override
   Widget build(BuildContext context) {
     final skin = AppTheme.of(context);
+    final isChromeSkin = skin.key == 'chrome';
 
     return Padding(
-      padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom),
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: Container(
         padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
         decoration: BoxDecoration(
           color: skin.bgSheet,
-          borderRadius:
-              const BorderRadius.vertical(top: Radius.circular(24)),
-          border: Border.all(color: skin.white(0.08)),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          border: Border.all(color: skin.borderMedium),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1220,7 +1165,7 @@ class _EditSheetState extends State<_EditSheet> {
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: skin.white(0.2),
+                  color: skin.surface(0.2),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -1228,10 +1173,7 @@ class _EditSheetState extends State<_EditSheet> {
             const SizedBox(height: 20),
             Text(
               'Bearbeiten – ${DateFormat('EEEE, dd.MM.yyyy', 'de').format(widget.datum)}',
-              style: TextStyle(
-                  color: skin.textPrimary,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700),
+              style: TextStyle(color: skin.textPrimary, fontSize: 16, fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 20),
             Row(
@@ -1242,10 +1184,8 @@ class _EditSheetState extends State<_EditSheet> {
                         ctrl: widget.kommenCtrl,
                         color: skin.kommenColor,
                         onTap: () => _pickTime(widget.kommenCtrl, false),
-                        onSwipeUp: () =>
-                            _adjustTime(widget.kommenCtrl, 1, false),
-                        onSwipeDown: () =>
-                            _adjustTime(widget.kommenCtrl, -1, false))),
+                        onSwipeUp: () => _adjustTime(widget.kommenCtrl, 1, false),
+                        onSwipeDown: () => _adjustTime(widget.kommenCtrl, -1, false))),
                 const SizedBox(width: 12),
                 Expanded(
                     child: _SwipeEditTimeField(
@@ -1253,17 +1193,14 @@ class _EditSheetState extends State<_EditSheet> {
                         ctrl: widget.gehenCtrl,
                         color: skin.gehenColor,
                         onTap: () => _pickTime(widget.gehenCtrl, true),
-                        onSwipeUp: () =>
-                            _adjustTime(widget.gehenCtrl, 1, true),
-                        onSwipeDown: () =>
-                            _adjustTime(widget.gehenCtrl, -1, true))),
+                        onSwipeUp: () => _adjustTime(widget.gehenCtrl, 1, true),
+                        onSwipeDown: () => _adjustTime(widget.gehenCtrl, -1, true))),
               ],
             ),
             const SizedBox(height: 12),
             _TextFieldInput(label: 'TKF', ctrl: widget.tkfCtrl),
             const SizedBox(height: 12),
-            _TextFieldInput(
-                label: 'NOTIZ', ctrl: widget.notizCtrl, maxLines: 2),
+            _TextFieldInput(label: 'NOTIZ', ctrl: widget.notizCtrl, maxLines: 2),
             const SizedBox(height: 20),
             GestureDetector(
               onTap: widget.onSave,
@@ -1271,16 +1208,20 @@ class _EditSheetState extends State<_EditSheet> {
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 decoration: BoxDecoration(
-                  gradient: skin.gradient,
+                  gradient: isChromeSkin
+                      ? const LinearGradient(
+                          colors: [Color(0xFF333333), Color(0xFF555555)],
+                          begin: Alignment.centerLeft,
+                          end: Alignment.centerRight,
+                        )
+                      : skin.gradient,
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: Center(
                   child: Text(
                     'Speichern',
                     style: TextStyle(
-                      color: skin.primary == Colors.white
-                          ? Colors.black
-                          : Colors.white,
+                      color: Colors.white,
                       fontWeight: FontWeight.w700,
                       fontSize: 16,
                     ),
@@ -1352,8 +1293,7 @@ class _SwipeEditTimeFieldState extends State<_SwipeEditTimeField> {
           decoration: BoxDecoration(
             color: widget.color.withValues(alpha: 0.06),
             borderRadius: BorderRadius.circular(16),
-            border:
-                Border.all(color: widget.color.withValues(alpha: 0.25)),
+            border: Border.all(color: widget.color.withValues(alpha: 0.25)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1362,14 +1302,8 @@ class _SwipeEditTimeFieldState extends State<_SwipeEditTimeField> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(widget.label,
-                      style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                          color: widget.color,
-                          letterSpacing: 1)),
-                  Icon(Icons.unfold_more,
-                      color: widget.color.withValues(alpha: 0.5),
-                      size: 14),
+                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: widget.color, letterSpacing: 1)),
+                  Icon(Icons.unfold_more, color: widget.color.withValues(alpha: 0.5), size: 14),
                 ],
               ),
               const SizedBox(height: 6),
@@ -1378,12 +1312,7 @@ class _SwipeEditTimeFieldState extends State<_SwipeEditTimeField> {
                 alignment: Alignment.centerLeft,
                 child: Text(
                   widget.ctrl.text.isEmpty ? '--:--' : widget.ctrl.text,
-                  style: const TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                    letterSpacing: -1,
-                  ),
+                  style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w700, color: Colors.white, letterSpacing: -1),
                 ),
               ),
               const SizedBox(height: 2),
@@ -1400,8 +1329,7 @@ class _TextFieldInput extends StatelessWidget {
   final TextEditingController ctrl;
   final int maxLines;
 
-  const _TextFieldInput(
-      {required this.label, required this.ctrl, this.maxLines = 1});
+  const _TextFieldInput({required this.label, required this.ctrl, this.maxLines = 1});
 
   @override
   Widget build(BuildContext context) {
@@ -1409,19 +1337,15 @@ class _TextFieldInput extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: skin.white(0.04),
+        color: skin.surface(0.04),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: skin.white(0.08)),
+        border: Border.all(color: skin.borderSubtle),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(label,
-              style: TextStyle(
-                  fontSize: 10,
-                  color: skin.primary,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 0.8)),
+              style: TextStyle(fontSize: 10, color: skin.primary, fontWeight: FontWeight.w600, letterSpacing: 0.8)),
           const SizedBox(height: 4),
           TextField(
             controller: ctrl,
@@ -1453,9 +1377,9 @@ class _MonthNavBtn extends StatelessWidget {
         width: 40,
         height: 40,
         decoration: BoxDecoration(
-          color: skin.white(0.06),
+          color: skin.surface(0.06),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: skin.white(0.1)),
+          border: Border.all(color: skin.borderSubtle),
         ),
         child: Icon(icon, color: skin.primary),
       ),
@@ -1468,8 +1392,7 @@ class _StatCard extends StatelessWidget {
   final String value;
   final Color color;
 
-  const _StatCard(
-      {required this.label, required this.value, required this.color});
+  const _StatCard({required this.label, required this.value, required this.color});
 
   @override
   Widget build(BuildContext context) {
@@ -1484,38 +1407,12 @@ class _StatCard extends StatelessWidget {
         ),
         child: Column(
           children: [
-            Text(value,
-                style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w700,
-                    color: color)),
+            Text(value, style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: color)),
             const SizedBox(height: 2),
-            Text(label,
-                style: TextStyle(fontSize: 11, color: skin.white(0.35))),
+            Text(label, style: TextStyle(fontSize: 11, color: skin.textMuted)),
           ],
         ),
       ),
-    );
-  }
-}
-
-class _TimeChip extends StatelessWidget {
-  final String time;
-  final Color color;
-
-  const _TimeChip({required this.time, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Text(time,
-          style: TextStyle(
-              fontSize: 13, fontWeight: FontWeight.w600, color: color)),
     );
   }
 }
