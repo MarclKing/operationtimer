@@ -5,6 +5,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import '../theme/app_theme.dart';
+import '../services/pdf_service.dart';  // 🔥 WICHTIG: PdfService importieren
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -163,7 +164,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
             children: [
               pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-                pw.Text('OperationTimer', style: pw.TextStyle(font: fontBold, fontSize: 20, color: PdfColors.white)),
+                pw.Text('OpTimes', style: pw.TextStyle(font: fontBold, fontSize: 20, color: PdfColors.white)),
                 pw.SizedBox(height: 4),
                 pw.Text('Arbeitszeiterfassung', style: pw.TextStyle(font: font, fontSize: 12, color: PdfColors.grey400)),
               ]),
@@ -233,7 +234,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final safeName = fullName.replaceAll(' ', '_');
     await Printing.sharePdf(
       bytes: await pdf.save(),
-      filename: 'OperationTimer_${safeName}_$monthKey.pdf',
+      filename: 'OpTimes_${safeName}_$monthKey.pdf',
     );
   }
 
@@ -254,97 +255,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  // 🔥 GEÄNDERT: Jetzt ruft die zentrale Methode aus PdfService auf
   Future<void> _selectMonthForExport() async {
-    final skin = AppTheme.of(context);
-    DateTime selectedMonth = DateTime.now();
-    await showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => Dialog(
-          backgroundColor: skin.bgCard,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text('Monat auswählen',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: skin.textPrimary)),
-                const SizedBox(height: 20),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: skin.bgBase,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: skin.borderMedium),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      IconButton(
-                        onPressed: () => setDialogState(() => selectedMonth =
-                            DateTime(selectedMonth.year, selectedMonth.month - 1)),
-                        icon: Icon(Icons.chevron_left, color: skin.primary),
-                      ),
-                      Text(
-                        DateFormat('MMMM yyyy', 'de').format(selectedMonth),
-                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: skin.textPrimary),
-                      ),
-                      IconButton(
-                        onPressed: () => setDialogState(() => selectedMonth =
-                            DateTime(selectedMonth.year, selectedMonth.month + 1)),
-                        icon: Icon(Icons.chevron_right, color: skin.primary),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 20),
-                Row(
-                  children: [
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: () => Navigator.pop(context),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          decoration: BoxDecoration(
-                            color: skin.surface(0.06),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Center(
-                            child: Text('Abbrechen',
-                                style: TextStyle(color: skin.textPrimary, fontWeight: FontWeight.w600)),
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: () {
-                          Navigator.pop(context);
-                          _exportPdf(selectedMonth);
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          decoration: BoxDecoration(
-                            gradient: skin.gradient,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Center(
-                            child: Text('PDF erstellen',
-                                style: TextStyle(color: skin.onGradient, fontWeight: FontWeight.w700)),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
+    await PdfService.showMonthPickerAndExport(context);
   }
 
   @override
@@ -455,7 +368,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               Switch(
                                 value: _nachtschichtModus,
                                 onChanged: _setNachtschichtModus,
-                                activeColor: skin.statComplete,
+                                activeThumbColor: skin.statComplete,
                                 activeTrackColor: skin.statComplete.withValues(alpha: 0.3),
                                 inactiveThumbColor: skin.textMuted,
                                 inactiveTrackColor: skin.surface(0.1),
@@ -579,7 +492,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
                     const SizedBox(height: 16),
 
-                    // 🔥 Nur 2 Skins: Chrome und Space
                     _SettingsCard(
                       emoji: '🎨',
                       title: 'Design',
@@ -618,7 +530,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
                     Center(
                       child: Text(
-                        'OperationTimer v1.0',
+                        'OpTimes v1.0',
                         style: TextStyle(fontSize: 12, color: skin.textHint),
                       ),
                     ),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
@@ -198,103 +199,322 @@ class PdfService {
     );
   }
 
+  // 🔥 ZENTRALE MONATSAUSWAHL - minimalistisches Dialog-Design
   static Future<void> showMonthPickerAndExport(BuildContext context) async {
     final skin = AppTheme.of(context);
+    final isChromeSkin = skin.key == 'chrome';
     DateTime selectedMonth = DateTime.now();
     
     await showDialog(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => Dialog(
-          backgroundColor: skin.bgCard,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'Monat auswählen',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: skin.textPrimary),
-                ),
-                const SizedBox(height: 20),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: skin.bgBase,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: skin.borderMedium),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setDialogState) {
+            void changeMonth(int delta) {
+              setDialogState(() {
+                selectedMonth = DateTime(selectedMonth.year, selectedMonth.month + delta);
+              });
+            }
+            
+            return GestureDetector(
+              onHorizontalDragEnd: (DragEndDetails details) {
+                final velocity = details.primaryVelocity ?? 0;
+                if (velocity < -300) {
+                  changeMonth(1);
+                } else if (velocity > 300) {
+                  changeMonth(-1);
+                }
+              },
+              child: Dialog(
+                backgroundColor: skin.bgCard,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      IconButton(
-                        onPressed: () => setDialogState(() =>
-                            selectedMonth = DateTime(selectedMonth.year, selectedMonth.month - 1)),
-                        icon: Icon(Icons.chevron_left, color: skin.primary),
-                      ),
                       Text(
-                        DateFormat('MMMM yyyy', 'de').format(selectedMonth),
-                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: skin.textPrimary),
+                        'Monat auswählen',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                          color: skin.textPrimary,
+                        ),
                       ),
-                      IconButton(
-                        onPressed: () => setDialogState(() =>
-                            selectedMonth = DateTime(selectedMonth.year, selectedMonth.month + 1)),
-                        icon: Icon(Icons.chevron_right, color: skin.primary),
+                      const SizedBox(height: 20),
+                      
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: skin.bgBase,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: skin.borderMedium),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            GestureDetector(
+                              onTap: () => changeMonth(-1),
+                              child: Container(
+                                padding: const EdgeInsets.all(8),
+                                child: Icon(
+                                  Icons.chevron_left,
+                                  color: skin.primary,
+                                  size: 24,
+                                ),
+                              ),
+                            ),
+                            GestureDetector(
+                              onTap: () async {
+                                final newDate = await _showFullPicker(context, selectedMonth, skin);
+                                if (newDate != null) {
+                                  setDialogState(() {
+                                    selectedMonth = newDate;
+                                  });
+                                }
+                              },
+                              child: Text(
+                                DateFormat('MMMM yyyy', 'de').format(selectedMonth),
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                  color: skin.textPrimary,
+                                ),
+                              ),
+                            ),
+                            GestureDetector(
+                              onTap: () => changeMonth(1),
+                              child: Container(
+                                padding: const EdgeInsets.all(8),
+                                child: Icon(
+                                  Icons.chevron_right,
+                                  color: skin.primary,
+                                  size: 24,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      
+                      const SizedBox(height: 20),
+                      
+                      Row(
+                        children: [
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: () => Navigator.pop(context),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                                decoration: BoxDecoration(
+                                  color: skin.surface(0.06),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    'Abbrechen',
+                                    style: TextStyle(
+                                      color: skin.textPrimary,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: () {
+                                Navigator.pop(context);
+                                PdfService.exportMonth(context, selectedMonth);
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                                decoration: BoxDecoration(
+                                  gradient: isChromeSkin
+                                      ? const LinearGradient(
+                                          colors: [Color(0xFF333333), Color(0xFF555555)],
+                                          begin: Alignment.centerLeft,
+                                          end: Alignment.centerRight,
+                                        )
+                                      : skin.gradient,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    'PDF erstellen',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 20),
-                Row(
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+  
+  // 🔥 Erweiterter Picker für präzise Auswahl
+  static Future<DateTime?> _showFullPicker(BuildContext context, DateTime currentMonth, AppSkin skin) async {
+    int pickedYear = currentMonth.year;
+    int pickedMonth = currentMonth.month - 1;
+    final yearCount = DateTime.now().year - 2020 + 15;
+    
+    return await showDialog<DateTime>(
+      context: context,
+      builder: (BuildContext ctx) {
+        return StatefulBuilder(
+          builder: (BuildContext ctx, StateSetter setPickerState) {
+            return Dialog(
+              backgroundColor: skin.bgCard,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: () => Navigator.pop(context),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          decoration: BoxDecoration(
-                            color: skin.surface(0.06),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Center(
-                            child: Text(
-                              'Abbrechen',
-                              style: TextStyle(color: skin.textPrimary, fontWeight: FontWeight.w600),
-                            ),
-                          ),
-                        ),
+                    Text(
+                      'Monat & Jahr',
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w600,
+                        color: skin.textPrimary,
                       ),
                     ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: () {
-                          Navigator.pop(context);
-                          PdfService.exportMonth(context, selectedMonth);
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          decoration: BoxDecoration(
-                            gradient: skin.gradient,
-                            borderRadius: BorderRadius.circular(12),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      height: 200,
+                      child: Row(
+                        children: [
+                          Expanded(
+                            flex: 2,
+                            child: CupertinoPicker(
+                              scrollController: FixedExtentScrollController(
+                                initialItem: pickedMonth + 1000,
+                              ),
+                              itemExtent: 44,
+                              looping: true,
+                              backgroundColor: Colors.transparent,
+                              onSelectedItemChanged: (int index) {
+                                setPickerState(() {
+                                  pickedMonth = index % 12;
+                                });
+                              },
+                              children: List.generate(
+                                12,
+                                (int index) => Center(
+                                  child: Text(
+                                    DateFormat('MMMM', 'de').format(DateTime(2024, index + 1)),
+                                    style: TextStyle(
+                                      fontSize: 17,
+                                      fontWeight: FontWeight.w500,
+                                      color: skin.textPrimary,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
                           ),
-                          child: Center(
-                            child: Text(
-                              'PDF erstellen',
-                              style: TextStyle(color: skin.onGradient, fontWeight: FontWeight.w700),
+                          Expanded(
+                            child: CupertinoPicker(
+                              scrollController: FixedExtentScrollController(
+                                initialItem: pickedYear - 2020,
+                              ),
+                              itemExtent: 44,
+                              looping: false,
+                              backgroundColor: Colors.transparent,
+                              onSelectedItemChanged: (int index) {
+                                setPickerState(() {
+                                  pickedYear = 2020 + index;
+                                });
+                              },
+                              children: List.generate(
+                                yearCount,
+                                (int index) => Center(
+                                  child: Text(
+                                    '${2020 + index}',
+                                    style: TextStyle(
+                                      fontSize: 17,
+                                      fontWeight: FontWeight.w500,
+                                      color: skin.textPrimary,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () => Navigator.pop(ctx),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              decoration: BoxDecoration(
+                                color: skin.surface(0.06),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Center(
+                                child: Text(
+                                  'Abbrechen',
+                                  style: TextStyle(
+                                    color: skin.textPrimary,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
                             ),
                           ),
                         ),
-                      ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () {
+                              Navigator.pop(ctx, DateTime(pickedYear, pickedMonth + 1));
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              decoration: BoxDecoration(
+                                gradient: skin.gradient,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Center(
+                                child: Text(
+                                  'Übernehmen',
+                                  style: TextStyle(
+                                    color: skin.onGradient,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
-              ],
-            ),
-          ),
-        ),
-      ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 }

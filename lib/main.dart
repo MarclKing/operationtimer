@@ -78,7 +78,7 @@ class MyApp extends StatelessWidget {
         return SkinProvider(
           skin: skin,
           child: MaterialApp(
-            title: 'OpTime',
+            title: 'OpTimes',
             debugShowCheckedModeBanner: false,
             theme: ThemeData(
               brightness: skin.isLight ? Brightness.light : Brightness.dark,
@@ -91,8 +91,6 @@ class MyApp extends StatelessWidget {
                 onSecondary: skin.onGradient,
                 error: skin.deleteColor,
                 onError: Colors.white,
-                background: skin.bgBase,
-                onBackground: skin.textPrimary,
                 surface: skin.bgCard,
                 onSurface: skin.textPrimary,
               ),
@@ -100,7 +98,6 @@ class MyApp extends StatelessWidget {
                 backgroundColor: skin.bgCard,
                 foregroundColor: skin.textPrimary,
               ),
-              // 🔥 InputDecorationTheme entfernt – keine störenden Hintergründe mehr
               useMaterial3: true,
             ),
             home: const MainScreen(),
@@ -110,9 +107,6 @@ class MyApp extends StatelessWidget {
     );
   }
 }
-
-// Der Rest der main.dart bleibt gleich (MainScreen, _DropdownMenuItem, etc.)
-// ... (den Rest wie in der vorherigen Antwort)
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -226,7 +220,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
               ),
             ),
 
-          // 🔥 Dropdown Menu mit Skin-Farben
+          // Dropdown Menu
           AnimatedBuilder(
             animation: _menuAnimController,
             builder: (context, child) {
@@ -303,7 +297,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
             },
           ),
 
-          // Top Bar
+          // Icon-basierte Top Bar
           Positioned(
             top: 0,
             left: 0,
@@ -320,21 +314,26 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                 children: [
                   Row(
                     children: [
+                      // Elegantes Icon-Logo
                       Container(
                         width: 36,
                         height: 36,
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: skin.surface(0.15)),
-                          color: skin.surface(0.05),
+                          color: skin.primary.withAlpha(26),
+                          border: Border.all(
+                            color: skin.primary.withAlpha(51),
+                          ),
                         ),
-                        child: Center(
-                          child: Icon(Icons.access_time, color: skin.primary, size: 20),
+                        child: Icon(
+                          Icons.access_time_filled,
+                          size: 20,
+                          color: skin.primary,
                         ),
                       ),
                       const SizedBox(width: 10),
                       Text(
-                        'OpTime',
+                        'OpTimes',
                         style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w700,
@@ -343,32 +342,31 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                       ),
                     ],
                   ),
+                  // Menu Button
                   GestureDetector(
                     onTap: _toggleMenu,
-                    child: AnimatedBuilder(
-                      animation: _menuAnimController,
-                      builder: (context, _) => Container(
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(12),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 250),
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        color: _menuOpen
+                            ? skin.primary.withAlpha(77)
+                            : skin.surface(0.08),
+                        border: Border.all(
                           color: _menuOpen
-                              ? skin.primaryWithAlpha(0.3)
-                              : skin.surface(0.08),
-                          border: Border.all(
-                            color: _menuOpen
-                                ? skin.primaryWithAlpha(0.5)
-                                : skin.surface(0.1),
-                          ),
+                              ? skin.primary.withAlpha(128)
+                              : skin.surface(0.1),
                         ),
-                        child: AnimatedRotation(
-                          turns: _menuOpen ? 0.125 : 0,
-                          duration: const Duration(milliseconds: 250),
-                          child: Icon(
-                            _menuOpen ? Icons.close : Icons.menu,
-                            color: skin.textPrimary,
-                            size: 20,
-                          ),
+                      ),
+                      child: AnimatedRotation(
+                        turns: _menuOpen ? 0.125 : 0,
+                        duration: const Duration(milliseconds: 250),
+                        child: Icon(
+                          _menuOpen ? Icons.close : Icons.menu_rounded,
+                          color: skin.textPrimary,
+                          size: 20,
                         ),
                       ),
                     ),
@@ -394,7 +392,6 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   }
 }
 
-// 🔥 Neue Dropdown-Menü-Item-Klasse
 class _DropdownMenuItem extends StatelessWidget {
   final IconData icon;
   final String label;
