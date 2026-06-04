@@ -442,7 +442,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
     return Scaffold(
       backgroundColor: skin.bgBase,
-      resizeToAvoidBottomInset: !overlayOpen, // Nur bei Overlay nicht resizen
+      // WICHTIG: resizeToAvoidBottomInset = false verhindert das Verschieben der UI bei Tastatur
+      resizeToAvoidBottomInset: false,
       body: Stack(
         children: [
           // ── Haupt-Scroll-Inhalt ────────────────────────────────────────────
@@ -823,11 +824,11 @@ class _FlyingCardOverlay extends StatelessWidget {
     final label = isTkf ? 'TAGESKOMMANDOFÜHRER' : 'NOTIZ';
     final emoji = isTkf ? '👤' : '📝';
     final hint = isTkf ? 'Name des TKF' : 'Optionale Notiz...';
-    final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
+    
+    // Feste Positionierung ohne Berücksichtigung der Tastaturhöhe
     final screenH = MediaQuery.of(context).size.height;
-
-    // Karte sitzt im oberen Drittel, zentriert, mit Abstand zur Tastatur
-    final cardTop = (screenH - keyboardHeight) * 0.18;
+    // Karte ist immer im oberen Bereich, unabhängig von der Tastatur
+    final cardTop = screenH * 0.22;
 
     return AnimatedBuilder(
       animation: flyAnimation,
@@ -847,9 +848,9 @@ class _FlyingCardOverlay extends StatelessWidget {
               ),
             ),
 
-            // Die fliegende Karte
+            // Die fliegende Karte - fest positioniert, verschiebt sich nicht mit Tastatur
             Positioned(
-              top: cardTop + (1 - scaleAnim.value) * -40,
+              top: cardTop + (1 - scaleAnim.value) * -30,
               left: 24,
               right: 24,
               child: Transform.scale(
@@ -1053,8 +1054,8 @@ class _StaticInputCard extends StatelessWidget {
                           fontSize: 9,
                           color: skin.primary,
                           fontWeight: FontWeight.w600,
-                          letterSpacing: 0.8,
-                          overflow: TextOverflow.ellipsis),
+                          letterSpacing: 0.8),
+                      overflow: TextOverflow.ellipsis,
                       maxLines: 1),
                   const SizedBox(height: 2),
                   Text(
@@ -1091,7 +1092,7 @@ class _NavBtn extends StatelessWidget {
   const _NavBtn({required this.icon, required this.onTap});
 
   @override
-Widget build(BuildContext context) {
+  Widget build(BuildContext context) {
     final skin = AppTheme.of(context);
     return GestureDetector(
       onTap: onTap,
