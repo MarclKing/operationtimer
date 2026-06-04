@@ -18,6 +18,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   final _teamchefController = TextEditingController();
   final _notizController = TextEditingController();
   late AnimationController _saveAnimController;
+  bool _initialTimeSet = false;
 
   @override
   void initState() {
@@ -64,11 +65,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         _gehenController.text = entry['gehen'] ?? '';
         _teamchefController.text = entry['TKF'] ?? '';
         _notizController.text = entry['notiz'] ?? '';
+        _initialTimeSet = true;
       } else {
         _kommenController.clear();
         _gehenController.clear();
         _teamchefController.clear();
         _notizController.clear();
+        
+        if (!_initialTimeSet && _dateKey == DateFormat('yyyy-MM-dd').format(DateTime.now())) {
+          final now = DateTime.now();
+          final formattedTime = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+          _kommenController.text = formattedTime;
+          _initialTimeSet = true;
+        }
       }
     });
   }
@@ -76,11 +85,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   void _changeDate(int days) {
     setState(() {
       _selectedDate = _selectedDate.add(Duration(days: days));
+      _initialTimeSet = false;
     });
     _loadEntry();
   }
 
-  // Zeit aus String parsen
   TimeOfDay? _parseTime(String text) {
     if (text.isEmpty || text == '--:--') return null;
     try {
@@ -91,7 +100,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     }
   }
 
-  // Zeit um Minuten ändern per Swipe
   void _adjustTime(TextEditingController controller, int minutesDelta) {
     TimeOfDay current = _parseTime(controller.text) ?? TimeOfDay.now();
     final totalMinutes = current.hour * 60 + current.minute + minutesDelta;
@@ -123,6 +131,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         _gehenController.clear();
         _teamchefController.clear();
         _notizController.clear();
+        _initialTimeSet = false;
+        final now = DateTime.now();
+        final formattedTime = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+        _kommenController.text = formattedTime;
+        _initialTimeSet = true;
       });
     }
     
@@ -158,44 +171,41 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       },
     );
     if (picked != null) {
-      setState(() => _selectedDate = picked);
+      setState(() {
+        _selectedDate = picked;
+        _initialTimeSet = false;
+      });
       _loadEntry();
     }
   }
 
-  Future<void> _selectTime(TextEditingController controller) async {
+  Future<void> _selectTimeWithPicker(TextEditingController controller) async {
     final current = _parseTime(controller.text);
-    final picked = await showTimePicker(
+    
+    await showModalBottomSheet(
       context: context,
-      initialTime: current ?? TimeOfDay.now(),
-      builder: (context, child) {
-        return Theme(
-          data: ThemeData.dark().copyWith(
-            colorScheme: const ColorScheme.dark(
-              primary: Color(0xFF6C63FF),
-              surface: Color(0xFF141420),
-            ),
-          ),
-          child: MediaQuery(
-            data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
-            child: child!,
-          ),
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) {
+        return _IOSStyleTimePicker(
+          initialTime: current ?? TimeOfDay.now(),
+          onTimeSelected: (selectedTime) {
+            setState(() {
+              controller.text = 
+                  '${selectedTime.hour.toString().padLeft(2, '0')}:${selectedTime.minute.toString().padLeft(2, '0')}';
+            });
+          },
         );
       },
     );
-    if (picked != null) {
-      setState(() {
-        controller.text =
-            '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}';
-      });
-    }
   }
 
   @override
   Widget build(BuildContext context) {
     final isToday = DateFormat('yyyy-MM-dd').format(DateTime.now()) == _dateKey;
-    final screenWidth = MediaQuery.of(context).size.width;
-    final isSmallScreen = screenWidth < 380; // Für kleine Bildschirme wie iPhone SE
+    final screenHeight = MediaQuery.of(context).size.height;
+    final isSmallPhone = screenHeight < 700; // iPhone SE, 8, etc.
+    final topPadding = MediaQuery.of(context).padding.top;
 
     return GestureDetector(
       onHorizontalDragEnd: (details) {
@@ -214,15 +224,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const SizedBox(height: 40),
+                // 🔥 Verbesserte Abstände für iPhone
+                SizedBox(height: isSmallPhone ? 20 : 30),
                 
-                // Begrüßung
+                // Status Bar Platzhalter (für die Deutschlandflagge & Uhrzeit)
+                SizedBox(height: topPadding > 0 ? 0 : 8),
+                
+                // Begrüßung - Mehr Abstand nach oben
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 0),
+                  padding: EdgeInsets.fromLTRB(24, isSmallPhone ? 8 : 12, 24, 0),
                   child: RichText(
                     text: TextSpan(
                       style: const TextStyle(
-                        fontSize: 24,
+                        fontSize: 26,
                         fontWeight: FontWeight.w700,
                         color: Colors.white,
                         height: 1.2,
@@ -241,9 +255,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     ),
                   ),
                 ),
-                const SizedBox(height: 16),
+                
+                // 🔥 Größerer Abstand zwischen Begrüßung und Datum
+                const SizedBox(height: 28),
 
-                // Datum Navigation - Hier ist die Fix!
+                // Datum Navigation
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 24),
                   child: Row(
@@ -251,26 +267,26 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       GestureDetector(
                         onTap: () => _changeDate(-1),
                         child: Container(
-                          width: 36,
-                          height: 36,
+                          width: 40,
+                          height: 40,
                           decoration: BoxDecoration(
                             color: Colors.white.withValues(alpha: 0.06),
-                            borderRadius: BorderRadius.circular(10),
+                            borderRadius: BorderRadius.circular(12),
                             border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
                           ),
-                          child: const Icon(Icons.chevron_left, color: Colors.white54, size: 20),
+                          child: const Icon(Icons.chevron_left, color: Colors.white54, size: 22),
                         ),
                       ),
-                      const SizedBox(width: 10),
+                      const SizedBox(width: 12),
                       Expanded(
                         child: GestureDetector(
                           onTap: _selectDate,
                           child: AnimatedContainer(
                             duration: const Duration(milliseconds: 200),
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                             decoration: BoxDecoration(
                               color: const Color(0xFF141420),
-                              borderRadius: BorderRadius.circular(14),
+                              borderRadius: BorderRadius.circular(16),
                               border: Border.all(
                                 color: isToday
                                     ? const Color(0xFF6C63FF).withValues(alpha: 0.5)
@@ -280,9 +296,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                const Text('📅', style: TextStyle(fontSize: 14)),
-                                const SizedBox(width: 8),
-                                // Hier: Flexible Box mit Text-Overflow
+                                const Text('📅', style: TextStyle(fontSize: 16)),
+                                const SizedBox(width: 10),
                                 Flexible(
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -290,51 +305,52 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                       Text(
                                         isToday ? 'HEUTE' : 'DATUM',
                                         style: TextStyle(
-                                          fontSize: 9,
+                                          fontSize: 10,
                                           fontWeight: FontWeight.w700,
                                           color: isToday ? const Color(0xFF6C63FF) : Colors.white38,
                                           letterSpacing: 1.0,
                                         ),
                                       ),
+                                      const SizedBox(height: 2),
                                       Text(
                                         DateFormat('EEEE, d. MMMM yyyy', 'de').format(_selectedDate),
                                         style: const TextStyle(
-                                          fontSize: 13,
+                                          fontSize: 14,
                                           color: Colors.white,
                                           fontWeight: FontWeight.w600,
                                         ),
                                         maxLines: 1,
-                                        overflow: TextOverflow.ellipsis, // 🔥 Hier: Punkte bei zu langem Text
+                                        overflow: TextOverflow.ellipsis,
                                       ),
                                     ],
                                   ),
                                 ),
                                 const SizedBox(width: 8),
                                 Icon(Icons.calendar_today_outlined,
-                                    color: Colors.white.withValues(alpha: 0.3), size: 14),
+                                    color: Colors.white.withValues(alpha: 0.3), size: 16),
                               ],
                             ),
                           ),
                         ),
                       ),
-                      const SizedBox(width: 10),
+                      const SizedBox(width: 12),
                       GestureDetector(
                         onTap: () => _changeDate(1),
                         child: Container(
-                          width: 36,
-                          height: 36,
+                          width: 40,
+                          height: 40,
                           decoration: BoxDecoration(
                             color: Colors.white.withValues(alpha: 0.06),
-                            borderRadius: BorderRadius.circular(10),
+                            borderRadius: BorderRadius.circular(12),
                             border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
                           ),
-                          child: const Icon(Icons.chevron_right, color: Colors.white54, size: 20),
+                          child: const Icon(Icons.chevron_right, color: Colors.white54, size: 22),
                         ),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 24),
 
                 // Kommen & Gehen
                 Padding(
@@ -346,18 +362,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           label: 'KOMMEN',
                           color: const Color(0xFF4ECDC4),
                           controller: _kommenController,
-                          onTap: () => _selectTime(_kommenController),
+                          onTap: () => _selectTimeWithPicker(_kommenController),
                           onSwipeUp: () => _adjustTime(_kommenController, 1),
                           onSwipeDown: () => _adjustTime(_kommenController, -1),
                         ),
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: 14),
                       Expanded(
                         child: _SwipeTimeCard(
                           label: 'GEHEN',
                           color: const Color(0xFFFF6B6B),
                           controller: _gehenController,
-                          onTap: () => _selectTime(_gehenController),
+                          onTap: () => _selectTimeWithPicker(_gehenController),
                           onSwipeUp: () => _adjustTime(_gehenController, 1),
                           onSwipeDown: () => _adjustTime(_gehenController, -1),
                         ),
@@ -365,15 +381,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     ],
                   ),
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: 8),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 24),
                   child: Text(
-                    '↕ Auf Kachel wischen = Minute anpassen',
-                    style: TextStyle(fontSize: 11, color: Colors.white.withValues(alpha: 0.25)),
+                    '↕ Auf Kachel wischen = Minute anpassen  ·  Tippen = iOS-Picker',
+                    style: TextStyle(fontSize: 12, color: Colors.white.withValues(alpha: 0.3)),
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 20),
 
                 // TKF
                 Padding(
@@ -385,7 +401,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     hint: 'Name des TKF',
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 16),
 
                 // Notiz
                 Padding(
@@ -398,7 +414,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     maxLines: 1,
                   ),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 28),
 
                 // Speichern Button
                 Padding(
@@ -411,12 +427,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       onTap: _saveEntry,
                       child: Container(
                         width: double.infinity,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        padding: const EdgeInsets.symmetric(vertical: 18),
                         decoration: BoxDecoration(
                           gradient: const LinearGradient(
                             colors: [Color(0xFF6C63FF), Color(0xFF4ECDC4)],
                           ),
-                          borderRadius: BorderRadius.circular(18),
+                          borderRadius: BorderRadius.circular(20),
                           boxShadow: [
                             BoxShadow(
                               color: const Color(0xFF6C63FF).withValues(alpha: 0.3),
@@ -429,7 +445,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           child: Text(
                             '✓  Eintrag speichern',
                             style: TextStyle(
-                              fontSize: 15,
+                              fontSize: 16,
                               fontWeight: FontWeight.w700,
                               color: Colors.white,
                               letterSpacing: 0.5,
@@ -440,7 +456,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     ),
                   ),
                 ),
-                const SizedBox(height: 80),
+                const SizedBox(height: 100),
               ],
             ),
           ),
@@ -450,7 +466,210 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 }
 
-// Kachel mit Swipe-Funktion für Zeitanpassung
+class _IOSStyleTimePicker extends StatefulWidget {
+  final TimeOfDay initialTime;
+  final Function(TimeOfDay) onTimeSelected;
+
+  const _IOSStyleTimePicker({
+    required this.initialTime,
+    required this.onTimeSelected,
+  });
+
+  @override
+  State<_IOSStyleTimePicker> createState() => _IOSStyleTimePickerState();
+}
+
+class _IOSStyleTimePickerState extends State<_IOSStyleTimePicker> {
+  late FixedExtentScrollController _hourController;
+  late FixedExtentScrollController _minuteController;
+  late int _selectedHour;
+  late int _selectedMinute;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedHour = widget.initialTime.hour;
+    _selectedMinute = widget.initialTime.minute;
+    _hourController = FixedExtentScrollController(initialItem: _selectedHour);
+    _minuteController = FixedExtentScrollController(initialItem: _selectedMinute);
+  }
+
+  @override
+  void dispose() {
+    _hourController.dispose();
+    _minuteController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF141420),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            margin: const EdgeInsets.only(top: 12),
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(height: 20),
+          
+          const Text(
+            'Uhrzeit auswählen',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 17,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 20),
+          
+          SizedBox(
+            height: 200,
+            child: Row(
+              children: [
+                Expanded(
+                  child: CupertinoPicker(
+                    scrollController: _hourController,
+                    magnification: 1.2,
+                    backgroundColor: Colors.transparent,
+                    itemExtent: 40,
+                    onSelectedItemChanged: (index) {
+                      setState(() {
+                        _selectedHour = index;
+                      });
+                    },
+                    children: List.generate(24, (hour) {
+                      return Center(
+                        child: Text(
+                          hour.toString().padLeft(2, '0'),
+                          style: TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.w600,
+                            color: _selectedHour == hour 
+                                ? const Color(0xFF6C63FF) 
+                                : Colors.white.withValues(alpha: 0.6),
+                          ),
+                        ),
+                      );
+                    }),
+                  ),
+                ),
+                
+                const Text(
+                  ':',
+                  style: TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF6C63FF),
+                  ),
+                ),
+                
+                Expanded(
+                  child: CupertinoPicker(
+                    scrollController: _minuteController,
+                    magnification: 1.2,
+                    backgroundColor: Colors.transparent,
+                    itemExtent: 40,
+                    onSelectedItemChanged: (index) {
+                      setState(() {
+                        _selectedMinute = index;
+                      });
+                    },
+                    children: List.generate(60, (minute) {
+                      return Center(
+                        child: Text(
+                          minute.toString().padLeft(2, '0'),
+                          style: TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.w600,
+                            color: _selectedMinute == minute 
+                                ? const Color(0xFF6C63FF) 
+                                : Colors.white.withValues(alpha: 0.6),
+                          ),
+                        ),
+                      );
+                    }),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          
+          const SizedBox(height: 20),
+          
+          Row(
+            children: [
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => Navigator.pop(context),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    margin: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: const Center(
+                      child: Text(
+                        'Abbrechen',
+                        style: TextStyle(
+                          color: Colors.white60,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Expanded(
+                child: GestureDetector(
+                  onTap: () {
+                    widget.onTimeSelected(TimeOfDay(hour: _selectedHour, minute: _selectedMinute));
+                    Navigator.pop(context);
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    margin: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF6C63FF), Color(0xFF4ECDC4)],
+                      ),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: const Center(
+                      child: Text(
+                        'Übernehmen',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          
+          const SizedBox(height: 20),
+        ],
+      ),
+    );
+  }
+}
+
 class _SwipeTimeCard extends StatefulWidget {
   final String label;
   final Color color;
@@ -500,10 +719,10 @@ class _SwipeTimeCardState extends State<_SwipeTimeCard> {
       child: AnimatedBuilder(
         animation: widget.controller,
         builder: (context, _) => Container(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
             color: widget.color.withValues(alpha: 0.06),
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(22),
             border: Border.all(color: widget.color.withValues(alpha: 0.25)),
           ),
           child: Column(
@@ -515,29 +734,29 @@ class _SwipeTimeCardState extends State<_SwipeTimeCard> {
                   Text(
                     widget.label,
                     style: TextStyle(
-                      fontSize: 11,
+                      fontSize: 12,
                       fontWeight: FontWeight.w700,
                       color: widget.color,
                       letterSpacing: 1.2,
                     ),
                   ),
-                  Icon(Icons.unfold_more, color: widget.color.withValues(alpha: 0.5), size: 16),
+                  Icon(Icons.unfold_more, color: widget.color.withValues(alpha: 0.5), size: 18),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 10),
               Text(
                 widget.controller.text.isEmpty ? '--:--' : widget.controller.text,
                 style: const TextStyle(
-                  fontSize: 28,
+                  fontSize: 32,
                   fontWeight: FontWeight.w700,
                   color: Colors.white,
                   letterSpacing: -1,
                 ),
               ),
-              const SizedBox(height: 2),
+              const SizedBox(height: 4),
               Text(
                 widget.controller.text.isEmpty ? 'Tippen' : 'Wischen',
-                style: TextStyle(fontSize: 10, color: Colors.white.withValues(alpha: 0.3)),
+                style: TextStyle(fontSize: 11, color: Colors.white.withValues(alpha: 0.3)),
               ),
             ],
           ),
@@ -565,25 +784,25 @@ class _GlassInputCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.04),
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(20),
         border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            width: 32,
-            height: 32,
+            width: 36,
+            height: 36,
             decoration: BoxDecoration(
               color: const Color(0xFF6C63FF).withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(12),
             ),
-            child: Center(child: Text(emoji, style: const TextStyle(fontSize: 16))),
+            child: Center(child: Text(emoji, style: const TextStyle(fontSize: 18))),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -591,20 +810,20 @@ class _GlassInputCard extends StatelessWidget {
                 Text(
                   label,
                   style: const TextStyle(
-                    fontSize: 10,
+                    fontSize: 11,
                     color: Color(0xFF6C63FF),
                     fontWeight: FontWeight.w600,
                     letterSpacing: 0.8,
                   ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 6),
                 TextField(
                   controller: controller,
                   maxLines: maxLines,
-                  style: const TextStyle(color: Colors.white, fontSize: 14),
+                  style: const TextStyle(color: Colors.white, fontSize: 15),
                   decoration: InputDecoration(
                     hintText: hint,
-                    hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.25), fontSize: 14),
+                    hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.25), fontSize: 15),
                     border: InputBorder.none,
                     isDense: true,
                     contentPadding: EdgeInsets.zero,
