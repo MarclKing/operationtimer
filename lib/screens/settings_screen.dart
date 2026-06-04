@@ -24,6 +24,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _deleteAfterMonths = box.get('deleteAfterMonths', defaultValue: 3);
   }
 
+  @override
+  void dispose() {
+    _nameController.dispose();
+    super.dispose();
+  }
+
   void _saveSettings() {
     final box = Hive.box('einstellungen');
     box.put('name', _nameController.text);
@@ -40,7 +46,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   void _deleteOldEntries() {
     final box = Hive.box('arbeitszeiten');
-    final cutoff = DateTime.now().subtract(Duration(days: _deleteAfterMonths * 30));
+    final cutoff =
+        DateTime.now().subtract(Duration(days: _deleteAfterMonths * 30));
     final keysToDelete = box.keys.where((key) {
       try {
         return DateTime.parse(key.toString()).isBefore(cutoff);
@@ -66,7 +73,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     try {
       final k = kommen.split(':');
       final g = gehen.split(':');
-      final start = Duration(hours: int.parse(k[0]), minutes: int.parse(k[1]));
+      final start =
+          Duration(hours: int.parse(k[0]), minutes: int.parse(k[1]));
       final end = Duration(hours: int.parse(g[0]), minutes: int.parse(g[1]));
       final diff = end - start;
       if (diff.isNegative) return '--';
@@ -79,7 +87,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _exportPdf(DateTime month) async {
     final box = Hive.box('arbeitszeiten');
     final settingsBox = Hive.box('einstellungen');
-    final fullName = settingsBox.get('name', defaultValue: 'Unbekannt') as String;
+    final fullName =
+        settingsBox.get('name', defaultValue: 'Unbekannt') as String;
     final monthKey = DateFormat('yyyy-MM').format(month);
     final monthName = DateFormat('MMMM yyyy', 'de').format(month);
 
@@ -116,11 +125,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   children: [
                     pw.Text('OperationTimer',
                         style: pw.TextStyle(
-                            font: fontBold, fontSize: 20, color: PdfColors.white)),
+                            font: fontBold,
+                            fontSize: 20,
+                            color: PdfColors.white)),
                     pw.SizedBox(height: 4),
                     pw.Text('Arbeitszeiterfassung',
                         style: pw.TextStyle(
-                            font: font, fontSize: 12, color: PdfColors.grey400)),
+                            font: font,
+                            fontSize: 12,
+                            color: PdfColors.grey400)),
                   ],
                 ),
                 pw.Column(
@@ -128,11 +141,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   children: [
                     pw.Text(fullName,
                         style: pw.TextStyle(
-                            font: fontBold, fontSize: 14, color: PdfColors.white)),
+                            font: fontBold,
+                            fontSize: 14,
+                            color: PdfColors.white)),
                     pw.SizedBox(height: 4),
                     pw.Text(monthName,
                         style: pw.TextStyle(
-                            font: font, fontSize: 12, color: PdfColors.grey400)),
+                            font: font,
+                            fontSize: 12,
+                            color: PdfColors.grey400)),
                   ],
                 ),
               ],
@@ -160,17 +177,52 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           pw.SizedBox(height: 20),
 
-          // Tabelle Header
+          // Tabellen Header
           pw.Container(
-            padding: const pw.EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: const pw.BoxDecoration(color: PdfColor.fromInt(0xFF6C63FF)),
+            padding:
+                const pw.EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: const pw.BoxDecoration(
+                color: PdfColor.fromInt(0xFF6C63FF)),
             child: pw.Row(
               children: [
-                pw.Expanded(flex: 2, child: pw.Text('Datum', style: pw.TextStyle(font: fontBold, fontSize: 10, color: PdfColors.white))),
-                pw.Expanded(child: pw.Text('Kommen', style: pw.TextStyle(font: fontBold, fontSize: 10, color: PdfColors.white))),
-                pw.Expanded(child: pw.Text('Gehen', style: pw.TextStyle(font: fontBold, fontSize: 10, color: PdfColors.white))),
-                pw.Expanded(child: pw.Text('Dauer', style: pw.TextStyle(font: fontBold, fontSize: 10, color: PdfColors.white))),
-                pw.Expanded(flex: 2, child: pw.Text('Teamchef', style: pw.TextStyle(font: fontBold, fontSize: 10, color: PdfColors.white))),
+                pw.Expanded(
+                    flex: 2,
+                    child: pw.Text('Datum',
+                        style: pw.TextStyle(
+                            font: fontBold,
+                            fontSize: 10,
+                            color: PdfColors.white))),
+                pw.Expanded(
+                    child: pw.Text('Kommen',
+                        style: pw.TextStyle(
+                            font: fontBold,
+                            fontSize: 10,
+                            color: PdfColors.white))),
+                pw.Expanded(
+                    child: pw.Text('Gehen',
+                        style: pw.TextStyle(
+                            font: fontBold,
+                            fontSize: 10,
+                            color: PdfColors.white))),
+                pw.Expanded(
+                    child: pw.Text('Dauer',
+                        style: pw.TextStyle(
+                            font: fontBold,
+                            fontSize: 10,
+                            color: PdfColors.white))),
+                pw.Expanded(
+                    child: pw.Text('TKF',
+                        style: pw.TextStyle(
+                            font: fontBold,
+                            fontSize: 10,
+                            color: PdfColors.white))),
+                pw.Expanded(
+                    flex: 2,
+                    child: pw.Text('Notiz',
+                        style: pw.TextStyle(
+                            font: fontBold,
+                            fontSize: 10,
+                            color: PdfColors.white))),
               ],
             ),
           ),
@@ -180,25 +232,58 @@ class _SettingsScreenState extends State<SettingsScreen> {
             final i = e.key;
             final entry = e.value;
             final datum = DateTime.parse(entry['datum']);
-            final datumStr = DateFormat('EEE dd.MM.yy', 'de').format(datum);
+            final datumStr =
+                DateFormat('EEE dd.MM.yy', 'de').format(datum);
             final kommen = entry['kommen'] ?? '';
             final gehen = entry['gehen'] ?? '';
-            final teamchef = entry['teamchef'] ?? '';
+            final TKF = entry['TKF'] ?? '';
+            final notiz = entry['notiz'] ?? '';
             final duration = _calcDuration(kommen, gehen);
             final bgColor = i.isEven
                 ? const PdfColor.fromInt(0xFFF8F8FF)
                 : PdfColors.white;
 
             return pw.Container(
-              padding: const pw.EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              padding: const pw.EdgeInsets.symmetric(
+                  horizontal: 12, vertical: 8),
               decoration: pw.BoxDecoration(color: bgColor),
-              child: pw.Row(
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
-                  pw.Expanded(flex: 2, child: pw.Text(datumStr, style: pw.TextStyle(font: font, fontSize: 10))),
-                  pw.Expanded(child: pw.Text(kommen.isEmpty ? '--:--' : kommen, style: pw.TextStyle(font: font, fontSize: 10))),
-                  pw.Expanded(child: pw.Text(gehen.isEmpty ? '--:--' : gehen, style: pw.TextStyle(font: font, fontSize: 10))),
-                  pw.Expanded(child: pw.Text(duration, style: pw.TextStyle(font: fontBold, fontSize: 10))),
-                  pw.Expanded(flex: 2, child: pw.Text(teamchef, style: pw.TextStyle(font: font, fontSize: 10))),
+                  pw.Row(
+                    children: [
+                      pw.Expanded(
+                          flex: 2,
+                          child: pw.Text(datumStr,
+                              style: pw.TextStyle(
+                                  font: font, fontSize: 10))),
+                      pw.Expanded(
+                          child: pw.Text(
+                              kommen.isEmpty ? '--:--' : kommen,
+                              style: pw.TextStyle(
+                                  font: font, fontSize: 10))),
+                      pw.Expanded(
+                          child: pw.Text(
+                              gehen.isEmpty ? '--:--' : gehen,
+                              style: pw.TextStyle(
+                                  font: font, fontSize: 10))),
+                      pw.Expanded(
+                          child: pw.Text(duration,
+                              style: pw.TextStyle(
+                                  font: fontBold, fontSize: 10))),
+                      pw.Expanded(
+                          child: pw.Text(TKF,
+                              style: pw.TextStyle(
+                                  font: font, fontSize: 10))),
+                      pw.Expanded(
+                          flex: 2,
+                          child: pw.Text(notiz,
+                              style: pw.TextStyle(
+                                  font: font,
+                                  fontSize: 10,
+                                  color: PdfColors.grey600))),
+                    ],
+                  ),
                 ],
               ),
             );
@@ -209,7 +294,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           pw.SizedBox(height: 8),
           pw.Text(
             'Erstellt am ${DateFormat('dd.MM.yyyy HH:mm').format(DateTime.now())}',
-            style: pw.TextStyle(font: font, fontSize: 9, color: PdfColors.grey500),
+            style: pw.TextStyle(
+                font: font, fontSize: 9, color: PdfColors.grey500),
           ),
         ],
       ),
@@ -222,7 +308,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  pw.Widget _pdfStatBox(String label, String value, pw.Font font, pw.Font fontBold) {
+  pw.Widget _pdfStatBox(
+      String label, String value, pw.Font font, pw.Font fontBold) {
     return pw.Expanded(
       child: pw.Container(
         padding: const pw.EdgeInsets.symmetric(vertical: 12),
@@ -232,9 +319,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
         child: pw.Column(
           children: [
-            pw.Text(value, style: pw.TextStyle(font: fontBold, fontSize: 20, color: const PdfColor.fromInt(0xFF6C63FF))),
+            pw.Text(value,
+                style: pw.TextStyle(
+                    font: fontBold,
+                    fontSize: 20,
+                    color: const PdfColor.fromInt(0xFF6C63FF))),
             pw.SizedBox(height: 2),
-            pw.Text(label, style: pw.TextStyle(font: font, fontSize: 9, color: PdfColors.grey600)),
+            pw.Text(label,
+                style: pw.TextStyle(
+                    font: font, fontSize: 9, color: PdfColors.grey600)),
           ],
         ),
       ),
@@ -248,38 +341,51 @@ class _SettingsScreenState extends State<SettingsScreen> {
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => Dialog(
           backgroundColor: const Color(0xFF141420),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           child: Padding(
             padding: const EdgeInsets.all(24),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 const Text('Monat auswählen',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Colors.white)),
+                    style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white)),
                 const SizedBox(height: 20),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
                     color: const Color(0xFF0A0A0F),
                     borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: const Color(0xFF1E1E35)),
+                    border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.08)),
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       IconButton(
-                        onPressed: () => setDialogState(() =>
-                            selectedMonth = DateTime(selectedMonth.year, selectedMonth.month - 1)),
-                        icon: const Icon(Icons.chevron_left, color: Color(0xFF6C63FF)),
+                        onPressed: () => setDialogState(() => selectedMonth =
+                            DateTime(selectedMonth.year,
+                                selectedMonth.month - 1)),
+                        icon: const Icon(Icons.chevron_left,
+                            color: Color(0xFF6C63FF)),
                       ),
                       Text(
                         DateFormat('MMMM yyyy', 'de').format(selectedMonth),
-                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white),
+                        style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white),
                       ),
                       IconButton(
-                        onPressed: () => setDialogState(() =>
-                            selectedMonth = DateTime(selectedMonth.year, selectedMonth.month + 1)),
-                        icon: const Icon(Icons.chevron_right, color: Color(0xFF6C63FF)),
+                        onPressed: () => setDialogState(() => selectedMonth =
+                            DateTime(selectedMonth.year,
+                                selectedMonth.month + 1)),
+                        icon: const Icon(Icons.chevron_right,
+                            color: Color(0xFF6C63FF)),
                       ),
                     ],
                   ),
@@ -298,7 +404,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ),
                           child: const Center(
                             child: Text('Abbrechen',
-                                style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w600)),
+                                style: TextStyle(
+                                    color: Colors.white70,
+                                    fontWeight: FontWeight.w600)),
                           ),
                         ),
                       ),
@@ -313,13 +421,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         child: Container(
                           padding: const EdgeInsets.symmetric(vertical: 14),
                           decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                                colors: [Color(0xFF6C63FF), Color(0xFF4ECDC4)]),
+                            gradient: const LinearGradient(colors: [
+                              Color(0xFF6C63FF),
+                              Color(0xFF4ECDC4)
+                            ]),
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: const Center(
                             child: Text('PDF erstellen',
-                                style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                                style: TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w700)),
                           ),
                         ),
                       ),
@@ -339,51 +451,48 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A0F),
       body: SafeArea(
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Header
-              Container(
-                padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [Color(0xFF0A0A0F), Color(0xFF111128)],
-                  ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          width: 42,
-                          height: 42,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
-                          ),
-                          child: const Center(child: Text('🇩🇪', style: TextStyle(fontSize: 24))),
-                        ),
-                        const SizedBox(width: 10),
-                        const Text('OperationTimer',
-                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white)),
-                      ],
+        child: Column(
+          children: [
+            // Header
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+              child: Row(
+                children: [
+                  GestureDetector(
+                    onTap: () => Navigator.pop(context),
+                    child: Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.06),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.1)),
+                      ),
+                      child: const Icon(Icons.arrow_back_ios_new,
+                          color: Colors.white, size: 16),
                     ),
-                    const SizedBox(height: 20),
-                    const Text('Einstellungen',
-                        style: TextStyle(fontSize: 26, fontWeight: FontWeight.w700, color: Colors.white)),
-                  ],
-                ),
+                  ),
+                  const SizedBox(width: 16),
+                  const Text(
+                    'Einstellungen',
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
+                  ),
+                ],
               ),
+            ),
 
-              Padding(
-                padding: const EdgeInsets.all(24),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(20),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    const SizedBox(height: 8),
 
                     // Benutzername
                     _SettingsCard(
@@ -392,49 +501,41 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
-                            'Vor- und Nachname eingeben. Der Vorname erscheint in der Begrüßung, der vollständige Name im PDF.',
-                            style: TextStyle(fontSize: 13, color: Color(0xFF555570), height: 1.5),
+                          Text(
+                            'Vor- und Nachname. Der Vorname erscheint in der Begrüßung, der vollständige Name im PDF.',
+                            style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.white.withValues(alpha: 0.4),
+                                height: 1.5),
                           ),
                           const SizedBox(height: 12),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 14, vertical: 4),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF0A0A0F),
+                              color: Colors.white.withValues(alpha: 0.05),
                               borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: const Color(0xFF1E1E35)),
+                              border: Border.all(
+                                  color:
+                                      Colors.white.withValues(alpha: 0.08)),
                             ),
                             child: TextField(
                               controller: _nameController,
-                              style: const TextStyle(color: Colors.white, fontSize: 15),
-                              decoration: const InputDecoration(
+                              style: const TextStyle(
+                                  color: Colors.white, fontSize: 15),
+                              decoration: InputDecoration(
                                 hintText: 'z.B. Max Mustermann',
-                                hintStyle: TextStyle(color: Color(0xFF444460)),
+                                hintStyle: TextStyle(
+                                    color:
+                                        Colors.white.withValues(alpha: 0.25)),
                                 border: InputBorder.none,
                                 isDense: true,
                               ),
                             ),
                           ),
                           const SizedBox(height: 12),
-                          GestureDetector(
-                            onTap: _saveSettings,
-                            child: Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              decoration: BoxDecoration(
-                                gradient: const LinearGradient(
-                                    colors: [Color(0xFF6C63FF), Color(0xFF4ECDC4)]),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: const Center(
-                                child: Text('Speichern',
-                                    style: TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 15)),
-                              ),
-                            ),
-                          ),
+                          _GradientButton(
+                              label: 'Speichern', onTap: _saveSettings),
                         ],
                       ),
                     ),
@@ -447,29 +548,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
-                            'Exportiere deine Arbeitszeiten als PDF und teile sie direkt per Mail, WhatsApp oder AirDrop.',
-                            style: TextStyle(fontSize: 13, color: Color(0xFF555570), height: 1.5),
+                          Text(
+                            'Exportiere deine Arbeitszeiten als PDF inkl. Notizen und teile sie per Mail, WhatsApp oder AirDrop.',
+                            style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.white.withValues(alpha: 0.4),
+                                height: 1.5),
                           ),
                           const SizedBox(height: 12),
-                          GestureDetector(
+                          _GradientButton(
+                            label: '📤  Zeiten exportieren & teilen',
                             onTap: _selectMonthForExport,
-                            child: Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              decoration: BoxDecoration(
-                                gradient: const LinearGradient(
-                                    colors: [Color(0xFF6C63FF), Color(0xFF4ECDC4)]),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: const Center(
-                                child: Text('📤  Monat exportieren & teilen',
-                                    style: TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 15)),
-                              ),
-                            ),
                           ),
                         ],
                       ),
@@ -483,37 +572,54 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
+                          Text(
                             'Alte Einträge automatisch löschen nach:',
-                            style: TextStyle(fontSize: 13, color: Color(0xFF555570)),
+                            style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.white.withValues(alpha: 0.4)),
                           ),
                           const SizedBox(height: 12),
                           Row(
                             children: [1, 3, 6, 12].map((months) {
-                              final isSelected = _deleteAfterMonths == months;
+                              final isSelected =
+                                  _deleteAfterMonths == months;
                               return Padding(
                                 padding: const EdgeInsets.only(right: 8),
                                 child: GestureDetector(
-                                  onTap: () => setState(() => _deleteAfterMonths = months),
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                                  onTap: () => setState(
+                                      () => _deleteAfterMonths = months),
+                                  child: AnimatedContainer(
+                                    duration:
+                                        const Duration(milliseconds: 200),
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 16, vertical: 10),
                                     decoration: BoxDecoration(
                                       gradient: isSelected
-                                          ? const LinearGradient(
-                                              colors: [Color(0xFF6C63FF), Color(0xFF4ECDC4)])
+                                          ? const LinearGradient(colors: [
+                                              Color(0xFF6C63FF),
+                                              Color(0xFF4ECDC4)
+                                            ])
                                           : null,
-                                      color: isSelected ? null : const Color(0xFF0A0A0F),
-                                      borderRadius: BorderRadius.circular(10),
+                                      color: isSelected
+                                          ? null
+                                          : Colors.white
+                                              .withValues(alpha: 0.05),
+                                      borderRadius:
+                                          BorderRadius.circular(10),
                                       border: Border.all(
                                         color: isSelected
                                             ? Colors.transparent
-                                            : const Color(0xFF1E1E35),
+                                            : Colors.white
+                                                .withValues(alpha: 0.08),
                                       ),
                                     ),
                                     child: Text(
                                       '${months}M',
                                       style: TextStyle(
-                                        color: isSelected ? Colors.white : const Color(0xFF555570),
+                                        color: isSelected
+                                            ? Colors.white
+                                            : Colors.white
+                                                .withValues(alpha: 0.4),
                                         fontWeight: FontWeight.w600,
                                         fontSize: 13,
                                       ),
@@ -528,19 +634,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             onTap: _deleteOldEntries,
                             child: Container(
                               width: double.infinity,
-                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              padding:
+                                  const EdgeInsets.symmetric(vertical: 14),
                               decoration: BoxDecoration(
-                                color: const Color(0xFFFF6B6B).withValues(alpha: 0.1),
+                                color: const Color(0xFFFF6B6B)
+                                    .withValues(alpha: 0.08),
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border.all(
-                                    color: const Color(0xFFFF6B6B).withValues(alpha: 0.3)),
+                                    color: const Color(0xFFFF6B6B)
+                                        .withValues(alpha: 0.25)),
                               ),
                               child: const Center(
-                                child: Text('🗑  Alte Einträge jetzt löschen',
-                                    style: TextStyle(
-                                        color: Color(0xFFFF6B6B),
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 15)),
+                                child: Text(
+                                  '🗑  Alte Einträge jetzt löschen',
+                                  style: TextStyle(
+                                      color: Color(0xFFFF6B6B),
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 15),
+                                ),
                               ),
                             ),
                           ),
@@ -549,19 +660,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                     const SizedBox(height: 32),
 
-                    // Version
                     Center(
                       child: Text(
                         'OperationTimer v1.0',
-                        style: TextStyle(fontSize: 12, color: Colors.white.withValues(alpha: 0.2)),
+                        style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.white.withValues(alpha: 0.15)),
                       ),
                     ),
                     const SizedBox(height: 8),
                   ],
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -573,16 +685,17 @@ class _SettingsCard extends StatelessWidget {
   final String title;
   final Widget child;
 
-  const _SettingsCard({required this.emoji, required this.title, required this.child});
+  const _SettingsCard(
+      {required this.emoji, required this.title, required this.child});
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: const Color(0xFF141420),
+        color: Colors.white.withValues(alpha: 0.04),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFF1E1E35)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -593,12 +706,46 @@ class _SettingsCard extends StatelessWidget {
               const SizedBox(width: 10),
               Text(title,
                   style: const TextStyle(
-                      fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white)),
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white)),
             ],
           ),
           const SizedBox(height: 14),
           child,
         ],
+      ),
+    );
+  }
+}
+
+class _GradientButton extends StatelessWidget {
+  final String label;
+  final VoidCallback onTap;
+
+  const _GradientButton({required this.label, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+              colors: [Color(0xFF6C63FF), Color(0xFF4ECDC4)]),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Center(
+          child: Text(
+            label,
+            style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+                fontSize: 15),
+          ),
+        ),
       ),
     );
   }

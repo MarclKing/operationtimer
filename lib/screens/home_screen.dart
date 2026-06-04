@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/services.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
 
@@ -10,17 +11,32 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   DateTime _selectedDate = DateTime.now();
   final _kommenController = TextEditingController();
   final _gehenController = TextEditingController();
   final _teamchefController = TextEditingController();
   final _notizController = TextEditingController();
+  late AnimationController _saveAnimController;
 
   @override
   void initState() {
     super.initState();
+    _saveAnimController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 150),
+    );
     _loadEntry();
+  }
+
+  @override
+  void dispose() {
+    _saveAnimController.dispose();
+    _kommenController.dispose();
+    _gehenController.dispose();
+    _teamchefController.dispose();
+    _notizController.dispose();
+    super.dispose();
   }
 
   String get _dateKey => DateFormat('yyyy-MM-dd').format(_selectedDate);
@@ -42,36 +58,82 @@ class _HomeScreenState extends State<HomeScreen> {
   void _loadEntry() {
     final box = Hive.box('arbeitszeiten');
     final entry = box.get(_dateKey);
-    if (entry != null) {
-      _kommenController.text = entry['kommen'] ?? '';
-      _gehenController.text = entry['gehen'] ?? '';
-      _teamchefController.text = entry['teamchef'] ?? '';
-      _notizController.text = entry['notiz'] ?? '';
-    } else {
-      _kommenController.clear();
-      _gehenController.clear();
-      _teamchefController.clear();
-      _notizController.clear();
+    setState(() {
+      if (entry != null) {
+        _kommenController.text = entry['kommen'] ?? '';
+        _gehenController.text = entry['gehen'] ?? '';
+        _teamchefController.text = entry['TKF'] ?? '';
+        _notizController.text = entry['notiz'] ?? '';
+      } else {
+        _kommenController.clear();
+        _gehenController.clear();
+        _teamchefController.clear();
+        _notizController.clear();
+      }
+    });
+  }
+
+  void _changeDate(int days) {
+    setState(() {
+      _selectedDate = _selectedDate.add(Duration(days: days));
+    });
+    _loadEntry();
+  }
+
+  // Zeit aus String parsen
+  TimeOfDay? _parseTime(String text) {
+    if (text.isEmpty || text == '--:--') return null;
+    try {
+      final parts = text.split(':');
+      return TimeOfDay(hour: int.parse(parts[0]), minute: int.parse(parts[1]));
+    } catch (_) {
+      return null;
     }
   }
 
-  void _saveEntry() {
+  // Zeit um Minuten ändern per Swipe
+  void _adjustTime(TextEditingController controller, int minutesDelta) {
+    TimeOfDay current = _parseTime(controller.text) ?? TimeOfDay.now();
+    final totalMinutes = current.hour * 60 + current.minute + minutesDelta;
+    final clampedMinutes = totalMinutes.clamp(0, 23 * 60 + 59);
+    final newHour = clampedMinutes ~/ 60;
+    final newMinute = clampedMinutes % 60;
+    setState(() {
+      controller.text =
+          '${newHour.toString().padLeft(2, '0')}:${newMinute.toString().padLeft(2, '0')}';
+    });
+    HapticFeedback.selectionClick();
+  }
+
+  void _saveEntry() async {
+    await _saveAnimController.forward();
+    await _saveAnimController.reverse();
     final box = Hive.box('arbeitszeiten');
     box.put(_dateKey, {
       'kommen': _kommenController.text,
       'gehen': _gehenController.text,
-      'teamchef': _teamchefController.text,
+      'TKF': _teamchefController.text,
       'notiz': _notizController.text,
       'datum': _dateKey,
     });
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('Eintrag gespeichert ✓'),
-        backgroundColor: const Color(0xFF6C63FF),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
-    );
+    setState(() {
+      _kommenController.clear();
+      _gehenController.clear();
+      _teamchefController.clear();
+      _notizController.clear();
+      _selectedDate = DateTime.now();
+    });
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Eintrag gespeichert ✓'),
+          backgroundColor: const Color(0xFF6C63FF),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+        ),
+      );
+    }
   }
 
   Future<void> _selectDate() async {
@@ -99,9 +161,10 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _selectTime(TextEditingController controller) async {
+    final current = _parseTime(controller.text);
     final picked = await showTimePicker(
       context: context,
-      initialTime: TimeOfDay.now(),
+      initialTime: current ?? TimeOfDay.now(),
       builder: (context, child) {
         return Theme(
           data: ThemeData.dark().copyWith(
@@ -127,196 +190,213 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isToday =
-        DateFormat('yyyy-MM-dd').format(DateTime.now()) == _dateKey;
-    final dateLabel = isToday
-        ? 'Heute'
-        : DateFormat('EEEE, d. MMMM yyyy', 'de').format(_selectedDate);
+    final isToday = DateFormat('yyyy-MM-dd').format(DateTime.now()) == _dateKey;
 
-    return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0F),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Hero Header
-              Container(
-                padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [Color(0xFF0A0A0F), Color(0xFF111128)],
+    return GestureDetector(
+      onHorizontalDragEnd: (details) {
+        if (details.primaryVelocity == null) return;
+        if (details.primaryVelocity! < -300) {
+          _changeDate(1);
+        } else if (details.primaryVelocity! > 300) {
+          _changeDate(-1);
+        }
+      },
+      child: Scaffold(
+        backgroundColor: const Color(0xFF0A0A0F),
+        body: SafeArea(
+          child: SingleChildScrollView(
+            physics: const ClampingScrollPhysics(),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 60),
+                // Begrüßung
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+                  child: RichText(
+                    text: TextSpan(
+                      style: const TextStyle(
+                        fontSize: 26,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                        height: 1.2,
+                      ),
+                      children: [
+                        TextSpan(text: _greeting),
+                        if (_firstName.isNotEmpty) ...[
+                          const TextSpan(text: ', '),
+                          TextSpan(
+                            text: _firstName,
+                            style: const TextStyle(color: Color(0xFF6C63FF)),
+                          ),
+                        ],
+                        const TextSpan(text: ' 👋'),
+                      ],
+                    ),
                   ),
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Logo Row
-                    Row(
-                      children: [
-                        Container(
-                          width: 42,
-                          height: 42,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                                color: Colors.white.withValues(alpha: 0.2)),
-                          ),
-                          child: const Center(
-                            child: Text('🇩🇪', style: TextStyle(fontSize: 24)),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        const Text(
-                          'OperationTimer',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                            letterSpacing: 0.3,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 20),
-                    // Greeting
-                    RichText(
-                      text: TextSpan(
-                        style: const TextStyle(
-                          fontSize: 26,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white,
-                          height: 1.2,
-                        ),
-                        children: [
-                          TextSpan(text: '$_greeting'),
-                          if (_firstName.isNotEmpty) ...[
-                            const TextSpan(text: ', '),
-                            TextSpan(
-                              text: _firstName,
-                              style:
-                                  const TextStyle(color: Color(0xFF6C63FF)),
-                            ),
-                          ],
-                          const TextSpan(text: ' 👋'),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+                const SizedBox(height: 20),
 
-              Padding(
-                padding: const EdgeInsets.fromLTRB(24, 0, 24, 0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Datum Chip – größer, direkt über Kommen/Gehen
-                    GestureDetector(
-                      onTap: _selectDate,
-                      child: Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 18, vertical: 14),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF141420),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: const Color(0xFF6C63FF).withValues(alpha: 0.4),
+                // Datum Navigation
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Row(
+                    children: [
+                      GestureDetector(
+                        onTap: () => _changeDate(-1),
+                        child: Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.06),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
                           ),
+                          child: const Icon(Icons.chevron_left, color: Colors.white54, size: 20),
                         ),
-                        child: Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF6C63FF)
-                                    .withValues(alpha: 0.15),
-                                borderRadius: BorderRadius.circular(10),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: _selectDate,
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF141420),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: isToday
+                                    ? const Color(0xFF6C63FF).withValues(alpha: 0.5)
+                                    : Colors.white.withValues(alpha: 0.1),
                               ),
-                              child: const Text('📅',
-                                  style: TextStyle(fontSize: 18)),
                             ),
-                            const SizedBox(width: 14),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                const Text(
-                                  'Datum',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: Color(0xFF6C63FF),
-                                    fontWeight: FontWeight.w600,
-                                    letterSpacing: 0.8,
-                                  ),
+                                const Text('📅', style: TextStyle(fontSize: 16)),
+                                const SizedBox(width: 10),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      isToday ? 'HEUTE' : 'DATUM',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w700,
+                                        color: isToday ? const Color(0xFF6C63FF) : Colors.white38,
+                                        letterSpacing: 1.0,
+                                      ),
+                                    ),
+                                    Text(
+                                      DateFormat('EEEE, d. MMMM yyyy', 'de').format(_selectedDate),
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                                Text(
-                                  DateFormat('EEEE, d. MMMM yyyy', 'de')
-                                      .format(_selectedDate),
-                                  style: const TextStyle(
-                                    fontSize: 15,
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
+                                const Spacer(),
+                                Icon(Icons.calendar_today_outlined,
+                                    color: Colors.white.withValues(alpha: 0.3), size: 16),
                               ],
                             ),
-                            const Spacer(),
-                            const Icon(Icons.chevron_right,
-                                color: Color(0xFF6C63FF), size: 20),
-                          ],
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 14),
-
-                    // Kommen & Gehen
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _TimeCard(
-                            label: 'KOMMEN',
-                            color: const Color(0xFF4ECDC4),
-                            controller: _kommenController,
-                            onTap: () => _selectTime(_kommenController),
+                      const SizedBox(width: 10),
+                      GestureDetector(
+                        onTap: () => _changeDate(1),
+                        child: Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.06),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
                           ),
+                          child: const Icon(Icons.chevron_right, color: Colors.white54, size: 20),
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _TimeCard(
-                            label: 'GEHEN',
-                            color: const Color(0xFFFF6B6B),
-                            controller: _gehenController,
-                            onTap: () => _selectTime(_gehenController),
-                          ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+
+                // Kommen & Gehen
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: _SwipeTimeCard(
+                          label: 'KOMMEN',
+                          color: const Color(0xFF4ECDC4),
+                          controller: _kommenController,
+                          onTap: () => _selectTime(_kommenController),
+                          onSwipeUp: () => _adjustTime(_kommenController, 1),
+                          onSwipeDown: () => _adjustTime(_kommenController, -1),
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 14),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _SwipeTimeCard(
+                          label: 'GEHEN',
+                          color: const Color(0xFFFF6B6B),
+                          controller: _gehenController,
+                          onTap: () => _selectTime(_gehenController),
+                          onSwipeUp: () => _adjustTime(_gehenController, 1),
+                          onSwipeDown: () => _adjustTime(_gehenController, -1),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Text(
+                    '↕ Auf Kachel wischen = Minute anpassen  ·  Tippen = Uhrzeit wählen',
+                    style: TextStyle(fontSize: 11, color: Colors.white.withValues(alpha: 0.25)),
+                  ),
+                ),
+                const SizedBox(height: 12),
 
-                    // Teamchef
-                    _DarkInputCard(
-                      label: 'TEAMCHEF',
-                      emoji: '👤',
-                      controller: _teamchefController,
-                      hint: 'Name des Teamchefs',
-                    ),
-                    const SizedBox(height: 12),
+                // TKF
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: _GlassInputCard(
+                    label: 'TAGESKOMMANDOFÜHRER',
+                    emoji: '👤',
+                    controller: _teamchefController,
+                    hint: 'Name des Tageskommandoführers',
+                  ),
+                ),
+                const SizedBox(height: 12),
 
-                    // Notiz
-                    _DarkInputCard(
-                      label: 'NOTIZ',
-                      emoji: '📝',
-                      controller: _notizController,
-                      hint: 'Optionale Notiz zum Tag...',
-                      maxLines: 3,
-                    ),
-                    const SizedBox(height: 24),
+                // Notiz
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: _GlassInputCard(
+                    label: 'NOTIZ',
+                    emoji: '📝',
+                    controller: _notizController,
+                    hint: 'Optionale Notiz zum Tag...',
+                    maxLines: 3,
+                  ),
+                ),
+                const SizedBox(height: 24),
 
-                    // Save Button
-                    GestureDetector(
+                // Speichern Button
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: ScaleTransition(
+                    scale: Tween<double>(begin: 1.0, end: 0.95).animate(
+                      CurvedAnimation(parent: _saveAnimController, curve: Curves.easeInOut),
+                    ),
+                    child: GestureDetector(
                       onTap: _saveEntry,
                       child: Container(
                         width: double.infinity,
@@ -326,6 +406,13 @@ class _HomeScreenState extends State<HomeScreen> {
                             colors: [Color(0xFF6C63FF), Color(0xFF4ECDC4)],
                           ),
                           borderRadius: BorderRadius.circular(18),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFF6C63FF).withValues(alpha: 0.3),
+                              blurRadius: 20,
+                              offset: const Offset(0, 8),
+                            ),
+                          ],
                         ),
                         child: const Center(
                           child: Text(
@@ -340,9 +427,105 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 32),
-                  ],
+                  ),
                 ),
+                const SizedBox(height: 100),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// Kachel mit Swipe-Funktion für Zeitanpassung
+class _SwipeTimeCard extends StatefulWidget {
+  final String label;
+  final Color color;
+  final TextEditingController controller;
+  final VoidCallback onTap;
+  final VoidCallback onSwipeUp;
+  final VoidCallback onSwipeDown;
+
+  const _SwipeTimeCard({
+    required this.label,
+    required this.color,
+    required this.controller,
+    required this.onTap,
+    required this.onSwipeUp,
+    required this.onSwipeDown,
+  });
+
+  @override
+  State<_SwipeTimeCard> createState() => _SwipeTimeCardState();
+}
+
+class _SwipeTimeCardState extends State<_SwipeTimeCard> {
+  double _dragStart = 0;
+  double _accumulated = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: widget.onTap,
+      onVerticalDragStart: (details) {
+        _dragStart = details.localPosition.dy;
+        _accumulated = 0;
+      },
+      onVerticalDragUpdate: (details) {
+        _accumulated += _dragStart - details.localPosition.dy;
+        _dragStart = details.localPosition.dy;
+        // Pro 8 Pixel = 1 Minute
+        if (_accumulated >= 8) {
+          _accumulated -= 8;
+          widget.onSwipeUp();
+        } else if (_accumulated <= -8) {
+          _accumulated += 8;
+          widget.onSwipeDown();
+        }
+      },
+      child: AnimatedBuilder(
+        animation: widget.controller,
+        builder: (context, _) => Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: widget.color.withValues(alpha: 0.06),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: widget.color.withValues(alpha: 0.25)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    widget.label,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: widget.color,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                  Icon(Icons.unfold_more, color: widget.color.withValues(alpha: 0.5), size: 16),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Text(
+                widget.controller.text.isEmpty ? '--:--' : widget.controller.text,
+                style: const TextStyle(
+                  fontSize: 32,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                  letterSpacing: -1,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                widget.controller.text.isEmpty ? 'Tippen zum Eintragen' : 'Wischen zum Anpassen',
+                style: TextStyle(fontSize: 11, color: Colors.white.withValues(alpha: 0.3)),
               ),
             ],
           ),
@@ -352,72 +535,14 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-class _TimeCard extends StatelessWidget {
-  final String label;
-  final Color color;
-  final TextEditingController controller;
-  final VoidCallback onTap;
-
-  const _TimeCard({
-    required this.label,
-    required this.color,
-    required this.controller,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          color: const Color(0xFF141420),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: color.withValues(alpha: 0.3)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                color: color,
-                letterSpacing: 1.2,
-              ),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              controller.text.isEmpty ? '--:--' : controller.text,
-              style: const TextStyle(
-                fontSize: 32,
-                fontWeight: FontWeight.w700,
-                color: Colors.white,
-                letterSpacing: -1,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              controller.text.isEmpty ? 'Tippen zum Eintragen' : 'Tippen zum Ändern',
-              style: TextStyle(fontSize: 11, color: Colors.white.withValues(alpha: 0.3)),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _DarkInputCard extends StatelessWidget {
+class _GlassInputCard extends StatelessWidget {
   final String label;
   final String emoji;
   final TextEditingController controller;
   final String hint;
   final int maxLines;
 
-  const _DarkInputCard({
+  const _GlassInputCard({
     required this.label,
     required this.emoji,
     required this.controller,
@@ -430,9 +555,9 @@ class _DarkInputCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF141420),
+        color: Colors.white.withValues(alpha: 0.04),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFF1E1E35)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -467,8 +592,7 @@ class _DarkInputCard extends StatelessWidget {
                   style: const TextStyle(color: Colors.white, fontSize: 15),
                   decoration: InputDecoration(
                     hintText: hint,
-                    hintStyle: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.25), fontSize: 15),
+                    hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.25), fontSize: 15),
                     border: InputBorder.none,
                     isDense: true,
                     contentPadding: EdgeInsets.zero,

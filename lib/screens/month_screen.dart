@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
+import '../services/pdf_service.dart';
 
 class MonthScreen extends StatefulWidget {
   const MonthScreen({super.key});
@@ -41,6 +43,238 @@ class _MonthScreenState extends State<MonthScreen> {
     }
   }
 
+  void _deleteEntry(String datum) {
+    final box = Hive.box('arbeitszeiten');
+    box.delete(datum);
+    setState(() {});
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('Eintrag gelöscht'),
+        backgroundColor: const Color(0xFFFF6B6B),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        margin: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+      ),
+    );
+  }
+
+  void _copyEntry(Map<String, dynamic> entry) async {
+    final targetDate = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2030),
+      helpText: 'Tag auswählen zum Kopieren',
+      builder: (context, child) {
+        return Theme(
+          data: ThemeData.dark().copyWith(
+            colorScheme: const ColorScheme.dark(
+              primary: Color(0xFF6C63FF),
+              surface: Color(0xFF141420),
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+    if (targetDate == null) return;
+    final newKey = DateFormat('yyyy-MM-dd').format(targetDate);
+    final box = Hive.box('arbeitszeiten');
+    box.put(newKey, {
+      'kommen': entry['kommen'] ?? '',
+      'gehen': entry['gehen'] ?? '',
+      'TKF': entry['TKF'] ?? '',
+      'notiz': entry['notiz'] ?? '',
+      'datum': newKey,
+    });
+    setState(() {});
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Kopiert auf ${DateFormat('dd.MM.yyyy').format(targetDate)}'),
+          backgroundColor: const Color(0xFF4ECDC4),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+        ),
+      );
+    }
+  }
+
+  void _editEntry(Map<String, dynamic> entry) {
+    final kommenCtrl = TextEditingController(text: entry['kommen'] ?? '');
+    final gehenCtrl = TextEditingController(text: entry['gehen'] ?? '');
+    final tkfCtrl = TextEditingController(text: entry['TKF'] ?? '');
+    final notizCtrl = TextEditingController(text: entry['notiz'] ?? '');
+    final datum = DateTime.parse(entry['datum']);
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+          top: 24,
+          left: 24,
+          right: 24,
+        ),
+        decoration: BoxDecoration(
+          color: const Color(0xFF141420),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              'Eintrag bearbeiten – ${DateFormat('dd.MM.yyyy').format(datum)}',
+              style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 20),
+            _EditField(label: 'Kommen', controller: kommenCtrl),
+            const SizedBox(height: 12),
+            _EditField(label: 'Gehen', controller: gehenCtrl),
+            const SizedBox(height: 12),
+            _EditField(label: 'TKF', controller: tkfCtrl),
+            const SizedBox(height: 12),
+            _EditField(label: 'Notiz', controller: notizCtrl, maxLines: 2),
+            const SizedBox(height: 20),
+            GestureDetector(
+              onTap: () {
+                final box = Hive.box('arbeitszeiten');
+                box.put(entry['datum'], {
+                  'kommen': kommenCtrl.text,
+                  'gehen': gehenCtrl.text,
+                  'TKF': tkfCtrl.text,
+                  'notiz': notizCtrl.text,
+                  'datum': entry['datum'],
+                });
+                setState(() {});
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: const Text('Eintrag aktualisiert ✓'),
+                    backgroundColor: const Color(0xFF6C63FF),
+                    behavior: SnackBarBehavior.floating,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    margin: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+                  ),
+                );
+              },
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(colors: [Color(0xFF6C63FF), Color(0xFF4ECDC4)]),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Center(
+                  child: Text('Speichern', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 16)),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showEntryOptions(Map<String, dynamic> entry) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        padding: const EdgeInsets.fromLTRB(24, 16, 24, 40),
+        decoration: BoxDecoration(
+          color: const Color(0xFF141420),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            _OptionButton(
+              emoji: '✏️',
+              label: 'Bearbeiten',
+              color: const Color(0xFF6C63FF),
+              onTap: () {
+                Navigator.pop(context);
+                _editEntry(entry);
+              },
+            ),
+            const SizedBox(height: 10),
+            _OptionButton(
+              emoji: '📋',
+              label: 'Tag kopieren',
+              color: const Color(0xFF4ECDC4),
+              onTap: () {
+                Navigator.pop(context);
+                _copyEntry(entry);
+              },
+            ),
+            const SizedBox(height: 10),
+            _OptionButton(
+              emoji: '🗑',
+              label: 'Löschen',
+              color: const Color(0xFFFF6B6B),
+              onTap: () {
+                Navigator.pop(context);
+                _deleteEntry(entry['datum']);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<bool> _confirmDelete(BuildContext context) async {
+    return await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            backgroundColor: const Color(0xFF141420),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+            title: const Text('Eintrag löschen?', style: TextStyle(color: Colors.white)),
+            content: const Text('Dieser Eintrag wird dauerhaft gelöscht.', style: TextStyle(color: Colors.white60)),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Abbrechen', style: TextStyle(color: Colors.white60)),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Löschen', style: TextStyle(color: Color(0xFFFF6B6B))),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+  }
+
   @override
   Widget build(BuildContext context) {
     final entries = _getEntriesForMonth();
@@ -53,70 +287,43 @@ class _MonthScreenState extends State<MonthScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // Header
-            Container(
-              padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [Color(0xFF0A0A0F), Color(0xFF111128)],
-                ),
-              ),
+            const SizedBox(height: 60),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      Container(
-                        width: 42,
-                        height: 42,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
-                        ),
-                        child: const Center(child: Text('🇩🇪', style: TextStyle(fontSize: 24))),
-                      ),
-                      const SizedBox(width: 10),
-                      const Text('OperationTimer',
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white)),
-                    ],
+                  const Text(
+                    'Monatsübersicht',
+                    style: TextStyle(fontSize: 26, fontWeight: FontWeight.w700, color: Colors.white),
                   ),
-                  const SizedBox(height: 20),
-                  const Text('Monatsübersicht',
-                      style: TextStyle(fontSize: 26, fontWeight: FontWeight.w700, color: Colors.white)),
                   const SizedBox(height: 16),
-
-                  // Monats-Navigation
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
                       color: const Color(0xFF141420),
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: const Color(0xFF1E1E35)),
+                      border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         IconButton(
-                          onPressed: () => setState(() =>
-                              _selectedMonth = DateTime(_selectedMonth.year, _selectedMonth.month - 1)),
+                          onPressed: () => setState(() => _selectedMonth =
+                              DateTime(_selectedMonth.year, _selectedMonth.month - 1)),
                           icon: const Icon(Icons.chevron_left, color: Color(0xFF6C63FF)),
                         ),
                         Text(monthName,
-                            style: const TextStyle(
-                                fontSize: 16, fontWeight: FontWeight.w600, color: Colors.white)),
+                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.white)),
                         IconButton(
-                          onPressed: () => setState(() =>
-                              _selectedMonth = DateTime(_selectedMonth.year, _selectedMonth.month + 1)),
+                          onPressed: () => setState(() => _selectedMonth =
+                              DateTime(_selectedMonth.year, _selectedMonth.month + 1)),
                           icon: const Icon(Icons.chevron_right, color: Color(0xFF6C63FF)),
                         ),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 14),
-
-                  // Stats Row
+                  const SizedBox(height: 12),
                   Row(
                     children: [
                       _StatCard(label: 'Einträge', value: '${entries.length}', color: const Color(0xFF6C63FF)),
@@ -126,26 +333,32 @@ class _MonthScreenState extends State<MonthScreen> {
                       _StatCard(label: 'Offen', value: '$open', color: const Color(0xFFFF6B6B)),
                     ],
                   ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Rechts swipen: Bearbeiten/PDF  ·  Links swipen: Löschen',
+                    style: TextStyle(fontSize: 12, color: Colors.white.withValues(alpha: 0.3)),
+                  ),
                 ],
               ),
             ),
-
-            // Liste
+            const SizedBox(height: 8),
             Expanded(
               child: entries.isEmpty
                   ? Center(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Text('📭', style: TextStyle(fontSize: 48)),
+                          const Text('📭', style: TextStyle(fontSize: 48)),
                           const SizedBox(height: 12),
-                          const Text('Keine Einträge',
-                              style: TextStyle(color: Color(0xFF555570), fontSize: 16)),
+                          Text(
+                            'Keine Einträge für diesen Monat',
+                            style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 15),
+                          ),
                         ],
                       ),
                     )
                   : ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+                      padding: const EdgeInsets.fromLTRB(24, 4, 24, 100),
                       itemCount: entries.length,
                       itemBuilder: (context, index) {
                         final entry = entries[index];
@@ -154,96 +367,204 @@ class _MonthScreenState extends State<MonthScreen> {
                         final dayNum = DateFormat('dd').format(datum);
                         final kommen = entry['kommen'] ?? '';
                         final gehen = entry['gehen'] ?? '';
-                        final teamchef = entry['teamchef'] ?? '';
+                        final tkf = entry['TKF'] ?? '';
+                        final notiz = entry['notiz'] ?? '';
                         final duration = _calcDuration(kommen, gehen);
                         final isComplete = gehen.isNotEmpty;
 
-                        return Container(
-                          margin: const EdgeInsets.only(bottom: 10),
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF141420),
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: ClipRRect(
                             borderRadius: BorderRadius.circular(18),
-                            border: Border.all(
-                              color: isComplete
-                                  ? const Color(0xFF4ECDC4).withValues(alpha: 0.2)
-                                  : const Color(0xFFFF6B6B).withValues(alpha: 0.2),
-                            ),
-                          ),
-                          child: Row(
-                            children: [
-                              // Datum Badge
-                              Container(
-                                width: 52,
-                                padding: const EdgeInsets.symmetric(vertical: 10),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF6C63FF).withValues(alpha: 0.12),
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Column(
-                                  children: [
-                                    Text(dayName.toUpperCase(),
-                                        style: const TextStyle(
-                                            fontSize: 10, color: Color(0xFF6C63FF), fontWeight: FontWeight.w700)),
-                                    Text(dayNum,
-                                        style: const TextStyle(
-                                            fontSize: 22, fontWeight: FontWeight.w700, color: Colors.white)),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(width: 14),
-
-                              // Zeiten
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
+                            child: Slidable(
+                              key: Key(entry['datum']),
+                              // Rechts swipen = Bearbeiten + PDF
+                              startActionPane: ActionPane(
+                                motion: const DrawerMotion(),
+                                extentRatio: 0.5,
+                                children: [
+                                  CustomSlidableAction(
+                                    onPressed: (_) => _editEntry(entry),
+                                    backgroundColor: const Color(0xFF6C63FF),
+                                    child: const Column(
+                                      mainAxisAlignment: MainAxisAlignment.center,
                                       children: [
-                                        _TimeChip(time: kommen.isEmpty ? '--:--' : kommen, color: const Color(0xFF4ECDC4)),
-                                        const Padding(
-                                          padding: EdgeInsets.symmetric(horizontal: 8),
-                                          child: Icon(Icons.arrow_forward, size: 14, color: Color(0xFF555570)),
-                                        ),
-                                        _TimeChip(time: gehen.isEmpty ? '--:--' : gehen, color: const Color(0xFFFF6B6B)),
+                                        Icon(Icons.edit_outlined, color: Colors.white, size: 26),
+                                        SizedBox(height: 4),
+                                        Text('Bearbeiten',
+                                            style: TextStyle(
+                                                color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600)),
                                       ],
                                     ),
-                                    if (teamchef.isNotEmpty) ...[
-                                      const SizedBox(height: 6),
-                                      Text('👤 $teamchef',
-                                          style: const TextStyle(fontSize: 12, color: Color(0xFF555570))),
-                                    ],
-                                  ],
-                                ),
-                              ),
-
-                              // Dauer & Status
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.end,
-                                children: [
-                                  Text(duration,
-                                      style: const TextStyle(
-                                          fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white)),
-                                  const SizedBox(height: 4),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                    decoration: BoxDecoration(
-                                      color: isComplete
-                                          ? const Color(0xFF4ECDC4).withValues(alpha: 0.12)
-                                          : const Color(0xFFFF6B6B).withValues(alpha: 0.12),
-                                      borderRadius: BorderRadius.circular(6),
-                                    ),
-                                    child: Text(
-                                      isComplete ? '✓ Ok' : '⏳ Offen',
-                                      style: TextStyle(
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w600,
-                                          color: isComplete ? const Color(0xFF4ECDC4) : const Color(0xFFFF6B6B)),
+                                  ),
+                                  CustomSlidableAction(
+                                    onPressed: (_) => PdfService.exportSingleEntry(entry),
+                                    backgroundColor: const Color(0xFF4ECDC4),
+                                    child: const Column(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(Icons.picture_as_pdf_outlined, color: Colors.white, size: 26),
+                                        SizedBox(height: 4),
+                                        Text('Tag als PDF teilen',
+                                            style: TextStyle(
+                                                color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600)),
+                                      ],
                                     ),
                                   ),
                                 ],
                               ),
-                            ],
+                              // Links swipen = Löschen
+                              endActionPane: ActionPane(
+                                motion: const DrawerMotion(),
+                                extentRatio: 0.25,
+                                children: [
+                                  CustomSlidableAction(
+                                    onPressed: (_) async {
+                                      final confirm = await _confirmDelete(context);
+                                      if (confirm) _deleteEntry(entry['datum']);
+                                    },
+                                    backgroundColor: const Color(0xFFFF6B6B),
+                                    child: const Column(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(Icons.delete_outline, color: Colors.white, size: 26),
+                                        SizedBox(height: 4),
+                                        Text('Löschen',
+                                            style: TextStyle(
+                                                color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600)),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              child: GestureDetector(
+                                onLongPress: () => _showEntryOptions(entry),
+                                child: Container(
+                                  padding: const EdgeInsets.all(16),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF141420),
+                                    border: Border.all(
+                                      color: isComplete
+                                          ? const Color(0xFF4ECDC4).withValues(alpha: 0.2)
+                                          : const Color(0xFFFF6B6B).withValues(alpha: 0.2),
+                                    ),
+                                  ),
+                                  child: Column(
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Container(
+                                            width: 52,
+                                            padding: const EdgeInsets.symmetric(vertical: 10),
+                                            decoration: BoxDecoration(
+                                              color: const Color(0xFF6C63FF).withValues(alpha: 0.12),
+                                              borderRadius: BorderRadius.circular(12),
+                                            ),
+                                            child: Column(
+                                              children: [
+                                                Text(dayName.toUpperCase(),
+                                                    style: const TextStyle(
+                                                        fontSize: 10,
+                                                        color: Color(0xFF6C63FF),
+                                                        fontWeight: FontWeight.w700)),
+                                                Text(dayNum,
+                                                    style: const TextStyle(
+                                                        fontSize: 22,
+                                                        fontWeight: FontWeight.w700,
+                                                        color: Colors.white)),
+                                              ],
+                                            ),
+                                          ),
+                                          const SizedBox(width: 14),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Row(
+                                                  children: [
+                                                    _TimeChip(
+                                                        time: kommen.isEmpty ? '--:--' : kommen,
+                                                        color: const Color(0xFF4ECDC4)),
+                                                    const Padding(
+                                                      padding: EdgeInsets.symmetric(horizontal: 8),
+                                                      child: Icon(Icons.arrow_forward,
+                                                          size: 14, color: Color(0xFF555570)),
+                                                    ),
+                                                    _TimeChip(
+                                                        time: gehen.isEmpty ? '--:--' : gehen,
+                                                        color: const Color(0xFFFF6B6B)),
+                                                  ],
+                                                ),
+                                                if (tkf.isNotEmpty) ...[
+                                                  const SizedBox(height: 6),
+                                                  Text('👤 $tkf',
+                                                      style: const TextStyle(
+                                                          fontSize: 12, color: Color(0xFF555570))),
+                                                ],
+                                              ],
+                                            ),
+                                          ),
+                                          Column(
+                                            crossAxisAlignment: CrossAxisAlignment.end,
+                                            children: [
+                                              Text(duration,
+                                                  style: const TextStyle(
+                                                      fontSize: 15,
+                                                      fontWeight: FontWeight.w700,
+                                                      color: Colors.white)),
+                                              const SizedBox(height: 4),
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(
+                                                    horizontal: 8, vertical: 3),
+                                                decoration: BoxDecoration(
+                                                  color: isComplete
+                                                      ? const Color(0xFF4ECDC4).withValues(alpha: 0.12)
+                                                      : const Color(0xFFFF6B6B).withValues(alpha: 0.12),
+                                                  borderRadius: BorderRadius.circular(6),
+                                                ),
+                                                child: Text(
+                                                  isComplete ? '✓ Ok' : '⏳ Offen',
+                                                  style: TextStyle(
+                                                    fontSize: 11,
+                                                    fontWeight: FontWeight.w600,
+                                                    color: isComplete
+                                                        ? const Color(0xFF4ECDC4)
+                                                        : const Color(0xFFFF6B6B),
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
+                                      if (notiz.isNotEmpty) ...[
+                                        const SizedBox(height: 10),
+                                        Container(
+                                          width: double.infinity,
+                                          padding: const EdgeInsets.all(10),
+                                          decoration: BoxDecoration(
+                                            color: Colors.white.withValues(alpha: 0.04),
+                                            borderRadius: BorderRadius.circular(10),
+                                          ),
+                                          child: Row(
+                                            children: [
+                                              const Text('📝', style: TextStyle(fontSize: 12)),
+                                              const SizedBox(width: 8),
+                                              Expanded(
+                                                child: Text(notiz,
+                                                    style: TextStyle(
+                                                        fontSize: 12,
+                                                        color: Colors.white.withValues(alpha: 0.6))),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
                           ),
                         );
                       },
@@ -267,17 +588,17 @@ class _StatCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Expanded(
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 14),
+        padding: const EdgeInsets.symmetric(vertical: 12),
         decoration: BoxDecoration(
-          color: const Color(0xFF141420),
+          color: color.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(14),
           border: Border.all(color: color.withValues(alpha: 0.2)),
         ),
         child: Column(
           children: [
-            Text(value, style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700, color: color)),
+            Text(value, style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: color)),
             const SizedBox(height: 2),
-            Text(label, style: const TextStyle(fontSize: 11, color: Color(0xFF555570), fontWeight: FontWeight.w500)),
+            Text(label, style: const TextStyle(fontSize: 11, color: Color(0xFF555570))),
           ],
         ),
       ),
@@ -300,6 +621,73 @@ class _TimeChip extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
       ),
       child: Text(time, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: color)),
+    );
+  }
+}
+
+class _EditField extends StatelessWidget {
+  final String label;
+  final TextEditingController controller;
+  final int maxLines;
+
+  const _EditField({required this.label, required this.controller, this.maxLines = 1});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label,
+              style: const TextStyle(
+                  fontSize: 11, color: Color(0xFF6C63FF), fontWeight: FontWeight.w600, letterSpacing: 0.8)),
+          TextField(
+            controller: controller,
+            maxLines: maxLines,
+            style: const TextStyle(color: Colors.white, fontSize: 15),
+            decoration: const InputDecoration(
+                border: InputBorder.none, isDense: true, contentPadding: EdgeInsets.zero),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _OptionButton extends StatelessWidget {
+  final String emoji;
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _OptionButton({required this.emoji, required this.label, required this.color, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: color.withValues(alpha: 0.2)),
+        ),
+        child: Row(
+          children: [
+            Text(emoji, style: const TextStyle(fontSize: 20)),
+            const SizedBox(width: 14),
+            Text(label, style: TextStyle(color: color, fontSize: 16, fontWeight: FontWeight.w600)),
+          ],
+        ),
+      ),
     );
   }
 }
