@@ -223,7 +223,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // 🔥 Korrigierter Abstand oben - respektiert die Status Bar
-                SizedBox(height: topPadding > 0 ? 16 : 24),
+                const SizedBox(height: 8),
                 
                 // 🔥 Neues Header-Design: Begrüßung + Name in zwei Zeilen
                 Padding(
