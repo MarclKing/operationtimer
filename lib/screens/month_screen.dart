@@ -405,7 +405,7 @@ class _MonthScreenState extends State<MonthScreen> {
                                       children: [
                                         Icon(Icons.picture_as_pdf_outlined, color: Colors.white, size: 26),
                                         SizedBox(height: 4),
-                                        Text('Tag als PDF teilen',
+                                        Text('Tag teilen',
                                             style: TextStyle(
                                                 color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600)),
                                       ],
