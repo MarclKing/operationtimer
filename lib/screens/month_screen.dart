@@ -23,7 +23,6 @@ class _MonthScreenState extends State<MonthScreen> {
   final Map<String, GlobalKey<_SlidableRowState>> _rowKeys = {};
   bool _dragOnInteractive = false;
 
-  // ── Snackbar-Cooldown ──────────────────────────────────────────────────────
   final Map<String, DateTime> _lastSnackbarTime = {};
   static const Duration _snackbarCooldown = Duration(seconds: 5);
 
@@ -285,8 +284,8 @@ class _MonthScreenState extends State<MonthScreen> {
           pw.SizedBox(height: 6),
           pw.Text(
             'Erstellt am ${DateFormat('dd.MM.yyyy HH:mm').format(DateTime.now())}',
-            style:
-                pw.TextStyle(font: font, fontSize: 9, color: PdfColors.grey400),
+            style: pw.TextStyle(
+                font: font, fontSize: 9, color: PdfColors.grey400),
           ),
         ],
       ),
@@ -523,8 +522,7 @@ class _MonthScreenState extends State<MonthScreen> {
                                       color: skin.bgCard,
                                       borderRadius: BorderRadius.circular(14),
                                       border: Border.all(
-                                          color:
-                                              skin.primaryWithAlpha(0.35)),
+                                          color: skin.primaryWithAlpha(0.35)),
                                     ),
                                     child: Row(
                                       mainAxisAlignment:
@@ -698,7 +696,7 @@ class _MonthScreenState extends State<MonthScreen> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SLIDABLE ROW – rowHeight auf 90px erhöht (war 80px), vertical padding +2
+// SLIDABLE ROW
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _SlidableRow extends StatefulWidget {
@@ -864,7 +862,6 @@ class _SlidableRowState extends State<_SlidableRow>
     final entriesForDay = NightShiftHelper.getEntriesForDay(datum);
     final showNumber = entriesForDay.length > 1;
 
-    // ── FIX: 90px statt 80px, gibt TKF + Notiz genug Luft ──────────────────
     const double rowHeight = 90.0;
 
     return AnimatedBuilder(
@@ -893,7 +890,7 @@ class _SlidableRowState extends State<_SlidableRow>
             child: Stack(
               clipBehavior: Clip.hardEdge,
               children: [
-                // LINKS: Edit + Share
+                // ── LINKS: Edit + Share ──────────────────────────────────────
                 Positioned(
                   left: 0,
                   top: 0,
@@ -901,11 +898,13 @@ class _SlidableRowState extends State<_SlidableRow>
                   width: _editReveal,
                   child: Row(
                     children: [
+                      // Edit
                       Expanded(
                         child: GestureDetector(
                           onTap: () {
                             _animateTo(0);
-                            Future.delayed(const Duration(milliseconds: 200),
+                            Future.delayed(
+                                const Duration(milliseconds: 200),
                                 widget.onEdit);
                           },
                           child: Container(
@@ -937,15 +936,23 @@ class _SlidableRowState extends State<_SlidableRow>
                           ),
                         ),
                       ),
+                      // Share — FIX: color nur in BoxDecoration, kein paralleles color-Feld
                       Expanded(
                         child: GestureDetector(
                           onTap: () {
                             _animateTo(0);
-                            Future.delayed(const Duration(milliseconds: 200),
+                            Future.delayed(
+                                const Duration(milliseconds: 200),
                                 widget.onShare);
                           },
                           child: Container(
-                            color: skin.statComplete,
+                            decoration: BoxDecoration(
+  color: skin.statComplete,
+  borderRadius: const BorderRadius.only(
+    topRight: Radius.circular(18),
+    bottomRight: Radius.circular(18),
+  ),
+),
                             child: const Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
@@ -966,7 +973,7 @@ class _SlidableRowState extends State<_SlidableRow>
                   ),
                 ),
 
-                // RECHTS: Löschen
+                // ── RECHTS: Löschen ──────────────────────────────────────────
                 Positioned(
                   right: 0,
                   top: 0,
@@ -982,10 +989,7 @@ class _SlidableRowState extends State<_SlidableRow>
                         child: Container(
                           decoration: BoxDecoration(
                             color: skin.deleteColor,
-                            borderRadius: const BorderRadius.only(
-                              topRight: Radius.circular(18),
-                              bottomRight: Radius.circular(18),
-                            ),
+                            borderRadius: BorderRadius.circular(18),
                             boxShadow: _deleteAnimController.value > 0
                                 ? [
                                     BoxShadow(
@@ -1019,7 +1023,7 @@ class _SlidableRowState extends State<_SlidableRow>
                   ),
                 ),
 
-                // KACHEL
+                // ── KACHEL ───────────────────────────────────────────────────
                 Positioned(
                   left: 0,
                   top: 0,
@@ -1033,7 +1037,6 @@ class _SlidableRowState extends State<_SlidableRow>
                         borderRadius: BorderRadius.circular(18),
                         border: Border.all(color: borderColor),
                       ),
-                      // ── FIX: vertical padding von 8 auf 10 erhöht ────────
                       padding: const EdgeInsets.symmetric(
                           horizontal: 12, vertical: 10),
                       child: Row(
@@ -1065,7 +1068,8 @@ class _SlidableRowState extends State<_SlidableRow>
                                     padding: const EdgeInsets.symmetric(
                                         horizontal: 4, vertical: 1),
                                     decoration: BoxDecoration(
-                                      color: skin.primary.withValues(alpha: 0.2),
+                                      color: skin.primary
+                                          .withValues(alpha: 0.2),
                                       borderRadius: BorderRadius.circular(4),
                                     ),
                                     child: Text('${entryNumber}.',
@@ -1091,7 +1095,8 @@ class _SlidableRowState extends State<_SlidableRow>
                                       decoration: BoxDecoration(
                                         color: skin.kommenColor
                                             .withValues(alpha: 0.1),
-                                        borderRadius: BorderRadius.circular(8),
+                                        borderRadius:
+                                            BorderRadius.circular(8),
                                       ),
                                       child: Text(
                                         kommen.isEmpty ? '--:--' : kommen,
@@ -1111,7 +1116,8 @@ class _SlidableRowState extends State<_SlidableRow>
                                       decoration: BoxDecoration(
                                         color: skin.gehenColor
                                             .withValues(alpha: 0.1),
-                                        borderRadius: BorderRadius.circular(8),
+                                        borderRadius:
+                                            BorderRadius.circular(8),
                                       ),
                                       child: Text(
                                         gehen.isEmpty ? '--:--' : gehen,
@@ -1147,8 +1153,8 @@ class _SlidableRowState extends State<_SlidableRow>
                                         const SizedBox(width: 8),
                                       Icon(Icons.note_outlined,
                                           size: 11,
-                                          color: skin.primary.withValues(
-                                              alpha: 0.45)),
+                                          color: skin.primary
+                                              .withValues(alpha: 0.45)),
                                     ],
                                   ],
                                 ),
@@ -1170,7 +1176,8 @@ class _SlidableRowState extends State<_SlidableRow>
                                     horizontal: 7, vertical: 3),
                                 decoration: BoxDecoration(
                                   color: isComplete
-                                      ? skin.statComplete.withValues(alpha: 0.12)
+                                      ? skin.statComplete
+                                          .withValues(alpha: 0.12)
                                       : skin.statOpen.withValues(alpha: 0.12),
                                   borderRadius: BorderRadius.circular(6),
                                 ),
@@ -1712,32 +1719,32 @@ class _StatCard extends StatelessWidget {
     final skin = AppTheme.of(context);
     return Expanded(
       child: Container(
-  padding: const EdgeInsets.symmetric(vertical: 8),
-  decoration: BoxDecoration(
-    color: color.withValues(alpha: 0.08),
-    borderRadius: BorderRadius.circular(12),
-    border: Border.all(color: color.withValues(alpha: 0.2)),
-  ),
-  child: Row(
-    mainAxisAlignment: MainAxisAlignment.center,
-    children: [
-      Text(value,
-          style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-              color: color)),
-      const SizedBox(width: 5),
-      Text(label,
-          style: TextStyle(fontSize: 11, color: skin.textMuted)),
-    ],
-  ),
-),
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: color.withValues(alpha: 0.2)),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(value,
+                style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: color)),
+            const SizedBox(width: 5),
+            Text(label,
+                style: TextStyle(fontSize: 11, color: skin.textMuted)),
+          ],
+        ),
+      ),
     );
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// FADING LIST VIEW – Einträge faden unter dem Export-Button aus
+// FADING LIST VIEW
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _FadingListView extends StatelessWidget {
@@ -1754,7 +1761,7 @@ class _FadingListView extends StatelessWidget {
     return ShaderMask(
       shaderCallback: (bounds) {
         final h = bounds.height;
-        final fadeStartPx = fadeFromBottom + 30;
+        final fadeStartPx = fadeFromBottom - 30;
         final fadeEndPx = fadeFromBottom - 70;
         final startStop = ((h - fadeStartPx) / h).clamp(0.0, 1.0);
         final endStop = ((h - fadeEndPx) / h).clamp(0.0, 1.0);

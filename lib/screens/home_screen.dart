@@ -86,8 +86,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   @override
   void deactivate() {
-    // Wird aufgerufen wenn der Screen aus dem Widget-Baum entfernt wird,
-    // z. B. beim Tab-Wechsel über die Navigationsleiste.
     _tkfFocusNode.unfocus();
     _notizFocusNode.unfocus();
     super.deactivate();
@@ -146,8 +144,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       _resetTimeFieldsOnly();
     });
   }
-
-  // ── Tastatur / Overlay schließen ───────────────────────────────────────────
 
   void _dismissKeyboardAndOverlay() {
     _tkfFocusNode.unfocus();
@@ -222,7 +218,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     HapticFeedback.selectionClick();
   }
 
-  // ── Glide-Offset berechnen ─────────────────────────────────────────────────
   Offset _computeGlideOffset(GlobalKey cardKey) {
     final screenSize = MediaQuery.of(context).size;
     final targetTop = screenSize.height * 0.22;
@@ -239,7 +234,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     return Offset(targetCenterX - cardCenterX, targetCenterY - cardCenterY);
   }
 
-  // ── Flying-Card öffnen ─────────────────────────────────────────────────────
   void _openOverlay(_OverlayField field) {
     if (_activeOverlay != _OverlayField.none) return;
     HapticFeedback.lightImpact();
@@ -270,7 +264,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     });
   }
 
-  // ── Navigation zur Monatsübersicht ─────────────────────────────────────────
   void _navigateToMonth() {
     _dismissKeyboardAndOverlay();
     Future.delayed(const Duration(milliseconds: 150), () {
@@ -278,41 +271,82 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     });
   }
 
-  void _saveEntry(BuildContext context) async {
-    HapticFeedback.mediumImpact();
-    if (_activeOverlay != _OverlayField.none) await _closeOverlay();
-
-    final kommen = _kommenController.text.trim();
-    final gehen = _gehenController.text.trim();
-    final tkf = _teamchefController.text.trim();
-    final notiz = _notizController.text.trim();
-
-    final result = await NightShiftHelper.save(
-      context: context,
-      datum: _selectedDate,
-      kommen: kommen,
-      gehen: gehen,
-      tkf: tkf,
-      notiz: notiz,
-    );
-
-    if (result == SaveResult.saved || result == SaveResult.splitSaved) {
-      await _saveAnimController.forward();
-      await _saveAnimController.reverse();
-
-      final isToday =
-          _dateKey == DateFormat('yyyy-MM-dd').format(DateTime.now());
-      if (isToday) _resetAllFieldsForToday();
-
-      if (mounted) {
-        final skin = AppTheme.of(context);
-        final message = result == SaveResult.splitSaved
-            ? '✓ Nachtschicht gespeichert (2 Einträge)'
-            : '✓ Eintrag gespeichert';
-        _showDebouncedSnackBar(context, message, skin);
+  // ── Prüft ob bereits ein Eintrag mit derselben Kommen-Zeit existiert ─────────
+  Future<bool> _checkDuplicateKommenTime(DateTime datum, String kommenTime) async {
+    if (kommenTime.isEmpty) return false;
+    
+    final box = Hive.box('arbeitszeiten');
+    final dateKey = DateFormat('yyyy-MM-dd').format(datum);
+    final existingData = box.get(dateKey);
+    
+    if (existingData == null) return false;
+    
+    List<Map<String, dynamic>> entries = [];
+    if (existingData is List) {
+      entries = List<Map<String, dynamic>>.from(existingData);
+    } else {
+      entries = [Map<String, dynamic>.from(existingData)];
+    }
+    
+    // Prüfe ob bereits ein Eintrag mit derselben Kommen-Zeit existiert
+    for (final entry in entries) {
+      final existingKommen = entry['kommen'] ?? '';
+      if (existingKommen == kommenTime) {
+        return true;
       }
     }
+    return false;
   }
+
+  void _saveEntry(BuildContext context) async {
+  HapticFeedback.mediumImpact();
+  if (_activeOverlay != _OverlayField.none) await _closeOverlay();
+
+  final kommen = _kommenController.text.trim();
+  final gehen = _gehenController.text.trim();
+  final tkf = _teamchefController.text.trim();
+  final notiz = _notizController.text.trim();
+
+  // ── Prüfung auf doppelte Kommen-Zeit ─────────────────────────────────────
+  if (kommen.isNotEmpty) {
+    final isDuplicate = await _checkDuplicateKommenTime(_selectedDate, kommen);
+    if (isDuplicate) {
+      final skin = AppTheme.of(context);
+      _showDebouncedSnackBar(
+        context, 
+        '✗ Ein Eintrag mit dieser Kommen-Zeit existiert bereits', 
+        skin  // ← Hier skin übergeben, nicht skin.deleteColor
+      );
+      return;
+    }
+  }
+
+  final result = await NightShiftHelper.save(
+    context: context,
+    datum: _selectedDate,
+    kommen: kommen,
+    gehen: gehen,
+    tkf: tkf,
+    notiz: notiz,
+  );
+
+  if (result == SaveResult.saved || result == SaveResult.splitSaved) {
+    await _saveAnimController.forward();
+    await _saveAnimController.reverse();
+
+    final isToday =
+        _dateKey == DateFormat('yyyy-MM-dd').format(DateTime.now());
+    if (isToday) _resetAllFieldsForToday();
+
+    if (mounted) {
+      final skin = AppTheme.of(context);
+      final message = result == SaveResult.splitSaved
+          ? '✓ Nachtschicht gespeichert (2 Einträge)'
+          : '✓ Eintrag gespeichert';
+      _showDebouncedSnackBar(context, message, skin);
+    }
+  }
+}
 
   void _showDebouncedSnackBar(
       BuildContext context, String message, AppSkin skin) {
@@ -490,7 +524,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
-  // ── Build ──────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     final skin = AppTheme.of(context);
@@ -520,7 +553,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         behavior: HitTestBehavior.translucent,
         child: Stack(
           children: [
-            // ── Haupt-Scroll-Inhalt ──────────────────────────────────────────
             GestureDetector(
               onTap: overlayOpen ? _closeOverlay : null,
               behavior: HitTestBehavior.translucent,
@@ -542,8 +574,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         : const AlwaysScrollableScrollPhysics(),
                     children: [
                       const SizedBox(height: 80),
-
-                      // Greeting
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 24),
                         child: Column(
@@ -572,10 +602,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           ],
                         ),
                       ),
-
                       const SizedBox(height: 24),
-
-                      // Datums-Picker
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 24),
                         child: Row(
@@ -654,10 +681,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           ],
                         ),
                       ),
-
                       const SizedBox(height: 28),
-
-                      // Zeitkarten
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 24),
                         child: Row(
@@ -696,7 +720,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           ],
                         ),
                       ),
-
                       const SizedBox(height: 6),
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -704,10 +727,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                             style: TextStyle(
                                 fontSize: 11, color: skin.white(0.3))),
                       ),
-
                       const SizedBox(height: 20),
-
-                      // TKF
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 24),
                         child: GestureDetector(
@@ -729,10 +749,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           ),
                         ),
                       ),
-
                       const SizedBox(height: 12),
-
-                      // Notiz
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 24),
                         child: GestureDetector(
@@ -754,10 +771,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           ),
                         ),
                       ),
-
                       const SizedBox(height: 28),
-
-                      // Speichern-Button
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 24),
                         child: ScaleTransition(
@@ -823,15 +837,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           ),
                         ),
                       ),
-
                       const SizedBox(height: 40),
                     ],
                   ),
                 ),
               ),
             ),
-
-            // ── Flying-Card Overlay mit Glide ────────────────────────────────
             if (_activeOverlay != _OverlayField.none)
               _FlyingCardOverlay(
                 field: _activeOverlay,
@@ -909,15 +920,11 @@ class _FlyingCardOverlay extends StatelessWidget {
       builder: (context, child) {
         final glideProgress = glideController.value;
         final flyProgress = flyAnimation.value;
-
-        // Glide: Karte startet bei ihrer Ausgangsposition und gleitet zur Zielposition.
-        // glideProgress 0.0 → voller Offset (Kartenposition), 1.0 → Offset 0 (Zielposition)
         final offsetDy = glideOffset.value.dy * (1.0 - glideProgress);
         final offsetDx = glideOffset.value.dx * (1.0 - glideProgress);
 
         return Stack(
           children: [
-            // Dimm-Hintergrund
             GestureDetector(
               onTap: onClose,
               child: Opacity(
@@ -929,8 +936,6 @@ class _FlyingCardOverlay extends StatelessWidget {
                 ),
               ),
             ),
-
-            // Karte – gleitet von Ausgangsposition zur Zielposition
             Positioned(
               top: cardTop + offsetDy,
               left: 24.0 + offsetDx,
@@ -971,12 +976,10 @@ class _FlyingCardOverlay extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // ── Header: Icon | Label | [Löschen] [Fertig] ───────────────────
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
               child: Row(
                 children: [
-                  // Emoji-Icon
                   Container(
                     width: 32,
                     height: 32,
@@ -989,7 +992,6 @@ class _FlyingCardOverlay extends StatelessWidget {
                             style: const TextStyle(fontSize: 15))),
                   ),
                   const SizedBox(width: 10),
-                  // Label – nimmt verfügbaren Platz, aber verdrängt Buttons nicht
                   Expanded(
                     child: Text(
                       label,
@@ -1003,7 +1005,6 @@ class _FlyingCardOverlay extends StatelessWidget {
                       maxLines: 1,
                     ),
                   ),
-                  // Löschen-Button
                   GestureDetector(
                     onTap: onClear,
                     child: Container(
@@ -1017,7 +1018,6 @@ class _FlyingCardOverlay extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  // Fertig-Button
                   GestureDetector(
                     onTap: onClose,
                     child: Container(
@@ -1155,10 +1155,6 @@ class _StaticInputCard extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Hilfs-Widgets
-// ─────────────────────────────────────────────────────────────────────────────
-
 class _NavBtn extends StatelessWidget {
   final IconData icon;
   final VoidCallback onTap;
@@ -1184,10 +1180,6 @@ class _NavBtn extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// iOS-Zeitpicker – looping=true, Jetzt-Bug gefixt
-// ─────────────────────────────────────────────────────────────────────────────
-
 class _IOSTimePicker extends StatefulWidget {
   final TimeOfDay initialTime;
   final AppSkin skin;
@@ -1209,9 +1201,8 @@ class _IOSTimePickerState extends State<_IOSTimePicker> {
   late FixedExtentScrollController _hourController;
   late FixedExtentScrollController _minuteController;
 
-  // Startoffset: weit genug in der Mitte, damit man in beide Richtungen scrollen kann.
-  static const int _hourLoopOffset = 500;   // 500 * 24 = 12.000 Items
-  static const int _minuteLoopOffset = 500; // 500 * 60 = 30.000 Items
+  static const int _hourLoopOffset = 500;
+  static const int _minuteLoopOffset = 500;
 
   @override
   void initState() {
@@ -1236,7 +1227,6 @@ class _IOSTimePickerState extends State<_IOSTimePicker> {
     final nowHour = now.hour;
     final nowMinute = now.minute;
 
-    // Nächstgelegenen Index berechnen, damit der Scroll-Weg kurz bleibt.
     final currentHourIdx = _hourController.selectedItem;
     final currentHourBase = (currentHourIdx ~/ 24) * 24;
     int targetHourIdx = currentHourBase + nowHour;
@@ -1294,7 +1284,6 @@ class _IOSTimePickerState extends State<_IOSTimePicker> {
             height: 200,
             child: Row(
               children: [
-                // ── Stunden ──────────────────────────────────────────────────
                 Expanded(
                   child: CupertinoPicker(
                     scrollController: _hourController,
@@ -1305,7 +1294,6 @@ class _IOSTimePickerState extends State<_IOSTimePicker> {
                     onSelectedItemChanged: (index) {
                       setState(() => _selectedHour = index % 24);
                     },
-                    // Nur 24 Items – looping=true sorgt für endloses Scrollen
                     children: List.generate(24, (h) => Center(
                       child: Text(
                         h.toString().padLeft(2, '0'),
@@ -1324,7 +1312,6 @@ class _IOSTimePickerState extends State<_IOSTimePicker> {
                         fontSize: 28,
                         fontWeight: FontWeight.w600,
                         color: skin.primary)),
-                // ── Minuten ───────────────────────────────────────────────────
                 Expanded(
                   child: CupertinoPicker(
                     scrollController: _minuteController,
@@ -1335,7 +1322,6 @@ class _IOSTimePickerState extends State<_IOSTimePicker> {
                     onSelectedItemChanged: (index) {
                       setState(() => _selectedMinute = index % 60);
                     },
-                    // Nur 60 Items – looping=true sorgt für endloses Scrollen
                     children: List.generate(60, (m) => Center(
                       child: Text(
                         m.toString().padLeft(2, '0'),
@@ -1417,10 +1403,6 @@ class _IOSTimePickerState extends State<_IOSTimePicker> {
     );
   }
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Swipe-Zeitkarte
-// ─────────────────────────────────────────────────────────────────────────────
 
 class _SwipeTimeCard extends StatefulWidget {
   final String label;
