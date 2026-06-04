@@ -129,6 +129,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   void _changeDate(int days) {
+    // Tastatur schließen vor Datumswechsel
+    _closeKeyboardIfNeeded();
     setState(() {
       _selectedDate = _selectedDate.add(Duration(days: days));
       _initialTimeSet = false;
@@ -179,6 +181,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   void _onTimeCardDoubleTap(TextEditingController controller) {
     setState(() => controller.clear());
     HapticFeedback.selectionClick();
+  }
+
+  void _closeKeyboardIfNeeded() {
+    if (_activeOverlay != _OverlayField.none) {
+      FocusScope.of(context).unfocus();
+    }
   }
 
   // ── Flying-Card öffnen ─────────────────────────────────────────────────────
@@ -411,6 +419,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
+  void _onNavigateToMonth() {
+    // Tastatur schließen vor Navigation
+    if (_activeOverlay != _OverlayField.none) {
+      FocusScope.of(context).unfocus();
+      Future.delayed(const Duration(milliseconds: 100), () {
+        if (mounted) widget.onNavigateToMonth();
+      });
+    } else {
+      widget.onNavigateToMonth();
+    }
+  }
+
   // ── Build ──────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
@@ -422,7 +442,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
     return Scaffold(
       backgroundColor: skin.bgBase,
-      resizeToAvoidBottomInset: false, // wir handhaben das selbst
+      resizeToAvoidBottomInset: !overlayOpen, // Nur bei Overlay nicht resizen
       body: Stack(
         children: [
           // ── Haupt-Scroll-Inhalt ────────────────────────────────────────────
@@ -440,7 +460,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 }
               },
               onHorizontalDragEnd: (d) {
-                if ((d.primaryVelocity ?? 0) < -400) widget.onNavigateToMonth();
+                if ((d.primaryVelocity ?? 0) < -400) _onNavigateToMonth();
                 _isHorizontalSwipe = false;
               },
               behavior: HitTestBehavior.translucent,
@@ -870,8 +890,7 @@ class _FlyingCardOverlay extends StatelessWidget {
           children: [
             // Header-Leiste
             Padding(
-              padding:
-                  const EdgeInsets.fromLTRB(16, 14, 12, 0),
+              padding: const EdgeInsets.fromLTRB(16, 14, 12, 0),
               child: Row(
                 children: [
                   Container(
@@ -887,13 +906,17 @@ class _FlyingCardOverlay extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 10),
-                  Text(
-                    label,
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: skin.primary,
-                      letterSpacing: 1.0,
+                  Flexible(
+                    child: Text(
+                      label,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: skin.primary,
+                        letterSpacing: 1.0,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
                     ),
                   ),
                   const Spacer(),
@@ -998,8 +1021,7 @@ class _StaticInputCard extends StatelessWidget {
       animation: controller,
       builder: (_, __) => Container(
         constraints: const BoxConstraints(minHeight: 68),
-        padding:
-            const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
           color: skin.white(0.04),
           borderRadius: BorderRadius.circular(16),
@@ -1031,7 +1053,9 @@ class _StaticInputCard extends StatelessWidget {
                           fontSize: 9,
                           color: skin.primary,
                           fontWeight: FontWeight.w600,
-                          letterSpacing: 0.8)),
+                          letterSpacing: 0.8,
+                          overflow: TextOverflow.ellipsis),
+                      maxLines: 1),
                   const SizedBox(height: 2),
                   Text(
                     controller.text.isEmpty ? hint : controller.text,
@@ -1067,7 +1091,7 @@ class _NavBtn extends StatelessWidget {
   const _NavBtn({required this.icon, required this.onTap});
 
   @override
-  Widget build(BuildContext context) {
+Widget build(BuildContext context) {
     final skin = AppTheme.of(context);
     return GestureDetector(
       onTap: onTap,
