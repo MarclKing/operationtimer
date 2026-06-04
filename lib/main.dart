@@ -15,10 +15,7 @@ void main() async {
   await Hive.initFlutter();
   await Hive.openBox('arbeitszeiten');
   await Hive.openBox('einstellungen');
-  
-  // Migration: Alte Einträge in neues Format konvertieren
   _migrateOldEntries();
-  
   await initializeDateFormatting('de', null);
   runApp(const MyApp());
 }
@@ -27,7 +24,7 @@ void _migrateOldEntries() {
   final box = Hive.box('arbeitszeiten');
   final keys = box.keys.toList();
   bool changed = false;
-  
+
   for (final key in keys) {
     final data = box.get(key);
     if (data != null && data is! List) {
@@ -58,7 +55,7 @@ void _migrateOldEntries() {
       }
     }
   }
-  
+
   if (changed) {
     debugPrint('✅ Migration abgeschlossen: Alte Einträge konvertiert');
   }
@@ -72,9 +69,10 @@ class MyApp extends StatelessWidget {
     return ValueListenableBuilder(
       valueListenable: Hive.box('einstellungen').listenable(),
       builder: (context, box, _) {
-        final skinKey = box.get(AppTheme.hiveKey, defaultValue: 'chrome') as String;
+        final skinKey =
+            box.get(AppTheme.hiveKey, defaultValue: 'chrome') as String;
         final skin = AppTheme.fromKey(skinKey);
-        
+
         return SkinProvider(
           skin: skin,
           child: MaterialApp(
@@ -162,6 +160,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   }
 
   void _selectTab(int index) {
+    FocusManager.instance.primaryFocus?.unfocus(); // ← Tastatur schließen
     setState(() {
       _selectedIndex = index;
       _tabAnimController.forward(from: 0);
@@ -176,6 +175,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   }
 
   void _goToPage(int index) {
+    FocusManager.instance.primaryFocus?.unfocus(); // ← Tastatur schließen
     setState(() => _selectedIndex = index);
     if (_pageController.hasClients) {
       _pageController.animateToPage(
@@ -297,7 +297,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
             },
           ),
 
-          // Icon-basierte Top Bar
+          // Top Bar
           Positioned(
             top: 0,
             left: 0,
@@ -314,7 +314,6 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                 children: [
                   Row(
                     children: [
-                      // Elegantes Icon-Logo
                       Container(
                         width: 36,
                         height: 36,
@@ -342,7 +341,6 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                       ),
                     ],
                   ),
-                  // Menu Button
                   GestureDetector(
                     onTap: _toggleMenu,
                     child: AnimatedContainer(
@@ -406,7 +404,7 @@ class _DropdownMenuItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final skin = AppTheme.of(context);
-    
+
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
@@ -454,7 +452,7 @@ class _BottomNav extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final skin = AppTheme.of(context);
-    
+
     return Container(
       padding: EdgeInsets.only(
         bottom: MediaQuery.of(context).padding.bottom + 8,
@@ -509,7 +507,7 @@ class _NavItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final skin = AppTheme.of(context);
-    
+
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
@@ -517,10 +515,13 @@ class _NavItem extends StatelessWidget {
         curve: Curves.easeInOut,
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
         decoration: BoxDecoration(
-          color: isSelected ? skin.primaryWithAlpha(0.15) : Colors.transparent,
+          color:
+              isSelected ? skin.primaryWithAlpha(0.15) : Colors.transparent,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: isSelected ? skin.primaryWithAlpha(0.3) : Colors.transparent,
+            color: isSelected
+                ? skin.primaryWithAlpha(0.3)
+                : Colors.transparent,
           ),
         ),
         child: Column(
@@ -540,7 +541,8 @@ class _NavItem extends StatelessWidget {
               duration: const Duration(milliseconds: 250),
               style: TextStyle(
                 fontSize: 11,
-                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                fontWeight:
+                    isSelected ? FontWeight.w600 : FontWeight.w400,
                 color: isSelected ? skin.primary : skin.surface(0.4),
               ),
               child: Text(label),
