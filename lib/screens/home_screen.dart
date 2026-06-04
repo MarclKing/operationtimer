@@ -64,31 +64,51 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     return fullName.trim().split(' ').first;
   }
 
-  void _resetToCurrentTime() {
+  String _getCurrentTimeFormatted() {
     final now = DateTime.now();
-    final formattedTime = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
-    _kommenController.text = formattedTime;
+    return '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+  }
+
+  void _resetToCurrentTime() {
+    _kommenController.text = _getCurrentTimeFormatted();
   }
 
   void _resetAllFields() {
-    _kommenController.clear();
+    _kommenController.text = _getCurrentTimeFormatted();
     _gehenController.clear();
     _teamchefController.clear();
     _notizController.clear();
-    _resetToCurrentTime();
   }
 
   void _loadEntry() {
     final box = Hive.box('arbeitszeiten');
     final entry = box.get(_dateKey);
+    final isToday = _dateKey == DateFormat('yyyy-MM-dd').format(DateTime.now());
+    
     setState(() {
-      if (entry != null) {
+      if (entry != null && entry['gehen'] != null && entry['gehen'].toString().isNotEmpty) {
+        // Vollständiger Eintrag (Gehen ist ausgefüllt) -> lade alles
+        _kommenController.text = entry['kommen'] ?? '';
+        _gehenController.text = entry['gehen'] ?? '';
+        _teamchefController.text = entry['TKF'] ?? '';
+        _notizController.text = entry['notiz'] ?? '';
+        _initialTimeSet = true;
+      } else if (entry != null && isToday && (entry['gehen'] == null || entry['gehen'].toString().isEmpty)) {
+        // Heutiger unvollständiger Eintrag -> nur TKF und Notiz übernehmen, Kommen auf aktuelle Zeit
+        _kommenController.text = _getCurrentTimeFormatted();
+        _gehenController.clear();
+        _teamchefController.text = entry['TKF'] ?? '';
+        _notizController.text = entry['notiz'] ?? '';
+        _initialTimeSet = true;
+      } else if (entry != null && !isToday) {
+        // Vergangener Tag mit unvollständigem Eintrag -> lade trotzdem
         _kommenController.text = entry['kommen'] ?? '';
         _gehenController.text = entry['gehen'] ?? '';
         _teamchefController.text = entry['TKF'] ?? '';
         _notizController.text = entry['notiz'] ?? '';
         _initialTimeSet = true;
       } else {
+        // Kein Eintrag vorhanden
         _resetAllFields();
         _initialTimeSet = true;
       }
@@ -128,6 +148,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     await _saveAnimController.forward();
     await _saveAnimController.reverse();
     
+    final now = DateTime.now();
+    final isToday = _dateKey == DateFormat('yyyy-MM-dd').format(now);
+    
+    // Speichere den Eintrag
     Hive.box('arbeitszeiten').put(_dateKey, {
       'kommen': _kommenController.text,
       'gehen': _gehenController.text,
@@ -136,7 +160,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       'datum': _dateKey,
     });
     
-    _resetAllFields();
+    // Nur wenn es der heutige Tag ist, setze die Felder zurück
+    if (isToday) {
+      _resetAllFields();
+    }
     
     if (mounted) {
       final skin = AppTheme.of(context);
@@ -205,7 +232,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       resizeToAvoidBottomInset: true,
       body: NotificationListener<ScrollNotification>(
         onNotification: (scrollInfo) {
-          // Wenn horizontal gescrollt wird, verhindern wir nichts
           return false;
         },
         child: GestureDetector(
@@ -221,7 +247,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           },
           onHorizontalDragEnd: (details) {
             final velocity = details.primaryVelocity ?? 0;
-            // Nach links wischen (< -400) -> zur Monatsübersicht
             if (velocity < -400) {
               widget.onNavigateToMonth();
             }
@@ -477,7 +502,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// HELPER WIDGETS
+// HELPER WIDGETS (unverändert)
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _NavBtn extends StatelessWidget {
