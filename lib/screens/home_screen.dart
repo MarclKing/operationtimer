@@ -191,6 +191,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   @override
   Widget build(BuildContext context) {
     final isToday = DateFormat('yyyy-MM-dd').format(DateTime.now()) == _dateKey;
+    
+    // Automatische Höhenanpassung für kleine Bildschirme
+    final screenHeight = MediaQuery.of(context).size.height;
+    final isSmallScreen = screenHeight < 700;
+    final verticalSpacing = isSmallScreen ? 8.0 : 12.0;
 
     return GestureDetector(
       onHorizontalDragEnd: (details) {
@@ -204,234 +209,244 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       child: Scaffold(
         backgroundColor: const Color(0xFF0A0A0F),
         body: SafeArea(
-          child: SingleChildScrollView(
-            physics: const NeverScrollableScrollPhysics(),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: 60),
-                // Begrüßung
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
-                  child: RichText(
-                    text: TextSpan(
-                      style: const TextStyle(
-                        fontSize: 26,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white,
-                        height: 1.2,
-                      ),
-                      children: [
-                        TextSpan(text: _greeting),
-                        if (_firstName.isNotEmpty) ...[
-                          const TextSpan(text: ', '),
-                          TextSpan(
-                            text: _firstName,
-                            style: const TextStyle(color: Color(0xFF6C63FF)),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              // Prüfe ob Inhalt größer als Bildschirm ist
+              final contentHeight = constraints.maxHeight;
+              final needsScrolling = contentHeight > screenHeight;
+              
+              return SingleChildScrollView(
+                physics: needsScrolling 
+                    ? const ClampingScrollPhysics() 
+                    : const NeverScrollableScrollPhysics(),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 60),
+                    // Begrüßung
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+                      child: RichText(
+                        text: TextSpan(
+                          style: const TextStyle(
+                            fontSize: 26,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                            height: 1.2,
                           ),
-                        ],
-                        const TextSpan(text: ' 👋'),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 20),
-
-                // Datum Navigation
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: Row(
-                    children: [
-                      GestureDetector(
-                        onTap: () => _changeDate(-1),
-                        child: Container(
-                          width: 36,
-                          height: 36,
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.06),
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
-                          ),
-                          child: const Icon(Icons.chevron_left, color: Colors.white54, size: 20),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: GestureDetector(
-                          onTap: _selectDate,
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 200),
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF141420),
-                              borderRadius: BorderRadius.circular(14),
-                              border: Border.all(
-                                color: isToday
-                                    ? const Color(0xFF6C63FF).withValues(alpha: 0.5)
-                                    : Colors.white.withValues(alpha: 0.1),
+                          children: [
+                            TextSpan(text: _greeting),
+                            if (_firstName.isNotEmpty) ...[
+                              const TextSpan(text: ', '),
+                              TextSpan(
+                                text: _firstName,
+                                style: const TextStyle(color: Color(0xFF6C63FF)),
                               ),
-                            ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                const Text('📅', style: TextStyle(fontSize: 16)),
-                                const SizedBox(width: 10),
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      isToday ? 'HEUTE' : 'DATUM',
-                                      style: TextStyle(
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w700,
-                                        color: isToday ? const Color(0xFF6C63FF) : Colors.white38,
-                                        letterSpacing: 1.0,
-                                      ),
-                                    ),
-                                    Text(
-                                      DateFormat('EEEE, d. MMMM yyyy', 'de').format(_selectedDate),
-                                      style: const TextStyle(
-                                        fontSize: 14,
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const Spacer(),
-                                Icon(Icons.calendar_today_outlined,
-                                    color: Colors.white.withValues(alpha: 0.3), size: 16),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      GestureDetector(
-                        onTap: () => _changeDate(1),
-                        child: Container(
-                          width: 36,
-                          height: 36,
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.06),
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
-                          ),
-                          child: const Icon(Icons.chevron_right, color: Colors.white54, size: 20),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 14),
-
-                // Kommen & Gehen
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: _SwipeTimeCard(
-                          label: 'KOMMEN',
-                          color: const Color(0xFF4ECDC4),
-                          controller: _kommenController,
-                          onTap: () => _selectTime(_kommenController),
-                          onSwipeUp: () => _adjustTime(_kommenController, 1),
-                          onSwipeDown: () => _adjustTime(_kommenController, -1),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _SwipeTimeCard(
-                          label: 'GEHEN',
-                          color: const Color(0xFFFF6B6B),
-                          controller: _gehenController,
-                          onTap: () => _selectTime(_gehenController),
-                          onSwipeUp: () => _adjustTime(_gehenController, 1),
-                          onSwipeDown: () => _adjustTime(_gehenController, -1),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: Text(
-                    '↕ Auf Kachel wischen = Minute anpassen  ·  Tippen = Uhrzeit wählen',
-                    style: TextStyle(fontSize: 11, color: Colors.white.withValues(alpha: 0.25)),
-                  ),
-                ),
-                const SizedBox(height: 12),
-
-                // TKF
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: _GlassInputCard(
-                    label: 'TAGESKOMMANDOFÜHRER',
-                    emoji: '👤',
-                    controller: _teamchefController,
-                    hint: 'Name des Tageskommandoführers',
-                  ),
-                ),
-                const SizedBox(height: 12),
-
-                // Notiz
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: _GlassInputCard(
-                    label: 'NOTIZ',
-                    emoji: '📝',
-                    controller: _notizController,
-                    hint: 'Optionale Notiz zum Tag...',
-                    maxLines: 3,
-                  ),
-                ),
-                const SizedBox(height: 24),
-
-                // Speichern Button
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: ScaleTransition(
-                    scale: Tween<double>(begin: 1.0, end: 0.95).animate(
-                      CurvedAnimation(parent: _saveAnimController, curve: Curves.easeInOut),
-                    ),
-                    child: GestureDetector(
-                      onTap: _saveEntry,
-                      child: Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(vertical: 18),
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: [Color(0xFF6C63FF), Color(0xFF4ECDC4)],
-                          ),
-                          borderRadius: BorderRadius.circular(18),
-                          boxShadow: [
-                            BoxShadow(
-                              color: const Color(0xFF6C63FF).withValues(alpha: 0.3),
-                              blurRadius: 20,
-                              offset: const Offset(0, 8),
-                            ),
+                            ],
+                            const TextSpan(text: ' 👋'),
                           ],
                         ),
-                        child: const Center(
-                          child: Text(
-                            '✓  Eintrag speichern',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.white,
-                              letterSpacing: 0.5,
+                      ),
+                    ),
+                    SizedBox(height: isSmallScreen ? 16 : 20),
+
+                    // Datum Navigation
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: Row(
+                        children: [
+                          GestureDetector(
+                            onTap: () => _changeDate(-1),
+                            child: Container(
+                              width: 36,
+                              height: 36,
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.06),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+                              ),
+                              child: const Icon(Icons.chevron_left, color: Colors.white54, size: 20),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: _selectDate,
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 200),
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF141420),
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(
+                                    color: isToday
+                                        ? const Color(0xFF6C63FF).withValues(alpha: 0.5)
+                                        : Colors.white.withValues(alpha: 0.1),
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    const Text('📅', style: TextStyle(fontSize: 16)),
+                                    const SizedBox(width: 10),
+                                    Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          isToday ? 'HEUTE' : 'DATUM',
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w700,
+                                            color: isToday ? const Color(0xFF6C63FF) : Colors.white38,
+                                            letterSpacing: 1.0,
+                                          ),
+                                        ),
+                                        Text(
+                                          DateFormat('EEEE, d. MMMM yyyy', 'de').format(_selectedDate),
+                                          style: const TextStyle(
+                                            fontSize: 14,
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const Spacer(),
+                                    Icon(Icons.calendar_today_outlined,
+                                        color: Colors.white.withValues(alpha: 0.3), size: 16),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          GestureDetector(
+                            onTap: () => _changeDate(1),
+                            child: Container(
+                              width: 36,
+                              height: 36,
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.06),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+                              ),
+                              child: const Icon(Icons.chevron_right, color: Colors.white54, size: 20),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    SizedBox(height: isSmallScreen ? 10 : 14),
+
+                    // Kommen & Gehen
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: _SwipeTimeCard(
+                              label: 'KOMMEN',
+                              color: const Color(0xFF4ECDC4),
+                              controller: _kommenController,
+                              onTap: () => _selectTime(_kommenController),
+                              onSwipeUp: () => _adjustTime(_kommenController, 1),
+                              onSwipeDown: () => _adjustTime(_kommenController, -1),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _SwipeTimeCard(
+                              label: 'GEHEN',
+                              color: const Color(0xFFFF6B6B),
+                              controller: _gehenController,
+                              onTap: () => _selectTime(_gehenController),
+                              onSwipeUp: () => _adjustTime(_gehenController, 1),
+                              onSwipeDown: () => _adjustTime(_gehenController, -1),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    SizedBox(height: isSmallScreen ? 4 : 8),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: Text(
+                        '↕ Auf Kachel wischen = Minute anpassen  ·  Tippen = Uhrzeit wählen',
+                        style: TextStyle(fontSize: 11, color: Colors.white.withValues(alpha: 0.25)),
+                      ),
+                    ),
+                    SizedBox(height: isSmallScreen ? 8 : 12),
+
+                    // TKF
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: _GlassInputCard(
+                        label: 'TAGESKOMMANDOFÜHRER',
+                        emoji: '👤',
+                        controller: _teamchefController,
+                        hint: 'Name des Tageskommandoführers',
+                      ),
+                    ),
+                    SizedBox(height: isSmallScreen ? 8 : 12),
+
+                    // Notiz - Jetzt genauso groß wie TKF (nur 1 Zeile)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: _GlassInputCard(
+                        label: 'NOTIZ',
+                        emoji: '📝',
+                        controller: _notizController,
+                        hint: 'Optionale Notiz zum Tag...',
+                        maxLines: 1,  // 🔥 Geändert von 3 auf 1 (gleiche Größe wie TKF)
+                      ),
+                    ),
+                    SizedBox(height: isSmallScreen ? 16 : 24),
+
+                    // Speichern Button
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: ScaleTransition(
+                        scale: Tween<double>(begin: 1.0, end: 0.95).animate(
+                          CurvedAnimation(parent: _saveAnimController, curve: Curves.easeInOut),
+                        ),
+                        child: GestureDetector(
+                          onTap: _saveEntry,
+                          child: Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(vertical: 18),
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [Color(0xFF6C63FF), Color(0xFF4ECDC4)],
+                              ),
+                              borderRadius: BorderRadius.circular(18),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color(0xFF6C63FF).withValues(alpha: 0.3),
+                                  blurRadius: 20,
+                                  offset: const Offset(0, 8),
+                                ),
+                              ],
+                            ),
+                            child: const Center(
+                              child: Text(
+                                '✓  Eintrag speichern',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.white,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
                             ),
                           ),
                         ),
                       ),
                     ),
-                  ),
+                    const SizedBox(height: 100),
+                  ],
                 ),
-                const SizedBox(height: 100),
-              ],
-            ),
+              );
+            },
           ),
         ),
       ),
