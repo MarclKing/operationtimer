@@ -6,9 +6,6 @@ import 'package:intl/intl.dart';
 import '../theme/app_theme.dart';
 import '../services/night_shift_helper.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Welches Feld gerade im Overlay-Modus ist
-// ─────────────────────────────────────────────────────────────────────────────
 enum _OverlayField { none, tkf, notiz }
 
 class HomeScreen extends StatefulWidget {
@@ -36,17 +33,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   _OverlayField _activeOverlay = _OverlayField.none;
   final FocusNode _tkfFocusNode = FocusNode();
   final FocusNode _notizFocusNode = FocusNode();
-
-  // GlobalKeys um die Position der Karten im ListView zu messen
   final GlobalKey _tkfCardKey = GlobalKey();
   final GlobalKey _notizCardKey = GlobalKey();
 
-  // Animations-Controller für das Overlay
   late AnimationController _flyController;
   late Animation<double> _flyScale;
   late Animation<double> _flyOpacity;
 
-  // Für Alert-Debouncing
+  // Wisch-nach-unten zum Schließen der Tastatur
+  double _verticalDragStart = 0;
+  bool _isDismissingKeyboard = false;
+
   String? _lastAlertMessage;
   DateTime? _lastAlertTime;
 
@@ -128,9 +125,27 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     });
   }
 
+  // ── Tastatur / Overlay schließen ───────────────────────────────────────────
+
+  /// Schließt Tastatur und Overlay sofort (ohne Animation-await),
+  /// geeignet für Navigation oder externe Auslöser.
+  void _dismissKeyboardAndOverlay() {
+    FocusScope.of(context).unfocus();
+    if (_activeOverlay != _OverlayField.none) {
+      _flyController.reverse();
+      setState(() => _activeOverlay = _OverlayField.none);
+    }
+  }
+
+  /// Schließt Overlay mit Animation (für interne Fertig-Aktionen).
+  Future<void> _closeOverlay() async {
+    FocusScope.of(context).unfocus();
+    await _flyController.reverse();
+    if (mounted) setState(() => _activeOverlay = _OverlayField.none);
+  }
+
   void _changeDate(int days) {
-    // Tastatur schließen vor Datumswechsel
-    _closeKeyboardIfNeeded();
+    _dismissKeyboardAndOverlay();
     setState(() {
       _selectedDate = _selectedDate.add(Duration(days: days));
       _initialTimeSet = false;
@@ -160,15 +175,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     final nightShiftEnabled = NightShiftHelper.isNightShiftEnabled();
     if (!nightShiftEnabled && isKommen && _gehenController.text.isNotEmpty) {
       final gehenTime = _parseTime(_gehenController.text);
-      if (gehenTime != null) {
-        if (total > gehenTime.hour * 60 + gehenTime.minute) return;
-      }
+      if (gehenTime != null &&
+          total > gehenTime.hour * 60 + gehenTime.minute) return;
     }
     if (!nightShiftEnabled && isGehen && _kommenController.text.isNotEmpty) {
       final kommenTime = _parseTime(_kommenController.text);
-      if (kommenTime != null) {
-        if (total < kommenTime.hour * 60 + kommenTime.minute) return;
-      }
+      if (kommenTime != null &&
+          total < kommenTime.hour * 60 + kommenTime.minute) return;
     }
 
     setState(() {
@@ -181,12 +194,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   void _onTimeCardDoubleTap(TextEditingController controller) {
     setState(() => controller.clear());
     HapticFeedback.selectionClick();
-  }
-
-  void _closeKeyboardIfNeeded() {
-    if (_activeOverlay != _OverlayField.none) {
-      FocusScope.of(context).unfocus();
-    }
   }
 
   // ── Flying-Card öffnen ─────────────────────────────────────────────────────
@@ -205,11 +212,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     });
   }
 
-  // ── Flying-Card schließen ──────────────────────────────────────────────────
-  Future<void> _closeOverlay() async {
-    FocusScope.of(context).unfocus();
-    await _flyController.reverse();
-    if (mounted) setState(() => _activeOverlay = _OverlayField.none);
+  // ── Navigation zur Monatsübersicht ─────────────────────────────────────────
+  /// Tastatur + Overlay schließen, DANN navigieren.
+  void _navigateToMonth() {
+    _dismissKeyboardAndOverlay();
+    // Kurzes Delay damit unfocus() greift, bevor die neue Route mounted wird
+    Future.delayed(const Duration(milliseconds: 80), () {
+      if (mounted) widget.onNavigateToMonth();
+    });
   }
 
   void _saveEntry(BuildContext context) async {
@@ -269,7 +279,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Future<void> _selectDateWithPicker() async {
-    if (_activeOverlay != _OverlayField.none) await _closeOverlay();
+    _dismissKeyboardAndOverlay();
+    await Future.delayed(const Duration(milliseconds: 80));
+    if (!mounted) return;
+
     final skin = AppTheme.of(context);
     DateTime tempDate = _selectedDate;
     UniqueKey pickerKey = UniqueKey();
@@ -383,7 +396,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   Future<void> _selectTimeWithPicker(
       TextEditingController controller) async {
-    if (_activeOverlay != _OverlayField.none) await _closeOverlay();
+    _dismissKeyboardAndOverlay();
+    await Future.delayed(const Duration(milliseconds: 80));
+    if (!mounted) return;
+
     final isKommen = controller == _kommenController;
     final isGehen = controller == _gehenController;
     final nightShiftEnabled = NightShiftHelper.isNightShiftEnabled();
@@ -419,18 +435,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
-  void _onNavigateToMonth() {
-    // Tastatur schließen vor Navigation
-    if (_activeOverlay != _OverlayField.none) {
-      FocusScope.of(context).unfocus();
-      Future.delayed(const Duration(milliseconds: 100), () {
-        if (mounted) widget.onNavigateToMonth();
-      });
-    } else {
-      widget.onNavigateToMonth();
-    }
-  }
-
   // ── Build ──────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
@@ -442,358 +446,377 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
     return Scaffold(
       backgroundColor: skin.bgBase,
-      // WICHTIG: resizeToAvoidBottomInset = false verhindert das Verschieben der UI bei Tastatur
       resizeToAvoidBottomInset: false,
-      body: Stack(
-        children: [
-          // ── Haupt-Scroll-Inhalt ────────────────────────────────────────────
-          GestureDetector(
-            onTap: overlayOpen ? _closeOverlay : null,
-            behavior: HitTestBehavior.translucent,
-            child: GestureDetector(
-              onHorizontalDragStart: (d) {
-                _horizontalDragStart = d.globalPosition.dx;
-                _isHorizontalSwipe = false;
-              },
-              onHorizontalDragUpdate: (d) {
-                if ((d.globalPosition.dx - _horizontalDragStart).abs() > 20) {
-                  _isHorizontalSwipe = true;
-                }
-              },
-              onHorizontalDragEnd: (d) {
-                if ((d.primaryVelocity ?? 0) < -400) _onNavigateToMonth();
-                _isHorizontalSwipe = false;
-              },
+      body: GestureDetector(
+        // ── Wischen nach unten → Tastatur schließen (wie iOS-Standard) ───────
+        onVerticalDragStart: (d) {
+          _verticalDragStart = d.globalPosition.dy;
+          _isDismissingKeyboard = false;
+        },
+        onVerticalDragUpdate: (d) {
+          final delta = d.globalPosition.dy - _verticalDragStart;
+          // Ab 40px Wischweg nach unten → Tastatur/Overlay schließen
+          if (delta > 40 && !_isDismissingKeyboard) {
+            _isDismissingKeyboard = true;
+            _dismissKeyboardAndOverlay();
+          }
+        },
+        onVerticalDragEnd: (_) {
+          _isDismissingKeyboard = false;
+        },
+        behavior: HitTestBehavior.translucent,
+        child: Stack(
+          children: [
+            // ── Haupt-Scroll-Inhalt ──────────────────────────────────────────
+            GestureDetector(
+              onTap: overlayOpen ? _closeOverlay : null,
               behavior: HitTestBehavior.translucent,
-              child: SafeArea(
-                child: ListView(
-                  controller: _scrollController,
-                  physics: overlayOpen
-                      ? const NeverScrollableScrollPhysics()
-                      : const AlwaysScrollableScrollPhysics(),
-                  children: [
-                    const SizedBox(height: 80),
+              child: GestureDetector(
+                onHorizontalDragStart: (d) {
+                  _horizontalDragStart = d.globalPosition.dx;
+                  _isHorizontalSwipe = false;
+                },
+                onHorizontalDragUpdate: (d) {
+                  if ((d.globalPosition.dx - _horizontalDragStart).abs() > 20) {
+                    _isHorizontalSwipe = true;
+                  }
+                },
+                onHorizontalDragEnd: (d) {
+                  if ((d.primaryVelocity ?? 0) < -400) _navigateToMonth();
+                  _isHorizontalSwipe = false;
+                },
+                behavior: HitTestBehavior.translucent,
+                child: SafeArea(
+                  child: ListView(
+                    controller: _scrollController,
+                    physics: overlayOpen
+                        ? const NeverScrollableScrollPhysics()
+                        : const AlwaysScrollableScrollPhysics(),
+                    children: [
+                      const SizedBox(height: 80),
 
-                    // Greeting
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 24),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Text(_greeting,
+                      // Greeting
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 24),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Text(_greeting,
+                                    style: TextStyle(
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.w500,
+                                        color: skin.white(0.7))),
+                                const SizedBox(width: 8),
+                                const Text('👋',
+                                    style: TextStyle(fontSize: 20)),
+                              ],
+                            ),
+                            if (_firstName.isNotEmpty) ...[
+                              const SizedBox(height: 4),
+                              Text(_firstName,
                                   style: TextStyle(
-                                      fontSize: 20,
-                                      fontWeight: FontWeight.w500,
-                                      color: skin.white(0.7))),
-                              const SizedBox(width: 8),
-                              const Text('👋',
-                                  style: TextStyle(fontSize: 20)),
+                                      fontSize: 28,
+                                      fontWeight: FontWeight.w700,
+                                      color: skin.primary)),
                             ],
-                          ),
-                          if (_firstName.isNotEmpty) ...[
-                            const SizedBox(height: 4),
-                            Text(_firstName,
-                                style: TextStyle(
-                                    fontSize: 28,
-                                    fontWeight: FontWeight.w700,
-                                    color: skin.primary)),
                           ],
-                        ],
+                        ),
                       ),
-                    ),
 
-                    const SizedBox(height: 24),
+                      const SizedBox(height: 24),
 
-                    // Datums-Picker
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 24),
-                      child: Row(
-                        children: [
-                          _NavBtn(
-                              icon: Icons.chevron_left,
-                              onTap: () => _changeDate(-1)),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: GestureDetector(
-                              onTap: _selectDateWithPicker,
-                              onHorizontalDragEnd: (d) {
-                                final v = d.primaryVelocity ?? 0;
-                                if (v < -300) _changeDate(1);
-                                if (v > 300) _changeDate(-1);
-                              },
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                    vertical: 12, horizontal: 16),
-                                decoration: BoxDecoration(
-                                  color: skin.bgCard,
-                                  borderRadius: BorderRadius.circular(14),
-                                  border: Border.all(
-                                    color: isToday
-                                        ? skin.primaryWithAlpha(0.5)
-                                        : skin.white(0.1),
-                                  ),
-                                ),
-                                child: Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.center,
-                                  children: [
-                                    const Text('📅',
-                                        style: TextStyle(fontSize: 14)),
-                                    const SizedBox(width: 8),
-                                    Flexible(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            isToday ? 'HEUTE' : 'DATUM',
-                                            style: TextStyle(
-                                                fontSize: 9,
-                                                fontWeight: FontWeight.w700,
-                                                color: isToday
-                                                    ? skin.primary
-                                                    : skin.white(0.38),
-                                                letterSpacing: 1.0),
-                                          ),
-                                          Text(
-                                            DateFormat(
-                                                    'EEEE, d. MMMM yyyy',
-                                                    'de')
-                                                .format(_selectedDate),
-                                            style: TextStyle(
-                                                fontSize: 13,
-                                                color: skin.textPrimary,
-                                                fontWeight: FontWeight.w600),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ],
-                                      ),
+                      // Datums-Picker
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 24),
+                        child: Row(
+                          children: [
+                            _NavBtn(
+                                icon: Icons.chevron_left,
+                                onTap: () => _changeDate(-1)),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: GestureDetector(
+                                onTap: _selectDateWithPicker,
+                                onHorizontalDragEnd: (d) {
+                                  final v = d.primaryVelocity ?? 0;
+                                  if (v < -300) _changeDate(1);
+                                  if (v > 300) _changeDate(-1);
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      vertical: 12, horizontal: 16),
+                                  decoration: BoxDecoration(
+                                    color: skin.bgCard,
+                                    borderRadius: BorderRadius.circular(14),
+                                    border: Border.all(
+                                      color: isToday
+                                          ? skin.primaryWithAlpha(0.5)
+                                          : skin.white(0.1),
                                     ),
-                                  ],
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.center,
+                                    children: [
+                                      const Text('📅',
+                                          style: TextStyle(fontSize: 14)),
+                                      const SizedBox(width: 8),
+                                      Flexible(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              isToday ? 'HEUTE' : 'DATUM',
+                                              style: TextStyle(
+                                                  fontSize: 9,
+                                                  fontWeight: FontWeight.w700,
+                                                  color: isToday
+                                                      ? skin.primary
+                                                      : skin.white(0.38),
+                                                  letterSpacing: 1.0),
+                                            ),
+                                            Text(
+                                              DateFormat(
+                                                      'EEEE, d. MMMM yyyy',
+                                                      'de')
+                                                  .format(_selectedDate),
+                                              style: TextStyle(
+                                                  fontSize: 13,
+                                                  color: skin.textPrimary,
+                                                  fontWeight:
+                                                      FontWeight.w600),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                          const SizedBox(width: 12),
-                          _NavBtn(
-                              icon: Icons.chevron_right,
-                              onTap: () => _changeDate(1)),
-                        ],
+                            const SizedBox(width: 12),
+                            _NavBtn(
+                                icon: Icons.chevron_right,
+                                onTap: () => _changeDate(1)),
+                          ],
+                        ),
                       ),
-                    ),
 
-                    const SizedBox(height: 28),
+                      const SizedBox(height: 28),
 
-                    // Zeitkarten
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 24),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: _SwipeTimeCard(
-                              label: 'KOMMEN',
-                              color: skin.kommenColor,
-                              controller: _kommenController,
-                              onTap: () =>
-                                  _selectTimeWithPicker(_kommenController),
-                              onDoubleTap: () =>
-                                  _onTimeCardDoubleTap(_kommenController),
-                              onSwipeUp: () =>
-                                  _adjustTime(_kommenController, 1),
-                              onSwipeDown: () =>
-                                  _adjustTime(_kommenController, -1),
+                      // Zeitkarten
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 24),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: _SwipeTimeCard(
+                                label: 'KOMMEN',
+                                color: skin.kommenColor,
+                                controller: _kommenController,
+                                onTap: () =>
+                                    _selectTimeWithPicker(_kommenController),
+                                onDoubleTap: () =>
+                                    _onTimeCardDoubleTap(_kommenController),
+                                onSwipeUp: () =>
+                                    _adjustTime(_kommenController, 1),
+                                onSwipeDown: () =>
+                                    _adjustTime(_kommenController, -1),
+                              ),
                             ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: _SwipeTimeCard(
-                              label: 'GEHEN',
-                              color: skin.gehenColor,
-                              controller: _gehenController,
-                              onTap: () =>
-                                  _selectTimeWithPicker(_gehenController),
-                              onDoubleTap: () =>
-                                  _onTimeCardDoubleTap(_gehenController),
-                              onSwipeUp: () =>
-                                  _adjustTime(_gehenController, 1),
-                              onSwipeDown: () =>
-                                  _adjustTime(_gehenController, -1),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _SwipeTimeCard(
+                                label: 'GEHEN',
+                                color: skin.gehenColor,
+                                controller: _gehenController,
+                                onTap: () =>
+                                    _selectTimeWithPicker(_gehenController),
+                                onDoubleTap: () =>
+                                    _onTimeCardDoubleTap(_gehenController),
+                                onSwipeUp: () =>
+                                    _adjustTime(_gehenController, 1),
+                                onSwipeDown: () =>
+                                    _adjustTime(_gehenController, -1),
+                              ),
                             ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 6),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 24),
-                      child: Text('Wischen - Tippen - Doppeltippen',
-                          style: TextStyle(
-                              fontSize: 11, color: skin.white(0.3))),
-                    ),
-
-                    const SizedBox(height: 20),
-
-                    // TKF – Karte bleibt im Layout sichtbar (aber ausgegraut wenn Overlay offen)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 24),
-                      child: GestureDetector(
-                        key: _tkfCardKey,
-                        onTap: () => _openOverlay(_OverlayField.tkf),
-                        child: AnimatedOpacity(
-                          opacity: _activeOverlay == _OverlayField.tkf
-                              ? 0.0
-                              : (_activeOverlay == _OverlayField.notiz
-                                  ? 0.3
-                                  : 1.0),
-                          duration: const Duration(milliseconds: 200),
-                          child: _StaticInputCard(
-                            label: 'TAGESKOMMANDOFÜHRER',
-                            emoji: '👤',
-                            controller: _teamchefController,
-                            hint: 'Name des TKF',
-                          ),
+                          ],
                         ),
                       ),
-                    ),
 
-                    const SizedBox(height: 12),
-
-                    // Notiz
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 24),
-                      child: GestureDetector(
-                        key: _notizCardKey,
-                        onTap: () => _openOverlay(_OverlayField.notiz),
-                        child: AnimatedOpacity(
-                          opacity: _activeOverlay == _OverlayField.notiz
-                              ? 0.0
-                              : (_activeOverlay == _OverlayField.tkf
-                                  ? 0.3
-                                  : 1.0),
-                          duration: const Duration(milliseconds: 200),
-                          child: _StaticInputCard(
-                            label: 'NOTIZ',
-                            emoji: '📝',
-                            controller: _notizController,
-                            hint: 'Optionale Notiz...',
-                          ),
-                        ),
+                      const SizedBox(height: 6),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 24),
+                        child: Text('Wischen - Tippen - Doppeltippen',
+                            style: TextStyle(
+                                fontSize: 11, color: skin.white(0.3))),
                       ),
-                    ),
 
-                    const SizedBox(height: 28),
+                      const SizedBox(height: 20),
 
-                    // Speichern-Button
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 24),
-                      child: ScaleTransition(
-                        scale: Tween<double>(begin: 1.0, end: 0.95).animate(
-                          CurvedAnimation(
-                              parent: _saveAnimController,
-                              curve: Curves.easeInOut),
-                        ),
+                      // TKF
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 24),
                         child: GestureDetector(
-                          onTap: () => _saveEntry(context),
-                          child: Container(
-                            width: double.infinity,
-                            padding:
-                                const EdgeInsets.symmetric(vertical: 16),
-                            decoration: BoxDecoration(
-                              gradient: isChromeSkin
-                                  ? const LinearGradient(
-                                      colors: [
-                                        Color(0xFF333333),
-                                        Color(0xFF555555)
-                                      ],
-                                      begin: Alignment.centerLeft,
-                                      end: Alignment.centerRight,
-                                    )
-                                  : const LinearGradient(
-                                      colors: [
-                                        Color(0xFF6C63FF),
-                                        Color(0xFF4ECDC4)
-                                      ],
-                                      begin: Alignment.centerLeft,
-                                      end: Alignment.centerRight,
-                                    ),
-                              borderRadius: BorderRadius.circular(16),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: isChromeSkin
-                                      ? Colors.black.withValues(alpha: 0.3)
-                                      : const Color(0xFF6C63FF)
-                                          .withValues(alpha: 0.4),
-                                  blurRadius: 12,
-                                  offset: const Offset(0, 4),
-                                ),
-                              ],
-                            ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                const Icon(Icons.save_rounded,
-                                    color: Colors.white, size: 20),
-                                const SizedBox(width: 8),
-                                const Text(
-                                  'Eintrag speichern',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w700,
-                                    color: Colors.white,
-                                    letterSpacing: 0.3,
-                                  ),
-                                ),
-                              ],
+                          key: _tkfCardKey,
+                          onTap: () => _openOverlay(_OverlayField.tkf),
+                          child: AnimatedOpacity(
+                            opacity: _activeOverlay == _OverlayField.tkf
+                                ? 0.0
+                                : (_activeOverlay == _OverlayField.notiz
+                                    ? 0.3
+                                    : 1.0),
+                            duration: const Duration(milliseconds: 200),
+                            child: _StaticInputCard(
+                              label: 'TAGESKOMMANDOFÜHRER',
+                              emoji: '👤',
+                              controller: _teamchefController,
+                              hint: 'Name des TKF',
                             ),
                           ),
                         ),
                       ),
-                    ),
 
-                    const SizedBox(height: 40),
-                  ],
+                      const SizedBox(height: 12),
+
+                      // Notiz
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 24),
+                        child: GestureDetector(
+                          key: _notizCardKey,
+                          onTap: () => _openOverlay(_OverlayField.notiz),
+                          child: AnimatedOpacity(
+                            opacity: _activeOverlay == _OverlayField.notiz
+                                ? 0.0
+                                : (_activeOverlay == _OverlayField.tkf
+                                    ? 0.3
+                                    : 1.0),
+                            duration: const Duration(milliseconds: 200),
+                            child: _StaticInputCard(
+                              label: 'NOTIZ',
+                              emoji: '📝',
+                              controller: _notizController,
+                              hint: 'Optionale Notiz...',
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 28),
+
+                      // Speichern-Button
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 24),
+                        child: ScaleTransition(
+                          scale: Tween<double>(begin: 1.0, end: 0.95).animate(
+                            CurvedAnimation(
+                                parent: _saveAnimController,
+                                curve: Curves.easeInOut),
+                          ),
+                          child: GestureDetector(
+                            onTap: () => _saveEntry(context),
+                            child: Container(
+                              width: double.infinity,
+                              padding:
+                                  const EdgeInsets.symmetric(vertical: 16),
+                              decoration: BoxDecoration(
+                                gradient: isChromeSkin
+                                    ? const LinearGradient(
+                                        colors: [
+                                          Color(0xFF333333),
+                                          Color(0xFF555555)
+                                        ],
+                                        begin: Alignment.centerLeft,
+                                        end: Alignment.centerRight,
+                                      )
+                                    : const LinearGradient(
+                                        colors: [
+                                          Color(0xFF6C63FF),
+                                          Color(0xFF4ECDC4)
+                                        ],
+                                        begin: Alignment.centerLeft,
+                                        end: Alignment.centerRight,
+                                      ),
+                                borderRadius: BorderRadius.circular(16),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: isChromeSkin
+                                        ? Colors.black.withValues(alpha: 0.3)
+                                        : const Color(0xFF6C63FF)
+                                            .withValues(alpha: 0.4),
+                                    blurRadius: 12,
+                                    offset: const Offset(0, 4),
+                                  ),
+                                ],
+                              ),
+                              child: const Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.save_rounded,
+                                      color: Colors.white, size: 20),
+                                  SizedBox(width: 8),
+                                  Text(
+                                    'Eintrag speichern',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w700,
+                                      color: Colors.white,
+                                      letterSpacing: 0.3,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 40),
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
 
-          // ── Flying-Card Overlay ────────────────────────────────────────────
-          if (_activeOverlay != _OverlayField.none)
-            _FlyingCardOverlay(
-              field: _activeOverlay,
-              flyAnimation: _flyController,
-              scaleAnim: _flyScale,
-              opacityAnim: _flyOpacity,
-              controller: _activeOverlay == _OverlayField.tkf
-                  ? _teamchefController
-                  : _notizController,
-              focusNode: _activeOverlay == _OverlayField.tkf
-                  ? _tkfFocusNode
-                  : _notizFocusNode,
-              onClose: _closeOverlay,
-              onClear: () {
-                setState(() {
-                  if (_activeOverlay == _OverlayField.tkf) {
-                    _teamchefController.clear();
-                  } else {
-                    _notizController.clear();
-                  }
-                });
-                HapticFeedback.selectionClick();
-              },
-            ),
-        ],
+            // ── Flying-Card Overlay ──────────────────────────────────────────
+            if (_activeOverlay != _OverlayField.none)
+              _FlyingCardOverlay(
+                field: _activeOverlay,
+                flyAnimation: _flyController,
+                scaleAnim: _flyScale,
+                opacityAnim: _flyOpacity,
+                controller: _activeOverlay == _OverlayField.tkf
+                    ? _teamchefController
+                    : _notizController,
+                focusNode: _activeOverlay == _OverlayField.tkf
+                    ? _tkfFocusNode
+                    : _notizFocusNode,
+                onClose: _closeOverlay,
+                onClear: () {
+                  setState(() {
+                    if (_activeOverlay == _OverlayField.tkf) {
+                      _teamchefController.clear();
+                    } else {
+                      _notizController.clear();
+                    }
+                  });
+                  HapticFeedback.selectionClick();
+                },
+              ),
+          ],
+        ),
       ),
     );
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Flying-Card Overlay Widget
+// Flying-Card Overlay
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _FlyingCardOverlay extends StatelessWidget {
@@ -824,10 +847,7 @@ class _FlyingCardOverlay extends StatelessWidget {
     final label = isTkf ? 'TAGESKOMMANDOFÜHRER' : 'NOTIZ';
     final emoji = isTkf ? '👤' : '📝';
     final hint = isTkf ? 'Name des TKF' : 'Optionale Notiz...';
-    
-    // Feste Positionierung ohne Berücksichtigung der Tastaturhöhe
     final screenH = MediaQuery.of(context).size.height;
-    // Karte ist immer im oberen Bereich, unabhängig von der Tastatur
     final cardTop = screenH * 0.22;
 
     return AnimatedBuilder(
@@ -835,7 +855,7 @@ class _FlyingCardOverlay extends StatelessWidget {
       builder: (context, child) {
         return Stack(
           children: [
-            // Dimm-Hintergrund
+            // Dimm-Hintergrund – Tap schließt Overlay
             GestureDetector(
               onTap: onClose,
               child: Opacity(
@@ -848,7 +868,7 @@ class _FlyingCardOverlay extends StatelessWidget {
               ),
             ),
 
-            // Die fliegende Karte - fest positioniert, verschiebt sich nicht mit Tastatur
+            // Karte
             Positioned(
               top: cardTop + (1 - scaleAnim.value) * -30,
               left: 24,
@@ -889,7 +909,6 @@ class _FlyingCardOverlay extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Header-Leiste
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 14, 12, 0),
               child: Row(
@@ -902,9 +921,8 @@ class _FlyingCardOverlay extends StatelessWidget {
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Center(
-                      child: Text(emoji,
-                          style: const TextStyle(fontSize: 15)),
-                    ),
+                        child: Text(emoji,
+                            style: const TextStyle(fontSize: 15))),
                   ),
                   const SizedBox(width: 10),
                   Flexible(
@@ -921,7 +939,6 @@ class _FlyingCardOverlay extends StatelessWidget {
                     ),
                   ),
                   const Spacer(),
-                  // Löschen-Button
                   GestureDetector(
                     onTap: onClear,
                     child: Container(
@@ -935,7 +952,6 @@ class _FlyingCardOverlay extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  // Fertig-Button
                   GestureDetector(
                     onTap: onClose,
                     child: Container(
@@ -958,15 +974,11 @@ class _FlyingCardOverlay extends StatelessWidget {
                 ],
               ),
             ),
-
-            // Divider
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-              child: Divider(
-                  color: skin.primaryWithAlpha(0.12), height: 1),
+              child:
+                  Divider(color: skin.primaryWithAlpha(0.12), height: 1),
             ),
-
-            // Text-Eingabefeld
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
               child: TextField(
@@ -998,8 +1010,7 @@ class _FlyingCardOverlay extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Statische (nicht-editierbare) Karte für das ListView
-// zeigt den aktuellen Wert an, öffnet per Tap das Overlay
+// Statische Karte im ListView (kein echtes TextField, nur Anzeige)
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _StaticInputCard extends StatelessWidget {
@@ -1039,9 +1050,8 @@ class _StaticInputCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(9),
               ),
               child: Center(
-                child: Text(emoji,
-                    style: const TextStyle(fontSize: 14)),
-              ),
+                  child:
+                      Text(emoji, style: const TextStyle(fontSize: 14))),
             ),
             const SizedBox(width: 10),
             Expanded(
@@ -1072,8 +1082,7 @@ class _StaticInputCard extends StatelessWidget {
                 ],
               ),
             ),
-            Icon(Icons.edit_outlined,
-                size: 15, color: skin.white(0.25)),
+            Icon(Icons.edit_outlined, size: 15, color: skin.white(0.25)),
           ],
         ),
       ),
@@ -1082,7 +1091,7 @@ class _StaticInputCard extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Rest der Widgets unverändert
+// Hilfs-Widgets
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _NavBtn extends StatelessWidget {
@@ -1152,11 +1161,9 @@ class _IOSTimePickerState extends State<_IOSTimePicker> {
   void _setCurrentTime() {
     final now = DateTime.now();
     _hourController.animateToItem(now.hour,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut);
+        duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
     _minuteController.animateToItem(now.minute,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut);
+        duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
     setState(() {
       _selectedHour = now.hour;
       _selectedMinute = now.minute;
@@ -1368,13 +1375,11 @@ class _SwipeTimeCardState extends State<_SwipeTimeCard> {
         animation: widget.controller,
         builder: (_, __) => Container(
           width: double.infinity,
-          padding:
-              const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           decoration: BoxDecoration(
             color: widget.color.withValues(alpha: 0.06),
             borderRadius: BorderRadius.circular(20),
-            border:
-                Border.all(color: widget.color.withValues(alpha: 0.25)),
+            border: Border.all(color: widget.color.withValues(alpha: 0.25)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1389,8 +1394,7 @@ class _SwipeTimeCardState extends State<_SwipeTimeCard> {
                           color: widget.color,
                           letterSpacing: 1.2)),
                   Icon(Icons.unfold_more,
-                      color: widget.color.withValues(alpha: 0.5),
-                      size: 16),
+                      color: widget.color.withValues(alpha: 0.5), size: 16),
                 ],
               ),
               const SizedBox(height: 8),
