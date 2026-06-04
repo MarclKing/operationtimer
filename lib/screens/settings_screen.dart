@@ -739,7 +739,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// EINFACHE SKIN-AUSWAHL-KACHEL (OHNE VORSCHAU)
+// EINFACHE SKIN-AUSWAHL-KACHEL (OHNE VORSCHAU) - GEFIXT
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _SimpleSkinOption extends StatelessWidget {
@@ -759,7 +759,7 @@ class _SimpleSkinOption extends StatelessWidget {
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
         decoration: BoxDecoration(
           gradient: isSelected
               ? const LinearGradient(
@@ -779,20 +779,26 @@ class _SimpleSkinOption extends StatelessWidget {
         child: Center(
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
             children: [
               if (isSelected)
                 const Icon(
                   Icons.check_circle,
                   color: Colors.white,
-                  size: 18,
+                  size: 16,
                 ),
-              if (isSelected) const SizedBox(width: 8),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: isSelected ? Colors.white : Colors.white.withValues(alpha: 0.6),
+              if (isSelected) const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: isSelected ? Colors.white : Colors.white.withValues(alpha: 0.6),
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  softWrap: false,
                 ),
               ),
             ],
