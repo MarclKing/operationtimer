@@ -23,10 +23,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   final _teamchefController = TextEditingController();
   final _notizController = TextEditingController();
   late AnimationController _saveAnimController;
-  bool _initialTimeSet = false;
 
   double _horizontalDragStart = 0;
-  bool _isHorizontalSwipe = false;
   final _scrollController = ScrollController();
 
   // ── Flying-Card State ──────────────────────────────────────────────────────
@@ -40,7 +38,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   late Animation<double> _flyScale;
   late Animation<double> _flyOpacity;
 
-  // Wisch-nach-unten zum Schließen der Tastatur
+  // ── Glide-Animation ────────────────────────────────────────────────────────
+  late AnimationController _glideController;
+  late Animation<Offset> _glideOffset;
+
   double _verticalDragStart = 0;
   bool _isDismissingKeyboard = false;
 
@@ -56,7 +57,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
     _flyController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 320),
+      duration: const Duration(milliseconds: 340),
     );
     _flyScale = CurvedAnimation(
       parent: _flyController,
@@ -68,13 +69,35 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       curve: Curves.easeOut,
       reverseCurve: Curves.easeIn,
     );
+    _glideController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 340),
+    );
+    _glideOffset = Tween<Offset>(
+      begin: Offset.zero,
+      end: Offset.zero,
+    ).animate(CurvedAnimation(
+      parent: _glideController,
+      curve: Curves.easeOutCubic,
+      reverseCurve: Curves.easeInCubic,
+    ));
     _loadEntry();
+  }
+
+  @override
+  void deactivate() {
+    // Wird aufgerufen wenn der Screen aus dem Widget-Baum entfernt wird,
+    // z. B. beim Tab-Wechsel über die Navigationsleiste.
+    _tkfFocusNode.unfocus();
+    _notizFocusNode.unfocus();
+    super.deactivate();
   }
 
   @override
   void dispose() {
     _saveAnimController.dispose();
     _flyController.dispose();
+    _glideController.dispose();
     _kommenController.dispose();
     _gehenController.dispose();
     _teamchefController.dispose();
@@ -121,30 +144,30 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   void _loadEntry() {
     setState(() {
       _resetTimeFieldsOnly();
-      _initialTimeSet = true;
     });
   }
 
   // ── Tastatur / Overlay schließen ───────────────────────────────────────────
 
-  /// Schließt Tastatur und Overlay sofort (ohne Animation-await),
-  /// geeignet für Navigation oder externe Auslöser.
   void _dismissKeyboardAndOverlay() {
-    // Explizit beide FocusNodes unfocusen, damit die Tastatur auch beim
-    // Flying-Card-Overlay zuverlässig geschlossen wird (z. B. beim Tab-Wechsel)
     _tkfFocusNode.unfocus();
     _notizFocusNode.unfocus();
     FocusScope.of(context).unfocus();
     if (_activeOverlay != _OverlayField.none) {
       _flyController.reverse();
+      _glideController.reverse();
       setState(() => _activeOverlay = _OverlayField.none);
     }
   }
 
-  /// Schließt Overlay mit Animation (für interne Fertig-Aktionen).
   Future<void> _closeOverlay() async {
+    _tkfFocusNode.unfocus();
+    _notizFocusNode.unfocus();
     FocusScope.of(context).unfocus();
-    await _flyController.reverse();
+    await Future.wait([
+      _flyController.reverse(),
+      _glideController.reverse(),
+    ]);
     if (mounted) setState(() => _activeOverlay = _OverlayField.none);
   }
 
@@ -152,7 +175,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _dismissKeyboardAndOverlay();
     setState(() {
       _selectedDate = _selectedDate.add(Duration(days: days));
-      _initialTimeSet = false;
     });
     _loadEntry();
   }
@@ -200,13 +222,45 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     HapticFeedback.selectionClick();
   }
 
+  // ── Glide-Offset berechnen ─────────────────────────────────────────────────
+  Offset _computeGlideOffset(GlobalKey cardKey) {
+    final screenSize = MediaQuery.of(context).size;
+    final targetTop = screenSize.height * 0.22;
+    final targetCenterX = screenSize.width / 2;
+    final targetCenterY = targetTop + 80;
+
+    final box = cardKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null) return Offset.zero;
+    final cardPos = box.localToGlobal(Offset.zero);
+    final cardSize = box.size;
+    final cardCenterX = cardPos.dx + cardSize.width / 2;
+    final cardCenterY = cardPos.dy + cardSize.height / 2;
+
+    return Offset(targetCenterX - cardCenterX, targetCenterY - cardCenterY);
+  }
+
   // ── Flying-Card öffnen ─────────────────────────────────────────────────────
   void _openOverlay(_OverlayField field) {
     if (_activeOverlay != _OverlayField.none) return;
     HapticFeedback.lightImpact();
+
+    final cardKey = field == _OverlayField.tkf ? _tkfCardKey : _notizCardKey;
+    final glideTarget = _computeGlideOffset(cardKey);
+
+    _glideOffset = Tween<Offset>(
+      begin: Offset.zero,
+      end: glideTarget,
+    ).animate(CurvedAnimation(
+      parent: _glideController,
+      curve: Curves.easeOutCubic,
+      reverseCurve: Curves.easeInCubic,
+    ));
+
     setState(() => _activeOverlay = field);
-    _flyController.forward();
-    Future.delayed(const Duration(milliseconds: 180), () {
+    _flyController.forward(from: 0);
+    _glideController.forward(from: 0);
+
+    Future.delayed(const Duration(milliseconds: 200), () {
       if (!mounted) return;
       if (field == _OverlayField.tkf) {
         FocusScope.of(context).requestFocus(_tkfFocusNode);
@@ -217,11 +271,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   // ── Navigation zur Monatsübersicht ─────────────────────────────────────────
-  /// Tastatur + Overlay schließen, DANN navigieren.
   void _navigateToMonth() {
     _dismissKeyboardAndOverlay();
-    // Längeres Delay damit unfocus() + Overlay-Animation greifen,
-    // bevor die neue Route gemountet wird
     Future.delayed(const Duration(milliseconds: 150), () {
       if (mounted) widget.onNavigateToMonth();
     });
@@ -367,7 +418,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       onTap: () {
                         setState(() {
                           _selectedDate = tempDate;
-                          _initialTimeSet = false;
                         });
                         _loadEntry();
                         Navigator.pop(context);
@@ -453,14 +503,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       backgroundColor: skin.bgBase,
       resizeToAvoidBottomInset: false,
       body: GestureDetector(
-        // ── Wischen nach unten → Tastatur schließen (wie iOS-Standard) ───────
         onVerticalDragStart: (d) {
           _verticalDragStart = d.globalPosition.dy;
           _isDismissingKeyboard = false;
         },
         onVerticalDragUpdate: (d) {
           final delta = d.globalPosition.dy - _verticalDragStart;
-          // Ab 40px Wischweg nach unten → Tastatur/Overlay schließen
           if (delta > 40 && !_isDismissingKeyboard) {
             _isDismissingKeyboard = true;
             _dismissKeyboardAndOverlay();
@@ -479,16 +527,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               child: GestureDetector(
                 onHorizontalDragStart: (d) {
                   _horizontalDragStart = d.globalPosition.dx;
-                  _isHorizontalSwipe = false;
                 },
-                onHorizontalDragUpdate: (d) {
-                  if ((d.globalPosition.dx - _horizontalDragStart).abs() > 20) {
-                    _isHorizontalSwipe = true;
-                  }
-                },
+                onHorizontalDragUpdate: (_) {},
                 onHorizontalDragEnd: (d) {
                   if ((d.primaryVelocity ?? 0) < -400) _navigateToMonth();
-                  _isHorizontalSwipe = false;
+                  _horizontalDragStart = 0;
                 },
                 behavior: HitTestBehavior.translucent,
                 child: SafeArea(
@@ -788,11 +831,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               ),
             ),
 
-            // ── Flying-Card Overlay ──────────────────────────────────────────
+            // ── Flying-Card Overlay mit Glide ────────────────────────────────
             if (_activeOverlay != _OverlayField.none)
               _FlyingCardOverlay(
                 field: _activeOverlay,
                 flyAnimation: _flyController,
+                glideController: _glideController,
+                glideOffset: _glideOffset,
                 scaleAnim: _flyScale,
                 opacityAnim: _flyOpacity,
                 controller: _activeOverlay == _OverlayField.tkf
@@ -821,12 +866,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Flying-Card Overlay
+// Flying-Card Overlay mit Glide-Animation
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _FlyingCardOverlay extends StatelessWidget {
   final _OverlayField field;
   final AnimationController flyAnimation;
+  final AnimationController glideController;
+  final Animation<Offset> glideOffset;
   final Animation<double> scaleAnim;
   final Animation<double> opacityAnim;
   final TextEditingController controller;
@@ -837,6 +884,8 @@ class _FlyingCardOverlay extends StatelessWidget {
   const _FlyingCardOverlay({
     required this.field,
     required this.flyAnimation,
+    required this.glideController,
+    required this.glideOffset,
     required this.scaleAnim,
     required this.opacityAnim,
     required this.controller,
@@ -856,11 +905,19 @@ class _FlyingCardOverlay extends StatelessWidget {
     final cardTop = screenH * 0.22;
 
     return AnimatedBuilder(
-      animation: flyAnimation,
+      animation: Listenable.merge([flyAnimation, glideController]),
       builder: (context, child) {
+        final glideProgress = glideController.value;
+        final flyProgress = flyAnimation.value;
+
+        // Glide: Karte startet bei ihrer Ausgangsposition und gleitet zur Zielposition.
+        // glideProgress 0.0 → voller Offset (Kartenposition), 1.0 → Offset 0 (Zielposition)
+        final offsetDy = glideOffset.value.dy * (1.0 - glideProgress);
+        final offsetDx = glideOffset.value.dx * (1.0 - glideProgress);
+
         return Stack(
           children: [
-            // Dimm-Hintergrund – Tap schließt Overlay
+            // Dimm-Hintergrund
             GestureDetector(
               onTap: onClose,
               child: Opacity(
@@ -873,13 +930,13 @@ class _FlyingCardOverlay extends StatelessWidget {
               ),
             ),
 
-            // Karte
+            // Karte – gleitet von Ausgangsposition zur Zielposition
             Positioned(
-              top: cardTop + (1 - scaleAnim.value) * -30,
-              left: 24,
-              right: 24,
+              top: cardTop + offsetDy,
+              left: 24.0 + offsetDx,
+              right: 24.0 - offsetDx,
               child: Transform.scale(
-                scale: 0.85 + scaleAnim.value * 0.15,
+                scale: 0.85 + flyProgress * 0.15,
                 child: Opacity(
                   opacity: opacityAnim.value.clamp(0.0, 1.0),
                   child: child!,
@@ -914,10 +971,12 @@ class _FlyingCardOverlay extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            // ── Header: Icon | Label | [Löschen] [Fertig] ───────────────────
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 12, 0),
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
               child: Row(
                 children: [
+                  // Emoji-Icon
                   Container(
                     width: 32,
                     height: 32,
@@ -930,7 +989,8 @@ class _FlyingCardOverlay extends StatelessWidget {
                             style: const TextStyle(fontSize: 15))),
                   ),
                   const SizedBox(width: 10),
-                  Flexible(
+                  // Label – nimmt verfügbaren Platz, aber verdrängt Buttons nicht
+                  Expanded(
                     child: Text(
                       label,
                       style: TextStyle(
@@ -943,53 +1003,46 @@ class _FlyingCardOverlay extends StatelessWidget {
                       maxLines: 1,
                     ),
                   ),
-                  const Spacer(),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Löschen-Button
-                      GestureDetector(
-                        onTap: onClear,
-                        child: Container(
-                          padding: const EdgeInsets.all(6),
-                          decoration: BoxDecoration(
-                            color: skin.white(0.06),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Icon(Icons.backspace_outlined,
-                              size: 16, color: skin.white(0.4)),
+                  // Löschen-Button
+                  GestureDetector(
+                    onTap: onClear,
+                    child: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: skin.white(0.06),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(Icons.backspace_outlined,
+                          size: 16, color: skin.white(0.4)),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  // Fertig-Button
+                  GestureDetector(
+                    onTap: onClose,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 6),
+                      decoration: BoxDecoration(
+                        gradient: skin.gradient,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        'Fertig',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: skin.onGradient,
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      // Fertig-Button
-                      GestureDetector(
-                        onTap: onClose,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 14, vertical: 6),
-                          decoration: BoxDecoration(
-                            gradient: skin.gradient,
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Text(
-                            'Fertig',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                              color: skin.onGradient,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 ],
               ),
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-              child:
-                  Divider(color: skin.primaryWithAlpha(0.12), height: 1),
+              child: Divider(color: skin.primaryWithAlpha(0.12), height: 1),
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
@@ -1022,7 +1075,7 @@ class _FlyingCardOverlay extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Statische Karte im ListView (kein echtes TextField, nur Anzeige)
+// Statische Karte im ListView
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _StaticInputCard extends StatelessWidget {
@@ -1131,6 +1184,10 @@ class _NavBtn extends StatelessWidget {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// iOS-Zeitpicker – looping=true, Jetzt-Bug gefixt
+// ─────────────────────────────────────────────────────────────────────────────
+
 class _IOSTimePicker extends StatefulWidget {
   final TimeOfDay initialTime;
   final AppSkin skin;
@@ -1152,17 +1209,19 @@ class _IOSTimePickerState extends State<_IOSTimePicker> {
   late FixedExtentScrollController _hourController;
   late FixedExtentScrollController _minuteController;
 
+  // Startoffset: weit genug in der Mitte, damit man in beide Richtungen scrollen kann.
+  static const int _hourLoopOffset = 500;   // 500 * 24 = 12.000 Items
+  static const int _minuteLoopOffset = 500; // 500 * 60 = 30.000 Items
+
   @override
   void initState() {
     super.initState();
     _selectedHour = widget.initialTime.hour;
     _selectedMinute = widget.initialTime.minute;
-    // WICHTIG: looping = true ermöglicht endloses Scrollen
-    // Wir setzen den initialItem auf einen hohen Wert, damit das endlose Scrollen in beide Richtungen funktioniert
     _hourController = FixedExtentScrollController(
-        initialItem: _selectedHour + 1000); // +1000 für endloses Scrollen
+        initialItem: _hourLoopOffset * 24 + _selectedHour);
     _minuteController = FixedExtentScrollController(
-        initialItem: _selectedMinute + 1000); // +1000 für endloses Scrollen
+        initialItem: _minuteLoopOffset * 60 + _selectedMinute);
   }
 
   @override
@@ -1176,15 +1235,27 @@ class _IOSTimePickerState extends State<_IOSTimePicker> {
     final now = DateTime.now();
     final nowHour = now.hour;
     final nowMinute = now.minute;
-    
+
+    // Nächstgelegenen Index berechnen, damit der Scroll-Weg kurz bleibt.
+    final currentHourIdx = _hourController.selectedItem;
+    final currentHourBase = (currentHourIdx ~/ 24) * 24;
+    int targetHourIdx = currentHourBase + nowHour;
+    if (targetHourIdx < currentHourIdx) targetHourIdx += 24;
+
+    final currentMinuteIdx = _minuteController.selectedItem;
+    final currentMinuteBase = (currentMinuteIdx ~/ 60) * 60;
+    int targetMinuteIdx = currentMinuteBase + nowMinute;
+    if (targetMinuteIdx < currentMinuteIdx) targetMinuteIdx += 60;
+
     _hourController.animateToItem(
-        nowHour + 1000,
-        duration: const Duration(milliseconds: 300), 
+        targetHourIdx,
+        duration: const Duration(milliseconds: 350),
         curve: Curves.easeOut);
     _minuteController.animateToItem(
-        nowMinute + 1000,
-        duration: const Duration(milliseconds: 300), 
+        targetMinuteIdx,
+        duration: const Duration(milliseconds: 350),
         curve: Curves.easeOut);
+
     setState(() {
       _selectedHour = nowHour;
       _selectedMinute = nowMinute;
@@ -1223,35 +1294,29 @@ class _IOSTimePickerState extends State<_IOSTimePicker> {
             height: 200,
             child: Row(
               children: [
+                // ── Stunden ──────────────────────────────────────────────────
                 Expanded(
                   child: CupertinoPicker(
                     scrollController: _hourController,
                     magnification: 1.2,
                     backgroundColor: Colors.transparent,
                     itemExtent: 40,
-                    looping: true, // ← Endloses Scrollen für Stunden
+                    looping: true,
                     onSelectedItemChanged: (index) {
-                      // Der tatsächliche Stundenwert ist index % 24
-                      final hour = index % 24;
-                      setState(() => _selectedHour = hour);
+                      setState(() => _selectedHour = index % 24);
                     },
-                    children: List.generate(
-                      240, // Genügend viele Wiederholungen für endloses Gefühl
-                      (index) {
-                        final hour = index % 24;
-                        return Center(
-                          child: Text(
-                            hour.toString().padLeft(2, '0'),
-                            style: TextStyle(
-                                fontSize: 24,
-                                fontWeight: FontWeight.w600,
-                                color: _selectedHour == hour
-                                    ? skin.primary
-                                    : skin.white(0.6)),
-                          ),
-                        );
-                      },
-                    ),
+                    // Nur 24 Items – looping=true sorgt für endloses Scrollen
+                    children: List.generate(24, (h) => Center(
+                      child: Text(
+                        h.toString().padLeft(2, '0'),
+                        style: TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.w600,
+                            color: _selectedHour == h
+                                ? skin.primary
+                                : skin.white(0.6)),
+                      ),
+                    )),
                   ),
                 ),
                 Text(':',
@@ -1259,35 +1324,29 @@ class _IOSTimePickerState extends State<_IOSTimePicker> {
                         fontSize: 28,
                         fontWeight: FontWeight.w600,
                         color: skin.primary)),
+                // ── Minuten ───────────────────────────────────────────────────
                 Expanded(
                   child: CupertinoPicker(
                     scrollController: _minuteController,
                     magnification: 1.2,
                     backgroundColor: Colors.transparent,
                     itemExtent: 40,
-                    looping: true, // ← Endloses Scrollen für Minuten
+                    looping: true,
                     onSelectedItemChanged: (index) {
-                      // Der tatsächliche Minutenwert ist index % 60
-                      final minute = index % 60;
-                      setState(() => _selectedMinute = minute);
+                      setState(() => _selectedMinute = index % 60);
                     },
-                    children: List.generate(
-                      600, // Genügend viele Wiederholungen für endloses Gefühl
-                      (index) {
-                        final minute = index % 60;
-                        return Center(
-                          child: Text(
-                            minute.toString().padLeft(2, '0'),
-                            style: TextStyle(
-                                fontSize: 24,
-                                fontWeight: FontWeight.w600,
-                                color: _selectedMinute == minute
-                                    ? skin.primary
-                                    : skin.white(0.6)),
-                          ),
-                        );
-                      },
-                    ),
+                    // Nur 60 Items – looping=true sorgt für endloses Scrollen
+                    children: List.generate(60, (m) => Center(
+                      child: Text(
+                        m.toString().padLeft(2, '0'),
+                        style: TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.w600,
+                            color: _selectedMinute == m
+                                ? skin.primary
+                                : skin.white(0.6)),
+                      ),
+                    )),
                   ),
                 ),
               ],
@@ -1358,6 +1417,10 @@ class _IOSTimePickerState extends State<_IOSTimePicker> {
     );
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Swipe-Zeitkarte
+// ─────────────────────────────────────────────────────────────────────────────
 
 class _SwipeTimeCard extends StatefulWidget {
   final String label;
