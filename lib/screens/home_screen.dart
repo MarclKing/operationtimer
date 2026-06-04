@@ -130,6 +130,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   /// Schließt Tastatur und Overlay sofort (ohne Animation-await),
   /// geeignet für Navigation oder externe Auslöser.
   void _dismissKeyboardAndOverlay() {
+    // Explizit beide FocusNodes unfocusen, damit die Tastatur auch beim
+    // Flying-Card-Overlay zuverlässig geschlossen wird (z. B. beim Tab-Wechsel)
+    _tkfFocusNode.unfocus();
+    _notizFocusNode.unfocus();
     FocusScope.of(context).unfocus();
     if (_activeOverlay != _OverlayField.none) {
       _flyController.reverse();
@@ -216,8 +220,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   /// Tastatur + Overlay schließen, DANN navigieren.
   void _navigateToMonth() {
     _dismissKeyboardAndOverlay();
-    // Kurzes Delay damit unfocus() greift, bevor die neue Route mounted wird
-    Future.delayed(const Duration(milliseconds: 80), () {
+    // Längeres Delay damit unfocus() + Overlay-Animation greifen,
+    // bevor die neue Route gemountet wird
+    Future.delayed(const Duration(milliseconds: 150), () {
       if (mounted) widget.onNavigateToMonth();
     });
   }
@@ -939,37 +944,44 @@ class _FlyingCardOverlay extends StatelessWidget {
                     ),
                   ),
                   const Spacer(),
-                  GestureDetector(
-                    onTap: onClear,
-                    child: Container(
-                      padding: const EdgeInsets.all(6),
-                      decoration: BoxDecoration(
-                        color: skin.white(0.06),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Icon(Icons.backspace_outlined,
-                          size: 16, color: skin.white(0.4)),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  GestureDetector(
-                    onTap: onClose,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 6),
-                      decoration: BoxDecoration(
-                        gradient: skin.gradient,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Text(
-                        'Fertig',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: skin.onGradient,
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Löschen-Button
+                      GestureDetector(
+                        onTap: onClear,
+                        child: Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: skin.white(0.06),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Icon(Icons.backspace_outlined,
+                              size: 16, color: skin.white(0.4)),
                         ),
                       ),
-                    ),
+                      const SizedBox(width: 8),
+                      // Fertig-Button
+                      GestureDetector(
+                        onTap: onClose,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 6),
+                          decoration: BoxDecoration(
+                            gradient: skin.gradient,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(
+                            'Fertig',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: skin.onGradient,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -1145,10 +1157,12 @@ class _IOSTimePickerState extends State<_IOSTimePicker> {
     super.initState();
     _selectedHour = widget.initialTime.hour;
     _selectedMinute = widget.initialTime.minute;
-    _hourController =
-        FixedExtentScrollController(initialItem: _selectedHour);
-    _minuteController =
-        FixedExtentScrollController(initialItem: _selectedMinute);
+    // WICHTIG: looping = true ermöglicht endloses Scrollen
+    // Wir setzen den initialItem auf einen hohen Wert, damit das endlose Scrollen in beide Richtungen funktioniert
+    _hourController = FixedExtentScrollController(
+        initialItem: _selectedHour + 1000); // +1000 für endloses Scrollen
+    _minuteController = FixedExtentScrollController(
+        initialItem: _selectedMinute + 1000); // +1000 für endloses Scrollen
   }
 
   @override
@@ -1160,13 +1174,20 @@ class _IOSTimePickerState extends State<_IOSTimePicker> {
 
   void _setCurrentTime() {
     final now = DateTime.now();
-    _hourController.animateToItem(now.hour,
-        duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
-    _minuteController.animateToItem(now.minute,
-        duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+    final nowHour = now.hour;
+    final nowMinute = now.minute;
+    
+    _hourController.animateToItem(
+        nowHour + 1000,
+        duration: const Duration(milliseconds: 300), 
+        curve: Curves.easeOut);
+    _minuteController.animateToItem(
+        nowMinute + 1000,
+        duration: const Duration(milliseconds: 300), 
+        curve: Curves.easeOut);
     setState(() {
-      _selectedHour = now.hour;
-      _selectedMinute = now.minute;
+      _selectedHour = nowHour;
+      _selectedMinute = nowMinute;
     });
   }
 
@@ -1208,20 +1229,28 @@ class _IOSTimePickerState extends State<_IOSTimePicker> {
                     magnification: 1.2,
                     backgroundColor: Colors.transparent,
                     itemExtent: 40,
-                    looping: false,
-                    onSelectedItemChanged: (i) =>
-                        setState(() => _selectedHour = i),
+                    looping: true, // ← Endloses Scrollen für Stunden
+                    onSelectedItemChanged: (index) {
+                      // Der tatsächliche Stundenwert ist index % 24
+                      final hour = index % 24;
+                      setState(() => _selectedHour = hour);
+                    },
                     children: List.generate(
-                      24,
-                      (h) => Center(
-                        child: Text(h.toString().padLeft(2, '0'),
+                      240, // Genügend viele Wiederholungen für endloses Gefühl
+                      (index) {
+                        final hour = index % 24;
+                        return Center(
+                          child: Text(
+                            hour.toString().padLeft(2, '0'),
                             style: TextStyle(
                                 fontSize: 24,
                                 fontWeight: FontWeight.w600,
-                                color: _selectedHour == h
+                                color: _selectedHour == hour
                                     ? skin.primary
-                                    : skin.white(0.6))),
-                      ),
+                                    : skin.white(0.6)),
+                          ),
+                        );
+                      },
                     ),
                   ),
                 ),
@@ -1236,20 +1265,28 @@ class _IOSTimePickerState extends State<_IOSTimePicker> {
                     magnification: 1.2,
                     backgroundColor: Colors.transparent,
                     itemExtent: 40,
-                    looping: false,
-                    onSelectedItemChanged: (i) =>
-                        setState(() => _selectedMinute = i),
+                    looping: true, // ← Endloses Scrollen für Minuten
+                    onSelectedItemChanged: (index) {
+                      // Der tatsächliche Minutenwert ist index % 60
+                      final minute = index % 60;
+                      setState(() => _selectedMinute = minute);
+                    },
                     children: List.generate(
-                      60,
-                      (m) => Center(
-                        child: Text(m.toString().padLeft(2, '0'),
+                      600, // Genügend viele Wiederholungen für endloses Gefühl
+                      (index) {
+                        final minute = index % 60;
+                        return Center(
+                          child: Text(
+                            minute.toString().padLeft(2, '0'),
                             style: TextStyle(
                                 fontSize: 24,
                                 fontWeight: FontWeight.w600,
-                                color: _selectedMinute == m
+                                color: _selectedMinute == minute
                                     ? skin.primary
-                                    : skin.white(0.6))),
-                      ),
+                                    : skin.white(0.6)),
+                          ),
+                        );
+                      },
                     ),
                   ),
                 ),
