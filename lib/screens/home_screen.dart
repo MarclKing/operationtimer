@@ -203,8 +203,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   @override
   Widget build(BuildContext context) {
     final isToday = DateFormat('yyyy-MM-dd').format(DateTime.now()) == _dateKey;
-    final screenHeight = MediaQuery.of(context).size.height;
-    final isSmallPhone = screenHeight < 700;
+    final topPadding = MediaQuery.of(context).padding.top;
 
     return GestureDetector(
       onHorizontalDragEnd: (details) {
@@ -223,37 +222,53 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // 🔥 Optimaler Abstand oben
-                const SizedBox(height: 20),
+                // 🔥 Korrigierter Abstand oben - respektiert die Status Bar
+                SizedBox(height: topPadding > 0 ? 16 : 24),
                 
-                // Begrüßung
+                // 🔥 Neues Header-Design: Begrüßung + Name in zwei Zeilen
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 0),
-                  child: RichText(
-                    text: TextSpan(
-                      style: const TextStyle(
-                        fontSize: 26,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white,
-                        height: 1.2,
-                      ),
-                      children: [
-                        TextSpan(text: _greeting),
-                        if (_firstName.isNotEmpty) ...[
-                          const TextSpan(text: ', '),
-                          TextSpan(
-                            text: _firstName,
-                            style: const TextStyle(color: Color(0xFF6C63FF)),
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Erste Zeile: Guten Morgen + Hand
+                      Row(
+                        children: [
+                          Text(
+                            _greeting,
+                            style: const TextStyle(
+                              fontSize: 28,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                              height: 1.2,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          const Text(
+                            '👋',
+                            style: TextStyle(fontSize: 28),
                           ),
                         ],
-                        const TextSpan(text: ' 👋'),
+                      ),
+                      // Zweite Zeile: Name (falls vorhanden)
+                      if (_firstName.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          _firstName,
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w500,
+                            color: Color(0xFF6C63FF),
+                            height: 1.2,
+                          ),
+                        ),
                       ],
-                    ),
+                    ],
                   ),
                 ),
                 
-                // Abstand zwischen Begrüßung und Datum
-                const SizedBox(height: 24),
+                // Abstand zwischen Header und Datum
+                const SizedBox(height: 28),
 
                 // Datum Navigation
                 Padding(
@@ -346,7 +361,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     ],
                   ),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 24),
 
                 // Kommen & Gehen
                 Padding(
