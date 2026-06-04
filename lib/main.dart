@@ -23,7 +23,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'OperationTimer',
+      title: 'OpTime',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
@@ -46,6 +46,7 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   int _selectedIndex = 0;
+  final PageController _pageController = PageController(initialPage: 0);
   late AnimationController _tabAnimController;
   late AnimationController _menuAnimController;
   bool _menuOpen = false;
@@ -65,6 +66,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
 
   @override
   void dispose() {
+    _pageController.dispose();
     _tabAnimController.dispose();
     _menuAnimController.dispose();
     super.dispose();
@@ -93,6 +95,24 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       _selectedIndex = index;
       _tabAnimController.forward(from: 0);
     });
+    if (_pageController.hasClients) {
+      _pageController.animateToPage(
+        index,
+        duration: const Duration(milliseconds: 350),
+        curve: Curves.easeOutCubic,
+      );
+    }
+  }
+
+  void _goToPage(int index) {
+    setState(() => _selectedIndex = index);
+    if (_pageController.hasClients) {
+      _pageController.animateToPage(
+        index,
+        duration: const Duration(milliseconds: 350),
+        curve: Curves.easeOutCubic,
+      );
+    }
   }
 
   @override
@@ -101,19 +121,26 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       backgroundColor: const Color(0xFF0A0A0F),
       body: Stack(
         children: [
-          // Main Content
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 250),
-            transitionBuilder: (child, animation) => FadeTransition(
-              opacity: animation,
-              child: child,
-            ),
-            child: _selectedIndex == 0
-                ? const HomeScreen(key: ValueKey('home'))
-                : const MonthScreen(key: ValueKey('month')),
+          // ── PageView ersetzt AnimatedSwitcher ────────────────────────────
+          PageView(
+            controller: _pageController,
+            physics: const NeverScrollableScrollPhysics(), // Wischen wird von den Screens selbst gesteuert
+            onPageChanged: (index) {
+              setState(() => _selectedIndex = index);
+            },
+            children: [
+              HomeScreen(
+                key: const ValueKey('home'),
+                onNavigateToMonth: () => _goToPage(1),
+              ),
+              MonthScreen(
+                key: const ValueKey('month'),
+                onNavigateToHome: () => _goToPage(0),
+              ),
+            ],
           ),
 
-          // Blur overlay when menu open
+          // ── Blur overlay when menu open ──────────────────────────────────
           if (_menuOpen)
             GestureDetector(
               onTap: _closeMenu,
@@ -122,7 +149,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
               ),
             ),
 
-          // Dropdown Menu
+          // ── Dropdown Menu ────────────────────────────────────────────────
           AnimatedBuilder(
             animation: _menuAnimController,
             builder: (context, child) {
@@ -161,7 +188,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
             },
           ),
 
-          // Top Bar with Hamburger
+          // ── Top Bar with Hamburger ───────────────────────────────────────
           Positioned(
             top: 0,
             left: 0,
@@ -193,7 +220,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                       ),
                       const SizedBox(width: 10),
                       const Text(
-                        'OperationTimer',
+                        'OpTime',
                         style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w700,
@@ -237,7 +264,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
             ),
           ),
 
-          // Bottom Navigation
+          // ── Bottom Navigation ────────────────────────────────────────────
           Positioned(
             bottom: 0,
             left: 0,
@@ -284,13 +311,13 @@ class _DropdownMenu extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           _MenuItem(
-  emoji: '📤',
-  label: 'Zeiten exportieren',
-  onTap: () {
-    onClose();
-    PdfService.showMonthPickerAndExport(context);
-  },
-),
+            emoji: '📤',
+            label: 'Zeiten exportieren',
+            onTap: () {
+              onClose();
+              PdfService.showMonthPickerAndExport(context);
+            },
+          ),
           _MenuDivider(),
           _MenuItem(
             emoji: '⚙️',
@@ -452,8 +479,7 @@ class _NavItem extends StatelessWidget {
               duration: const Duration(milliseconds: 250),
               style: TextStyle(
                 fontSize: 11,
-                fontWeight:
-                    isSelected ? FontWeight.w600 : FontWeight.w400,
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
                 color: isSelected
                     ? const Color(0xFF6C63FF)
                     : Colors.white.withValues(alpha: 0.4),
