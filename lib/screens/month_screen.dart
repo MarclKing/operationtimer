@@ -252,27 +252,10 @@ class _MonthScreenState extends State<MonthScreen> {
     );
   }
 
-  Future<bool> _confirmDelete(BuildContext context) async {
-    return await showDialog<bool>(
-          context: context,
-          builder: (context) => AlertDialog(
-            backgroundColor: const Color(0xFF141420),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-            title: const Text('Eintrag löschen?', style: TextStyle(color: Colors.white)),
-            content: const Text('Dieser Eintrag wird dauerhaft gelöscht.', style: TextStyle(color: Colors.white60)),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('Abbrechen', style: TextStyle(color: Colors.white60)),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text('Löschen', style: TextStyle(color: Color(0xFFFF6B6B))),
-              ),
-            ],
-          ),
-        ) ??
-        false;
+  void _changeMonth(int months) {
+    setState(() {
+      _selectedMonth = DateTime(_selectedMonth.year, _selectedMonth.month + months);
+    });
   }
 
   @override
@@ -285,292 +268,316 @@ class _MonthScreenState extends State<MonthScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A0F),
       body: SafeArea(
-        child: Column(
-          children: [
-            const SizedBox(height: 60),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Monatsübersicht',
-                    style: TextStyle(fontSize: 26, fontWeight: FontWeight.w700, color: Colors.white),
-                  ),
-                  const SizedBox(height: 16),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF141420),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+        child: GestureDetector(
+          // 🔥 Horizontaler Swipe für Monatswechsel
+          onHorizontalDragEnd: (details) {
+            if (details.primaryVelocity == null) return;
+            if (details.primaryVelocity! < -300) {
+              _changeMonth(1);  // Nach links swipen = nächster Monat
+            } else if (details.primaryVelocity! > 300) {
+              _changeMonth(-1); // Nach rechts swipen = vorheriger Monat
+            }
+          },
+          child: Column(
+            children: [
+              const SizedBox(height: 60),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Monatsübersicht',
+                      style: TextStyle(fontSize: 26, fontWeight: FontWeight.w700, color: Colors.white),
                     ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        IconButton(
-                          onPressed: () => setState(() => _selectedMonth =
-                              DateTime(_selectedMonth.year, _selectedMonth.month - 1)),
-                          icon: const Icon(Icons.chevron_left, color: Color(0xFF6C63FF)),
-                        ),
-                        Text(monthName,
-                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.white)),
-                        IconButton(
-                          onPressed: () => setState(() => _selectedMonth =
-                              DateTime(_selectedMonth.year, _selectedMonth.month + 1)),
-                          icon: const Icon(Icons.chevron_right, color: Color(0xFF6C63FF)),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      _StatCard(label: 'Einträge', value: '${entries.length}', color: const Color(0xFF6C63FF)),
-                      const SizedBox(width: 10),
-                      _StatCard(label: 'Vollständig', value: '$complete', color: const Color(0xFF4ECDC4)),
-                      const SizedBox(width: 10),
-                      _StatCard(label: 'Offen', value: '$open', color: const Color(0xFFFF6B6B)),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Rechts swipen: Bearbeiten/PDF  ·  Links swipen: Löschen',
-                    style: TextStyle(fontSize: 12, color: Colors.white.withValues(alpha: 0.3)),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 8),
-            Expanded(
-              child: entries.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF141420),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text('📭', style: TextStyle(fontSize: 48)),
-                          const SizedBox(height: 12),
-                          Text(
-                            'Keine Einträge für diesen Monat',
-                            style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 15),
+                          IconButton(
+                            onPressed: () => _changeMonth(-1),
+                            icon: const Icon(Icons.chevron_left, color: Color(0xFF6C63FF)),
+                          ),
+                          Text(monthName,
+                              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.white)),
+                          IconButton(
+                            onPressed: () => _changeMonth(1),
+                            icon: const Icon(Icons.chevron_right, color: Color(0xFF6C63FF)),
                           ),
                         ],
                       ),
-                    )
-                  : ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(24, 4, 24, 100),
-                      itemCount: entries.length,
-                      itemBuilder: (context, index) {
-                        final entry = entries[index];
-                        final datum = DateTime.parse(entry['datum']);
-                        final dayName = DateFormat('EEE', 'de').format(datum);
-                        final dayNum = DateFormat('dd').format(datum);
-                        final kommen = entry['kommen'] ?? '';
-                        final gehen = entry['gehen'] ?? '';
-                        final tkf = entry['TKF'] ?? '';
-                        final notiz = entry['notiz'] ?? '';
-                        final duration = _calcDuration(kommen, gehen);
-                        final isComplete = gehen.isNotEmpty;
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        _StatCard(label: 'Einträge', value: '${entries.length}', color: const Color(0xFF6C63FF)),
+                        const SizedBox(width: 10),
+                        _StatCard(label: 'Vollständig', value: '$complete', color: const Color(0xFF4ECDC4)),
+                        const SizedBox(width: 10),
+                        _StatCard(label: 'Offen', value: '$open', color: const Color(0xFFFF6B6B)),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Rechts swipen: Bearbeiten/PDF  ·  Links swipen: Löschen',
+                      style: TextStyle(fontSize: 12, color: Colors.white.withValues(alpha: 0.3)),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+              Expanded(
+                child: entries.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Text('📭', style: TextStyle(fontSize: 48)),
+                            const SizedBox(height: 12),
+                            Text(
+                              'Keine Einträge für diesen Monat',
+                              style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 15),
+                            ),
+                          ],
+                        ),
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.fromLTRB(24, 4, 24, 100),
+                        itemCount: entries.length,
+                        itemBuilder: (context, index) {
+                          final entry = entries[index];
+                          final datum = DateTime.parse(entry['datum']);
+                          final dayName = DateFormat('EEE', 'de').format(datum);
+                          final dayNum = DateFormat('dd').format(datum);
+                          final kommen = entry['kommen'] ?? '';
+                          final gehen = entry['gehen'] ?? '';
+                          final tkf = entry['TKF'] ?? '';
+                          final notiz = entry['notiz'] ?? '';
+                          final duration = _calcDuration(kommen, gehen);
+                          final isComplete = gehen.isNotEmpty;
 
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 10),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(18),
-                            child: Slidable(
-                              key: Key(entry['datum']),
-                              // Rechts swipen = Bearbeiten + PDF
-                              startActionPane: ActionPane(
-                                motion: const DrawerMotion(),
-                                extentRatio: 0.5,
-                                children: [
-                                  CustomSlidableAction(
-                                    onPressed: (_) => _editEntry(entry),
-                                    backgroundColor: const Color(0xFF6C63FF),
-                                    child: const Column(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      children: [
-                                        Icon(Icons.edit_outlined, color: Colors.white, size: 26),
-                                        SizedBox(height: 4),
-                                        Text('Bearbeiten',
-                                            style: TextStyle(
-                                                color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600)),
-                                      ],
-                                    ),
-                                  ),
-                                  CustomSlidableAction(
-                                    onPressed: (_) => PdfService.exportSingleEntry(entry),
-                                    backgroundColor: const Color(0xFF4ECDC4),
-                                    child: const Column(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      children: [
-                                        Icon(Icons.picture_as_pdf_outlined, color: Colors.white, size: 26),
-                                        SizedBox(height: 4),
-                                        Text('Tag teilen',
-                                            style: TextStyle(
-                                                color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600)),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              // Links swipen = Löschen
-                              endActionPane: ActionPane(
-                                motion: const DrawerMotion(),
-                                extentRatio: 0.25,
-                                children: [
-                                  CustomSlidableAction(
-                                    onPressed: (_) async {
-                                      final confirm = await _confirmDelete(context);
-                                      if (confirm) _deleteEntry(entry['datum']);
-                                    },
-                                    backgroundColor: const Color(0xFFFF6B6B),
-                                    child: const Column(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      children: [
-                                        Icon(Icons.delete_outline, color: Colors.white, size: 26),
-                                        SizedBox(height: 4),
-                                        Text('Löschen',
-                                            style: TextStyle(
-                                                color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600)),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              child: GestureDetector(
-                                onLongPress: () => _showEntryOptions(entry),
-                                child: Container(
-                                  padding: const EdgeInsets.all(16),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFF141420),
-                                    border: Border.all(
-                                      color: isComplete
-                                          ? const Color(0xFF4ECDC4).withValues(alpha: 0.2)
-                                          : const Color(0xFFFF6B6B).withValues(alpha: 0.2),
-                                    ),
-                                  ),
-                                  child: Column(
-                                    children: [
-                                      Row(
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(18),
+                              child: Slidable(
+                                key: Key(entry['datum']),
+                                // Automatisches Schließen nach Aktion
+                                closeOnScroll: true,
+                                // Rechts swipen = Bearbeiten + PDF
+                                startActionPane: ActionPane(
+                                  motion: const DrawerMotion(),
+                                  extentRatio: 0.5,
+                                  children: [
+                                    CustomSlidableAction(
+                                      onPressed: (_) {
+                                        _editEntry(entry);
+                                        // Slidable automatisch schließen
+                                        Slidable.of(context)?.close();
+                                      },
+                                      backgroundColor: const Color(0xFF6C63FF),
+                                      child: const Column(
+                                        mainAxisAlignment: MainAxisAlignment.center,
                                         children: [
-                                          Container(
-                                            width: 52,
-                                            padding: const EdgeInsets.symmetric(vertical: 10),
-                                            decoration: BoxDecoration(
-                                              color: const Color(0xFF6C63FF).withValues(alpha: 0.12),
-                                              borderRadius: BorderRadius.circular(12),
-                                            ),
-                                            child: Column(
-                                              children: [
-                                                Text(dayName.toUpperCase(),
-                                                    style: const TextStyle(
-                                                        fontSize: 10,
-                                                        color: Color(0xFF6C63FF),
-                                                        fontWeight: FontWeight.w700)),
-                                                Text(dayNum,
-                                                    style: const TextStyle(
-                                                        fontSize: 22,
-                                                        fontWeight: FontWeight.w700,
-                                                        color: Colors.white)),
-                                              ],
-                                            ),
-                                          ),
-                                          const SizedBox(width: 14),
-                                          Expanded(
-                                            child: Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
-                                              children: [
-                                                Row(
-                                                  children: [
-                                                    _TimeChip(
-                                                        time: kommen.isEmpty ? '--:--' : kommen,
-                                                        color: const Color(0xFF4ECDC4)),
-                                                    const Padding(
-                                                      padding: EdgeInsets.symmetric(horizontal: 8),
-                                                      child: Icon(Icons.arrow_forward,
-                                                          size: 14, color: Color(0xFF555570)),
-                                                    ),
-                                                    _TimeChip(
-                                                        time: gehen.isEmpty ? '--:--' : gehen,
-                                                        color: const Color(0xFFFF6B6B)),
-                                                  ],
-                                                ),
-                                                if (tkf.isNotEmpty) ...[
-                                                  const SizedBox(height: 6),
-                                                  Text('👤 $tkf',
-                                                      style: const TextStyle(
-                                                          fontSize: 12, color: Color(0xFF555570))),
-                                                ],
-                                              ],
-                                            ),
-                                          ),
-                                          Column(
-                                            crossAxisAlignment: CrossAxisAlignment.end,
-                                            children: [
-                                              Text(duration,
-                                                  style: const TextStyle(
-                                                      fontSize: 15,
-                                                      fontWeight: FontWeight.w700,
-                                                      color: Colors.white)),
-                                              const SizedBox(height: 4),
-                                              Container(
-                                                padding: const EdgeInsets.symmetric(
-                                                    horizontal: 8, vertical: 3),
-                                                decoration: BoxDecoration(
-                                                  color: isComplete
-                                                      ? const Color(0xFF4ECDC4).withValues(alpha: 0.12)
-                                                      : const Color(0xFFFF6B6B).withValues(alpha: 0.12),
-                                                  borderRadius: BorderRadius.circular(6),
-                                                ),
-                                                child: Text(
-                                                  isComplete ? '✓ Ok' : '⏳ Offen',
-                                                  style: TextStyle(
-                                                    fontSize: 11,
-                                                    fontWeight: FontWeight.w600,
-                                                    color: isComplete
-                                                        ? const Color(0xFF4ECDC4)
-                                                        : const Color(0xFFFF6B6B),
-                                                  ),
-                                                ),
-                                              ),
-                                            ],
-                                          ),
+                                          Icon(Icons.edit_outlined, color: Colors.white, size: 26),
+                                          SizedBox(height: 4),
+                                          Text('Bearbeiten',
+                                              style: TextStyle(
+                                                  color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600)),
                                         ],
                                       ),
-                                      if (notiz.isNotEmpty) ...[
-                                        const SizedBox(height: 10),
-                                        Container(
-                                          width: double.infinity,
-                                          padding: const EdgeInsets.all(10),
-                                          decoration: BoxDecoration(
-                                            color: Colors.white.withValues(alpha: 0.04),
-                                            borderRadius: BorderRadius.circular(10),
-                                          ),
-                                          child: Row(
-                                            children: [
-                                              const Text('📝', style: TextStyle(fontSize: 12)),
-                                              const SizedBox(width: 8),
-                                              Expanded(
-                                                child: Text(notiz,
-                                                    style: TextStyle(
-                                                        fontSize: 12,
-                                                        color: Colors.white.withValues(alpha: 0.6))),
+                                    ),
+                                    CustomSlidableAction(
+                                      onPressed: (_) {
+                                        PdfService.exportSingleEntry(entry);
+                                        // Slidable automatisch schließen
+                                        Slidable.of(context)?.close();
+                                      },
+                                      backgroundColor: const Color(0xFF4ECDC4),
+                                      child: const Column(
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        children: [
+                                          Icon(Icons.picture_as_pdf_outlined, color: Colors.white, size: 26),
+                                          SizedBox(height: 4),
+                                          Text('Tag teilen',
+                                              style: TextStyle(
+                                                  color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600)),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                // Links swipen = Löschen (ohne Bestätigung)
+                                endActionPane: ActionPane(
+                                  motion: const DrawerMotion(),
+                                  extentRatio: 0.25,
+                                  children: [
+                                    CustomSlidableAction(
+                                      onPressed: (_) {
+                                        _deleteEntry(entry['datum']);
+                                        // Slidable automatisch schließen
+                                        Slidable.of(context)?.close();
+                                      },
+                                      backgroundColor: const Color(0xFFFF6B6B),
+                                      child: const Column(
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        children: [
+                                          Icon(Icons.delete_outline, color: Colors.white, size: 26),
+                                          SizedBox(height: 4),
+                                          Text('Löschen',
+                                              style: TextStyle(
+                                                  color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600)),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                child: GestureDetector(
+                                  onLongPress: () => _showEntryOptions(entry),
+                                  // 🔥 Tippen auf die Kachel schließt das Slidable
+                                  onTap: () {
+                                    Slidable.of(context)?.close();
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.all(16),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF141420),
+                                      border: Border.all(
+                                        color: isComplete
+                                            ? const Color(0xFF4ECDC4).withValues(alpha: 0.2)
+                                            : const Color(0xFFFF6B6B).withValues(alpha: 0.2),
+                                      ),
+                                    ),
+                                    child: Column(
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Container(
+                                              width: 52,
+                                              padding: const EdgeInsets.symmetric(vertical: 10),
+                                              decoration: BoxDecoration(
+                                                color: const Color(0xFF6C63FF).withValues(alpha: 0.12),
+                                                borderRadius: BorderRadius.circular(12),
                                               ),
-                                            ],
-                                          ),
+                                              child: Column(
+                                                children: [
+                                                  Text(dayName.toUpperCase(),
+                                                      style: const TextStyle(
+                                                          fontSize: 10,
+                                                          color: Color(0xFF6C63FF),
+                                                          fontWeight: FontWeight.w700)),
+                                                  Text(dayNum,
+                                                      style: const TextStyle(
+                                                          fontSize: 22,
+                                                          fontWeight: FontWeight.w700,
+                                                          color: Colors.white)),
+                                                ],
+                                              ),
+                                            ),
+                                            const SizedBox(width: 14),
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  Row(
+                                                    children: [
+                                                      _TimeChip(
+                                                          time: kommen.isEmpty ? '--:--' : kommen,
+                                                          color: const Color(0xFF4ECDC4)),
+                                                      const Padding(
+                                                        padding: EdgeInsets.symmetric(horizontal: 8),
+                                                        child: Icon(Icons.arrow_forward,
+                                                            size: 14, color: Color(0xFF555570)),
+                                                      ),
+                                                      _TimeChip(
+                                                          time: gehen.isEmpty ? '--:--' : gehen,
+                                                          color: const Color(0xFFFF6B6B)),
+                                                    ],
+                                                  ),
+                                                  if (tkf.isNotEmpty) ...[
+                                                    const SizedBox(height: 6),
+                                                    Text('👤 $tkf',
+                                                        style: const TextStyle(
+                                                            fontSize: 12, color: Color(0xFF555570))),
+                                                  ],
+                                                ],
+                                              ),
+                                            ),
+                                            Column(
+                                              crossAxisAlignment: CrossAxisAlignment.end,
+                                              children: [
+                                                Text(duration,
+                                                    style: const TextStyle(
+                                                        fontSize: 15,
+                                                        fontWeight: FontWeight.w700,
+                                                        color: Colors.white)),
+                                                const SizedBox(height: 4),
+                                                Container(
+                                                  padding: const EdgeInsets.symmetric(
+                                                      horizontal: 8, vertical: 3),
+                                                  decoration: BoxDecoration(
+                                                    color: isComplete
+                                                        ? const Color(0xFF4ECDC4).withValues(alpha: 0.12)
+                                                        : const Color(0xFFFF6B6B).withValues(alpha: 0.12),
+                                                    borderRadius: BorderRadius.circular(6),
+                                                  ),
+                                                  child: Text(
+                                                    isComplete ? '✓ Ok' : '⏳ Offen',
+                                                    style: TextStyle(
+                                                      fontSize: 11,
+                                                      fontWeight: FontWeight.w600,
+                                                      color: isComplete
+                                                          ? const Color(0xFF4ECDC4)
+                                                          : const Color(0xFFFF6B6B),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ],
                                         ),
+                                        if (notiz.isNotEmpty) ...[
+                                          const SizedBox(height: 10),
+                                          Container(
+                                            width: double.infinity,
+                                            padding: const EdgeInsets.all(10),
+                                            decoration: BoxDecoration(
+                                              color: Colors.white.withValues(alpha: 0.04),
+                                              borderRadius: BorderRadius.circular(10),
+                                            ),
+                                            child: Row(
+                                              children: [
+                                                const Text('📝', style: TextStyle(fontSize: 12)),
+                                                const SizedBox(width: 8),
+                                                Expanded(
+                                                  child: Text(notiz,
+                                                      style: TextStyle(
+                                                          fontSize: 12,
+                                                          color: Colors.white.withValues(alpha: 0.6))),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
                                       ],
-                                    ],
+                                    ),
                                   ),
                                 ),
                               ),
                             ),
-                          ),
-                        );
-                      },
-                    ),
-            ),
-          ],
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
         ),
       ),
     );
