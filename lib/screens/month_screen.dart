@@ -269,13 +269,12 @@ class _MonthScreenState extends State<MonthScreen> {
       backgroundColor: const Color(0xFF0A0A0F),
       body: SafeArea(
         child: GestureDetector(
-          // 🔥 Horizontaler Swipe für Monatswechsel
           onHorizontalDragEnd: (details) {
             if (details.primaryVelocity == null) return;
             if (details.primaryVelocity! < -300) {
-              _changeMonth(1);  // Nach links swipen = nächster Monat
+              _changeMonth(1);
             } else if (details.primaryVelocity! > 300) {
-              _changeMonth(-1); // Nach rechts swipen = vorheriger Monat
+              _changeMonth(-1);
             }
           },
           child: Column(
@@ -369,9 +368,7 @@ class _MonthScreenState extends State<MonthScreen> {
                               borderRadius: BorderRadius.circular(18),
                               child: Slidable(
                                 key: Key(entry['datum']),
-                                // Automatisches Schließen nach Aktion
                                 closeOnScroll: true,
-                                // Rechts swipen = Bearbeiten + PDF
                                 startActionPane: ActionPane(
                                   motion: const DrawerMotion(),
                                   extentRatio: 0.5,
@@ -379,7 +376,6 @@ class _MonthScreenState extends State<MonthScreen> {
                                     CustomSlidableAction(
                                       onPressed: (_) {
                                         _editEntry(entry);
-                                        // Slidable automatisch schließen
                                         Slidable.of(context)?.close();
                                       },
                                       backgroundColor: const Color(0xFF6C63FF),
@@ -389,15 +385,13 @@ class _MonthScreenState extends State<MonthScreen> {
                                           Icon(Icons.edit_outlined, color: Colors.white, size: 26),
                                           SizedBox(height: 4),
                                           Text('Bearbeiten',
-                                              style: TextStyle(
-                                                  color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600)),
+                                              style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600)),
                                         ],
                                       ),
                                     ),
                                     CustomSlidableAction(
                                       onPressed: (_) {
                                         PdfService.exportSingleEntry(entry);
-                                        // Slidable automatisch schließen
                                         Slidable.of(context)?.close();
                                       },
                                       backgroundColor: const Color(0xFF4ECDC4),
@@ -407,14 +401,12 @@ class _MonthScreenState extends State<MonthScreen> {
                                           Icon(Icons.picture_as_pdf_outlined, color: Colors.white, size: 26),
                                           SizedBox(height: 4),
                                           Text('Tag teilen',
-                                              style: TextStyle(
-                                                  color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600)),
+                                              style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600)),
                                         ],
                                       ),
                                     ),
                                   ],
                                 ),
-                                // Links swipen = Löschen (ohne Bestätigung)
                                 endActionPane: ActionPane(
                                   motion: const DrawerMotion(),
                                   extentRatio: 0.25,
@@ -422,7 +414,6 @@ class _MonthScreenState extends State<MonthScreen> {
                                     CustomSlidableAction(
                                       onPressed: (_) {
                                         _deleteEntry(entry['datum']);
-                                        // Slidable automatisch schließen
                                         Slidable.of(context)?.close();
                                       },
                                       backgroundColor: const Color(0xFFFF6B6B),
@@ -432,8 +423,7 @@ class _MonthScreenState extends State<MonthScreen> {
                                           Icon(Icons.delete_outline, color: Colors.white, size: 26),
                                           SizedBox(height: 4),
                                           Text('Löschen',
-                                              style: TextStyle(
-                                                  color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600)),
+                                              style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600)),
                                         ],
                                       ),
                                     ),
@@ -469,15 +459,9 @@ class _MonthScreenState extends State<MonthScreen> {
                                               child: Column(
                                                 children: [
                                                   Text(dayName.toUpperCase(),
-                                                      style: const TextStyle(
-                                                          fontSize: 10,
-                                                          color: Color(0xFF6C63FF),
-                                                          fontWeight: FontWeight.w700)),
+                                                      style: const TextStyle(fontSize: 10, color: Color(0xFF6C63FF), fontWeight: FontWeight.w700)),
                                                   Text(dayNum,
-                                                      style: const TextStyle(
-                                                          fontSize: 22,
-                                                          fontWeight: FontWeight.w700,
-                                                          color: Colors.white)),
+                                                      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: Colors.white)),
                                                 ],
                                               ),
                                             ),
@@ -488,24 +472,17 @@ class _MonthScreenState extends State<MonthScreen> {
                                                 children: [
                                                   Row(
                                                     children: [
-                                                      _TimeChip(
-                                                          time: kommen.isEmpty ? '--:--' : kommen,
-                                                          color: const Color(0xFF4ECDC4)),
+                                                      _TimeChip(time: kommen.isEmpty ? '--:--' : kommen, color: const Color(0xFF4ECDC4)),
                                                       const Padding(
                                                         padding: EdgeInsets.symmetric(horizontal: 8),
-                                                        child: Icon(Icons.arrow_forward,
-                                                            size: 14, color: Color(0xFF555570)),
+                                                        child: Icon(Icons.arrow_forward, size: 14, color: Color(0xFF555570)),
                                                       ),
-                                                      _TimeChip(
-                                                          time: gehen.isEmpty ? '--:--' : gehen,
-                                                          color: const Color(0xFFFF6B6B)),
+                                                      _TimeChip(time: gehen.isEmpty ? '--:--' : gehen, color: const Color(0xFFFF6B6B)),
                                                     ],
                                                   ),
                                                   if (tkf.isNotEmpty) ...[
                                                     const SizedBox(height: 6),
-                                                    Text('👤 $tkf',
-                                                        style: const TextStyle(
-                                                            fontSize: 12, color: Color(0xFF555570))),
+                                                    Text('👤 $tkf', style: const TextStyle(fontSize: 12, color: Color(0xFF555570))),
                                                   ],
                                                 ],
                                               ),
@@ -513,30 +490,17 @@ class _MonthScreenState extends State<MonthScreen> {
                                             Column(
                                               crossAxisAlignment: CrossAxisAlignment.end,
                                               children: [
-                                                Text(duration,
-                                                    style: const TextStyle(
-                                                        fontSize: 15,
-                                                        fontWeight: FontWeight.w700,
-                                                        color: Colors.white)),
+                                                Text(duration, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white)),
                                                 const SizedBox(height: 4),
                                                 Container(
-                                                  padding: const EdgeInsets.symmetric(
-                                                      horizontal: 8, vertical: 3),
+                                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                                                   decoration: BoxDecoration(
-                                                    color: isComplete
-                                                        ? const Color(0xFF4ECDC4).withValues(alpha: 0.12)
-                                                        : const Color(0xFFFF6B6B).withValues(alpha: 0.12),
+                                                    color: isComplete ? const Color(0xFF4ECDC4).withValues(alpha: 0.12) : const Color(0xFFFF6B6B).withValues(alpha: 0.12),
                                                     borderRadius: BorderRadius.circular(6),
                                                   ),
                                                   child: Text(
                                                     isComplete ? '✓ Ok' : '⏳ Offen',
-                                                    style: TextStyle(
-                                                      fontSize: 11,
-                                                      fontWeight: FontWeight.w600,
-                                                      color: isComplete
-                                                          ? const Color(0xFF4ECDC4)
-                                                          : const Color(0xFFFF6B6B),
-                                                    ),
+                                                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: isComplete ? const Color(0xFF4ECDC4) : const Color(0xFFFF6B6B)),
                                                   ),
                                                 ),
                                               ],
@@ -557,10 +521,7 @@ class _MonthScreenState extends State<MonthScreen> {
                                                 const Text('📝', style: TextStyle(fontSize: 12)),
                                                 const SizedBox(width: 8),
                                                 Expanded(
-                                                  child: Text(notiz,
-                                                      style: TextStyle(
-                                                          fontSize: 12,
-                                                          color: Colors.white.withValues(alpha: 0.6))),
+                                                  child: Text(notiz, style: TextStyle(fontSize: 12, color: Colors.white.withValues(alpha: 0.6))),
                                                 ),
                                               ],
                                             ),
@@ -651,15 +612,12 @@ class _EditField extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label,
-              style: const TextStyle(
-                  fontSize: 11, color: Color(0xFF6C63FF), fontWeight: FontWeight.w600, letterSpacing: 0.8)),
+          Text(label, style: const TextStyle(fontSize: 11, color: Color(0xFF6C63FF), fontWeight: FontWeight.w600, letterSpacing: 0.8)),
           TextField(
             controller: controller,
             maxLines: maxLines,
             style: const TextStyle(color: Colors.white, fontSize: 15),
-            decoration: const InputDecoration(
-                border: InputBorder.none, isDense: true, contentPadding: EdgeInsets.zero),
+            decoration: const InputDecoration(border: InputBorder.none, isDense: true, contentPadding: EdgeInsets.zero),
           ),
         ],
       ),

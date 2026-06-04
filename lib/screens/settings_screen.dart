@@ -573,7 +573,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            '✓ Jeder Wortanfang wird automatisch großgeschrieben',
+                            '✓ Trage hier deinen Namen ein',
                             style: TextStyle(
                                 fontSize: 11,
                                 color: const Color(0xFF4ECDC4).withValues(alpha: 0.6)),

@@ -223,8 +223,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // 🔥 Verbesserter Abstand - Begrüßung weiter unten
-                SizedBox(height: isSmallPhone ? 50 : 60),
+                // 🔥 Optimaler Abstand oben
+                const SizedBox(height: 20),
                 
                 // Begrüßung
                 Padding(
@@ -232,7 +232,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   child: RichText(
                     text: TextSpan(
                       style: const TextStyle(
-                        fontSize: 28,
+                        fontSize: 26,
                         fontWeight: FontWeight.w700,
                         color: Colors.white,
                         height: 1.2,
@@ -253,7 +253,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 ),
                 
                 // Abstand zwischen Begrüßung und Datum
-                const SizedBox(height: 32),
+                const SizedBox(height: 24),
 
                 // Datum Navigation
                 Padding(
@@ -279,7 +279,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           onTap: _selectDate,
                           child: AnimatedContainer(
                             duration: const Duration(milliseconds: 200),
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                             decoration: BoxDecoration(
                               color: const Color(0xFF141420),
                               borderRadius: BorderRadius.circular(16),
@@ -292,8 +292,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                const Text('📅', style: TextStyle(fontSize: 16)),
-                                const SizedBox(width: 10),
+                                const Text('📅', style: TextStyle(fontSize: 14)),
+                                const SizedBox(width: 8),
                                 Flexible(
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -301,7 +301,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                       Text(
                                         isToday ? 'HEUTE' : 'DATUM',
                                         style: TextStyle(
-                                          fontSize: 10,
+                                          fontSize: 9,
                                           fontWeight: FontWeight.w700,
                                           color: isToday ? const Color(0xFF6C63FF) : Colors.white38,
                                           letterSpacing: 1.0,
@@ -311,7 +311,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                       Text(
                                         DateFormat('EEEE, d. MMMM yyyy', 'de').format(_selectedDate),
                                         style: const TextStyle(
-                                          fontSize: 14,
+                                          fontSize: 13,
                                           color: Colors.white,
                                           fontWeight: FontWeight.w600,
                                         ),
@@ -321,9 +321,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                     ],
                                   ),
                                 ),
-                                const SizedBox(width: 8),
+                                const SizedBox(width: 6),
                                 Icon(Icons.calendar_today_outlined,
-                                    color: Colors.white.withValues(alpha: 0.3), size: 16),
+                                    color: Colors.white.withValues(alpha: 0.3), size: 14),
                               ],
                             ),
                           ),
@@ -346,7 +346,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     ],
                   ),
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 20),
 
                 // Kommen & Gehen
                 Padding(
@@ -363,7 +363,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           onSwipeDown: () => _adjustTime(_kommenController, -1),
                         ),
                       ),
-                      const SizedBox(width: 14),
+                      const SizedBox(width: 12),
                       Expanded(
                         child: _SwipeTimeCard(
                           label: 'GEHEN',
@@ -377,15 +377,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     ],
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 6),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 24),
                   child: Text(
                     '↕ Wischen = Minute anpassen  ·  Tippen = Zeit wählen',
-                    style: TextStyle(fontSize: 12, color: Colors.white.withValues(alpha: 0.3)),
+                    style: TextStyle(fontSize: 11, color: Colors.white.withValues(alpha: 0.3)),
                   ),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 16),
 
                 // TKF
                 Padding(
@@ -397,7 +397,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     hint: 'Name des TKF',
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 12),
 
                 // Notiz
                 Padding(
@@ -410,7 +410,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     maxLines: 1,
                   ),
                 ),
-                const SizedBox(height: 28),
+                const SizedBox(height: 24),
 
                 // Speichern Button
                 Padding(
@@ -423,12 +423,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       onTap: _saveEntry,
                       child: Container(
                         width: double.infinity,
-                        padding: const EdgeInsets.symmetric(vertical: 18),
+                        padding: const EdgeInsets.symmetric(vertical: 16),
                         decoration: BoxDecoration(
                           gradient: const LinearGradient(
                             colors: [Color(0xFF6C63FF), Color(0xFF4ECDC4)],
                           ),
-                          borderRadius: BorderRadius.circular(20),
+                          borderRadius: BorderRadius.circular(18),
                           boxShadow: [
                             BoxShadow(
                               color: const Color(0xFF6C63FF).withValues(alpha: 0.3),
@@ -441,7 +441,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           child: Text(
                             '✓  Eintrag speichern',
                             style: TextStyle(
-                              fontSize: 16,
+                              fontSize: 15,
                               fontWeight: FontWeight.w700,
                               color: Colors.white,
                               letterSpacing: 0.5,
@@ -452,7 +452,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     ),
                   ),
                 ),
-                const SizedBox(height: 100),
+                const SizedBox(height: 80),
               ],
             ),
           ),
@@ -486,7 +486,6 @@ class _IOSStyleTimePickerState extends State<_IOSStyleTimePicker> {
     super.initState();
     _selectedHour = widget.initialTime.hour;
     _selectedMinute = widget.initialTime.minute;
-    // 🔥 Unendlich scrollen durch große initiale Werte
     _hourController = FixedExtentScrollController(initialItem: _selectedHour + 1000);
     _minuteController = FixedExtentScrollController(initialItem: _selectedMinute + 1000);
   }
@@ -534,17 +533,16 @@ class _IOSStyleTimePickerState extends State<_IOSStyleTimePicker> {
             height: 200,
             child: Row(
               children: [
-                // 🔥 Stunden Picker - unendlich scrollbar
                 Expanded(
                   child: CupertinoPicker(
                     scrollController: _hourController,
                     magnification: 1.2,
                     backgroundColor: Colors.transparent,
                     itemExtent: 40,
-                    looping: true, // 🔥 Endlosschleife für Stunden
+                    looping: true,
                     onSelectedItemChanged: (index) {
                       setState(() {
-                        _selectedHour = index % 24; // 🔥 Modulo für unendlich
+                        _selectedHour = index % 24;
                       });
                     },
                     children: List.generate(24, (hour) {
@@ -573,17 +571,16 @@ class _IOSStyleTimePickerState extends State<_IOSStyleTimePicker> {
                   ),
                 ),
                 
-                // 🔥 Minuten Picker - unendlich scrollbar
                 Expanded(
                   child: CupertinoPicker(
                     scrollController: _minuteController,
                     magnification: 1.2,
                     backgroundColor: Colors.transparent,
                     itemExtent: 40,
-                    looping: true, // 🔥 Endlosschleife für Minuten
+                    looping: true,
                     onSelectedItemChanged: (index) {
                       setState(() {
-                        _selectedMinute = index % 60; // 🔥 Modulo für unendlich
+                        _selectedMinute = index % 60;
                       });
                     },
                     children: List.generate(60, (minute) {
@@ -636,7 +633,6 @@ class _IOSStyleTimePickerState extends State<_IOSStyleTimePicker> {
               Expanded(
                 child: GestureDetector(
                   onTap: () {
-                    // 🔥 Korrekte Werte mit Modulo
                     final finalHour = _selectedHour % 24;
                     final finalMinute = _selectedMinute % 60;
                     widget.onTimeSelected(TimeOfDay(hour: finalHour, minute: finalMinute));
@@ -723,10 +719,10 @@ class _SwipeTimeCardState extends State<_SwipeTimeCard> {
       child: AnimatedBuilder(
         animation: widget.controller,
         builder: (context, _) => Container(
-          padding: const EdgeInsets.all(18),
+          padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             color: widget.color.withValues(alpha: 0.06),
-            borderRadius: BorderRadius.circular(22),
+            borderRadius: BorderRadius.circular(20),
             border: Border.all(color: widget.color.withValues(alpha: 0.25)),
           ),
           child: Column(
@@ -738,29 +734,29 @@ class _SwipeTimeCardState extends State<_SwipeTimeCard> {
                   Text(
                     widget.label,
                     style: TextStyle(
-                      fontSize: 12,
+                      fontSize: 11,
                       fontWeight: FontWeight.w700,
                       color: widget.color,
                       letterSpacing: 1.2,
                     ),
                   ),
-                  Icon(Icons.unfold_more, color: widget.color.withValues(alpha: 0.5), size: 18),
+                  Icon(Icons.unfold_more, color: widget.color.withValues(alpha: 0.5), size: 16),
                 ],
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 8),
               Text(
                 widget.controller.text.isEmpty ? '--:--' : widget.controller.text,
                 style: const TextStyle(
-                  fontSize: 32,
+                  fontSize: 28,
                   fontWeight: FontWeight.w700,
                   color: Colors.white,
                   letterSpacing: -1,
                 ),
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 2),
               Text(
                 widget.controller.text.isEmpty ? 'Tippen' : 'Wischen',
-                style: TextStyle(fontSize: 11, color: Colors.white.withValues(alpha: 0.3)),
+                style: TextStyle(fontSize: 10, color: Colors.white.withValues(alpha: 0.3)),
               ),
             ],
           ),
@@ -788,25 +784,25 @@ class _GlassInputCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.04),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            width: 36,
-            height: 36,
+            width: 32,
+            height: 32,
             decoration: BoxDecoration(
               color: const Color(0xFF6C63FF).withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(10),
             ),
-            child: Center(child: Text(emoji, style: const TextStyle(fontSize: 18))),
+            child: Center(child: Text(emoji, style: const TextStyle(fontSize: 16))),
           ),
-          const SizedBox(width: 14),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -814,20 +810,20 @@ class _GlassInputCard extends StatelessWidget {
                 Text(
                   label,
                   style: const TextStyle(
-                    fontSize: 11,
+                    fontSize: 10,
                     color: Color(0xFF6C63FF),
                     fontWeight: FontWeight.w600,
                     letterSpacing: 0.8,
                   ),
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: 4),
                 TextField(
                   controller: controller,
                   maxLines: maxLines,
-                  style: const TextStyle(color: Colors.white, fontSize: 15),
+                  style: const TextStyle(color: Colors.white, fontSize: 14),
                   decoration: InputDecoration(
                     hintText: hint,
-                    hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.25), fontSize: 15),
+                    hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.25), fontSize: 14),
                     border: InputBorder.none,
                     isDense: true,
                     contentPadding: EdgeInsets.zero,
