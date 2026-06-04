@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import '../theme/app_theme.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -15,6 +16,7 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   final _nameController = TextEditingController();
   int _deleteAfterMonths = 3;
+  String _activeSkin = 'chrome';
 
   @override
   void initState() {
@@ -22,6 +24,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final box = Hive.box('einstellungen');
     _nameController.text = box.get('name', defaultValue: '');
     _deleteAfterMonths = box.get('deleteAfterMonths', defaultValue: 3);
+    _activeSkin = box.get('skin', defaultValue: 'chrome') as String;
   }
 
   @override
@@ -30,31 +33,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.dispose();
   }
 
-  // 🔥 Neue Funktion: Wandelt jeden Wortanfang in Großbuchstaben um
-  String _capitalizeEachWord(String text) {
-    if (text.isEmpty) return text;
-    
-    final words = text.split(' ');
-    final capitalizedWords = words.map((word) {
-      if (word.isEmpty) return word;
-      // Ersten Buchstaben groß, restliche klein
-      return word[0].toUpperCase() + word.substring(1).toLowerCase();
-    }).toList();
-    
-    return capitalizedWords.join(' ');
+  void _setSkin(String key) {
+    setState(() => _activeSkin = key);
+    Hive.box('einstellungen').put('skin', key);
   }
 
-  // 🔥 Funktion zum Formatieren während der Eingabe
+  String _capitalizeEachWord(String text) {
+    if (text.isEmpty) return text;
+    return text
+        .split(' ')
+        .map((w) => w.isEmpty ? w : w[0].toUpperCase() + w.substring(1).toLowerCase())
+        .join(' ');
+  }
+
   void _onNameChanged(String value) {
     final cursorPosition = _nameController.selection.baseOffset;
     final formatted = _capitalizeEachWord(value);
-    
     if (formatted != value) {
       _nameController.value = TextEditingValue(
         text: formatted,
         selection: TextSelection.collapsed(
-          offset: cursorPosition > formatted.length 
-              ? formatted.length 
+          offset: cursorPosition > formatted.length
+              ? formatted.length
               : cursorPosition,
         ),
       );
@@ -63,7 +63,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   void _saveSettings() {
     final box = Hive.box('einstellungen');
-    // Vor dem Speichern nochmal formatieren
     final formattedName = _capitalizeEachWord(_nameController.text);
     _nameController.text = formattedName;
     box.put('name', formattedName);
@@ -107,8 +106,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     try {
       final k = kommen.split(':');
       final g = gehen.split(':');
-      final start =
-          Duration(hours: int.parse(k[0]), minutes: int.parse(k[1]));
+      final start = Duration(hours: int.parse(k[0]), minutes: int.parse(k[1]));
       final end = Duration(hours: int.parse(g[0]), minutes: int.parse(g[1]));
       final diff = end - start;
       if (diff.isNegative) return '--';
@@ -123,7 +121,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final settingsBox = Hive.box('einstellungen');
     String fullName =
         settingsBox.get('name', defaultValue: 'Unbekannt') as String;
-    // Namen für PDF formatieren
     fullName = _capitalizeEachWord(fullName);
     final monthKey = DateFormat('yyyy-MM').format(month);
     final monthName = DateFormat('MMMM yyyy', 'de').format(month);
@@ -146,7 +143,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
         pageFormat: PdfPageFormat.a4,
         margin: const pw.EdgeInsets.all(40),
         build: (context) => [
-          // Header
           pw.Container(
             padding: const pw.EdgeInsets.all(20),
             decoration: pw.BoxDecoration(
@@ -192,8 +188,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
           pw.SizedBox(height: 20),
-
-          // Zusammenfassung
           pw.Row(
             children: [
               _pdfStatBox('Einträge', '${entries.length}', font, fontBold),
@@ -212,13 +206,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ],
           ),
           pw.SizedBox(height: 20),
-
-          // Tabellen Header
           pw.Container(
-            padding:
-                const pw.EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: const pw.BoxDecoration(
-                color: PdfColor.fromInt(0xFF6C63FF)),
+            padding: const pw.EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration:
+                const pw.BoxDecoration(color: PdfColor.fromInt(0xFF6C63FF)),
             child: pw.Row(
               children: [
                 pw.Expanded(
@@ -262,14 +253,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ],
             ),
           ),
-
-          // Einträge
           ...entries.asMap().entries.map((e) {
             final i = e.key;
             final entry = e.value;
             final datum = DateTime.parse(entry['datum']);
-            final datumStr =
-                DateFormat('EEE dd.MM.yy', 'de').format(datum);
+            final datumStr = DateFormat('EEE dd.MM.yy', 'de').format(datum);
             final kommen = entry['kommen'] ?? '';
             final gehen = entry['gehen'] ?? '';
             final TKF = entry['TKF'] ?? '';
@@ -280,51 +268,39 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 : PdfColors.white;
 
             return pw.Container(
-              padding: const pw.EdgeInsets.symmetric(
-                  horizontal: 12, vertical: 8),
+              padding:
+                  const pw.EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: pw.BoxDecoration(color: bgColor),
-              child: pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.start,
+              child: pw.Row(
                 children: [
-                  pw.Row(
-                    children: [
-                      pw.Expanded(
-                          flex: 2,
-                          child: pw.Text(datumStr,
-                              style: pw.TextStyle(
-                                  font: font, fontSize: 10))),
-                      pw.Expanded(
-                          child: pw.Text(
-                              kommen.isEmpty ? '--:--' : kommen,
-                              style: pw.TextStyle(
-                                  font: font, fontSize: 10))),
-                      pw.Expanded(
-                          child: pw.Text(
-                              gehen.isEmpty ? '--:--' : gehen,
-                              style: pw.TextStyle(
-                                  font: font, fontSize: 10))),
-                      pw.Expanded(
-                          child: pw.Text(duration,
-                              style: pw.TextStyle(
-                                  font: fontBold, fontSize: 10))),
-                      pw.Expanded(
-                          child: pw.Text(TKF,
-                              style: pw.TextStyle(
-                                  font: font, fontSize: 10))),
-                      pw.Expanded(
-                          flex: 2,
-                          child: pw.Text(notiz,
-                              style: pw.TextStyle(
-                                  font: font,
-                                  fontSize: 10,
-                                  color: PdfColors.grey600))),
-                    ],
-                  ),
+                  pw.Expanded(
+                      flex: 2,
+                      child: pw.Text(datumStr,
+                          style: pw.TextStyle(font: font, fontSize: 10))),
+                  pw.Expanded(
+                      child: pw.Text(kommen.isEmpty ? '--:--' : kommen,
+                          style: pw.TextStyle(font: font, fontSize: 10))),
+                  pw.Expanded(
+                      child: pw.Text(gehen.isEmpty ? '--:--' : gehen,
+                          style: pw.TextStyle(font: font, fontSize: 10))),
+                  pw.Expanded(
+                      child: pw.Text(duration,
+                          style:
+                              pw.TextStyle(font: fontBold, fontSize: 10))),
+                  pw.Expanded(
+                      child: pw.Text(TKF,
+                          style: pw.TextStyle(font: font, fontSize: 10))),
+                  pw.Expanded(
+                      flex: 2,
+                      child: pw.Text(notiz,
+                          style: pw.TextStyle(
+                              font: font,
+                              fontSize: 10,
+                              color: PdfColors.grey600))),
                 ],
               ),
             );
           }),
-
           pw.SizedBox(height: 20),
           pw.Divider(color: PdfColors.grey300),
           pw.SizedBox(height: 8),
@@ -489,7 +465,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // Header
+            // ── Header ───────────────────────────────────────────────────────
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
               child: Row(
@@ -530,7 +506,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   children: [
                     const SizedBox(height: 8),
 
-                    // Benutzername - 🔥 Mit automatischer Großschreibung
+                    // ── BENUTZERNAME ──────────────────────────────────────────
                     _SettingsCard(
                       emoji: '👤',
                       title: 'Benutzername',
@@ -552,8 +528,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               color: Colors.white.withValues(alpha: 0.05),
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(
-                                  color:
-                                      Colors.white.withValues(alpha: 0.08)),
+                                  color: Colors.white.withValues(alpha: 0.08)),
                             ),
                             child: TextField(
                               controller: _nameController,
@@ -562,12 +537,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               decoration: InputDecoration(
                                 hintText: 'z.B. Max Mustermann',
                                 hintStyle: TextStyle(
-                                    color:
-                                        Colors.white.withValues(alpha: 0.25)),
+                                    color: Colors.white.withValues(alpha: 0.25)),
                                 border: InputBorder.none,
                                 isDense: true,
                               ),
-                              // 🔥 Hier: Automatische Großschreibung bei jeder Eingabe
                               onChanged: _onNameChanged,
                             ),
                           ),
@@ -584,9 +557,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ],
                       ),
                     ),
+
                     const SizedBox(height: 16),
 
-                    // PDF Export
+                    // ── PDF EXPORT ────────────────────────────────────────────
                     _SettingsCard(
                       emoji: '📄',
                       title: 'PDF Export',
@@ -608,9 +582,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ],
                       ),
                     ),
+
                     const SizedBox(height: 16),
 
-                    // Datenverwaltung
+                    // ── DATENVERWALTUNG ───────────────────────────────────────
                     _SettingsCard(
                       emoji: '🗑',
                       title: 'Datenverwaltung',
@@ -620,14 +595,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           Text(
                             'Alte Einträge automatisch löschen nach:',
                             style: TextStyle(
-                                fontSize: 13,
-                                color: Colors.white.withValues(alpha: 0.4)),
+                                fontSize: 13, color: Colors.white.withValues(alpha: 0.4)),
                           ),
                           const SizedBox(height: 12),
                           Row(
                             children: [1, 3, 6, 12].map((months) {
-                              final isSelected =
-                                  _deleteAfterMonths == months;
+                              final isSelected = _deleteAfterMonths == months;
                               return Padding(
                                 padding: const EdgeInsets.only(right: 8),
                                 child: GestureDetector(
@@ -703,14 +676,54 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ],
                       ),
                     ),
+
+                    const SizedBox(height: 16),
+
+                    // ── DESIGN / SKIN (4. Einstellung - GANZ UNTEN) ───────────
+                    _SettingsCard(
+                      emoji: '🎨',
+                      title: 'Design',
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Wähle das Aussehen der App. Die Änderung wird sofort übernommen.',
+                            style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.white.withValues(alpha: 0.4),
+                                height: 1.5),
+                          ),
+                          const SizedBox(height: 16),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _SimpleSkinOption(
+                                  label: 'Chrome (Standard)',
+                                  isSelected: _activeSkin == 'chrome',
+                                  onTap: () => _setSkin('chrome'),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: _SimpleSkinOption(
+                                  label: 'Space',
+                                  isSelected: _activeSkin == 'space',
+                                  onTap: () => _setSkin('space'),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+
                     const SizedBox(height: 32),
 
                     Center(
                       child: Text(
                         'OperationTimer v1.0',
                         style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.white.withValues(alpha: 0.15)),
+                            fontSize: 12, color: Colors.white.withValues(alpha: 0.15)),
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -724,6 +737,75 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EINFACHE SKIN-AUSWAHL-KACHEL (OHNE VORSCHAU)
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _SimpleSkinOption extends StatelessWidget {
+  final String label;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _SimpleSkinOption({
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+        decoration: BoxDecoration(
+          gradient: isSelected
+              ? const LinearGradient(
+                  colors: [Color(0xFF6C63FF), Color(0xFF4ECDC4)],
+                )
+              : null,
+          color: isSelected
+              ? null
+              : Colors.white.withValues(alpha: 0.05),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: isSelected
+                ? Colors.transparent
+                : Colors.white.withValues(alpha: 0.08),
+          ),
+        ),
+        child: Center(
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              if (isSelected)
+                const Icon(
+                  Icons.check_circle,
+                  color: Colors.white,
+                  size: 18,
+                ),
+              if (isSelected) const SizedBox(width: 8),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: isSelected ? Colors.white : Colors.white.withValues(alpha: 0.6),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WIEDERVERWENDBARE WIDGETS
+// ─────────────────────────────────────────────────────────────────────────────
 
 class _SettingsCard extends StatelessWidget {
   final String emoji;
