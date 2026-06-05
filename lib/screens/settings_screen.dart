@@ -37,6 +37,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.dispose();
   }
 
+  void _dismissKeyboard() {
+    FocusScope.of(context).unfocus();
+  }
+
   void _setSkin(String key) {
     setState(() => _activeSkin = key);
     Hive.box('einstellungen').put(AppTheme.hiveKey, key);
@@ -69,6 +73,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   void _saveSettings() {
+    _dismissKeyboard();
     final box = Hive.box('einstellungen');
     final formatted = _capitalizeEachWord(_nameController.text);
     _nameController.text = formatted;
@@ -267,279 +272,292 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Scaffold(
       backgroundColor: skin.bgBase,
       body: SafeArea(
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-              child: Row(
-                children: [
-                  GestureDetector(
-                    onTap: () => Navigator.pop(context),
-                    child: Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: skin.surface(0.06),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: skin.borderSubtle),
-                      ),
-                      child: Icon(Icons.arrow_back_ios_new, color: skin.textPrimary, size: 16),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Text(
-                    'Einstellungen',
-                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: skin.textPrimary),
-                  ),
-                ],
-              ),
-            ),
-
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+        child: GestureDetector(
+          onTap: _dismissKeyboard,
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                child: Row(
                   children: [
-                    const SizedBox(height: 8),
-
-                    _SettingsCard(
-                      emoji: '👤',
-                      title: 'Benutzername',
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Vor- und Nachname. Der Vorname erscheint in der Begrüßung, der vollständige Name im PDF.',
-                            style: TextStyle(fontSize: 13, color: skin.textMuted, height: 1.5),
-                          ),
-                          const SizedBox(height: 12),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: skin.surface(0.05),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: skin.borderSubtle),
-                            ),
-                            child: TextField(
-                              controller: _nameController,
-                              style: TextStyle(color: skin.textPrimary, fontSize: 15),
-                              decoration: InputDecoration(
-                                hintText: 'z.B. Max Mustermann',
-                                hintStyle: TextStyle(color: skin.textHint),
-                                border: InputBorder.none,
-                                isDense: true,
-                              ),
-                              onChanged: _onNameChanged,
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          _GradientButton(label: 'Speichern', onTap: _saveSettings),
-                        ],
+                    GestureDetector(
+                      onTap: () => Navigator.pop(context),
+                      child: Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: skin.surface(0.06),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: skin.borderSubtle),
+                        ),
+                        child: Icon(Icons.arrow_back_ios_new, color: skin.textPrimary, size: 16),
                       ),
                     ),
+                    const SizedBox(width: 16),
+                    Text(
+                      'Einstellungen',
+                      style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: skin.textPrimary),
+                    ),
+                  ],
+                ),
+              ),
 
-                    const SizedBox(height: 16),
+              Expanded(
+                child: NotificationListener<ScrollNotification>(
+                  onNotification: (scrollInfo) {
+                    _dismissKeyboard();
+                    return false;
+                  },
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 8),
 
-                    _SettingsCard(
-                      emoji: '🌙',
-                      title: 'Nachtschicht-Modus',
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Wenn aktiviert, erkennt die App automatisch Nachtschichten (z.B. Kommen 22:00 → Gehen 02:00) und legt zwei Einträge an:\n\n'
-                            '• Eintrag 1: Kommen bis 23:59 (selber Tag)\n'
-                            '• Eintrag 2: 00:00 bis Gehen (nächster Tag)',
-                            style: TextStyle(fontSize: 13, color: skin.textMuted, height: 1.5),
-                          ),
-                          const SizedBox(height: 16),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        _SettingsCard(
+                          emoji: '👤',
+                          title: 'Benutzername',
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                _nachtschichtModus ? '✅ Aktiviert' : '⬜ Deaktiviert',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                  color: _nachtschichtModus ? skin.statComplete : skin.textMuted,
+                                'Vor- und Nachname. Der Vorname erscheint in der Begrüßung, der vollständige Name im PDF.',
+                                style: TextStyle(fontSize: 13, color: skin.textMuted, height: 1.5),
+                              ),
+                              const SizedBox(height: 12),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: skin.surface(0.05),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: skin.borderSubtle),
+                                ),
+                                child: TextField(
+                                  controller: _nameController,
+                                  style: TextStyle(color: skin.textPrimary, fontSize: 15),
+                                  decoration: InputDecoration(
+                                    hintText: 'z.B. Max Mustermann',
+                                    hintStyle: TextStyle(color: skin.textHint),
+                                    border: InputBorder.none,
+                                    isDense: true,
+                                  ),
+                                  onChanged: _onNameChanged,
+                                  onSubmitted: (_) => _dismissKeyboard(),
                                 ),
                               ),
-                              Switch(
-                                value: _nachtschichtModus,
-                                onChanged: _setNachtschichtModus,
-                                activeThumbColor: skin.statComplete,
-                                activeTrackColor: skin.statComplete.withValues(alpha: 0.3),
-                                inactiveThumbColor: skin.textMuted,
-                                inactiveTrackColor: skin.surface(0.1),
+                              const SizedBox(height: 12),
+                              _GradientButton(
+                                label: 'Speichern',
+                                onTap: _saveSettings,
                               ),
                             ],
                           ),
-                          if (_nachtschichtModus) ...[
-                            const SizedBox(height: 12),
-                            Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: skin.statComplete.withValues(alpha: 0.07),
-                                borderRadius: BorderRadius.circular(10),
-                                border: Border.all(color: skin.statComplete.withValues(alpha: 0.2)),
+                        ),
+
+                        const SizedBox(height: 16),
+
+                        _SettingsCard(
+                          emoji: '🌙',
+                          title: 'Nachtschicht-Modus',
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Wenn aktiviert, erkennt die App automatisch Nachtschichten (z.B. Kommen 22:00 → Gehen 02:00) und legt zwei Einträge an:\n\n'
+                                '• Eintrag 1: Kommen bis 23:59 (selber Tag)\n'
+                                '• Eintrag 2: 00:00 bis Gehen (nächster Tag)',
+                                style: TextStyle(fontSize: 13, color: skin.textMuted, height: 1.5),
                               ),
-                              child: Row(
+                              const SizedBox(height: 16),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
-                                  const Text('🌙', style: TextStyle(fontSize: 16)),
-                                  const SizedBox(width: 8),
+                                  Text(
+                                    _nachtschichtModus ? '✅ Aktiviert' : '⬜ Deaktiviert',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: _nachtschichtModus ? skin.statComplete : skin.textMuted,
+                                    ),
+                                  ),
+                                  Switch(
+                                    value: _nachtschichtModus,
+                                    onChanged: _setNachtschichtModus,
+                                    activeThumbColor: skin.statComplete,
+                                    activeTrackColor: skin.statComplete.withValues(alpha: 0.3),
+                                    inactiveThumbColor: skin.textMuted,
+                                    inactiveTrackColor: skin.surface(0.1),
+                                  ),
+                                ],
+                              ),
+                              if (_nachtschichtModus) ...[
+                                const SizedBox(height: 12),
+                                Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: skin.statComplete.withValues(alpha: 0.07),
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(color: skin.statComplete.withValues(alpha: 0.2)),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      const Text('🌙', style: TextStyle(fontSize: 16)),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          'Beim Speichern wird ein Bestätigungs-Dialog angezeigt, bevor die zwei Einträge angelegt werden.',
+                                          style: TextStyle(fontSize: 11, color: skin.statComplete.withValues(alpha: 0.8)),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(height: 16),
+
+                        _SettingsCard(
+                          emoji: '📄',
+                          title: 'PDF Export',
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Exportiere deine Arbeitszeiten als PDF inkl. Notizen und teile sie per Mail, WhatsApp oder AirDrop.',
+                                style: TextStyle(fontSize: 13, color: skin.textMuted, height: 1.5),
+                              ),
+                              const SizedBox(height: 12),
+                              _GradientButton(
+                                label: '📤  Zeiten exportieren & teilen',
+                                onTap: _selectMonthForExport,
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(height: 16),
+
+                        _SettingsCard(
+                          emoji: '🗑',
+                          title: 'Datenverwaltung',
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Alte Einträge werden automatisch gelöscht nach:',
+                                style: TextStyle(fontSize: 13, color: skin.textMuted),
+                              ),
+                              const SizedBox(height: 12),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: [1, 3, 6, 12].map((months) {
+                                  final isSelected = _deleteAfterMonths == months;
+                                  return GestureDetector(
+                                    onTap: () => setState(() => _deleteAfterMonths = months),
+                                    child: AnimatedContainer(
+                                      duration: const Duration(milliseconds: 200),
+                                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                                      decoration: BoxDecoration(
+                                        gradient: isSelected ? skin.gradient : null,
+                                        color: isSelected ? null : skin.surface(0.05),
+                                        borderRadius: BorderRadius.circular(10),
+                                        border: Border.all(
+                                          color: isSelected ? Colors.transparent : skin.borderSubtle,
+                                        ),
+                                      ),
+                                      child: Text(
+                                        '$months Monat${months > 1 ? 'e' : ''}',
+                                        style: TextStyle(
+                                          color: isSelected ? skin.onGradient : skin.textMuted,
+                                          fontWeight: FontWeight.w600,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                }).toList(),
+                              ),
+                              const SizedBox(height: 12),
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: skin.surface(0.03),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.info_outline, color: skin.textMuted, size: 18),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        'Einträge werden automatisch gelöscht, sobald sie älter als die ausgewählte Zeit sind.',
+                                        style: TextStyle(fontSize: 11, color: skin.textMuted),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(height: 16),
+
+                        _SettingsCard(
+                          emoji: '🎨',
+                          title: 'Design',
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Wähle das Aussehen der App. Die Änderung wird sofort übernommen.',
+                                style: TextStyle(fontSize: 13, color: skin.textMuted, height: 1.5),
+                              ),
+                              const SizedBox(height: 16),
+                              Row(
+                                children: [
                                   Expanded(
-                                    child: Text(
-                                      'Beim Speichern wird ein Bestätigungs-Dialog angezeigt, bevor die zwei Einträge angelegt werden.',
-                                      style: TextStyle(fontSize: 11, color: skin.statComplete.withValues(alpha: 0.8)),
+                                    child: _SimpleSkinOption(
+                                      label: 'Chrome',
+                                      isSelected: _activeSkin == 'chrome',
+                                      onTap: () => _setSkin('chrome'),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: _SimpleSkinOption(
+                                      label: 'Space',
+                                      isSelected: _activeSkin == 'space',
+                                      onTap: () => _setSkin('space'),
                                     ),
                                   ),
                                 ],
                               ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 16),
-
-                    _SettingsCard(
-                      emoji: '📄',
-                      title: 'PDF Export',
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Exportiere deine Arbeitszeiten als PDF inkl. Notizen und teile sie per Mail, WhatsApp oder AirDrop.',
-                            style: TextStyle(fontSize: 13, color: skin.textMuted, height: 1.5),
-                          ),
-                          const SizedBox(height: 12),
-                          _GradientButton(
-                            label: '📤  Zeiten exportieren & teilen',
-                            onTap: _selectMonthForExport,
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 16),
-
-                    _SettingsCard(
-                      emoji: '🗑',
-                      title: 'Datenverwaltung',
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Alte Einträge werden automatisch gelöscht nach:',
-                            style: TextStyle(fontSize: 13, color: skin.textMuted),
-                          ),
-                          const SizedBox(height: 12),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: [1, 3, 6, 12].map((months) {
-                              final isSelected = _deleteAfterMonths == months;
-                              return GestureDetector(
-                                onTap: () => setState(() => _deleteAfterMonths = months),
-                                child: AnimatedContainer(
-                                  duration: const Duration(milliseconds: 200),
-                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                                  decoration: BoxDecoration(
-                                    gradient: isSelected ? skin.gradient : null,
-                                    color: isSelected ? null : skin.surface(0.05),
-                                    borderRadius: BorderRadius.circular(10),
-                                    border: Border.all(
-                                      color: isSelected ? Colors.transparent : skin.borderSubtle,
-                                    ),
-                                  ),
-                                  child: Text(
-                                    '$months Monat${months > 1 ? 'e' : ''}',
-                                    style: TextStyle(
-                                      color: isSelected ? skin.onGradient : skin.textMuted,
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 13,
-                                    ),
-                                  ),
-                                ),
-                              );
-                            }).toList(),
-                          ),
-                          const SizedBox(height: 12),
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: skin.surface(0.03),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(Icons.info_outline, color: skin.textMuted, size: 18),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    'Einträge werden automatisch gelöscht, sobald sie älter als die ausgewählte Zeit sind.',
-                                    style: TextStyle(fontSize: 11, color: skin.textMuted),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 16),
-
-                    _SettingsCard(
-                      emoji: '🎨',
-                      title: 'Design',
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Wähle das Aussehen der App. Die Änderung wird sofort übernommen.',
-                            style: TextStyle(fontSize: 13, color: skin.textMuted, height: 1.5),
-                          ),
-                          const SizedBox(height: 16),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: _SimpleSkinOption(
-                                  label: 'Chrome',
-                                  isSelected: _activeSkin == 'chrome',
-                                  onTap: () => _setSkin('chrome'),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: _SimpleSkinOption(
-                                  label: 'Space',
-                                  isSelected: _activeSkin == 'space',
-                                  onTap: () => _setSkin('space'),
-                                ),
-                              ),
                             ],
                           ),
-                        ],
-                      ),
-                    ),
+                        ),
 
-                    const SizedBox(height: 32),
+                        const SizedBox(height: 32),
 
-                    Center(
-                      child: Text(
-                        'OpTimes v1.0',
-                        style: TextStyle(fontSize: 12, color: skin.textHint),
-                      ),
+                        Center(
+                          child: Text(
+                            'OpTimes v1.0',
+                            style: TextStyle(fontSize: 12, color: skin.textHint),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                      ],
                     ),
-                    const SizedBox(height: 8),
-                  ],
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
