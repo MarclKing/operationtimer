@@ -10,14 +10,22 @@ enum _OverlayField { none, tkf, notiz }
 
 class HomeScreen extends StatefulWidget {
   final VoidCallback onNavigateToMonth;
-  const HomeScreen({super.key, required this.onNavigateToMonth});
+  final DateTime selectedDate;
+  final ValueChanged<DateTime> onDateChanged;
+
+  const HomeScreen({
+    super.key,
+    required this.onNavigateToMonth,
+    required this.selectedDate,
+    required this.onDateChanged,
+  });
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
 class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
-  DateTime _selectedDate = DateTime.now();
+  late DateTime _selectedDate;
   final _kommenController = TextEditingController();
   final _gehenController = TextEditingController();
   final _teamchefController = TextEditingController();
@@ -51,6 +59,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
+    _selectedDate = widget.selectedDate;
     _saveAnimController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 150),
@@ -82,6 +91,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       reverseCurve: Curves.easeInCubic,
     ));
     _loadEntry();
+  }
+
+  @override
+  void didUpdateWidget(HomeScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Sync if parent pushed a new date (shouldn't normally happen,
+    // but keeps things consistent)
+    if (oldWidget.selectedDate != widget.selectedDate &&
+        widget.selectedDate != _selectedDate) {
+      setState(() => _selectedDate = widget.selectedDate);
+      _loadEntry();
+    }
   }
 
   @override
@@ -145,6 +166,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     });
   }
 
+  void _setDate(DateTime date) {
+    setState(() => _selectedDate = date);
+    widget.onDateChanged(date);
+    _loadEntry();
+  }
+
   void _dismissKeyboardAndOverlay() {
     _tkfFocusNode.unfocus();
     _notizFocusNode.unfocus();
@@ -169,10 +196,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   void _changeDate(int days) {
     _dismissKeyboardAndOverlay();
-    setState(() {
-      _selectedDate = _selectedDate.add(Duration(days: days));
-    });
-    _loadEntry();
+    _setDate(_selectedDate.add(Duration(days: days)));
   }
 
   TimeOfDay? _parseTime(String text) {
@@ -271,82 +295,73 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     });
   }
 
-  // ── Prüft ob bereits ein Eintrag mit derselben Kommen-Zeit existiert ─────────
   Future<bool> _checkDuplicateKommenTime(DateTime datum, String kommenTime) async {
     if (kommenTime.isEmpty) return false;
-    
     final box = Hive.box('arbeitszeiten');
     final dateKey = DateFormat('yyyy-MM-dd').format(datum);
     final existingData = box.get(dateKey);
-    
     if (existingData == null) return false;
-    
     List<Map<String, dynamic>> entries = [];
     if (existingData is List) {
       entries = List<Map<String, dynamic>>.from(existingData);
     } else {
       entries = [Map<String, dynamic>.from(existingData)];
     }
-    
-    // Prüfe ob bereits ein Eintrag mit derselben Kommen-Zeit existiert
     for (final entry in entries) {
       final existingKommen = entry['kommen'] ?? '';
-      if (existingKommen == kommenTime) {
-        return true;
-      }
+      if (existingKommen == kommenTime) return true;
     }
     return false;
   }
 
   void _saveEntry(BuildContext context) async {
-  HapticFeedback.mediumImpact();
-  if (_activeOverlay != _OverlayField.none) await _closeOverlay();
+    HapticFeedback.mediumImpact();
+    if (_activeOverlay != _OverlayField.none) await _closeOverlay();
 
-  final kommen = _kommenController.text.trim();
-  final gehen = _gehenController.text.trim();
-  final tkf = _teamchefController.text.trim();
-  final notiz = _notizController.text.trim();
+    final kommen = _kommenController.text.trim();
+    final gehen = _gehenController.text.trim();
+    final tkf = _teamchefController.text.trim();
+    final notiz = _notizController.text.trim();
 
-  // ── Prüfung auf doppelte Kommen-Zeit ─────────────────────────────────────
-  if (kommen.isNotEmpty) {
-    final isDuplicate = await _checkDuplicateKommenTime(_selectedDate, kommen);
-    if (isDuplicate) {
-      final skin = AppTheme.of(context);
-      _showDebouncedSnackBar(
-        context, 
-        '✗ Ein Eintrag mit dieser Kommen-Zeit existiert bereits', 
-        skin  // ← Hier skin übergeben, nicht skin.deleteColor
-      );
-      return;
+    if (kommen.isNotEmpty) {
+      final isDuplicate = await _checkDuplicateKommenTime(_selectedDate, kommen);
+      if (isDuplicate) {
+        final skin = AppTheme.of(context);
+        _showDebouncedSnackBar(
+          context,
+          '✗ Ein Eintrag mit dieser Kommen-Zeit existiert bereits',
+          skin,
+        );
+        return;
+      }
+    }
+
+    final result = await NightShiftHelper.save(
+      context: context,
+      datum: _selectedDate,
+      kommen: kommen,
+      gehen: gehen,
+      tkf: tkf,
+      notiz: notiz,
+    );
+
+    if (result == SaveResult.saved || result == SaveResult.splitSaved) {
+      await _saveAnimController.forward();
+      await _saveAnimController.reverse();
+
+      final isToday =
+          _dateKey == DateFormat('yyyy-MM-dd').format(DateTime.now());
+      if (isToday) _resetAllFieldsForToday();
+
+      if (mounted) {
+        final skin = AppTheme.of(context);
+        final message = result == SaveResult.splitSaved
+            ? '✓ Nachtschicht gespeichert (2 Einträge)'
+            : '✓ Eintrag gespeichert';
+        _showDebouncedSnackBar(context, message, skin);
+      }
     }
   }
-
-  final result = await NightShiftHelper.save(
-    context: context,
-    datum: _selectedDate,
-    kommen: kommen,
-    gehen: gehen,
-    tkf: tkf,
-    notiz: notiz,
-  );
-
-  if (result == SaveResult.saved || result == SaveResult.splitSaved) {
-    await _saveAnimController.forward();
-    await _saveAnimController.reverse();
-
-    final isToday =
-        _dateKey == DateFormat('yyyy-MM-dd').format(DateTime.now());
-    if (isToday) _resetAllFieldsForToday();
-
-    if (mounted) {
-      final skin = AppTheme.of(context);
-      final message = result == SaveResult.splitSaved
-          ? '✓ Nachtschicht gespeichert (2 Einträge)'
-          : '✓ Eintrag gespeichert';
-      _showDebouncedSnackBar(context, message, skin);
-    }
-  }
-}
 
   void _showDebouncedSnackBar(
       BuildContext context, String message, AppSkin skin) {
@@ -450,10 +465,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   Expanded(
                     child: GestureDetector(
                       onTap: () {
-                        setState(() {
-                          _selectedDate = tempDate;
-                        });
-                        _loadEntry();
+                        _setDate(tempDate);
                         Navigator.pop(context);
                       },
                       child: Container(
@@ -522,6 +534,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         },
       ),
     );
+  }
+
+  // ── Auto-capitalize first letter ─────────────────────────────────────────
+  String _capitalizeFirst(String text) {
+    if (text.isEmpty) return text;
+    return text[0].toUpperCase() + text.substring(1);
   }
 
   @override
@@ -614,6 +632,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                             Expanded(
                               child: GestureDetector(
                                 onTap: _selectDateWithPicker,
+                                // Double-tap → reset to today
+                                onDoubleTap: () {
+                                  HapticFeedback.selectionClick();
+                                  _setDate(DateTime.now());
+                                },
                                 onHorizontalDragEnd: (d) {
                                   final v = d.primaryVelocity ?? 0;
                                   if (v < -300) _changeDate(1);
@@ -905,6 +928,20 @@ class _FlyingCardOverlay extends StatelessWidget {
     required this.onClear,
   });
 
+  // Auto-capitalize first letter on change
+  void _onChanged(String value) {
+    if (value.isNotEmpty) {
+      final capitalized = value[0].toUpperCase() + value.substring(1);
+      if (capitalized != value) {
+        final sel = controller.selection;
+        controller.value = TextEditingValue(
+          text: capitalized,
+          selection: sel,
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final skin = AppTheme.of(context);
@@ -1063,6 +1100,7 @@ class _FlyingCardOverlay extends StatelessWidget {
                   isDense: true,
                   contentPadding: EdgeInsets.zero,
                 ),
+                textCapitalization: TextCapitalization.sentences,
                 textInputAction: TextInputAction.done,
                 onSubmitted: (_) => onClose(),
               ),

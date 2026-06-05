@@ -120,6 +120,10 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   late AnimationController _menuAnimController;
   bool _menuOpen = false;
 
+  // ── Shared date/month state ───────────────────────────────────────────────
+  DateTime _sharedDate = DateTime.now();
+  DateTime _sharedMonth = DateTime(DateTime.now().year, DateTime.now().month);
+
   @override
   void initState() {
     super.initState();
@@ -160,7 +164,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   }
 
   void _selectTab(int index) {
-    FocusManager.instance.primaryFocus?.unfocus(); // ← Tastatur schließen
+    FocusManager.instance.primaryFocus?.unfocus();
     setState(() {
       _selectedIndex = index;
       _tabAnimController.forward(from: 0);
@@ -175,7 +179,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   }
 
   void _goToPage(int index) {
-    FocusManager.instance.primaryFocus?.unfocus(); // ← Tastatur schließen
+    FocusManager.instance.primaryFocus?.unfocus();
     setState(() => _selectedIndex = index);
     if (_pageController.hasClients) {
       _pageController.animateToPage(
@@ -203,10 +207,14 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
             children: [
               HomeScreen(
                 key: const ValueKey('home'),
+                selectedDate: _sharedDate,
+                onDateChanged: (d) => setState(() => _sharedDate = d),
                 onNavigateToMonth: () => _goToPage(1),
               ),
               MonthScreen(
                 key: const ValueKey('month'),
+                selectedMonth: _sharedMonth,
+                onMonthChanged: (m) => setState(() => _sharedMonth = m),
                 onNavigateToHome: () => _goToPage(0),
               ),
             ],

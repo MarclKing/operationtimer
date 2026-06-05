@@ -12,19 +12,42 @@ import '../services/pdf_service.dart';
 
 class MonthScreen extends StatefulWidget {
   final VoidCallback onNavigateToHome;
-  const MonthScreen({super.key, required this.onNavigateToHome});
+  final DateTime selectedMonth;
+  final ValueChanged<DateTime> onMonthChanged;
+
+  const MonthScreen({
+    super.key,
+    required this.onNavigateToHome,
+    required this.selectedMonth,
+    required this.onMonthChanged,
+  });
 
   @override
   State<MonthScreen> createState() => _MonthScreenState();
 }
 
 class _MonthScreenState extends State<MonthScreen> {
-  DateTime _selectedMonth = DateTime.now();
+  late DateTime _selectedMonth;
   final Map<String, GlobalKey<_SlidableRowState>> _rowKeys = {};
   bool _dragOnInteractive = false;
 
   final Map<String, DateTime> _lastSnackbarTime = {};
   static const Duration _snackbarCooldown = Duration(seconds: 5);
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedMonth = widget.selectedMonth;
+  }
+
+  @override
+  void didUpdateWidget(MonthScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.selectedMonth != widget.selectedMonth &&
+        widget.selectedMonth != _selectedMonth) {
+      setState(() => _selectedMonth = widget.selectedMonth);
+    }
+  }
 
   void _showSnackbar(String message, Color color) {
     final now = DateTime.now();
@@ -82,6 +105,28 @@ class _MonthScreenState extends State<MonthScreen> {
     return entries;
   }
 
+  // ── Completeness logic (change #8) ────────────────────────────────────────
+  // An entry is "complete" (OK) when:
+  //   • It has both Kommen AND Gehen, OR
+  //   • It has a TKF entry (regardless of times), OR
+  //   • It has at least one time AND a TKF
+  // An entry is "open" (unvollständig) when:
+  //   • Only one time is set and no TKF, OR
+  //   • No times and no TKF
+  static bool _isEntryComplete(Map<String, dynamic> entry) {
+    final kommen = (entry['kommen'] ?? '').toString().trim();
+    final gehen = (entry['gehen'] ?? '').toString().trim();
+    final tkf = (entry['TKF'] ?? '').toString().trim();
+
+    final hasKommen = kommen.isNotEmpty;
+    final hasGehen = gehen.isNotEmpty;
+    final hasTkf = tkf.isNotEmpty;
+
+    if (hasKommen && hasGehen) return true;
+    if (hasTkf) return true;
+    return false;
+  }
+
   String _calcDuration(String kommen, String gehen) {
     if (kommen.isEmpty || gehen.isEmpty) return '--';
     try {
@@ -111,12 +156,14 @@ class _MonthScreenState extends State<MonthScreen> {
     }
   }
 
-  void _changeMonth(int delta) {
+  void _setMonth(DateTime month) {
+    setState(() => _selectedMonth = month);
+    widget.onMonthChanged(month);
     _closeAllRows();
-    setState(() {
-      _selectedMonth =
-          DateTime(_selectedMonth.year, _selectedMonth.month + delta);
-    });
+  }
+
+  void _changeMonth(int delta) {
+    _setMonth(DateTime(_selectedMonth.year, _selectedMonth.month + delta));
   }
 
   void _deleteEntry(String datum, String entryId) {
@@ -298,12 +345,21 @@ class _MonthScreenState extends State<MonthScreen> {
     );
   }
 
+  // ── Month picker (change #3 + #5) ─────────────────────────────────────────
+  // "Abbrechen" → "Aktuell" (resets to today's month)
+  // Fix: initialItem uses actual month/year index so picker starts correctly
   void _showMonthPicker() {
     final skin = AppTheme.of(context);
     final isChromeSkin = skin.key == 'chrome';
     int pickedYear = _selectedMonth.year;
-    int pickedMonth = _selectedMonth.month - 1;
+    int pickedMonth = _selectedMonth.month - 1; // 0-based
     final yearCount = DateTime.now().year - 2020 + 2;
+
+    // Controllers created with correct initial positions
+    final monthCtrl =
+        FixedExtentScrollController(initialItem: 1000 * 12 + pickedMonth);
+    final yearCtrl =
+        FixedExtentScrollController(initialItem: pickedYear - 2020);
 
     showModalBottomSheet(
       context: context,
@@ -342,8 +398,7 @@ class _MonthScreenState extends State<MonthScreen> {
                     Expanded(
                       flex: 2,
                       child: CupertinoPicker(
-                        scrollController: FixedExtentScrollController(
-                            initialItem: pickedMonth + 1000),
+                        scrollController: monthCtrl,
                         itemExtent: 44,
                         looping: true,
                         backgroundColor: Colors.transparent,
@@ -366,8 +421,7 @@ class _MonthScreenState extends State<MonthScreen> {
                     ),
                     Expanded(
                       child: CupertinoPicker(
-                        scrollController: FixedExtentScrollController(
-                            initialItem: pickedYear - 2020),
+                        scrollController: yearCtrl,
                         itemExtent: 44,
                         looping: false,
                         backgroundColor: Colors.transparent,
@@ -391,9 +445,14 @@ class _MonthScreenState extends State<MonthScreen> {
               const SizedBox(height: 16),
               Row(
                 children: [
+                  // "Aktuell" instead of "Abbrechen"
                   Expanded(
                     child: GestureDetector(
-                      onTap: () => Navigator.pop(ctx),
+                      onTap: () {
+                        final now = DateTime.now();
+                        _setMonth(DateTime(now.year, now.month));
+                        Navigator.pop(ctx);
+                      },
                       child: Container(
                         margin: const EdgeInsets.fromLTRB(16, 0, 8, 0),
                         padding: const EdgeInsets.symmetric(vertical: 16),
@@ -402,7 +461,7 @@ class _MonthScreenState extends State<MonthScreen> {
                           borderRadius: BorderRadius.circular(14),
                         ),
                         child: Center(
-                          child: Text('Abbrechen',
+                          child: Text('Aktuell',
                               style: TextStyle(
                                   color: skin.textPrimary,
                                   fontSize: 15,
@@ -414,8 +473,7 @@ class _MonthScreenState extends State<MonthScreen> {
                   Expanded(
                     child: GestureDetector(
                       onTap: () {
-                        setState(() => _selectedMonth =
-                            DateTime(pickedYear, pickedMonth + 1));
+                        _setMonth(DateTime(pickedYear, pickedMonth + 1));
                         Navigator.pop(ctx);
                       },
                       child: Container(
@@ -462,13 +520,14 @@ class _MonthScreenState extends State<MonthScreen> {
     final isChromeSkin = skin.key == 'chrome';
     final bottomNavHeight = 70.0 + MediaQuery.of(context).padding.bottom;
 
-    final uniqueDays = <String>{};
-    for (final entry in entries) {
-      uniqueDays.add(entry['datum'] as String);
-    }
-    final complete =
-        entries.where((e) => (e['gehen'] ?? '').isNotEmpty).length;
-    final open = entries.length - complete;
+    // ── Stats (change #7 + #8) ───────────────────────────────────────────────
+    // "Arbeit" = number of entries (Einträge) for that month
+    // "Tage"   = calendar days in the month
+    // "Offen"  = entries that are NOT complete per new logic
+    final daysInMonth =
+        DateUtils.getDaysInMonth(_selectedMonth.year, _selectedMonth.month);
+    final offeneEntries =
+        entries.where((e) => !_isEntryComplete(e)).length;
 
     return Scaffold(
       backgroundColor: skin.bgBase,
@@ -510,6 +569,13 @@ class _MonthScreenState extends State<MonthScreen> {
                               Expanded(
                                 child: GestureDetector(
                                   onTap: _showMonthPicker,
+                                  // Double-tap → reset to current month
+                                  onDoubleTap: () {
+                                    HapticFeedback.selectionClick();
+                                    final now = DateTime.now();
+                                    _setMonth(
+                                        DateTime(now.year, now.month));
+                                  },
                                   onHorizontalDragEnd: (d) {
                                     final v = d.primaryVelocity ?? 0;
                                     if (v < -300) _changeMonth(1);
@@ -520,7 +586,8 @@ class _MonthScreenState extends State<MonthScreen> {
                                         vertical: 13),
                                     decoration: BoxDecoration(
                                       color: skin.bgCard,
-                                      borderRadius: BorderRadius.circular(14),
+                                      borderRadius:
+                                          BorderRadius.circular(14),
                                       border: Border.all(
                                           color: skin.primaryWithAlpha(0.35)),
                                     ),
@@ -549,21 +616,22 @@ class _MonthScreenState extends State<MonthScreen> {
                           ),
                         ),
                         const SizedBox(height: 12),
+                        // ── Stat cards: Arbeit / Tage / Offen ───────────────
                         Row(
                           children: [
                             _StatCard(
-                                label: 'Tage',
-                                value: '${uniqueDays.length}',
+                                label: 'Arbeit',
+                                value: '${entries.length}',
                                 color: skin.statEntries),
                             const SizedBox(width: 10),
                             _StatCard(
-                                label: 'Einträge',
-                                value: '${entries.length}',
+                                label: 'Tage',
+                                value: '$daysInMonth',
                                 color: skin.statComplete),
                             const SizedBox(width: 10),
                             _StatCard(
                                 label: 'Offen',
-                                value: '$open',
+                                value: '$offeneEntries',
                                 color: skin.statOpen),
                           ],
                         ),
@@ -620,6 +688,7 @@ class _MonthScreenState extends State<MonthScreen> {
                                       duration: _calcDuration(
                                           entry['kommen'] ?? '',
                                           entry['gehen'] ?? ''),
+                                      isComplete: _isEntryComplete(entry),
                                       onEdit: () => _editEntry(entry),
                                       onDelete: () =>
                                           _deleteEntry(datum, entryId),
@@ -703,6 +772,7 @@ class _SlidableRow extends StatefulWidget {
   final Map<String, dynamic> entry;
   final String entryId;
   final String duration;
+  final bool isComplete;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
   final VoidCallback onShare;
@@ -713,6 +783,7 @@ class _SlidableRow extends StatefulWidget {
     required this.entry,
     required this.entryId,
     required this.duration,
+    required this.isComplete,
     required this.onEdit,
     required this.onDelete,
     required this.onShare,
@@ -853,7 +924,7 @@ class _SlidableRowState extends State<_SlidableRow>
     final gehen = entry['gehen'] ?? '';
     final tkf = entry['TKF'] ?? '';
     final hasNotiz = (entry['notiz'] ?? '').isNotEmpty;
-    final isComplete = gehen.isNotEmpty;
+    final isComplete = widget.isComplete;
     final borderColor = isComplete
         ? skin.statComplete.withValues(alpha: 0.3)
         : skin.statOpen.withValues(alpha: 0.3);
@@ -898,7 +969,6 @@ class _SlidableRowState extends State<_SlidableRow>
                   width: _editReveal,
                   child: Row(
                     children: [
-                      // Edit
                       Expanded(
                         child: GestureDetector(
                           onTap: () {
@@ -936,7 +1006,6 @@ class _SlidableRowState extends State<_SlidableRow>
                           ),
                         ),
                       ),
-                      // Share — FIX: color nur in BoxDecoration, kein paralleles color-Feld
                       Expanded(
                         child: GestureDetector(
                           onTap: () {
@@ -947,12 +1016,12 @@ class _SlidableRowState extends State<_SlidableRow>
                           },
                           child: Container(
                             decoration: BoxDecoration(
-  color: skin.statComplete,
-  borderRadius: const BorderRadius.only(
-    topRight: Radius.circular(18),
-    bottomRight: Radius.circular(18),
-  ),
-),
+                              color: skin.statComplete,
+                              borderRadius: const BorderRadius.only(
+                                topRight: Radius.circular(18),
+                                bottomRight: Radius.circular(18),
+                              ),
+                            ),
                             child: const Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
@@ -1209,7 +1278,7 @@ class _SlidableRowState extends State<_SlidableRow>
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// EDIT SHEET
+// EDIT SHEET  (change #6: textCapitalization on TKF & Notiz fields)
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _EditSheet extends StatefulWidget {
@@ -1505,10 +1574,17 @@ class _EditSheetState extends State<_EditSheet> {
               ],
             ),
             const SizedBox(height: 12),
-            _TextFieldInput(label: 'TKF', ctrl: widget.tkfCtrl),
+            // change #6: textCapitalization.sentences on TKF + Notiz
+            _TextFieldInput(
+                label: 'TKF',
+                ctrl: widget.tkfCtrl,
+                capitalize: true),
             const SizedBox(height: 12),
             _TextFieldInput(
-                label: 'NOTIZ', ctrl: widget.notizCtrl, maxLines: 2),
+                label: 'NOTIZ',
+                ctrl: widget.notizCtrl,
+                maxLines: 2,
+                capitalize: true),
             const SizedBox(height: 20),
             GestureDetector(
               onTap: widget.onSave,
@@ -1642,9 +1718,14 @@ class _TextFieldInput extends StatelessWidget {
   final String label;
   final TextEditingController ctrl;
   final int maxLines;
+  final bool capitalize;
 
-  const _TextFieldInput(
-      {required this.label, required this.ctrl, this.maxLines = 1});
+  const _TextFieldInput({
+    required this.label,
+    required this.ctrl,
+    this.maxLines = 1,
+    this.capitalize = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1669,6 +1750,9 @@ class _TextFieldInput extends StatelessWidget {
           TextField(
             controller: ctrl,
             maxLines: maxLines,
+            textCapitalization: capitalize
+                ? TextCapitalization.sentences
+                : TextCapitalization.none,
             style: TextStyle(color: skin.textPrimary, fontSize: 15),
             decoration: const InputDecoration(
                 border: InputBorder.none,
