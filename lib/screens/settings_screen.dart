@@ -546,7 +546,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
                         Center(
                           child: Text(
-                            'OpTimes v1.0',
+                            'OpTimes v1.0.0',
                             style: TextStyle(fontSize: 12, color: skin.textHint),
                           ),
                         ),
