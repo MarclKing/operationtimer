@@ -68,3 +68,22 @@
 	</array>
 </dict>
 </plist>
+<!-- PDF Share Extension – HIER EINFÜGEN -->
+    <key>CFBundleDocumentTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>PDF Document</string>
+            <key>LSHandlerRank</key>
+            <string>Alternate</string>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>com.adobe.pdf</string>
+            </array>
+        </dict>
+    </array>
+    <key>UTImportedTypeDeclarations</key>
+    <array/>
+
+</dict>   ← das ist das letzte </dict>, DAVOR einfügen
+</plist>

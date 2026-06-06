@@ -1,5 +1,5 @@
-name: meine_app
-description: "A new Flutter project."
+name: OpTimes
+description: "A Work Timer."
 publish_to: 'none'
 
 version: 1.0.0+1
@@ -21,6 +21,9 @@ dependencies:
   path_provider: ^2.1.5
   url_launcher: ^6.3.2
   flutter_slidable: ^4.0.3
+  file_picker: ^3.0.4
+  archive: ^3.6.1
+  receive_sharing_intent: ^1.8.0
 
 dev_dependencies:
   flutter_test:
@@ -28,7 +31,6 @@ dev_dependencies:
 
   flutter_lints: ^6.0.0
 
-  # App Icon Generator
   flutter_launcher_icons: ^0.14.4
 
 flutter_launcher_icons:
@@ -37,8 +39,6 @@ flutter_launcher_icons:
   image_path: "assets/logo.png"
 
 flutter:
-
   uses-material-design: true
-
   assets:
     - assets/logo.png

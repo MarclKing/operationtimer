@@ -1,11 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-import 'package:intl/intl.dart';
-import 'package:pdf/pdf.dart';
-import 'package:pdf/widgets.dart' as pw;
-import 'package:printing/printing.dart';
 import '../theme/app_theme.dart';
-import '../services/pdf_service.dart';  // 🔥 WICHTIG: PdfService importieren
+import '../services/pdf_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -19,6 +16,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   int _deleteAfterMonths = 3;
   String _activeSkin = 'chrome';
   bool _nachtschichtModus = false;
+  bool _dienstplanEnabled = false;
+  bool _dienstplanDevMode = false;
 
   @override
   void initState() {
@@ -27,7 +26,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _nameController.text = box.get('name', defaultValue: '');
     _deleteAfterMonths = box.get('deleteAfterMonths', defaultValue: 3);
     _activeSkin = box.get(AppTheme.hiveKey, defaultValue: 'chrome') as String;
-    _nachtschichtModus = box.get('nachtschicht_modus', defaultValue: false) as bool;
+    _nachtschichtModus =
+        box.get('nachtschicht_modus', defaultValue: false) as bool;
+    _dienstplanEnabled =
+        box.get('dienstplan_enabled', defaultValue: false) as bool;
+    _dienstplanDevMode =
+        box.get('dienstplan_dev_placeholder', defaultValue: false) as bool;
     _autoDeleteOldEntries();
   }
 
@@ -37,9 +41,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.dispose();
   }
 
-  void _dismissKeyboard() {
-    FocusScope.of(context).unfocus();
-  }
+  void _dismissKeyboard() => FocusScope.of(context).unfocus();
 
   void _setSkin(String key) {
     setState(() => _activeSkin = key);
@@ -51,11 +53,229 @@ class _SettingsScreenState extends State<SettingsScreen> {
     Hive.box('einstellungen').put('nachtschicht_modus', value);
   }
 
+  void _setDienstplanEnabled(bool value) {
+    setState(() => _dienstplanEnabled = value);
+    Hive.box('einstellungen').put('dienstplan_enabled', value);
+  }
+
+  // ── Dev-Modus hinter PIN-Code ─────────────────────────────────────────────
+  Future<void> _toggleDevMode(bool desiredValue) async {
+    if (!desiredValue) {
+      setState(() => _dienstplanDevMode = false);
+      Hive.box('einstellungen').put('dienstplan_dev_placeholder', false);
+      return;
+    }
+    final granted = await _showPinDialog();
+    if (granted) {
+      setState(() => _dienstplanDevMode = true);
+      Hive.box('einstellungen').put('dienstplan_dev_placeholder', true);
+    }
+  }
+
+  // ── PIN Dialog ────────────────────────────────────────────────────────────
+  //
+  // Behaviour:
+  //  • Auto-submits as soon as 4 digits are typed (no confirm button)
+  //  • Only one "Abbrechen" button visible
+  //  • Uses numberPad keyboard (large digit-only pad on iOS)
+  //  • After 3 wrong attempts the dialog closes silently and shows a
+  //    brief top-level alert ("PIN zu oft falsch eingegeben").
+  //    A 60-second cooldown runs invisibly. After cooldown the user
+  //    gets another 3 attempts – repeatable indefinitely.
+  //
+  static int _pinFailCount = 0;
+  static DateTime? _pinCooldownUntil;
+
+  Future<bool> _showPinDialog() async {
+    // Check if we are still in cooldown (runs silently)
+    if (_pinCooldownUntil != null &&
+        DateTime.now().isBefore(_pinCooldownUntil!)) {
+      // Show the block alert and return false immediately
+      await _showPinBlockedAlert();
+      return false;
+    }
+
+    final skin = AppTheme.of(context);
+    final controller = TextEditingController();
+    bool result = false;
+    bool dialogClosed = false;
+
+    await showDialog(
+      context: context,
+      barrierDismissible: true,       // dismiss by tapping outside
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialog) {
+          // Auto-submit handler – called by onChanged when length == 4
+          void trySubmit(String value) {
+            if (value.length != 4 || dialogClosed) return;
+            if (value == '2210') {
+              // Correct
+              dialogClosed = true;
+              _pinFailCount = 0;
+              _pinCooldownUntil = null;
+              result = true;
+              Navigator.pop(ctx);
+            } else {
+              // Wrong attempt
+              _pinFailCount++;
+              controller.clear();
+              if (_pinFailCount >= 3) {
+                // Lock out
+                dialogClosed = true;
+                _pinCooldownUntil =
+                    DateTime.now().add(const Duration(minutes: 1));
+                _pinFailCount = 0;
+                Navigator.pop(ctx);
+                // Show alert after frame
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  _showPinBlockedAlert();
+                });
+              } else {
+                // Just shake / show error via state
+                setDialog(() {}); // rebuild to show brief red tint
+              }
+            }
+          }
+
+          return GestureDetector(
+            // Dismiss keyboard when tapping outside the TextField
+            onTap: () => FocusScope.of(ctx).unfocus(),
+            behavior: HitTestBehavior.translucent,
+            child: AlertDialog(
+              backgroundColor: skin.bgCard,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20)),
+              title: Row(children: [
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEF5B5B).withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(5),
+                    border: Border.all(
+                        color: const Color(0xFFEF5B5B).withValues(alpha: 0.35)),
+                  ),
+                  child: const Text('DEV',
+                      style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFFEF5B5B),
+                          letterSpacing: 0.8)),
+                ),
+                const SizedBox(width: 10),
+                Text('Entwickler-Modus',
+                    style: TextStyle(
+                        color: skin.textPrimary,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700)),
+              ]),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Bitte gib den Entwickler-Code ein:',
+                    style: TextStyle(color: skin.textMuted, fontSize: 13),
+                  ),
+                  const SizedBox(height: 14),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: skin.surface(0.05),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: skin.borderSubtle),
+                    ),
+                    child: TextField(
+                      controller: controller,
+                      autofocus: true,
+                      // number type + digitsOnly = large digit pad on iOS
+                      keyboardType: TextInputType.number,
+                      obscureText: true,
+                      maxLength: 4,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly
+                      ],
+                      style: TextStyle(
+                          color: skin.textPrimary,
+                          fontSize: 22,
+                          letterSpacing: 8),
+                      decoration: InputDecoration(
+                        hintText: '••••',
+                        hintStyle: TextStyle(
+                            color: skin.textHint, letterSpacing: 8),
+                        border: InputBorder.none,
+                        isDense: true,
+                        counterText: '',
+                      ),
+                      textAlign: TextAlign.center,
+                      onChanged: trySubmit,
+                    ),
+                  ),
+                ],
+              ),
+              // Only Abbrechen – no confirm button needed (auto-submit)
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    dialogClosed = true;
+                    Navigator.pop(ctx);
+                  },
+                  child: Text('Abbrechen',
+                      style: TextStyle(color: skin.textMuted)),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+
+    return result;
+  }
+
+  Future<void> _showPinBlockedAlert() async {
+    if (!mounted) return;
+    final skin = AppTheme.of(context);
+    await showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: skin.bgCard,
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(children: [
+          const Icon(Icons.lock_outline, color: Color(0xFFEF5B5B), size: 20),
+          const SizedBox(width: 8),
+          Text('Nicht zugelassen',
+              style: TextStyle(
+                  color: skin.textPrimary,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700)),
+        ]),
+        content: Text(
+          'PIN zu oft falsch eingegeben, nicht zugelassen.',
+          style: TextStyle(color: skin.textMuted, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('OK',
+                style: TextStyle(
+                    color: skin.primary, fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+
   String _capitalizeEachWord(String text) {
     if (text.isEmpty) return text;
     return text
         .split(' ')
-        .map((w) => w.isEmpty ? w : w[0].toUpperCase() + w.substring(1).toLowerCase())
+        .map((w) =>
+            w.isEmpty ? w : w[0].toUpperCase() + w.substring(1).toLowerCase())
         .join(' ');
   }
 
@@ -91,7 +311,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   void _autoDeleteOldEntries() {
     final box = Hive.box('arbeitszeiten');
-    final cutoff = DateTime.now().subtract(Duration(days: _deleteAfterMonths * 30));
+    final cutoff =
+        DateTime.now().subtract(Duration(days: _deleteAfterMonths * 30));
     final keysToDelete = box.keys.where((key) {
       try {
         return DateTime.parse(key.toString()).isBefore(cutoff);
@@ -104,163 +325,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  String _calcDuration(String kommen, String gehen) {
-    if (kommen.isEmpty || gehen.isEmpty) return '--';
-    try {
-      final k = kommen.split(':');
-      final g = gehen.split(':');
-      final start = Duration(hours: int.parse(k[0]), minutes: int.parse(k[1]));
-      final end = Duration(hours: int.parse(g[0]), minutes: int.parse(g[1]));
-      final diff = end - start;
-      if (diff.isNegative) return '--';
-      return '${diff.inHours}h ${(diff.inMinutes % 60).toString().padLeft(2, '0')}m';
-    } catch (_) {
-      return '--';
-    }
-  }
-
-  Future<void> _exportPdf(DateTime month) async {
-    final box = Hive.box('arbeitszeiten');
-    final settingsBox = Hive.box('einstellungen');
-    String fullName = settingsBox.get('name', defaultValue: 'Unbekannt') as String;
-    fullName = _capitalizeEachWord(fullName);
-    final monthKey = DateFormat('yyyy-MM').format(month);
-    final monthName = DateFormat('MMMM yyyy', 'de').format(month);
-    final List<Map<String, dynamic>> entries = [];
-    for (final key in box.keys) {
-      if (key.toString().startsWith(monthKey)) {
-        final data = box.get(key);
-        if (data != null) {
-          if (data is List) {
-            for (final entry in data) {
-              final entryWithDatum = Map<String, dynamic>.from(entry);
-              if (!entryWithDatum.containsKey('datum')) {
-                entryWithDatum['datum'] = key.toString();
-              }
-              entries.add(entryWithDatum);
-            }
-          } else {
-            final entry = Map<String, dynamic>.from(data);
-            if (!entry.containsKey('datum')) {
-              entry['datum'] = key.toString();
-            }
-            entries.add(entry);
-          }
-        }
-      }
-    }
-    entries.sort((a, b) => a['datum'].compareTo(b['datum']));
-
-    final pdf = pw.Document();
-    final font = await PdfGoogleFonts.notoSansRegular();
-    final fontBold = await PdfGoogleFonts.notoSansBold();
-
-    pdf.addPage(pw.MultiPage(
-      pageFormat: PdfPageFormat.a4,
-      margin: const pw.EdgeInsets.all(40),
-      build: (context) => [
-        pw.Container(
-          padding: const pw.EdgeInsets.all(20),
-          decoration: pw.BoxDecoration(
-            color: const PdfColor.fromInt(0xFF1A1A2E),
-            borderRadius: pw.BorderRadius.circular(8),
-          ),
-          child: pw.Row(
-            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-            children: [
-              pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-                pw.Text('OpTimes', style: pw.TextStyle(font: fontBold, fontSize: 20, color: PdfColors.white)),
-                pw.SizedBox(height: 4),
-                pw.Text('Arbeitszeiterfassung', style: pw.TextStyle(font: font, fontSize: 12, color: PdfColors.grey400)),
-              ]),
-              pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
-                pw.Text(fullName, style: pw.TextStyle(font: fontBold, fontSize: 14, color: PdfColors.white)),
-                pw.SizedBox(height: 4),
-                pw.Text(monthName, style: pw.TextStyle(font: font, fontSize: 12, color: PdfColors.grey400)),
-              ]),
-            ],
-          ),
-        ),
-        pw.SizedBox(height: 20),
-        pw.Row(children: [
-          _pdfStatBox('Einträge', '${entries.length}', font, fontBold),
-          pw.SizedBox(width: 10),
-          _pdfStatBox('Vollständig', '${entries.where((e) => (e['gehen'] ?? '').isNotEmpty).length}', font, fontBold),
-          pw.SizedBox(width: 10),
-          _pdfStatBox('Offen', '${entries.where((e) => (e['gehen'] ?? '').isEmpty).length}', font, fontBold),
-        ]),
-        pw.SizedBox(height: 20),
-        pw.Container(
-          padding: const pw.EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: const pw.BoxDecoration(color: PdfColor.fromInt(0xFF1A1A1A)),
-          child: pw.Row(children: [
-            pw.Expanded(flex: 2, child: pw.Text('Datum', style: pw.TextStyle(font: fontBold, fontSize: 10, color: PdfColors.white))),
-            pw.Expanded(child: pw.Text('Kommen', style: pw.TextStyle(font: fontBold, fontSize: 10, color: PdfColors.white))),
-            pw.Expanded(child: pw.Text('Gehen', style: pw.TextStyle(font: fontBold, fontSize: 10, color: PdfColors.white))),
-            pw.Expanded(child: pw.Text('Dauer', style: pw.TextStyle(font: fontBold, fontSize: 10, color: PdfColors.white))),
-            pw.Expanded(child: pw.Text('TKF', style: pw.TextStyle(font: fontBold, fontSize: 10, color: PdfColors.white))),
-            pw.Expanded(flex: 2, child: pw.Text('Notiz', style: pw.TextStyle(font: fontBold, fontSize: 10, color: PdfColors.white))),
-          ]),
-        ),
-        ...entries.asMap().entries.map((e) {
-          final i = e.key;
-          final entry = e.value;
-          final datum = DateTime.parse(entry['datum']);
-          final datumStr = DateFormat('EEE dd.MM.yy', 'de').format(datum);
-          final kommen = entry['kommen'] ?? '';
-          final gehen = entry['gehen'] ?? '';
-          final tkf = entry['TKF'] ?? '';
-          final notiz = entry['notiz'] ?? '';
-          final duration = _calcDuration(kommen, gehen);
-          final bgColor = i.isEven ? const PdfColor.fromInt(0xFFF8F8F8) : PdfColors.white;
-          return pw.Container(
-            padding: const pw.EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: pw.BoxDecoration(color: bgColor),
-            child: pw.Row(children: [
-              pw.Expanded(flex: 2, child: pw.Text(datumStr, style: pw.TextStyle(font: font, fontSize: 10))),
-              pw.Expanded(child: pw.Text(kommen.isEmpty ? '--:--' : kommen, style: pw.TextStyle(font: font, fontSize: 10))),
-              pw.Expanded(child: pw.Text(gehen.isEmpty ? '--:--' : gehen, style: pw.TextStyle(font: font, fontSize: 10))),
-              pw.Expanded(child: pw.Text(duration, style: pw.TextStyle(font: fontBold, fontSize: 10))),
-              pw.Expanded(child: pw.Text(tkf, style: pw.TextStyle(font: font, fontSize: 10))),
-              pw.Expanded(flex: 2, child: pw.Text(notiz, style: pw.TextStyle(font: font, fontSize: 10, color: PdfColors.grey600))),
-            ]),
-          );
-        }),
-        pw.SizedBox(height: 20),
-        pw.Divider(color: PdfColors.grey300),
-        pw.SizedBox(height: 8),
-        pw.Text(
-          'Erstellt am ${DateFormat('dd.MM.yyyy HH:mm').format(DateTime.now())}',
-          style: pw.TextStyle(font: font, fontSize: 9, color: PdfColors.grey500),
-        ),
-      ],
-    ));
-
-    final safeName = fullName.replaceAll(' ', '_');
-    await Printing.sharePdf(
-      bytes: await pdf.save(),
-      filename: 'OpTimes_${safeName}_$monthKey.pdf',
-    );
-  }
-
-  pw.Widget _pdfStatBox(String label, String value, pw.Font font, pw.Font fontBold) {
-    return pw.Expanded(
-      child: pw.Container(
-        padding: const pw.EdgeInsets.symmetric(vertical: 12),
-        decoration: pw.BoxDecoration(
-          color: const PdfColor.fromInt(0xFFF0F0F0),
-          borderRadius: pw.BorderRadius.circular(6),
-        ),
-        child: pw.Column(children: [
-          pw.Text(value, style: pw.TextStyle(font: fontBold, fontSize: 20, color: const PdfColor.fromInt(0xFF1A1A1A))),
-          pw.SizedBox(height: 2),
-          pw.Text(label, style: pw.TextStyle(font: font, fontSize: 9, color: PdfColors.grey600)),
-        ]),
-      ),
-    );
-  }
-
-  // 🔥 GEÄNDERT: Jetzt ruft die zentrale Methode aus PdfService auf
   Future<void> _selectMonthForExport() async {
     await PdfService.showMonthPickerAndExport(context);
   }
@@ -276,6 +340,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           onTap: _dismissKeyboard,
           child: Column(
             children: [
+              // ── Header ─────────────────────────────────────────────────────
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
                 child: Row(
@@ -290,21 +355,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(color: skin.borderSubtle),
                         ),
-                        child: Icon(Icons.arrow_back_ios_new, color: skin.textPrimary, size: 16),
+                        child: Icon(Icons.arrow_back_ios_new,
+                            color: skin.textPrimary, size: 16),
                       ),
                     ),
                     const SizedBox(width: 16),
-                    Text(
-                      'Einstellungen',
-                      style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: skin.textPrimary),
-                    ),
+                    Text('Einstellungen',
+                        style: TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w700,
+                            color: skin.textPrimary)),
                   ],
                 ),
               ),
-
               Expanded(
                 child: NotificationListener<ScrollNotification>(
-                  onNotification: (scrollInfo) {
+                  onNotification: (_) {
                     _dismissKeyboard();
                     return false;
                   },
@@ -315,6 +381,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       children: [
                         const SizedBox(height: 8),
 
+                        // ── Benutzername ────────────────────────────────────
                         _SettingsCard(
                           emoji: '👤',
                           title: 'Benutzername',
@@ -322,23 +389,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'Vor- und Nachname. Der Vorname erscheint in der Begrüßung, der vollständige Name im PDF.',
-                                style: TextStyle(fontSize: 13, color: skin.textMuted, height: 1.5),
+                                'Vor- und Nachname. Der Vorname erscheint in der Begrüßung, der vollständige Name im PDF und wird für die Dienstplan-Erkennung verwendet.',
+                                style: TextStyle(
+                                    fontSize: 13,
+                                    color: skin.textMuted,
+                                    height: 1.5),
                               ),
                               const SizedBox(height: 12),
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 14, vertical: 4),
                                 decoration: BoxDecoration(
                                   color: skin.surface(0.05),
                                   borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(color: skin.borderSubtle),
+                                  border:
+                                      Border.all(color: skin.borderSubtle),
                                 ),
                                 child: TextField(
                                   controller: _nameController,
-                                  style: TextStyle(color: skin.textPrimary, fontSize: 15),
+                                  style: TextStyle(
+                                      color: skin.textPrimary, fontSize: 15),
                                   decoration: InputDecoration(
                                     hintText: 'z.B. Max Mustermann',
-                                    hintStyle: TextStyle(color: skin.textHint),
+                                    hintStyle:
+                                        TextStyle(color: skin.textHint),
                                     border: InputBorder.none,
                                     isDense: true,
                                   ),
@@ -348,15 +422,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               ),
                               const SizedBox(height: 12),
                               _GradientButton(
-                                label: 'Speichern',
-                                onTap: _saveSettings,
-                              ),
+                                  label: 'Speichern', onTap: _saveSettings),
                             ],
                           ),
                         ),
 
                         const SizedBox(height: 16),
 
+                        // ── Nachtschicht ────────────────────────────────────
                         _SettingsCard(
                           emoji: '🌙',
                           title: 'Nachtschicht-Modus',
@@ -367,25 +440,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 'Wenn aktiviert, erkennt die App automatisch Nachtschichten (z.B. Kommen 22:00 → Gehen 02:00) und legt zwei Einträge an:\n\n'
                                 '• Eintrag 1: Kommen bis 23:59 (selber Tag)\n'
                                 '• Eintrag 2: 00:00 bis Gehen (nächster Tag)',
-                                style: TextStyle(fontSize: 13, color: skin.textMuted, height: 1.5),
+                                style: TextStyle(
+                                    fontSize: 13,
+                                    color: skin.textMuted,
+                                    height: 1.5),
                               ),
                               const SizedBox(height: 16),
                               Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
                                 children: [
                                   Text(
-                                    _nachtschichtModus ? '✅ Aktiviert' : '⬜ Deaktiviert',
+                                    _nachtschichtModus
+                                        ? '✅ Aktiviert'
+                                        : '⬜ Deaktiviert',
                                     style: TextStyle(
                                       fontSize: 14,
                                       fontWeight: FontWeight.w600,
-                                      color: _nachtschichtModus ? skin.statComplete : skin.textMuted,
+                                      color: _nachtschichtModus
+                                          ? skin.statComplete
+                                          : skin.textMuted,
                                     ),
                                   ),
                                   Switch(
                                     value: _nachtschichtModus,
                                     onChanged: _setNachtschichtModus,
                                     activeThumbColor: skin.statComplete,
-                                    activeTrackColor: skin.statComplete.withValues(alpha: 0.3),
+                                    activeTrackColor: skin.statComplete
+                                        .withValues(alpha: 0.3),
                                     inactiveThumbColor: skin.textMuted,
                                     inactiveTrackColor: skin.surface(0.1),
                                   ),
@@ -396,18 +478,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 Container(
                                   padding: const EdgeInsets.all(12),
                                   decoration: BoxDecoration(
-                                    color: skin.statComplete.withValues(alpha: 0.07),
+                                    color: skin.statComplete
+                                        .withValues(alpha: 0.07),
                                     borderRadius: BorderRadius.circular(10),
-                                    border: Border.all(color: skin.statComplete.withValues(alpha: 0.2)),
+                                    border: Border.all(
+                                        color: skin.statComplete
+                                            .withValues(alpha: 0.2)),
                                   ),
                                   child: Row(
                                     children: [
-                                      const Text('🌙', style: TextStyle(fontSize: 16)),
+                                      const Text('🌙',
+                                          style: TextStyle(fontSize: 16)),
                                       const SizedBox(width: 8),
                                       Expanded(
                                         child: Text(
                                           'Beim Speichern wird ein Bestätigungs-Dialog angezeigt, bevor die zwei Einträge angelegt werden.',
-                                          style: TextStyle(fontSize: 11, color: skin.statComplete.withValues(alpha: 0.8)),
+                                          style: TextStyle(
+                                              fontSize: 11,
+                                              color: skin.statComplete
+                                                  .withValues(alpha: 0.8)),
                                         ),
                                       ),
                                     ],
@@ -420,6 +509,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
                         const SizedBox(height: 16),
 
+                        // ── PDF Export ──────────────────────────────────────
                         _SettingsCard(
                           emoji: '📄',
                           title: 'PDF Export',
@@ -428,7 +518,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             children: [
                               Text(
                                 'Exportiere deine Arbeitszeiten als PDF inkl. Notizen und teile sie per Mail, WhatsApp oder AirDrop.',
-                                style: TextStyle(fontSize: 13, color: skin.textMuted, height: 1.5),
+                                style: TextStyle(
+                                    fontSize: 13,
+                                    color: skin.textMuted,
+                                    height: 1.5),
                               ),
                               const SizedBox(height: 12),
                               _GradientButton(
@@ -441,6 +534,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
                         const SizedBox(height: 16),
 
+                        // ── Datenverwaltung ─────────────────────────────────
                         _SettingsCard(
                           emoji: '🗑',
                           title: 'Datenverwaltung',
@@ -449,31 +543,45 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             children: [
                               Text(
                                 'Alte Einträge werden automatisch gelöscht nach:',
-                                style: TextStyle(fontSize: 13, color: skin.textMuted),
+                                style: TextStyle(
+                                    fontSize: 13, color: skin.textMuted),
                               ),
                               const SizedBox(height: 12),
                               Wrap(
                                 spacing: 8,
                                 runSpacing: 8,
                                 children: [1, 3, 6, 12].map((months) {
-                                  final isSelected = _deleteAfterMonths == months;
+                                  final isSelected =
+                                      _deleteAfterMonths == months;
                                   return GestureDetector(
-                                    onTap: () => setState(() => _deleteAfterMonths = months),
+                                    onTap: () => setState(
+                                        () => _deleteAfterMonths = months),
                                     child: AnimatedContainer(
-                                      duration: const Duration(milliseconds: 200),
-                                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                                      duration:
+                                          const Duration(milliseconds: 200),
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 16, vertical: 10),
                                       decoration: BoxDecoration(
-                                        gradient: isSelected ? skin.gradient : null,
-                                        color: isSelected ? null : skin.surface(0.05),
-                                        borderRadius: BorderRadius.circular(10),
+                                        gradient: isSelected
+                                            ? skin.gradient
+                                            : null,
+                                        color: isSelected
+                                            ? null
+                                            : skin.surface(0.05),
+                                        borderRadius:
+                                            BorderRadius.circular(10),
                                         border: Border.all(
-                                          color: isSelected ? Colors.transparent : skin.borderSubtle,
+                                          color: isSelected
+                                              ? Colors.transparent
+                                              : skin.borderSubtle,
                                         ),
                                       ),
                                       child: Text(
                                         '$months Monat${months > 1 ? 'e' : ''}',
                                         style: TextStyle(
-                                          color: isSelected ? skin.onGradient : skin.textMuted,
+                                          color: isSelected
+                                              ? skin.onGradient
+                                              : skin.textMuted,
                                           fontWeight: FontWeight.w600,
                                           fontSize: 13,
                                         ),
@@ -491,12 +599,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 ),
                                 child: Row(
                                   children: [
-                                    Icon(Icons.info_outline, color: skin.textMuted, size: 18),
+                                    Icon(Icons.info_outline,
+                                        color: skin.textMuted, size: 18),
                                     const SizedBox(width: 8),
                                     Expanded(
                                       child: Text(
                                         'Einträge werden automatisch gelöscht, sobald sie älter als die ausgewählte Zeit sind.',
-                                        style: TextStyle(fontSize: 11, color: skin.textMuted),
+                                        style: TextStyle(
+                                            fontSize: 11,
+                                            color: skin.textMuted),
                                       ),
                                     ),
                                   ],
@@ -508,6 +619,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
                         const SizedBox(height: 16),
 
+                        // ── Design ──────────────────────────────────────────
                         _SettingsCard(
                           emoji: '🎨',
                           title: 'Design',
@@ -516,7 +628,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             children: [
                               Text(
                                 'Wähle das Aussehen der App. Die Änderung wird sofort übernommen.',
-                                style: TextStyle(fontSize: 13, color: skin.textMuted, height: 1.5),
+                                style: TextStyle(
+                                    fontSize: 13,
+                                    color: skin.textMuted,
+                                    height: 1.5),
                               ),
                               const SizedBox(height: 16),
                               Row(
@@ -542,13 +657,182 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ),
                         ),
 
-                        const SizedBox(height: 32),
+                        const SizedBox(height: 16),
 
-                        Center(
-                          child: Text(
-                            'OpTimes v1.0.0',
-                            style: TextStyle(fontSize: 12, color: skin.textHint),
+                        // ── Dienstplan ──────────────────────────────────────
+                        _SettingsCardWithBadge(
+                          emoji: '📅',
+                          title: 'Dienstplan',
+                          badge: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFFB347)
+                                  .withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                  color: const Color(0xFFFFB347)
+                                      .withValues(alpha: 0.4)),
+                            ),
+                            child: const Text('BETA',
+                                style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFFFFB347),
+                                    letterSpacing: 0.8)),
                           ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    _dienstplanEnabled
+                                        ? '✅ Aktiviert'
+                                        : '⬜ Deaktiviert',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: _dienstplanEnabled
+                                          ? skin.statComplete
+                                          : skin.textMuted,
+                                    ),
+                                  ),
+                                  Switch(
+                                    value: _dienstplanEnabled,
+                                    onChanged: _setDienstplanEnabled,
+                                    activeThumbColor: skin.statComplete,
+                                    activeTrackColor: skin.statComplete
+                                        .withValues(alpha: 0.3),
+                                    inactiveThumbColor: skin.textMuted,
+                                    inactiveTrackColor: skin.surface(0.1),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+
+                              // Beta warning
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFFFB347)
+                                      .withValues(alpha: 0.08),
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(
+                                    color: const Color(0xFFFFB347)
+                                        .withValues(alpha: 0.25),
+                                  ),
+                                ),
+                                child: Row(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                  children: [
+                                    const Text('⚠️',
+                                        style: TextStyle(fontSize: 15)),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        'Diese Funktion befindet sich noch in der Beta-Phase. Es kann zu Fehlern bei der Erkennung und Darstellung des Dienstplans kommen.',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: const Color(0xFFFFB347)
+                                              .withValues(alpha: 0.9),
+                                          height: 1.45,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+
+                              if (_dienstplanEnabled) ...[
+                                const SizedBox(height: 16),
+
+                                // ── Entwickler-Modus ────────────────────────
+                                // NOTE: No "Speichern" button here – the switch
+                                // already persists to Hive immediately.
+                                Container(
+                                  padding: const EdgeInsets.all(14),
+                                  decoration: BoxDecoration(
+                                    color: skin.surface(0.03),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                        color: skin.borderSubtle),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                                horizontal: 6, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: const Color(0xFFEF5B5B)
+                                                  .withValues(alpha: 0.15),
+                                              borderRadius:
+                                                  BorderRadius.circular(5),
+                                              border: Border.all(
+                                                  color: const Color(0xFFEF5B5B)
+                                                      .withValues(alpha: 0.35)),
+                                            ),
+                                            child: const Text('DEV',
+                                                style: TextStyle(
+                                                    fontSize: 10,
+                                                    fontWeight: FontWeight.w700,
+                                                    color: Color(0xFFEF5B5B),
+                                                    letterSpacing: 0.8)),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: Text(
+                                              'Entwickler-Modus',
+                                              style: TextStyle(
+                                                fontSize: 14,
+                                                fontWeight: FontWeight.w600,
+                                                color: skin.textPrimary,
+                                              ),
+                                            ),
+                                          ),
+                                          Switch(
+                                            value: _dienstplanDevMode,
+                                            onChanged: _toggleDevMode,
+                                            activeThumbColor:
+                                                const Color(0xFFEF5B5B),
+                                            activeTrackColor:
+                                                const Color(0xFFEF5B5B)
+                                                    .withValues(alpha: 0.3),
+                                            inactiveThumbColor:
+                                                skin.textMuted,
+                                            inactiveTrackColor:
+                                                skin.surface(0.1),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        'Aktiviert erweiterte Fehlermeldungen beim PDF-Import mit technischen Details. Erleichtert die Fehleranalyse bei Problemen mit dem Dienstplan-Import.',
+                                        style: TextStyle(
+                                            fontSize: 11,
+                                            color: skin.textMuted,
+                                            height: 1.45),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(height: 32),
+                        Center(
+                          child: Text('OpTimes v1.0',
+                              style: TextStyle(
+                                  fontSize: 12, color: skin.textHint)),
                         ),
                         const SizedBox(height: 8),
                       ],
@@ -564,21 +848,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Helper widgets
+// ─────────────────────────────────────────────────────────────────────────────
+
 class _SimpleSkinOption extends StatelessWidget {
   final String label;
   final bool isSelected;
   final VoidCallback onTap;
-
-  const _SimpleSkinOption({
-    required this.label,
-    required this.isSelected,
-    required this.onTap,
-  });
+  const _SimpleSkinOption(
+      {required this.label, required this.isSelected, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     final skin = AppTheme.of(context);
-    
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
@@ -588,17 +871,15 @@ class _SimpleSkinOption extends StatelessWidget {
           gradient: isSelected ? skin.gradient : null,
           color: isSelected ? null : skin.surface(0.05),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: isSelected ? Colors.transparent : skin.borderSubtle),
+          border: Border.all(
+              color: isSelected ? Colors.transparent : skin.borderSubtle),
         ),
         child: Center(
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: isSelected ? skin.onGradient : skin.textMuted,
-            ),
-          ),
+          child: Text(label,
+              style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: isSelected ? skin.onGradient : skin.textMuted)),
         ),
       ),
     );
@@ -609,8 +890,8 @@ class _SettingsCard extends StatelessWidget {
   final String emoji;
   final String title;
   final Widget child;
-
-  const _SettingsCard({required this.emoji, required this.title, required this.child});
+  const _SettingsCard(
+      {required this.emoji, required this.title, required this.child});
 
   @override
   Widget build(BuildContext context) {
@@ -629,10 +910,56 @@ class _SettingsCard extends StatelessWidget {
             children: [
               Text(emoji, style: const TextStyle(fontSize: 20)),
               const SizedBox(width: 10),
-              Text(
-                title,
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: skin.textPrimary),
-              ),
+              Text(title,
+                  style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: skin.textPrimary)),
+            ],
+          ),
+          const SizedBox(height: 14),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+class _SettingsCardWithBadge extends StatelessWidget {
+  final String emoji;
+  final String title;
+  final Widget badge;
+  final Widget child;
+  const _SettingsCardWithBadge(
+      {required this.emoji,
+      required this.title,
+      required this.badge,
+      required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    final skin = AppTheme.of(context);
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: skin.bgCard,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: skin.borderSubtle),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(emoji, style: const TextStyle(fontSize: 20)),
+              const SizedBox(width: 10),
+              Text(title,
+                  style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: skin.textPrimary)),
+              const SizedBox(width: 8),
+              badge,
             ],
           ),
           const SizedBox(height: 14),
@@ -646,7 +973,6 @@ class _SettingsCard extends StatelessWidget {
 class _GradientButton extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
-
   const _GradientButton({required this.label, required this.onTap});
 
   @override
@@ -662,10 +988,11 @@ class _GradientButton extends StatelessWidget {
           borderRadius: BorderRadius.circular(12),
         ),
         child: Center(
-          child: Text(
-            label,
-            style: TextStyle(color: skin.onGradient, fontWeight: FontWeight.w700, fontSize: 15),
-          ),
+          child: Text(label,
+              style: TextStyle(
+                  color: skin.onGradient,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 15)),
         ),
       ),
     );
