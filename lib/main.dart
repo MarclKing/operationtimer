@@ -60,7 +60,7 @@ void _migrateOldEntries() {
   }
 
   if (changed) {
-    debugPrint('✅ Migration abgeschlossen: Alte Einträge konvertiert');
+    debugPrint('✅ Migration abgeschlossen');
   }
 }
 
@@ -109,6 +109,10 @@ class MyApp extends StatelessWidget {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// MainScreen
+// ─────────────────────────────────────────────────────────────────────────────
+
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
 
@@ -118,7 +122,19 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   int _selectedIndex = 0;
-  final PageController _pageController = PageController(initialPage: 0);
+
+  // Wir nutzen einen eigenen AnimationController für den Page-Slide,
+  // damit wir ihn auch von Wischgesten aus triggern können.
+  late AnimationController _pageAnimController;
+  late Animation<double> _pageAnim;
+
+  int _fromPage = 0;
+  int _toPage = 0;
+
+  // Für Wischgesten: Drag-Offset
+  double _dragOffset = 0;
+  bool _isDragging = false;
+
   late AnimationController _menuAnimController;
   bool _menuOpen = false;
   bool _prevDienstplanEnabled = false;
@@ -128,7 +144,6 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   DateTime _scheduleViewMonth =
       DateTime(DateTime.now().year, DateTime.now().month);
 
-  // Share Intent
   StreamSubscription? _intentSub;
 
   bool get _dienstplanEnabled {
@@ -142,17 +157,22 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   void initState() {
     super.initState();
     _prevDienstplanEnabled = _dienstplanEnabled;
+
+    _pageAnimController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 320),
+    );
+    _pageAnim = _pageAnimController.drive(CurveTween(curve: Curves.easeInOutCubic));
+
     _menuAnimController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 250),
     );
 
-    // App war geschlossen und wurde über "Teilen" geöffnet
     ReceiveSharingIntent.instance.getInitialMedia().then((files) {
       if (files.isNotEmpty) {
         final path = files.first.path;
         if (path != null && path.toLowerCase().endsWith('.pdf')) {
-          // Kurz warten bis Widget aufgebaut ist
           WidgetsBinding.instance.addPostFrameCallback((_) {
             _handleSharedPdf(path);
           });
@@ -160,7 +180,6 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       }
     });
 
-    // App war im Hintergrund
     _intentSub =
         ReceiveSharingIntent.instance.getMediaStream().listen((files) {
       if (files.isNotEmpty) {
@@ -173,15 +192,12 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   }
 
   void _handleSharedPdf(String path) {
-    // Dienstplan-Tab aktivieren falls vorhanden, sonst trotzdem Sheet zeigen
     if (_dienstplanEnabled) {
       _goToPage(2);
     }
-
     final skin = AppTheme.of(context);
     final fileName = path.split('/').last;
 
-    // Sheet öffnen mit vorgeladener Datei
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -200,9 +216,165 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   @override
   void dispose() {
     _intentSub?.cancel();
-    _pageController.dispose();
+    _pageAnimController.dispose();
     _menuAnimController.dispose();
     super.dispose();
+  }
+
+  // ── Navigation mit Animation ───────────────────────────────────────────────
+
+  void _animateToPage(int target) {
+    FocusManager.instance.primaryFocus?.unfocus();
+    final count = _pageCount;
+    final safeTarget = target.clamp(0, count - 1);
+    if (safeTarget == _selectedIndex && !_isDragging) return;
+
+    _fromPage = _selectedIndex;
+    _toPage = safeTarget;
+
+    _pageAnimController.value = 0.0;
+    _pageAnimController.forward().then((_) {
+      setState(() {
+        _selectedIndex = _toPage;
+        _fromPage = _toPage;
+      });
+    });
+
+    // selectedIndex schon vorab setzen für NavBar-Highlight
+    setState(() => _selectedIndex = safeTarget);
+  }
+
+  void _goToPage(int index) => _animateToPage(index);
+  void _selectTab(int index) => _animateToPage(index);
+
+  bool get _isOnSchedulePage => _dienstplanEnabled && _selectedIndex == 2;
+
+  // ── Wischgesten ────────────────────────────────────────────────────────────
+
+  void _onHorizontalDragStart(DragStartDetails d) {
+    if (_pageAnimController.isAnimating) {
+      _pageAnimController.stop();
+    }
+    _isDragging = true;
+    _dragOffset = 0;
+  }
+
+  void _onHorizontalDragUpdate(DragUpdateDetails d) {
+    if (!_isDragging) return;
+    setState(() {
+      _dragOffset += d.delta.dx;
+    });
+  }
+
+  void _onHorizontalDragEnd(DragEndDetails d) {
+    if (!_isDragging) return;
+    _isDragging = false;
+    final velocity = d.primaryVelocity ?? 0;
+    final screenW = MediaQuery.of(context).size.width;
+
+    bool shouldNavigate = false;
+    int targetPage = _selectedIndex;
+
+    if (velocity < -300 || _dragOffset < -screenW * 0.3) {
+      // Wischen nach links → nächste Seite
+      if (_selectedIndex < _pageCount - 1) {
+        targetPage = _selectedIndex + 1;
+        shouldNavigate = true;
+      }
+    } else if (velocity > 300 || _dragOffset > screenW * 0.3) {
+      // Wischen nach rechts → vorherige Seite
+      if (_selectedIndex > 0) {
+        targetPage = _selectedIndex - 1;
+        shouldNavigate = true;
+      }
+    }
+
+    setState(() => _dragOffset = 0);
+
+    if (shouldNavigate) {
+      _fromPage = _selectedIndex;
+      _toPage = targetPage;
+      _pageAnimController.value = 0.0;
+      _pageAnimController.forward().then((_) {
+        setState(() {
+          _selectedIndex = _toPage;
+          _fromPage = _toPage;
+        });
+      });
+      setState(() => _selectedIndex = targetPage);
+    }
+  }
+
+  // ── Pages bauen ────────────────────────────────────────────────────────────
+
+  List<Widget> get _pages {
+    final pages = <Widget>[
+      HomeScreen(
+        key: const ValueKey('home'),
+        selectedDate: _sharedDate,
+        onDateChanged: (d) => setState(() => _sharedDate = d),
+        onNavigateToMonth: () => _goToPage(1),
+      ),
+      MonthScreen(
+        key: const ValueKey('month'),
+        selectedMonth: _sharedMonth,
+        onMonthChanged: (m) => setState(() => _sharedMonth = m),
+        onNavigateToHome: () => _goToPage(0),
+      ),
+      if (_dienstplanEnabled)
+        ScheduleScreen(
+          key: const ValueKey('schedule'),
+          onNavigateToHome: () => _goToPage(0),
+          onNavigateToMonth: () => _goToPage(1),
+          onMonthChanged: (m) => setState(() => _scheduleViewMonth = m),
+        ),
+    ];
+    return pages;
+  }
+
+  Widget _buildAnimatedPages(double screenWidth) {
+    final pages = _pages;
+    final count = pages.length;
+
+    return AnimatedBuilder(
+      animation: _pageAnimController,
+      builder: (context, _) {
+        final t = _pageAnim.value;
+
+        // Drag-basierter Offset (während Geste)
+        double dragT = 0;
+        if (_isDragging) {
+          dragT = -_dragOffset / screenWidth;
+        }
+
+        return Stack(
+          children: List.generate(count, (i) {
+            double offset;
+            if (_isDragging) {
+              // Während Drag: linear verschieben
+              offset = (i - _selectedIndex).toDouble() + dragT;
+            } else {
+              // Animierter Übergang
+              final fromOffset = (i - _fromPage).toDouble();
+              final toOffset = (i - _toPage).toDouble();
+              offset = fromOffset + (toOffset - fromOffset) * t;
+            }
+
+            final isVisible = offset.abs() < 1.5;
+            if (!isVisible) return const SizedBox.shrink();
+
+            return Transform.translate(
+              offset: Offset(offset * screenWidth, 0),
+              child: SizedBox(
+                width: screenWidth,
+                height: double.infinity,
+                child: pages[i],
+              ),
+            );
+          }),
+        );
+      },
+    );
   }
 
   void _toggleMenu() {
@@ -223,34 +395,10 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     });
   }
 
-  void _selectTab(int index) {
-    FocusManager.instance.primaryFocus?.unfocus();
-    final safeIndex = index.clamp(0, _pageCount - 1);
-    if (_selectedIndex == safeIndex) return;
-    setState(() => _selectedIndex = safeIndex);
-    if (_pageController.hasClients) {
-      _pageController.animateToPage(
-        safeIndex,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-      );
-    }
-  }
-
-  void _goToPage(int index) {
-    FocusManager.instance.primaryFocus?.unfocus();
-    final safeIndex = index.clamp(0, _pageCount - 1);
-    setState(() => _selectedIndex = safeIndex);
-    if (_pageController.hasClients) {
-      _pageController.jumpToPage(safeIndex);
-    }
-  }
-
-  bool get _isOnSchedulePage => _dienstplanEnabled && _selectedIndex == 2;
-
   @override
   Widget build(BuildContext context) {
     final skin = AppTheme.of(context);
+    final screenWidth = MediaQuery.of(context).size.width;
 
     return ValueListenableBuilder(
       valueListenable: Hive.box('einstellungen').listenable(),
@@ -275,41 +423,24 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
           backgroundColor: skin.bgBase,
           body: Stack(
             children: [
-              PageView(
-                controller: _pageController,
-                physics: const NeverScrollableScrollPhysics(),
-                onPageChanged: (index) =>
-                    setState(() => _selectedIndex = index),
-                children: [
-                  HomeScreen(
-                    key: const ValueKey('home'),
-                    selectedDate: _sharedDate,
-                    onDateChanged: (d) => setState(() => _sharedDate = d),
-                    onNavigateToMonth: () => _goToPage(1),
-                  ),
-                  MonthScreen(
-                    key: const ValueKey('month'),
-                    selectedMonth: _sharedMonth,
-                    onMonthChanged: (m) => setState(() => _sharedMonth = m),
-                    onNavigateToHome: () => _goToPage(0),
-                  ),
-                  if (currentDienstplanEnabled)
-                    ScheduleScreen(
-                      key: const ValueKey('schedule'),
-                      onNavigateToHome: () => _goToPage(0),
-                      onNavigateToMonth: () => _goToPage(1),
-                      onMonthChanged: (m) =>
-                          setState(() => _scheduleViewMonth = m),
-                    ),
-                ],
+              // ── Animierter Seitenbereich mit Wischgesten ──────────────────
+              GestureDetector(
+                onHorizontalDragStart: _onHorizontalDragStart,
+                onHorizontalDragUpdate: _onHorizontalDragUpdate,
+                onHorizontalDragEnd: _onHorizontalDragEnd,
+                behavior: HitTestBehavior.translucent,
+                child: _buildAnimatedPages(screenWidth),
               ),
 
+              // ── Menü-Overlay ───────────────────────────────────────────────
               if (_menuOpen)
                 GestureDetector(
                   onTap: _closeMenu,
-                  child: Container(color: Colors.black.withValues(alpha: 0.5)),
+                  child:
+                      Container(color: Colors.black.withValues(alpha: 0.5)),
                 ),
 
+              // ── Dropdown-Menü ──────────────────────────────────────────────
               AnimatedBuilder(
                 animation: _menuAnimController,
                 builder: (context, child) {
@@ -328,10 +459,12 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                             decoration: BoxDecoration(
                               color: skin.bgCard,
                               borderRadius: BorderRadius.circular(18),
-                              border: Border.all(color: skin.borderMedium),
+                              border:
+                                  Border.all(color: skin.borderMedium),
                               boxShadow: [
                                 BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.3),
+                                  color:
+                                      Colors.black.withValues(alpha: 0.3),
                                   blurRadius: 20,
                                   offset: const Offset(0, 8),
                                 ),
@@ -402,6 +535,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                 },
               ),
 
+              // ── Top-Bar ────────────────────────────────────────────────────
               Positioned(
                 top: 0,
                 left: 0,
@@ -463,7 +597,9 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                             turns: _menuOpen ? 0.125 : 0,
                             duration: const Duration(milliseconds: 250),
                             child: Icon(
-                              _menuOpen ? Icons.close : Icons.menu_rounded,
+                              _menuOpen
+                                  ? Icons.close
+                                  : Icons.menu_rounded,
                               color: skin.textPrimary,
                               size: 20,
                             ),
@@ -475,6 +611,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                 ),
               ),
 
+              // ── Bottom Navigation ──────────────────────────────────────────
               Positioned(
                 bottom: 0,
                 left: 0,
@@ -508,7 +645,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Dropdown Menu helpers
+// Dropdown Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _DropdownMenuItem extends StatelessWidget {
@@ -530,7 +667,8 @@ class _DropdownMenuItem extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       child: Container(
         width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        padding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         child: Row(
           children: [
             Icon(icon, size: 20, color: skin.textMuted),
@@ -561,7 +699,8 @@ class _DropdownDivider extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Bottom Navigation
+// Bottom Navigation – komplett überarbeitet
+// Fixes: Highlight mittig, kein Springen, größere Tippfläche
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _BottomNav extends StatefulWidget {
@@ -581,182 +720,180 @@ class _BottomNav extends StatefulWidget {
 
 class _BottomNavState extends State<_BottomNav>
     with SingleTickerProviderStateMixin {
-  late AnimationController _slideController;
-  int _fromIndex = 0;
-  int _toIndex = 0;
+  late AnimationController _ctrl;
+  late Animation<double> _anim;
+
+  double _fromPos = 0; // 0..1 normalisiert
+  double _toPos = 0;
 
   @override
   void initState() {
     super.initState();
-    _fromIndex = widget.selectedIndex;
-    _toIndex = widget.selectedIndex;
-    _slideController = AnimationController(
+    _ctrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 300),
+      duration: const Duration(milliseconds: 320),
     );
-    _slideController.value = 1.0;
+    _anim = _ctrl.drive(CurveTween(curve: Curves.easeInOutCubic));
+    final count = widget.dienstplanEnabled ? 3 : 2;
+    _fromPos = widget.selectedIndex / (count - 1);
+    _toPos = _fromPos;
   }
 
   @override
-void didUpdateWidget(_BottomNav oldWidget) {
-  super.didUpdateWidget(oldWidget);
+  void didUpdateWidget(_BottomNav old) {
+    super.didUpdateWidget(old);
 
-  if (oldWidget.selectedIndex != widget.selectedIndex) {
-    if (_toIndex != widget.selectedIndex) {
-      final itemCount = widget.dienstplanEnabled ? 3 : 2;
-      // Aktuelle Position als neuen Startpunkt berechnen
-      final t = CurvedAnimation(
-        parent: _slideController,
-        curve: Curves.easeInOutCubic,
-      ).value;
-      final fromPos = _fromIndex.clamp(0, itemCount - 1).toDouble();
-      final toPos = _toIndex.clamp(0, itemCount - 1).toDouble();
-      final currentPos = fromPos + (toPos - fromPos) * t;
+    final count = widget.dienstplanEnabled ? 3 : 2;
 
-      _fromIndex = currentPos.round().clamp(0, itemCount - 1);
-      _toIndex = widget.selectedIndex;
+    if (old.selectedIndex != widget.selectedIndex) {
+      // Aktuelle interpolierte Position als neuen Startpunkt
+      final currentPos = _fromPos + (_toPos - _fromPos) * _anim.value;
+      _fromPos = currentPos;
+      _toPos = widget.selectedIndex / (count - 1).clamp(1, 100);
 
-      // Controller von aktueller Position neu starten
-      _slideController.stop();
-      _slideController.duration = const Duration(milliseconds: 300);
-      _slideController.forward(from: 0.0);
+      _ctrl.stop();
+      _ctrl.forward(from: 0);
     }
-  } else if (oldWidget.dienstplanEnabled != widget.dienstplanEnabled) {
-    _fromIndex = widget.selectedIndex;
-    _toIndex = widget.selectedIndex;
-    _slideController.value = 1.0;
+
+    if (old.dienstplanEnabled != widget.dienstplanEnabled) {
+      // Tabs haben sich geändert – neu berechnen ohne Animation
+      _fromPos = widget.selectedIndex / (count - 1).clamp(1, 100);
+      _toPos = _fromPos;
+      _ctrl.value = 1.0;
+    }
   }
-}
 
   @override
   void dispose() {
-    _slideController.dispose();
+    _ctrl.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final skin = AppTheme.of(context);
-    final itemCount = widget.dienstplanEnabled ? 3 : 2;
+    final count = widget.dienstplanEnabled ? 3 : 2;
 
     final items = [
-      _NavItemData(
-        itemKey: 'home',
-        icon: Icons.access_time_outlined,
-        activeIcon: Icons.access_time_filled,
-        label: 'Zeiterfassung',
-        index: 0,
-      ),
-      _NavItemData(
-        itemKey: 'month',
-        icon: Icons.calendar_month_outlined,
-        activeIcon: Icons.calendar_month,
-        label: 'Monatsübersicht',
-        index: 1,
-      ),
+      _NavItem(Icons.access_time_outlined, Icons.access_time_filled, 'Zeiterfassung', 0),
+      _NavItem(Icons.calendar_month_outlined, Icons.calendar_month, 'Monatsübersicht', 1),
       if (widget.dienstplanEnabled)
-        _NavItemData(
-          itemKey: 'schedule',
-          icon: Icons.event_note_outlined,
-          activeIcon: Icons.event_note,
-          label: 'Dienstplan',
-          index: 2,
-        ),
+        _NavItem(Icons.event_note_outlined, Icons.event_note, 'Dienstplan', 2),
     ];
 
     return Container(
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).padding.bottom + 8,
-        top: 12,
-        left: widget.dienstplanEnabled ? 20 : 40,
-        right: widget.dienstplanEnabled ? 20 : 40,
-      ),
       decoration: BoxDecoration(
         color: skin.bgBase,
         border: Border(top: BorderSide(color: skin.borderSubtle)),
       ),
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).padding.bottom,
+        top: 0,
+      ),
       child: AnimatedBuilder(
-        animation: _slideController,
+        animation: _anim,
         builder: (context, _) {
           return LayoutBuilder(
             builder: (context, constraints) {
-              final totalWidth = constraints.maxWidth;
-              final itemWidth = totalWidth / itemCount;
+              final totalW = constraints.maxWidth;
+              final itemW = totalW / count;
 
-              final fromX =
-                  _fromIndex.clamp(0, itemCount - 1) * itemWidth + itemWidth / 2;
-              final toX =
-                  _toIndex.clamp(0, itemCount - 1) * itemWidth + itemWidth / 2;
+              // Glatte interpolierte Position
+              final normPos =
+                  _fromPos + (_toPos - _fromPos) * _anim.value;
+              final centerX = normPos * (totalW - itemW) + itemW / 2;
 
-              final t = CurvedAnimation(
-                parent: _slideController,
-                curve: Curves.easeInOutCubic,
-              ).value;
-              final currentX = fromX + (toX - fromX) * t;
+              // Stretch-Effekt: in der Mitte der Animation breiter
+              final stretchT = (_anim.value < 0.5
+                  ? _anim.value * 2
+                  : (1 - _anim.value) * 2);
+              final dist = (_toPos - _fromPos).abs() * totalW;
+              final extra = (dist * 0.22 * stretchT).clamp(0.0, 36.0);
+              const baseW = 72.0;
+              const pillH = 52.0;
+              final pillW = baseW + extra;
 
-              final stretchT = (t < 0.5 ? t * 2 : (1 - t) * 2);
-              final distance = (toX - fromX).abs();
-              final extraWidth =
-                  (distance * 0.25 * stretchT).clamp(0.0, 40.0);
-              const baseWidth = 90.0;
-              final highlightWidth = baseWidth + extraWidth;
-
-              return Stack(
-  clipBehavior: Clip.none,
-  children: [
-    Positioned(
-      left: currentX - highlightWidth / 2,
-                    top: 0,
-                    child: Container(
-                      width: highlightWidth,
-                      height: 56,
-                      decoration: BoxDecoration(
-                        color: skin.primaryWithAlpha(0.15),
-                        borderRadius: BorderRadius.circular(14),
-                        border:
-                            Border.all(color: skin.primaryWithAlpha(0.3)),
+              return SizedBox(
+                height: pillH + 8 + 42.0, // Pill + Padding + Text+Icon
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    // ── Highlight-Pill ────────────────────────────────────
+                    Positioned(
+                      // Vertikal mittig über den Icons
+                      top: 8,
+                      left: centerX - pillW / 2,
+                      child: Container(
+                        width: pillW,
+                        height: pillH,
+                        decoration: BoxDecoration(
+                          color: skin.primaryWithAlpha(0.14),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                              color: skin.primaryWithAlpha(0.28)),
+                        ),
                       ),
                     ),
-                  ),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: items.map((item) {
-                      final isSelected = widget.selectedIndex == item.index;
-                      return GestureDetector(
-                        onTap: () => widget.onTap(item.index),
-                        child: SizedBox(
-                          width: itemWidth,
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                isSelected ? item.activeIcon : item.icon,
-                                color: isSelected
-                                    ? skin.primary
-                                    : skin.surface(0.4),
-                                size: 24,
-                              ),
-                              const SizedBox(height: 4),
-                              AnimatedDefaultTextStyle(
-                                duration: const Duration(milliseconds: 250),
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: isSelected
-                                      ? FontWeight.w600
-                                      : FontWeight.w400,
-                                  color: isSelected
-                                      ? skin.primary
-                                      : skin.surface(0.4),
+
+                    // ── Items ─────────────────────────────────────────────
+                    Row(
+                      children: items.map((item) {
+                        final isSelected =
+                            widget.selectedIndex == item.index;
+                        return GestureDetector(
+                          onTap: () => widget.onTap(item.index),
+                          behavior: HitTestBehavior.opaque,
+                          child: SizedBox(
+                            width: itemW,
+                            height: pillH + 8 + 42.0,
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const SizedBox(height: 10),
+                                AnimatedSwitcher(
+                                  duration:
+                                      const Duration(milliseconds: 220),
+                                  child: Icon(
+                                    isSelected
+                                        ? item.activeIcon
+                                        : item.icon,
+                                    key: ValueKey(isSelected),
+                                    color: isSelected
+                                        ? skin.primary
+                                        : skin.surface(0.38),
+                                    size: 26,
+                                  ),
                                 ),
-                                child: Text(item.label),
-                              ),
-                            ],
+                                const SizedBox(height: 5),
+                                AnimatedDefaultTextStyle(
+                                  duration:
+                                      const Duration(milliseconds: 220),
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: isSelected
+                                        ? FontWeight.w600
+                                        : FontWeight.w400,
+                                    color: isSelected
+                                        ? skin.primary
+                                        : skin.surface(0.38),
+                                  ),
+                                  child: Text(item.label),
+                                ),
+                                SizedBox(
+                                    height: MediaQuery.of(context)
+                                            .padding
+                                            .bottom >
+                                        0
+                                        ? 0
+                                        : 8),
+                              ],
+                            ),
                           ),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                ],
+                        );
+                      }).toList(),
+                    ),
+                  ],
+                ),
               );
             },
           );
@@ -766,18 +903,10 @@ void didUpdateWidget(_BottomNav oldWidget) {
   }
 }
 
-class _NavItemData {
-  final String itemKey;
+class _NavItem {
   final IconData icon;
   final IconData activeIcon;
   final String label;
   final int index;
-
-  const _NavItemData({
-    required this.itemKey,
-    required this.icon,
-    required this.activeIcon,
-    required this.label,
-    required this.index,
-  });
+  const _NavItem(this.icon, this.activeIcon, this.label, this.index);
 }

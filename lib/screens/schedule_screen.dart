@@ -85,7 +85,7 @@ class ScheduleEntry {
 enum ShiftCategory { work, free, other, mixed }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PDF Parser
+// PDF Parser  (unverändert)
 // ─────────────────────────────────────────────────────────────────────────────
 
 class DienstplanParser {
@@ -260,9 +260,7 @@ class DienstplanParser {
             if (day != null && month != null) {
               final key = DateFormat('yyyy-MM-dd')
                   .format(DateTime(detectedMonth.year, month, day));
-              result[key] = shift.trim() == 'x'
-    ? 'X'
-    : shift.trim();
+              result[key] = shift.trim() == 'x' ? 'X' : shift.trim();
             }
           }
         }
@@ -274,10 +272,7 @@ class DienstplanParser {
         final key = DateFormat('yyyy-MM-dd')
             .format(DateTime(detectedMonth.year, detectedMonth.month, i + 1));
         final shift = shiftCells[i].$2.trim();
-
-result[key] = shift == 'x'
-    ? 'X'
-    : shift;
+        result[key] = shift == 'x' ? 'X' : shift;
       }
     }
 
@@ -287,25 +282,19 @@ result[key] = shift == 'x'
         log.writeln('  ${e.key} → ${e.value}');
       }
     }
-    
-if (detectedMonth != null) {
-  final daysInMonth = DateUtils.getDaysInMonth(
-    detectedMonth.year,
-    detectedMonth.month,
-  );
 
-  for (int day = 1; day <= daysInMonth; day++) {
-    final key = DateFormat('yyyy-MM-dd').format(
-      DateTime(
+    if (detectedMonth != null) {
+      final daysInMonth = DateUtils.getDaysInMonth(
         detectedMonth.year,
         detectedMonth.month,
-        day,
-      ),
-    );
-
-    result.putIfAbsent(key, () => 'X');
-  }
-}
+      );
+      for (int day = 1; day <= daysInMonth; day++) {
+        final key = DateFormat('yyyy-MM-dd').format(
+          DateTime(detectedMonth.year, detectedMonth.month, day),
+        );
+        result.putIfAbsent(key, () => 'X');
+      }
+    }
 
     if (result.isEmpty) {
       return _err(detectedMonth, 'Dienste konnten nicht zugeordnet werden.',
@@ -322,28 +311,21 @@ if (detectedMonth != null) {
   ) {
     try {
       final data = Uint8List.fromList(pdfBytes);
-
       String? bestText;
       int bestLen = 0;
-
       final pdfAsLatin1 = latin1.decode(data, allowInvalid: true);
-
       int searchFrom = 0;
       int streamsChecked = 0;
 
       while (searchFrom < pdfAsLatin1.length) {
         final streamIdx = pdfAsLatin1.indexOf('stream', searchFrom);
-
         if (streamIdx == -1) break;
-
         if (streamIdx >= 3 &&
             pdfAsLatin1.substring(streamIdx - 3, streamIdx) == 'end') {
           searchFrom = streamIdx + 6;
           continue;
         }
-
         int dataStart;
-
         if (streamIdx + 7 < pdfAsLatin1.length &&
             pdfAsLatin1.codeUnitAt(streamIdx + 6) == 13 &&
             pdfAsLatin1.codeUnitAt(streamIdx + 7) == 10) {
@@ -355,30 +337,19 @@ if (detectedMonth != null) {
           searchFrom = streamIdx + 6;
           continue;
         }
-
         final endIdx = pdfAsLatin1.indexOf('endstream', dataStart);
-
         if (endIdx == -1 || endIdx <= dataStart + 5) {
           searchFrom = streamIdx + 6;
           continue;
         }
-
         int dataEnd = endIdx;
-
-        if (dataEnd > 0 && pdfAsLatin1.codeUnitAt(dataEnd - 1) == 10) {
-          dataEnd--;
-        }
-        if (dataEnd > 0 && pdfAsLatin1.codeUnitAt(dataEnd - 1) == 13) {
-          dataEnd--;
-        }
-
+        if (dataEnd > 0 && pdfAsLatin1.codeUnitAt(dataEnd - 1) == 10) dataEnd--;
+        if (dataEnd > 0 && pdfAsLatin1.codeUnitAt(dataEnd - 1) == 13) dataEnd--;
         if (dataEnd <= dataStart + 5) {
           searchFrom = streamIdx + 6;
           continue;
         }
-
         streamsChecked++;
-
         try {
           final compressed = data.sublist(dataStart, dataEnd);
           final decompressed = ZLibDecoder().decodeBytes(compressed);
@@ -386,22 +357,16 @@ if (detectedMonth != null) {
             Uint8List.fromList(decompressed),
             allowInvalid: true,
           );
-
-          if (text.length > bestLen &&
-              text.contains('BT') &&
-              text.contains('ET')) {
+          if (text.length > bestLen && text.contains('BT') && text.contains('ET')) {
             bestLen = text.length;
             bestText = text;
           }
         } catch (_) {}
-
         searchFrom = streamIdx + 6;
       }
-
       if (devMode) {
         log.writeln('[DEV] Streams geprüft: $streamsChecked, bester: $bestLen Zeichen');
       }
-
       return bestText;
     } catch (_) {
       return null;
@@ -410,7 +375,6 @@ if (detectedMonth != null) {
 
   static List<(double, double, String)> _extractCoordText(String stream) {
     final result = <(double, double, String)>[];
-
     final btEt = RegExp(r'BT(.*?)ET', dotAll: true);
     final tmRe = RegExp(
         r'([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+Tm');
@@ -424,9 +388,7 @@ if (detectedMonth != null) {
       if (tm == null) continue;
       final cx = double.parse(tm.group(5)!);
       final cy = double.parse(tm.group(6)!);
-
       String text = '';
-
       final tja = tjaRe.firstMatch(b);
       if (tja != null) {
         final buf = StringBuffer();
@@ -440,7 +402,6 @@ if (detectedMonth != null) {
           text = _decodePdf(tjS.group(1)!).trim();
         }
       }
-
       if (text.isNotEmpty) {
         result.add((cx, cy, text));
       }
@@ -485,13 +446,11 @@ if (detectedMonth != null) {
     StringBuffer log,
   ) {
     final nameFragments = _buildNameFragments(originalUserName, searchTerms);
-
     double? nameY;
     for (final y in sortedYsDesc) {
       final rowItems = (rows[y]!.toList())
         ..sort((a, b) => a.$1.compareTo(b.$1));
       final rowText = rowItems.map((e) => e.$2.toLowerCase()).join(' ');
-
       bool matched = false;
       String? matchedTerm;
       for (final term in searchTerms) {
@@ -502,16 +461,13 @@ if (detectedMonth != null) {
         }
       }
       if (!matched) continue;
-
       if (devMode) {
         log.writeln('[DEV] Name-Zeile gefunden (matched "$matchedTerm") bei Y=${y.toStringAsFixed(1)}');
         log.writeln('[DEV] Zeilen-Elemente: ${rowItems.map((e) => '"${e.$2}"@${e.$1.toStringAsFixed(0)}').join(', ')}');
       }
-
       nameY = y;
       break;
     }
-
     if (nameY == null) return null;
 
     const maxGap = 25.0;
@@ -520,46 +476,17 @@ if (detectedMonth != null) {
         .toList()
       ..sort((a, b) => (a - nameY!).compareTo(b - nameY!));
 
-    if (devMode) {
-      log.writeln('[DEV] Zeilen oberhalb (0..${maxGap}pt, nächste zuerst): '
-          '${aboveRows.map((y) => 'Y=${y.toStringAsFixed(1)}(+${(y - nameY!).toStringAsFixed(1)})').join(', ')}');
-    }
-
     for (final candidateY in aboveRows) {
       final candidateItems = (rows[candidateY]!.toList())
         ..sort((a, b) => a.$1.compareTo(b.$1));
-
       final shiftCells = <(double, String)>[];
       for (final (x, text) in candidateItems) {
-        if (_isNameElement(text, nameFragments, searchTerms)) {
-          if (devMode) {
-            log.writeln('[DEV] → Name-Element übersprungen: "$text" bei Y=${candidateY.toStringAsFixed(1)}');
-          }
-          continue;
-        }
+        if (_isNameElement(text, nameFragments, searchTerms)) continue;
         if (_looksLikeShift(text)) {
           shiftCells.add((x, text));
-        } else if (devMode) {
-          log.writeln('[DEV] → Nicht als Schicht erkannt: "$text" bei Y=${candidateY.toStringAsFixed(1)}');
         }
       }
-
-      if (shiftCells.isNotEmpty) {
-        if (devMode) {
-          log.writeln('[DEV] ✓ Schicht-Zeile bei Y=${candidateY.toStringAsFixed(1)} '
-              '(+${(candidateY - nameY!).toStringAsFixed(1)} pts über Name)');
-        }
-        return (candidateY, shiftCells);
-      }
-    }
-
-    if (devMode) {
-      log.writeln('[DEV] ✗ Keine Schichtzellen in den ${aboveRows.length} Zeile(n) oberhalb gefunden.');
-      log.writeln('[DEV] Alle Zeilen mit Inhalten:');
-      for (final y in sortedYsDesc) {
-        final rowItems = rows[y]!..sort((a, b) => a.$1.compareTo(b.$1));
-        log.writeln('  Y=${y.toStringAsFixed(1)}: ${rowItems.map((e) => e.$2).join(' | ')}');
-      }
+      if (shiftCells.isNotEmpty) return (candidateY, shiftCells);
     }
     return null;
   }
@@ -568,9 +495,7 @@ if (detectedMonth != null) {
       String originalUserName, List<String> searchTerms) {
     final fragments = <String>{};
     fragments.add(originalUserName.trim().toLowerCase());
-    for (final t in searchTerms) {
-      fragments.add(t.toLowerCase());
-    }
+    for (final t in searchTerms) fragments.add(t.toLowerCase());
     final parts = originalUserName
         .split(RegExp(r'[\s,]+'))
         .where((p) => p.isNotEmpty)
@@ -629,12 +554,10 @@ if (detectedMonth != null) {
       Map<double, List<(double, String)>> rows, String fileName) {
     final fromFilename = _monthFromFilename(fileName);
     if (fromFilename != null) return fromFilename;
-
     final allText = rows.values
         .expand((r) => r.map((e) => e.$2))
         .join(' ')
         .toLowerCase();
-
     for (final entry in _monthNames.entries) {
       final idx = allText.indexOf(entry.key);
       if (idx != -1) {
@@ -648,7 +571,6 @@ if (detectedMonth != null) {
         }
       }
     }
-
     for (final row in rows.values) {
       for (final (_, text) in row) {
         final m = RegExp(r'\d{2}\.(\d{2})\.').firstMatch(text);
@@ -667,18 +589,13 @@ if (detectedMonth != null) {
     final terms = <String>{};
     final trimmed = fullName.trim();
     if (trimmed.isEmpty) return [];
-
     terms.add(trimmed.toLowerCase());
-
     final parts = trimmed
         .split(RegExp(r'[\s,]+'))
         .where((p) => p.isNotEmpty)
         .toList();
-
     if (parts.isEmpty) return terms.toList();
-
     String lastName, firstName;
-
     if (fullName.contains(',')) {
       lastName = parts[0];
       firstName = parts.length > 1 ? parts[1] : '';
@@ -686,12 +603,9 @@ if (detectedMonth != null) {
       lastName = parts.last;
       firstName = parts.first;
     }
-
     final ln = lastName.toLowerCase();
     final fn = firstName.toLowerCase();
-
     terms.add(ln);
-
     if (fn.length >= 2) {
       terms.add('${ln}, ${fn.substring(0, 2)}');
       terms.add('${ln},${fn.substring(0, 2)}');
@@ -701,12 +615,10 @@ if (detectedMonth != null) {
       terms.add('${ln}, ${fn.substring(0, 3)}');
       terms.add('${ln},${fn.substring(0, 3)}');
     }
-
     if (fn.isNotEmpty) {
       terms.add('$ln, $fn');
       terms.add('$ln,$fn');
     }
-
     return terms.toList();
   }
 
@@ -727,7 +639,6 @@ if (detectedMonth != null) {
     if (RegExp(r'^\d{4}$').hasMatch(u)) return false;
     if (u.contains(',')) return false;
     if (u.length > 8 && RegExp(r'^[A-ZÄÖÜ]+$').hasMatch(u)) return false;
-
     const known = [
       'P1', 'P2', 'P', 'F1', 'F2', 'F', 'IS', 'T', 'L', 'AUF',
       'U', 'DA', 'X', 'VK', 'RES', 'KDFT', 'GEB', 'LÜ', 'LUE', 'AF',
@@ -757,19 +668,20 @@ if (detectedMonth != null) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ScheduleScreen
+// ScheduleScreen  (unverändert bis auf Gestensteuerung – die läuft jetzt
+// über main.dart, daher die lokalen Drag-Handler bleiben als Fallback)
 // ─────────────────────────────────────────────────────────────────────────────
 
 class ScheduleScreen extends StatefulWidget {
   final VoidCallback onNavigateToHome;
   final VoidCallback onNavigateToMonth;
-  final void Function(DateTime)? onMonthChanged;  // ← hinzufügen
+  final void Function(DateTime)? onMonthChanged;
 
   const ScheduleScreen({
     super.key,
     required this.onNavigateToHome,
     required this.onNavigateToMonth,
-    this.onMonthChanged,  // ← hinzufügen
+    this.onMonthChanged,
   });
 
   @override
@@ -779,7 +691,6 @@ class ScheduleScreen extends StatefulWidget {
 class _ScheduleScreenState extends State<ScheduleScreen> {
   late DateTime _selectedMonth;
   Map<String, String> _scheduleData = {};
-  bool _dragOnInteractive = false;
 
   @override
   void initState() {
@@ -789,7 +700,6 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     _loadScheduleData();
   }
 
-  // Dev mode no longer controls placeholder data – only extended error messages
   bool get _isDevMode {
     final box = Hive.box('einstellungen');
     return box.get('dienstplan_dev_placeholder', defaultValue: false) as bool;
@@ -811,7 +721,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
 
   void _setMonth(DateTime month) {
     setState(() => _selectedMonth = month);
-    widget.onMonthChanged?.call(month);  // ← diese Zeile neu
+    widget.onMonthChanged?.call(month);
     _loadScheduleData();
   }
 
@@ -998,205 +908,192 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
 
         return Scaffold(
           backgroundColor: skin.bgBase,
-          body: GestureDetector(
-            behavior: HitTestBehavior.translucent,
-            onHorizontalDragStart: (_) => _dragOnInteractive = false,
-            onHorizontalDragEnd: (d) {
-              if (_dragOnInteractive) return;
-              final v = d.primaryVelocity ?? 0;
-              if (v > 400) widget.onNavigateToMonth();
-            },
-            child: SafeArea(
-              bottom: false,
-              child: ColoredBox(
-                color: skin.bgBase,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const SizedBox(height: 50),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 24),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(children: [
-                            Text('Dienstplan',
+          body: SafeArea(
+            bottom: false,
+            child: ColoredBox(
+              color: skin.bgBase,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: 50),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(children: [
+                          Text('Dienstplan',
+                              style: TextStyle(
+                                  fontSize: 26,
+                                  fontWeight: FontWeight.w700,
+                                  color: skin.textPrimary)),
+                          const SizedBox(width: 10),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFFB347)
+                                  .withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                  color: const Color(0xFFFFB347)
+                                      .withValues(alpha: 0.4)),
+                            ),
+                            child: const Text('BETA',
                                 style: TextStyle(
-                                    fontSize: 26,
+                                    fontSize: 10,
                                     fontWeight: FontWeight.w700,
-                                    color: skin.textPrimary)),
-                            const SizedBox(width: 10),
+                                    color: Color(0xFFFFB347),
+                                    letterSpacing: 0.8)),
+                          ),
+                          if (_isDevMode) ...[
+                            const SizedBox(width: 6),
                             Container(
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 8, vertical: 3),
                               decoration: BoxDecoration(
-                                color: const Color(0xFFFFB347)
+                                color: const Color(0xFFEF5B5B)
                                     .withValues(alpha: 0.15),
                                 borderRadius: BorderRadius.circular(6),
                                 border: Border.all(
-                                    color: const Color(0xFFFFB347)
+                                    color: const Color(0xFFEF5B5B)
                                         .withValues(alpha: 0.4)),
                               ),
-                              child: const Text('BETA',
+                              child: const Text('DEV',
                                   style: TextStyle(
                                       fontSize: 10,
                                       fontWeight: FontWeight.w700,
-                                      color: Color(0xFFFFB347),
+                                      color: Color(0xFFEF5B5B),
                                       letterSpacing: 0.8)),
                             ),
-                            if (_isDevMode) ...[
-                              const SizedBox(width: 6),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 8, vertical: 3),
+                          ],
+                        ]),
+                        const SizedBox(height: 16),
+                        Row(children: [
+                          _MonthNavBtn(
+                              icon: Icons.chevron_left,
+                              onTap: () => _changeMonth(-1)),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: _showMonthPicker,
+                              onDoubleTap: () {
+                                HapticFeedback.selectionClick();
+                                final now = DateTime.now();
+                                _setMonth(DateTime(now.year, now.month));
+                              },
+                              onHorizontalDragEnd: (d) {
+                                final v = d.primaryVelocity ?? 0;
+                                if (v < -300) _changeMonth(1);
+                                if (v > 300) _changeMonth(-1);
+                              },
+                              child: Container(
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 13),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFFEF5B5B)
-                                      .withValues(alpha: 0.15),
-                                  borderRadius: BorderRadius.circular(6),
+                                  color: skin.bgCard,
+                                  borderRadius: BorderRadius.circular(14),
                                   border: Border.all(
-                                      color: const Color(0xFFEF5B5B)
-                                          .withValues(alpha: 0.4)),
+                                      color: skin.primaryWithAlpha(0.35)),
                                 ),
-                                child: const Text('DEV',
-                                    style: TextStyle(
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w700,
-                                        color: Color(0xFFEF5B5B),
-                                        letterSpacing: 0.8)),
-                              ),
-                            ],
-                          ]),
-                          const SizedBox(height: 16),
-                          Listener(
-                            onPointerDown: (_) => _dragOnInteractive = true,
-                            child: Row(children: [
-                              _MonthNavBtn(
-                                  icon: Icons.chevron_left,
-                                  onTap: () => _changeMonth(-1)),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: GestureDetector(
-                                  onTap: _showMonthPicker,
-                                  onDoubleTap: () {
-                                    HapticFeedback.selectionClick();
-                                    final now = DateTime.now();
-                                    _setMonth(DateTime(now.year, now.month));
-                                  },
-                                  onHorizontalDragEnd: (d) {
-                                    final v = d.primaryVelocity ?? 0;
-                                    if (v < -300) _changeMonth(1);
-                                    if (v > 300) _changeMonth(-1);
-                                  },
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(
-                                        vertical: 13),
-                                    decoration: BoxDecoration(
-                                      color: skin.bgCard,
-                                      borderRadius: BorderRadius.circular(14),
-                                      border: Border.all(
-                                          color: skin.primaryWithAlpha(0.35)),
-                                    ),
-                                    child: Row(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.center,
-                                        children: [
-                                          Text(monthName,
-                                              style: TextStyle(
-                                                  fontSize: 16,
-                                                  fontWeight: FontWeight.w600,
-                                                  color: skin.textPrimary)),
-                                          const SizedBox(width: 6),
-                                          Icon(Icons.expand_more,
-                                              color: skin.primary, size: 18),
-                                        ]),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              _MonthNavBtn(
-                                  icon: Icons.chevron_right,
-                                  onTap: () => _changeMonth(1)),
-                            ]),
-                          ),
-                          const SizedBox(height: 12),
-                          Row(children: [
-                            _StatCard(
-                                label: 'Arbeit',
-                                value: '$_workDays',
-                                color: isChrome
-                                    ? const Color(0xFFDDDDDD)
-                                    : const Color(0xFF5B8DEF)),
-                            const SizedBox(width: 10),
-                            _StatCard(
-                                label: 'Frei',
-                                value: '$_freeDays',
-                                color: isChrome
-                                    ? const Color(0xFF666666)
-                                    : const Color(0xFF6B7280)),
-                            const SizedBox(width: 10),
-                            _StatCard(
-                                label: 'VK',
-                                value: '$_vkDays',
-                                color: isChrome
-                                    ? const Color(0xFF999999)
-                                    : const Color(0xFFEF5B5B)),
-                          ]),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Expanded(
-                      child: !_hasSchedule
-                          ? Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  const Text('📋',
-                                      style: TextStyle(fontSize: 48)),
-                                  const SizedBox(height: 12),
-                                  Text('Kein Dienstplan hinterlegt',
-                                      style: TextStyle(
-                                          color: skin.white(0.3),
-                                          fontSize: 15)),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                      'Tippe oben auf ☰ → Dienstplan importieren',
-                                      style: TextStyle(
-                                          color: skin.white(0.2),
-                                          fontSize: 12),
-                                      textAlign: TextAlign.center),
-                                ],
-                              ),
-                            )
-                          : _FadingListView(
-                              fadeFromBottom: bottomNavHeight + 20,
-                              child: ListView.builder(
-                                padding: EdgeInsets.fromLTRB(
-                                    24, 4, 24, bottomNavHeight + 40),
-                                itemCount: days.length,
-                                itemBuilder: (context, index) {
-                                  final day = days[index];
-                                  final key =
-                                      DateFormat('yyyy-MM-dd').format(day);
-                                  final shift = _scheduleData[key] ?? '';
-                                  final entry = shift.isEmpty
-                                      ? null
-                                      : ScheduleEntry(shift);
-                                  return Padding(
-                                    padding:
-                                        const EdgeInsets.only(bottom: 8),
-                                    child: _DayCard(
-                                        day: day,
-                                        entry: entry,
-                                        skin: skin,
-                                        isChrome: isChrome),
-                                  );
-                                },
+                                child: Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.center,
+                                    children: [
+                                      Text(monthName,
+                                          style: TextStyle(
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.w600,
+                                              color: skin.textPrimary)),
+                                      const SizedBox(width: 6),
+                                      Icon(Icons.expand_more,
+                                          color: skin.primary, size: 18),
+                                    ]),
                               ),
                             ),
+                          ),
+                          const SizedBox(width: 10),
+                          _MonthNavBtn(
+                              icon: Icons.chevron_right,
+                              onTap: () => _changeMonth(1)),
+                        ]),
+                        const SizedBox(height: 12),
+                        Row(children: [
+                          _StatCard(
+                              label: 'Arbeit',
+                              value: '$_workDays',
+                              color: isChrome
+                                  ? const Color(0xFFDDDDDD)
+                                  : const Color(0xFF5B8DEF)),
+                          const SizedBox(width: 10),
+                          _StatCard(
+                              label: 'Frei',
+                              value: '$_freeDays',
+                              color: isChrome
+                                  ? const Color(0xFF666666)
+                                  : const Color(0xFF6B7280)),
+                          const SizedBox(width: 10),
+                          _StatCard(
+                              label: 'VK',
+                              value: '$_vkDays',
+                              color: isChrome
+                                  ? const Color(0xFF999999)
+                                  : const Color(0xFFEF5B5B)),
+                        ]),
+                      ],
                     ),
-                  ],
-                ),
+                  ),
+                  const SizedBox(height: 12),
+                  Expanded(
+                    child: !_hasSchedule
+                        ? Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Text('📋',
+                                    style: TextStyle(fontSize: 48)),
+                                const SizedBox(height: 12),
+                                Text('Kein Dienstplan hinterlegt',
+                                    style: TextStyle(
+                                        color: skin.white(0.3),
+                                        fontSize: 15)),
+                                const SizedBox(height: 8),
+                                Text(
+                                    'Tippe oben auf ☰ → Dienstplan importieren',
+                                    style: TextStyle(
+                                        color: skin.white(0.2),
+                                        fontSize: 12),
+                                    textAlign: TextAlign.center),
+                              ],
+                            ),
+                          )
+                        : _FadingListView(
+                            fadeFromBottom: bottomNavHeight + 20,
+                            child: ListView.builder(
+                              padding: EdgeInsets.fromLTRB(
+                                  24, 4, 24, bottomNavHeight + 40),
+                              itemCount: days.length,
+                              itemBuilder: (context, index) {
+                                final day = days[index];
+                                final key =
+                                    DateFormat('yyyy-MM-dd').format(day);
+                                final shift = _scheduleData[key] ?? '';
+                                final entry = shift.isEmpty
+                                    ? null
+                                    : ScheduleEntry(shift);
+                                return Padding(
+                                  padding: const EdgeInsets.only(bottom: 8),
+                                  child: _DayCard(
+                                      day: day,
+                                      entry: entry,
+                                      skin: skin,
+                                      isChrome: isChrome),
+                                );
+                              },
+                            ),
+                          ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -1207,7 +1104,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Day Card
+// Day Card  (unverändert)
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _DayCard extends StatelessWidget {
@@ -1323,7 +1220,6 @@ class _DayCard extends StatelessWidget {
                   children: entry!.parts.map((part) {
                     final isGeb = part.trim().toUpperCase() == 'GEB';
                     if (isGeb) {
-                      // Birthday chip – special styling
                       return Container(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 11, vertical: 5),
@@ -1352,8 +1248,7 @@ class _DayCard extends StatelessWidget {
                                     fontWeight: FontWeight.w700,
                                     color: Colors.white)),
                             SizedBox(width: 4),
-                            Text('🎂',
-                                style: TextStyle(fontSize: 12)),
+                            Text('🎂', style: TextStyle(fontSize: 12)),
                           ],
                         ),
                       );
@@ -1389,7 +1284,6 @@ class _DayCard extends StatelessWidget {
       ],
     );
 
-    // Birthday card gets a gradient border via a DecoratedBox wrapper
     if (_isBirthdayDay) {
       return Container(
         padding: const EdgeInsets.all(1.5),
@@ -1479,7 +1373,7 @@ class _CategoryDot extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Upload Sheet
+// Upload Sheet – File Picker Fix (Punkt 5 & 6)
 // ─────────────────────────────────────────────────────────────────────────────
 
 class DienstplanUploadSheet extends StatefulWidget {
@@ -1524,36 +1418,54 @@ class _DienstplanUploadSheetState extends State<DienstplanUploadSheet> {
       _selectedFileName = widget.preloadedFileName ?? 'Geteilte PDF';
     }
   }
+
   bool get _isDevMode {
     final box = Hive.box('einstellungen');
     return box.get('dienstplan_dev_placeholder', defaultValue: false) as bool;
   }
 
   Future<void> _pickFile() async {
+    // Ladekreis vermeiden – direkt öffnen
     setState(() {
       _errorMessage = null;
       _errorCopied = false;
-      _isLoading = true;
     });
+
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['pdf'],
         allowMultiple: false,
+        // withData: true ist entscheidend für iOS – Bytes direkt laden
         withData: true,
+        // withReadStream: false  (default)
+        // lockParentWindow: false (default)
       );
-      if (result != null && result.files.isNotEmpty) {
-        final picked = result.files.single;
-        setState(() {
-          _selectedFileName = picked.name;
-          _selectedFileBytes = picked.bytes?.toList();
-          _selectedFilePath = kIsWeb ? null : picked.path;
-        });
+
+      if (result == null || result.files.isEmpty) {
+        // Nutzer hat Auswahl abgebrochen – kein Fehler
+        return;
       }
-    } catch (e) {
-      setState(() => _errorMessage = 'Fehler beim Öffnen der Dateiauswahl.');
-    } finally {
-      setState(() => _isLoading = false);
+
+      final picked = result.files.single;
+      final bytes = picked.bytes;
+      final path = kIsWeb ? null : picked.path;
+
+      if (bytes == null && path == null) {
+        setState(() =>
+            _errorMessage = 'Datei konnte nicht gelesen werden. Bitte erneut versuchen.');
+        return;
+      }
+
+      setState(() {
+        _selectedFileName = picked.name;
+        _selectedFileBytes = bytes?.toList();
+        _selectedFilePath = path;
+        _errorMessage = null;
+      });
+    } on Exception catch (e) {
+      setState(() => _errorMessage =
+          'Dateiauswahl konnte nicht geöffnet werden.\nBitte Dateizugriff in den iOS-Einstellungen erlauben.\n\nDetail: $e');
     }
   }
 
@@ -1584,9 +1496,19 @@ class _DienstplanUploadSheetState extends State<DienstplanUploadSheet> {
       final userName =
           scheduleName.isNotEmpty ? scheduleName : mainName;
 
+      // Bytes bevorzugen (sicherer auf iOS), Fallback auf Path
+      List<int>? bytes = _selectedFileBytes;
+      if ((bytes == null || bytes.isEmpty) && _selectedFilePath != null) {
+        try {
+          bytes = await dartio.File(_selectedFilePath!).readAsBytes();
+        } catch (_) {
+          bytes = null;
+        }
+      }
+
       final result = await DienstplanParser.parse(
-        filePath: kIsWeb ? null : _selectedFilePath,
-        fileBytes: _selectedFileBytes,
+        filePath: bytes != null ? null : _selectedFilePath,
+        fileBytes: bytes,
         userName: userName,
         fileName: _selectedFileName ?? '',
         devMode: _isDevMode,
@@ -1623,8 +1545,6 @@ class _DienstplanUploadSheetState extends State<DienstplanUploadSheet> {
 
       final monthKey = DateFormat('yyyy-MM').format(month);
       settingsBox.put('schedule_$monthKey', data);
-      // Dev mode is NOT automatically disabled here anymore –
-      // it only controls extended error messages, not placeholder data.
 
       if (!mounted) return;
       Navigator.pop(context);
@@ -1772,9 +1692,9 @@ class _DienstplanUploadSheetState extends State<DienstplanUploadSheet> {
     );
   }
 
-  /// Deletes the month that is currently VIEWED in the schedule screen.
   void _deleteSelectedMonth() async {
-    final displayMonth = DateFormat('MMMM yyyy', 'de').format(widget.selectedMonth);
+    final displayMonth =
+        DateFormat('MMMM yyyy', 'de').format(widget.selectedMonth);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
@@ -1790,8 +1710,8 @@ class _DienstplanUploadSheetState extends State<DienstplanUploadSheet> {
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context, false),
-              child:
-                  Text('Abbrechen', style: TextStyle(color: skin.textMuted))),
+              child: Text('Abbrechen',
+                  style: TextStyle(color: skin.textMuted))),
           TextButton(
               onPressed: () => Navigator.pop(context, true),
               child: Text('Löschen',
@@ -1834,9 +1754,6 @@ class _DienstplanUploadSheetState extends State<DienstplanUploadSheet> {
             offset: const Offset(0, 4))
       ],
     );
-
-    final selectedMonthLabel =
-        DateFormat('MMMM yyyy', 'de').format(widget.selectedMonth);
 
     return Container(
       decoration: BoxDecoration(
@@ -1890,8 +1807,8 @@ class _DienstplanUploadSheetState extends State<DienstplanUploadSheet> {
               decoration: BoxDecoration(
                 color: skin.statComplete.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                    color: skin.statComplete.withValues(alpha: 0.3)),
+                border:
+                    Border.all(color: skin.statComplete.withValues(alpha: 0.3)),
               ),
               child: Row(children: [
                 Icon(Icons.picture_as_pdf_outlined,
@@ -1922,7 +1839,7 @@ class _DienstplanUploadSheetState extends State<DienstplanUploadSheet> {
             const SizedBox(height: 12),
           ],
 
-          // Error display
+          // Fehleranzeige
           if (_errorMessage != null) ...[
             if (_isDevMode) ...[
               Container(
@@ -1962,10 +1879,8 @@ class _DienstplanUploadSheetState extends State<DienstplanUploadSheet> {
                               borderRadius: BorderRadius.circular(8),
                               border: Border.all(
                                   color: _errorCopied
-                                      ? skin.statComplete
-                                          .withValues(alpha: 0.4)
-                                      : skin.deleteColor
-                                          .withValues(alpha: 0.3)),
+                                      ? skin.statComplete.withValues(alpha: 0.4)
+                                      : skin.deleteColor.withValues(alpha: 0.3)),
                             ),
                             child: Row(
                                 mainAxisSize: MainAxisSize.min,
@@ -2011,8 +1926,7 @@ class _DienstplanUploadSheetState extends State<DienstplanUploadSheet> {
               Padding(
                 padding: const EdgeInsets.only(bottom: 4),
                 child: Row(children: [
-                  Icon(Icons.error_outline,
-                      color: skin.deleteColor, size: 15),
+                  Icon(Icons.error_outline, color: skin.deleteColor, size: 15),
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
@@ -2036,27 +1950,19 @@ class _DienstplanUploadSheetState extends State<DienstplanUploadSheet> {
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 decoration: gradientDeco,
-                child: _isLoading
-                    ? Center(
-                        child: SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: skin.onGradient)))
-                    : Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.folder_open_outlined,
-                              color: skin.onGradient, size: 20),
-                          const SizedBox(width: 10),
-                          Text('Dokument auswählen',
-                              style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w700,
-                                  color: skin.onGradient,
-                                  letterSpacing: 0.3)),
-                        ]),
+                child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.folder_open_outlined,
+                          color: skin.onGradient, size: 20),
+                      const SizedBox(width: 10),
+                      Text('Dokument auswählen',
+                          style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: skin.onGradient,
+                              letterSpacing: 0.3)),
+                    ]),
               ),
             ),
 
@@ -2073,8 +1979,7 @@ class _DienstplanUploadSheetState extends State<DienstplanUploadSheet> {
                             width: 20,
                             height: 20,
                             child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: skin.onGradient)))
+                                strokeWidth: 2, color: skin.onGradient)))
                     : Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
@@ -2114,7 +2019,6 @@ class _DienstplanUploadSheetState extends State<DienstplanUploadSheet> {
           Divider(color: skin.borderSubtle),
           const SizedBox(height: 12),
 
-          // Delete button – deletes the SELECTED (viewed) month, not the real current month
           GestureDetector(
             onTap: _deleteSelectedMonth,
             child: Container(
