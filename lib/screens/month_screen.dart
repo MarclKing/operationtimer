@@ -23,7 +23,7 @@ class MonthScreen extends StatefulWidget {
   });
 
   @override
-  State<MonthScreen> createState() => _MonthScreenState();
+State<MonthScreen> createState() => MonthScreenState();
 }
 
 class MonthScreenState extends State<MonthScreen> {
@@ -125,7 +125,7 @@ class MonthScreenState extends State<MonthScreen> {
     }
   }
 
-  void _closeAllRows() {
+  void closeAllRows() {
     for (final key in _rowKeys.values) {
       key.currentState?.close();
     }
@@ -142,7 +142,7 @@ class MonthScreenState extends State<MonthScreen> {
   void _setMonth(DateTime month) {
     setState(() => _selectedMonth = month);
     widget.onMonthChanged(month);
-    _closeAllRows();
+    closeAllRows();
   }
 
   void _changeMonth(int delta) {
@@ -506,7 +506,7 @@ class MonthScreenState extends State<MonthScreen> {
           // Der RawGestureDetector in main.dart übernimmt das Wischen.
           // Nur vertikales Tippen zum Schließen von Rows bleibt.
           GestureDetector(
-            onTap: _closeAllRows,
+            onTap: closeAllRows,
             behavior: HitTestBehavior.translucent,
             child: SafeArea(
               child: Column(
@@ -619,7 +619,7 @@ class MonthScreenState extends State<MonthScreen> {
                           )
                         : NotificationListener<ScrollNotification>(
                             onNotification: (_) {
-                              _closeAllRows();
+                              closeAllRows();
                               return false;
                             },
                             child: _FadingListView(
