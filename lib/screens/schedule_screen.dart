@@ -675,23 +675,9 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   String? _openSwipedCardKey;
 
   Future<void> _pushScheduleToWidget() async {
-  try {
-    const channel = MethodChannel('de.marcel.optimes/widget');
-    final monthKey = DateFormat('yyyy-MM').format(_selectedMonth);
-    final entries = <Map<String, String>>[];
-
-    _scheduleData.forEach((dateKey, shift) {
-      entries.add({'date': dateKey, 'shift': shift});
-    });
-    entries.sort((a, b) => a['date']!.compareTo(b['date']!));
-
-    await channel.invokeMethod('updateWidget', {
-      'data': jsonEncode(entries),
-    });
-  } catch (e) {
-    debugPrint('Widget update fehler: $e');
-  }
+  return; // temporär deaktiviert
 }
+
 
   @override
   void initState() {
