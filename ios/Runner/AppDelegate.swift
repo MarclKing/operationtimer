@@ -10,7 +10,6 @@ import WidgetKit
   ) -> Bool {
     GeneratedPluginRegistrant.register(with: self)
 
-    // MethodChannel nach dem Plugin-Register registrieren
     let registrar = self.registrar(forPlugin: "WidgetChannel")
     let channel = FlutterMethodChannel(
       name: "de.marcel.optimes/widget",
@@ -24,7 +23,9 @@ import WidgetKit
           let defaults = UserDefaults(suiteName: "group.de.marcel.optimes")
           defaults?.set(json, forKey: "schedule_entries")
           defaults?.synchronize()
-          WidgetCenter.shared.reloadAllTimelines()
+          if #available(iOS 14.0, *) {
+            WidgetCenter.shared.reloadAllTimelines()
+          }
           result(nil)
         } else {
           result(FlutterError(code: "INVALID_ARGS", message: nil, details: nil))
