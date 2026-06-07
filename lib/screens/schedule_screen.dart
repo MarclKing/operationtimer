@@ -675,7 +675,43 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   String? _openSwipedCardKey;
 
   Future<void> _pushScheduleToWidget() async {
-  return; // temporär deaktiviert
+  try {
+    final box = Hive.box('einstellungen');
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month);
+
+    // Sammle Einträge für aktuellen und nächsten Monat
+    final entries = <Map<String, String>>[];
+
+    for (int offset = 0; offset <= 2; offset++) {
+      final month = DateTime(today.year, today.month + offset);
+      final monthKey = DateFormat('yyyy-MM').format(month);
+      final raw = box.get('schedule_$monthKey');
+      if (raw is Map) {
+        for (final e in raw.entries) {
+          entries.add({
+            'date': e.key.toString(),
+            'shift': e.value.toString(),
+          });
+        }
+      }
+    }
+
+    // Nur zukünftige Einträge, sortiert
+    final todayStr = DateFormat('yyyy-MM-dd').format(now);
+    final filtered = entries
+        .where((e) => (e['date'] ?? '').compareTo(todayStr) >= 0)
+        .toList()
+      ..sort((a, b) => (a['date'] ?? '').compareTo(b['date'] ?? ''));
+
+    final json = jsonEncode(filtered);
+
+    // In App Group schreiben via MethodChannel
+    const channel = MethodChannel('de.marcel.optimes/widget');
+    await channel.invokeMethod('updateSchedule', {'json': json});
+  } catch (e) {
+    debugPrint('Widget push error: $e');
+  }
 }
 
 

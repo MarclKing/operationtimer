@@ -237,10 +237,21 @@ struct DienstplanWidgetView: View {
                 }
             }
         }
-        .containerBackground(for: .widget) {
-            Color(.systemBackground)
-        }
+        .modifier(WidgetBackgroundModifier())
+
         .widgetURL(URL(string: "optimes://dienstplan"))
+    }
+}
+
+struct WidgetBackgroundModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 17.0, *) {
+            content.containerBackground(for: .widget) {
+                Color(.systemBackground)
+            }
+        } else {
+            content.background(Color(.systemBackground))
+        }
     }
 }
 
