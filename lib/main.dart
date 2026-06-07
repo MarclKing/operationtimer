@@ -142,6 +142,8 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       DateTime(DateTime.now().year, DateTime.now().month);
 
   StreamSubscription? _intentSub;
+  final _scheduleKey = GlobalKey<_ScheduleScreenState>();
+final _monthKey = GlobalKey<_MonthScreenState>();
 
   bool get _dienstplanEnabled => true;
 
@@ -541,10 +543,12 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   }
 
   void _goToPage(int index) {
-    FocusManager.instance.primaryFocus?.unfocus();
-    _closeMenu();
-    _animateToPage(index);
-  }
+  FocusManager.instance.primaryFocus?.unfocus();
+  _closeMenu();
+  _scheduleKey.currentState?.closeOverlays();
+  _monthKey.currentState?.closeAllRows();
+  _animateToPage(index);
+}
 
   void _selectTab(int index) => _goToPage(index);
 
@@ -599,19 +603,19 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
           onNavigateToMonth: () => _goToPage(1),
         ),
         MonthScreen(
-          key: const ValueKey('month'),
-          selectedMonth: _sharedMonth,
-          onMonthChanged: (m) => setState(() => _sharedMonth = m),
-          onNavigateToHome: () => _goToPage(0),
-        ),
+  key: _monthKey,
+  selectedMonth: _sharedMonth,
+  onMonthChanged: (m) => setState(() => _sharedMonth = m),
+  onNavigateToHome: () => _goToPage(0),
+),
         if (_dienstplanEnabled)
-          ScheduleScreen(
-            key: const ValueKey('schedule'),
-            onNavigateToHome: () => _goToPage(0),
-            onNavigateToMonth: () => _goToPage(1),
-            onMonthChanged: (m) =>
-                setState(() => _scheduleViewMonth = m),
-          ),
+  ScheduleScreen(
+    key: _scheduleKey,
+    onNavigateToHome: () => _goToPage(0),
+    onNavigateToMonth: () => _goToPage(1),
+    onMonthChanged: (m) =>
+        setState(() => _scheduleViewMonth = m),
+  ),
       ];
 
   bool get _isOnSchedulePage =>

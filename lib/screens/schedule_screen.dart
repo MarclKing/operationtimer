@@ -928,6 +928,13 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
       _activeNoteKey = null;
     });
   }
+  
+  void closeOverlays() {
+  if (_noteOverlayVisible) _closeNoteOverlay();
+  if (_openSwipedCardKey != null) {
+    setState(() => _openSwipedCardKey = null);
+  }
+}
 
   void _onCardSwiped(String? dateKey) {
     setState(() => _openSwipedCardKey = dateKey);
@@ -1690,14 +1697,14 @@ class _DayCardState extends State<_DayCard>
   }
 
   void _onPanUpdate(DragUpdateDetails d) {
-    final totalDx = d.globalPosition.dx - _dragStartX;
-    final totalDy = (d.globalPosition.dy - _dragStartY).abs();
-    if (!_dragging) {
-      if (totalDy > totalDx.abs()) return;
-      if (totalDx > 0 && _swipeOffset >= 0) return;
-      if (totalDx.abs() < 8) return;
-      _dragging = true;
-    }
+  final totalDx = d.globalPosition.dx - _dragStartX;
+  final totalDy = (d.globalPosition.dy - _dragStartY).abs();
+  if (!_dragging) {
+    if (totalDy > totalDx.abs()) return;
+    if (totalDx > 0) return;
+    if (totalDx.abs() < 8) return;
+    _dragging = true;
+  }
     final newOffset =
         (_swipeOffset + d.delta.dx).clamp(-_revealWidth, 0.0);
     setState(() => _swipeOffset = newOffset);
@@ -2041,15 +2048,15 @@ class _DayCardState extends State<_DayCard>
     );
 
     return GestureDetector(
-      onPanStart: _onPanStart,
-      onPanUpdate: _onPanUpdate,
-      onPanEnd: _onPanEnd,
-      onLongPressStart: _onLongPressStart,
-      onLongPress: _onLongPress,
-      onLongPressEnd: _onLongPressEnd,
-      onLongPressCancel: _onLongPressCancel,
-      onTap: _isOpen ? _close : null,
-      child: LayoutBuilder(
+  onHorizontalDragStart: _onPanStart,
+  onHorizontalDragUpdate: _onPanUpdate,
+  onHorizontalDragEnd: _onPanEnd,
+  onLongPressStart: _onLongPressStart,
+  onLongPress: _onLongPress,
+  onLongPressEnd: _onLongPressEnd,
+  onLongPressCancel: _onLongPressCancel,
+  onTap: _isOpen ? _close : null,
+  child: LayoutBuilder(
         builder: (context, constraints) {
           return SizedBox(
             child: ClipRect(
