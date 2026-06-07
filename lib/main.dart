@@ -598,30 +598,35 @@ class _BottomNavState extends State<_BottomNav>
   }
 
   @override
-  void didUpdateWidget(_BottomNav oldWidget) {
-    super.didUpdateWidget(oldWidget);
+void didUpdateWidget(_BottomNav oldWidget) {
+  super.didUpdateWidget(oldWidget);
 
-    if (oldWidget.selectedIndex != widget.selectedIndex) {
-      if (_toIndex != widget.selectedIndex) {
-        final itemCount = widget.dienstplanEnabled ? 3 : 2;
-        final t = _slideController.value;
-        final fromPos = _fromIndex.clamp(0, itemCount - 1).toDouble();
-        final toPos = _toIndex.clamp(0, itemCount - 1).toDouble();
-        final currentPos = fromPos + (toPos - fromPos) * t;
+  if (oldWidget.selectedIndex != widget.selectedIndex) {
+    if (_toIndex != widget.selectedIndex) {
+      final itemCount = widget.dienstplanEnabled ? 3 : 2;
+      // Aktuelle Position als neuen Startpunkt berechnen
+      final t = CurvedAnimation(
+        parent: _slideController,
+        curve: Curves.easeInOutCubic,
+      ).value;
+      final fromPos = _fromIndex.clamp(0, itemCount - 1).toDouble();
+      final toPos = _toIndex.clamp(0, itemCount - 1).toDouble();
+      final currentPos = fromPos + (toPos - fromPos) * t;
 
-        _fromIndex = currentPos.round().clamp(0, itemCount - 1);
-        _toIndex = widget.selectedIndex;
-
-        _slideController.stop();
-        _slideController.value = 0.0;
-        _slideController.forward();
-      }
-    } else if (oldWidget.dienstplanEnabled != widget.dienstplanEnabled) {
-      _fromIndex = widget.selectedIndex;
+      _fromIndex = currentPos.round().clamp(0, itemCount - 1);
       _toIndex = widget.selectedIndex;
-      _slideController.value = 1.0;
+
+      // Controller von aktueller Position neu starten
+      _slideController.stop();
+      _slideController.duration = const Duration(milliseconds: 300);
+      _slideController.forward(from: 0.0);
     }
+  } else if (oldWidget.dienstplanEnabled != widget.dienstplanEnabled) {
+    _fromIndex = widget.selectedIndex;
+    _toIndex = widget.selectedIndex;
+    _slideController.value = 1.0;
   }
+}
 
   @override
   void dispose() {
@@ -697,9 +702,10 @@ class _BottomNavState extends State<_BottomNav>
               final highlightWidth = baseWidth + extraWidth;
 
               return Stack(
-                children: [
-                  Positioned(
-                    left: currentX - highlightWidth / 2,
+  clipBehavior: Clip.none,
+  children: [
+    Positioned(
+      left: currentX - highlightWidth / 2,
                     top: 0,
                     child: Container(
                       width: highlightWidth,
