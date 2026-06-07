@@ -743,17 +743,17 @@ class _BottomNav extends StatelessWidget {
     final count = dienstplanEnabled ? 3 : 2;
     final bottomPad = MediaQuery.of(context).padding.bottom;
 
-    const double iconSize = 18.0;
-    const double labelFontSize = 9.0;
-    const double iconLabelGap = 3.0;
+    const double iconSize = 24.0;
+    const double labelFontSize = 10.5;
+    const double iconLabelGap = 4.0;
     // Geschätzte Texthöhe
-    const double labelH = 11.0;
+    const double labelH = 13.0;
     const double contentH = iconSize + iconLabelGap + labelH; // 41
     // Pill hat 8px Luft oben+unten (je 4)
-    const double pillVPad = 2.0;
+    const double pillVPad = 4.0;
     const double pillH = contentH + pillVPad * 2; // 49
 
-    const double navTopPad = 6.0;
+    const double navTopPad = 8.0;
     final double navH = navTopPad + pillH + bottomPad + 4.0;
 
     final items = [
