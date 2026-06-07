@@ -260,7 +260,9 @@ class DienstplanParser {
             if (day != null && month != null) {
               final key = DateFormat('yyyy-MM-dd')
                   .format(DateTime(detectedMonth.year, month, day));
-              result[key] = shift;
+              result[key] = shift.trim() == 'x'
+    ? 'X'
+    : shift.trim();
             }
           }
         }
@@ -271,7 +273,11 @@ class DienstplanParser {
       for (int i = 0; i < shiftCells.length && i < daysInMonth; i++) {
         final key = DateFormat('yyyy-MM-dd')
             .format(DateTime(detectedMonth.year, detectedMonth.month, i + 1));
-        result[key] = shiftCells[i].$2;
+        final shift = shiftCells[i].$2.trim();
+
+result[key] = shift == 'x'
+    ? 'X'
+    : shift;
       }
     }
 
@@ -281,6 +287,25 @@ class DienstplanParser {
         log.writeln('  ${e.key} → ${e.value}');
       }
     }
+    
+if (detectedMonth != null) {
+  final daysInMonth = DateUtils.getDaysInMonth(
+    detectedMonth.year,
+    detectedMonth.month,
+  );
+
+  for (int day = 1; day <= daysInMonth; day++) {
+    final key = DateFormat('yyyy-MM-dd').format(
+      DateTime(
+        detectedMonth.year,
+        detectedMonth.month,
+        day,
+      ),
+    );
+
+    result.putIfAbsent(key, () => 'X');
+  }
+}
 
     if (result.isEmpty) {
       return _err(detectedMonth, 'Dienste konnten nicht zugeordnet werden.',
