@@ -767,7 +767,7 @@ class _BottomNav extends StatelessWidget {
     const double pillVPad = 4.0;
     const double pillH = contentH + pillVPad * 2; // 49
 
-    const double navTopPad = 8.0;
+    const double navTopPad = 12.0;
     final double navH = navTopPad + pillH + bottomPad + 4.0;
 
     final items = [
