@@ -65,7 +65,6 @@ void _migrateOldEntries() {
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
-  // GlobalKey damit wir von außen auf _MainScreenState zugreifen können
   static final _mainScreenKey = GlobalKey<_MainScreenState>();
 
   @override
@@ -90,6 +89,8 @@ class MyApp extends StatelessWidget {
               }
               return null;
             },
+            onUnknownRoute: (settings) =>
+                MaterialPageRoute(builder: (_) => const MainScreen()),
             theme: ThemeData(
               brightness: skin.isLight ? Brightness.light : Brightness.dark,
               scaffoldBackgroundColor: skin.bgBase,
@@ -128,15 +129,12 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   int _currentPage = 0;
 
-  // Slide-Controller: value = aktuelle Seite (0.0 / 1.0 / 2.0)
   late AnimationController _slideCtrl;
   bool _isDragging = false;
-  // Seite zu Beginn des Drags
   double _dragStartValue = 0;
 
   late AnimationController _menuAnimController;
   bool _menuOpen = false;
-  bool _prevDienstplanEnabled = false;
 
   DateTime _sharedDate = DateTime.now();
   DateTime _sharedMonth = DateTime(DateTime.now().year, DateTime.now().month);
@@ -145,63 +143,51 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
 
   StreamSubscription? _intentSub;
 
-  bool get _dienstplanEnabled {
-    final box = Hive.box('einstellungen');
-    return box.get('dienstplan_enabled', defaultValue: false) as bool;
-  }
+  bool get _dienstplanEnabled => true;
 
   int get _pageCount => _dienstplanEnabled ? 3 : 2;
 
   @override
-void initState() {
-  super.initState();
-  _prevDienstplanEnabled = _dienstplanEnabled;
+  void initState() {
+    super.initState();
 
-  _slideCtrl = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 320),
-    lowerBound: 0.0,
-    upperBound: 2.0,
-    value: 0.0,
-  );
-  _slideCtrl.addListener(() => setState(() {}));
+    _slideCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 320),
+      lowerBound: 0.0,
+      upperBound: 2.0,
+      value: 0.0,
+    );
+    _slideCtrl.addListener(() => setState(() {}));
 
-  _menuAnimController = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 250),
-  );
+    _menuAnimController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 250),
+    );
 
-  if (!kIsWeb) {
-    ReceiveSharingIntent.instance.getInitialMedia().then((files) {
-      debugPrint('📥 getInitialMedia: ${files.length} Dateien');
-      for (final f in files) {
-        debugPrint('  → ${f.path} | type: ${f.type}');
-      }
-      if (files.isNotEmpty) {
-        final path = files.first.path;
-        if (path != null && path.toLowerCase().endsWith('.pdf')) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
+    if (!kIsWeb) {
+      ReceiveSharingIntent.instance.getInitialMedia().then((files) {
+        if (files.isNotEmpty) {
+          final path = files.first.path;
+          if (path != null && path.toLowerCase().endsWith('.pdf')) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              _handleSharedPdf(path);
+            });
+          }
+        }
+      });
+
+      _intentSub =
+          ReceiveSharingIntent.instance.getMediaStream().listen((files) {
+        if (files.isNotEmpty) {
+          final path = files.first.path;
+          if (path != null && path.toLowerCase().endsWith('.pdf')) {
             _handleSharedPdf(path);
-          });
+          }
         }
-      }
-    });
-
-    _intentSub =
-        ReceiveSharingIntent.instance.getMediaStream().listen((files) {
-      debugPrint('📡 getMediaStream: ${files.length} Dateien');
-      for (final f in files) {
-        debugPrint('  → ${f.path} | type: ${f.type}');
-      }
-      if (files.isNotEmpty) {
-        final path = files.first.path;
-        if (path != null && path.toLowerCase().endsWith('.pdf')) {
-          _handleSharedPdf(path);
-        }
-      }
-    });
+      });
+    }
   }
-}
 
   @override
   void dispose() {
@@ -214,31 +200,201 @@ void initState() {
   // ── Share Intent ───────────────────────────────────────────────────────────
 
   void _handleSharedPdf(String path) async {
-  // DEBUG – zeigt was ankommt
-  debugPrint('📂 PDF empfangen: $path');
-  
-  final skin = AppTheme.of(context);
-  final fileName = path.split('/').last;
+    if (!mounted) return;
+    final skin = AppTheme.of(context);
+    final fileName = path.split('/').last;
 
-  debugPrint('📄 Dateiname: $fileName');
-  debugPrint('🔧 Dienstplan aktiviert: $_dienstplanEnabled');
+    // Kürze Dateinamen für Anzeige
+    String displayName = fileName;
+    if (displayName.length > 40) {
+      displayName = '${displayName.substring(0, 37)}...';
+    }
 
-  if (_dienstplanEnabled) {
-    await _animateToPage(2);
+    // ── Bestätigungs-Alert ─────────────────────────────────────────────────
+    final confirmed = await _showImportConfirmDialog(displayName, skin);
+    if (!mounted) return;
+    if (confirmed != true) return;
+
+    if (_dienstplanEnabled) {
+      await _animateToPage(2);
+    }
+    if (!mounted) return;
+    _autoImportPdf(path, fileName, skin);
   }
-  if (!mounted) return;
-  _autoImportPdf(path, fileName, skin);
-}
 
-// ── Öffentlich zugänglich für GlobalKey ───────────────────────────────────
-void handleSharedPdf(String path) => _handleSharedPdf(path);
+  Future<bool?> _showImportConfirmDialog(
+      String displayName, AppSkin skin) async {
+    return showGeneralDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Schließen',
+      barrierColor: Colors.black.withValues(alpha: 0.55),
+      transitionDuration: const Duration(milliseconds: 280),
+      transitionBuilder: (ctx, anim, _, child) {
+        final curved = CurvedAnimation(
+          parent: anim,
+          curve: Curves.easeOutBack,
+          reverseCurve: Curves.easeInBack,
+        );
+        return ScaleTransition(
+          scale: Tween<double>(begin: 0.82, end: 1.0).animate(curved),
+          child: FadeTransition(
+            opacity: anim,
+            child: child,
+          ),
+        );
+      },
+      pageBuilder: (ctx, _, __) => Center(
+        child: Material(
+          color: Colors.transparent,
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 32),
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: skin.bgCard,
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(color: skin.borderMedium),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.35),
+                  blurRadius: 32,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Icon + Titel
+                Row(children: [
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: skin.primaryWithAlpha(0.12),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(Icons.upload_file_outlined,
+                        color: skin.primary, size: 22),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Dienstplan importieren',
+                      style: TextStyle(
+                        color: skin.textPrimary,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ]),
+                const SizedBox(height: 16),
+                // Datei-Vorschau
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: skin.surface(0.05),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: skin.borderSubtle),
+                  ),
+                  child: Row(children: [
+                    Icon(Icons.picture_as_pdf_outlined,
+                        color: skin.primary, size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        displayName,
+                        style: TextStyle(
+                          color: skin.textPrimary,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ]),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Soll diese PDF als Dienstplan importiert werden?',
+                  style: TextStyle(
+                      color: skin.textMuted, fontSize: 13, height: 1.45),
+                ),
+                const SizedBox(height: 20),
+                Row(children: [
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => Navigator.pop(ctx, false),
+                      child: Container(
+                        padding:
+                            const EdgeInsets.symmetric(vertical: 13),
+                        decoration: BoxDecoration(
+                          color: skin.surface(0.06),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: skin.borderSubtle),
+                        ),
+                        child: Center(
+                          child: Text('Abbrechen',
+                              style: TextStyle(
+                                  color: skin.textMuted,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600)),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => Navigator.pop(ctx, true),
+                      child: Container(
+                        padding:
+                            const EdgeInsets.symmetric(vertical: 13),
+                        decoration: BoxDecoration(
+                          gradient: skin.gradient,
+                          borderRadius: BorderRadius.circular(12),
+                          boxShadow: [
+                            BoxShadow(
+                              color: skin.primaryWithAlpha(0.3),
+                              blurRadius: 8,
+                              offset: const Offset(0, 3),
+                            ),
+                          ],
+                        ),
+                        child: Center(
+                          child: Text('Importieren',
+                              style: TextStyle(
+                                  color: skin.onGradient,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w700)),
+                        ),
+                      ),
+                    ),
+                  ),
+                ]),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 
-  void _autoImportPdf(String path, String fileName, AppSkin skin) async {
+  void handleSharedPdf(String path) => _handleSharedPdf(path);
+
+  void _autoImportPdf(
+      String path, String fileName, AppSkin skin) async {
     final settingsBox = Hive.box('einstellungen');
     final scheduleName =
         settingsBox.get('dienstplan_name', defaultValue: '') as String;
-    final mainName = settingsBox.get('name', defaultValue: '') as String;
-    final userName = scheduleName.isNotEmpty ? scheduleName : mainName;
+    final mainName =
+        settingsBox.get('name', defaultValue: '') as String;
+    final userName =
+        scheduleName.isNotEmpty ? scheduleName : mainName;
     final devMode = settingsBox
         .get('dienstplan_dev_placeholder', defaultValue: false) as bool;
 
@@ -266,11 +422,13 @@ void handleSharedPdf(String path) => _handleSharedPdf(path);
     if (!mounted) return;
 
     final error = result['error'] as String?;
-    final data = Map<String, String>.from(result['data'] as Map? ?? {});
+    final data =
+        Map<String, String>.from(result['data'] as Map? ?? {});
     final DateTime? month = result['month'] as DateTime?;
 
-    // Bei Fehler: Sheet öffnen (mit Dev-Info falls devMode)
-    if ((error != null && error.isNotEmpty) || data.isEmpty || month == null) {
+    if ((error != null && error.isNotEmpty) ||
+        data.isEmpty ||
+        month == null) {
       _openUploadSheet(
         path,
         fileName,
@@ -281,9 +439,37 @@ void handleSharedPdf(String path) => _handleSharedPdf(path);
       return;
     }
 
-    // Erfolgreich → direkt speichern
     final monthKey =
         '${month.year.toString().padLeft(4, '0')}-${month.month.toString().padLeft(2, '0')}';
+
+    // ── Diff gegen vorhandenen Dienstplan ──────────────────────────────────
+    final existingRaw = settingsBox.get('schedule_$monthKey');
+    final Map<String, String> oldData = {};
+    if (existingRaw is Map) {
+      for (final e in existingRaw.entries) {
+        oldData[e.key.toString()] = e.value.toString();
+      }
+    }
+
+    if (oldData.isNotEmpty) {
+      final allKeys = {...oldData.keys, ...data.keys};
+      final changed = <String>{};
+      for (final k in allKeys) {
+        if ((oldData[k] ?? '').trim().toUpperCase() !=
+            (data[k] ?? '').trim().toUpperCase()) {
+          changed.add(k);
+        }
+      }
+      if (changed.isNotEmpty) {
+        final changedKey = 'schedule_changed_$monthKey';
+        final existingList = settingsBox.get(changedKey);
+        final existing = existingList is List
+            ? existingList.map((e) => e.toString()).toSet()
+            : <String>{};
+        settingsBox.put(changedKey, {...existing, ...changed}.toList());
+      }
+    }
+
     settingsBox.put('schedule_$monthKey', data);
     setState(() => _scheduleViewMonth = month);
 
@@ -292,7 +478,8 @@ void handleSharedPdf(String path) => _handleSharedPdf(path);
           '✓ Dienstplan ${_monthName(month.month)} ${month.year} importiert (${data.length} Tage)'),
       backgroundColor: skin.statComplete,
       behavior: SnackBarBehavior.floating,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      shape:
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 100),
       duration: const Duration(seconds: 3),
     ));
@@ -301,8 +488,18 @@ void handleSharedPdf(String path) => _handleSharedPdf(path);
   String _monthName(int m) {
     const names = [
       '',
-      'Januar', 'Februar', 'März', 'April', 'Mai', 'Juni',
-      'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember',
+      'Januar',
+      'Februar',
+      'März',
+      'April',
+      'Mai',
+      'Juni',
+      'Juli',
+      'August',
+      'September',
+      'Oktober',
+      'November',
+      'Dezember',
     ];
     return names[m.clamp(1, 12)];
   }
@@ -351,7 +548,7 @@ void handleSharedPdf(String path) => _handleSharedPdf(path);
 
   void _selectTab(int index) => _goToPage(index);
 
-  // ── Wischgesten (zentral, für alle Seiten identisch) ──────────────────────
+  // ── Wischgesten ─────────────────────────────────────────────────────────────
 
   void _onDragStart(DragStartDetails d) {
     if (_slideCtrl.isAnimating) _slideCtrl.stop();
@@ -362,10 +559,9 @@ void handleSharedPdf(String path) => _handleSharedPdf(path);
   void _onDragUpdate(DragUpdateDetails d) {
     if (!_isDragging) return;
     final screenW = MediaQuery.of(context).size.width;
-    // Negativ: nach links = höhere Seite
     final delta = -d.delta.dx / screenW;
-    final newVal =
-        (_slideCtrl.value + delta).clamp(0.0, (_pageCount - 1).toDouble());
+    final newVal = (_slideCtrl.value + delta)
+        .clamp(0.0, (_pageCount - 1).toDouble());
     _slideCtrl.value = newVal;
   }
 
@@ -373,19 +569,16 @@ void handleSharedPdf(String path) => _handleSharedPdf(path);
     if (!_isDragging) return;
     _isDragging = false;
 
-    final velocity = d.primaryVelocity ?? 0; // positiv = Finger nach rechts
+    final velocity = d.primaryVelocity ?? 0;
     final current = _slideCtrl.value;
-    final nearest = current.round();
 
     int targetPage;
     if (velocity < -400) {
-      // Schnell nach links → nächste Seite
       targetPage = (current.ceil()).clamp(0, _pageCount - 1);
     } else if (velocity > 400) {
-      // Schnell nach rechts → vorherige Seite
       targetPage = (current.floor()).clamp(0, _pageCount - 1);
     } else {
-      targetPage = nearest.clamp(0, _pageCount - 1);
+      targetPage = current.round().clamp(0, _pageCount - 1);
     }
 
     setState(() => _currentPage = targetPage);
@@ -416,11 +609,13 @@ void handleSharedPdf(String path) => _handleSharedPdf(path);
             key: const ValueKey('schedule'),
             onNavigateToHome: () => _goToPage(0),
             onNavigateToMonth: () => _goToPage(1),
-            onMonthChanged: (m) => setState(() => _scheduleViewMonth = m),
+            onMonthChanged: (m) =>
+                setState(() => _scheduleViewMonth = m),
           ),
       ];
 
-  bool get _isOnSchedulePage => _dienstplanEnabled && _currentPage == 2;
+  bool get _isOnSchedulePage =>
+      _dienstplanEnabled && _currentPage == 2;
 
   void _toggleMenu() {
     setState(() {
@@ -447,21 +642,6 @@ void handleSharedPdf(String path) => _handleSharedPdf(path);
     return ValueListenableBuilder(
       valueListenable: Hive.box('einstellungen').listenable(),
       builder: (context, box, _) {
-        final currentEnabled = _dienstplanEnabled;
-
-        if (!currentEnabled && _currentPage >= 2) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) _goToPage(0);
-          });
-        }
-        if (currentEnabled != _prevDienstplanEnabled) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) {
-              setState(() => _prevDienstplanEnabled = currentEnabled);
-            }
-          });
-        }
-
         final pages = _buildPages();
         final pageCount = pages.length;
 
@@ -469,26 +649,23 @@ void handleSharedPdf(String path) => _handleSharedPdf(path);
           backgroundColor: skin.bgBase,
           body: Stack(
             children: [
-              // ── Slides mit zentralem Gesture-Handler ───────────────────────
-              // RawGestureDetector hat höhere Priorität als GestureDetectors
-              // in den Child-Widgets → garantiert identisches Verhalten
-              // auf allen Seiten.
-              // RICHTIG – so muss es aussehen:
-RawGestureDetector(
-  gestures: <Type, GestureRecognizerFactory>{
-    HorizontalDragGestureRecognizer:
-        GestureRecognizerFactoryWithHandlers<HorizontalDragGestureRecognizer>(
-      () => HorizontalDragGestureRecognizer(),
-      (instance) {
-        instance
-          ..onStart = _onDragStart
-          ..onUpdate = _onDragUpdate
-          ..onEnd = _onDragEnd;
-      },
-    ),
-  },
-  behavior: HitTestBehavior.translucent,
-  child: Stack(
+              // ── Slides ────────────────────────────────────────────────────
+              RawGestureDetector(
+                gestures: <Type, GestureRecognizerFactory>{
+                  HorizontalDragGestureRecognizer:
+                      GestureRecognizerFactoryWithHandlers<
+                          HorizontalDragGestureRecognizer>(
+                    () => HorizontalDragGestureRecognizer(),
+                    (instance) {
+                      instance
+                        ..onStart = _onDragStart
+                        ..onUpdate = _onDragUpdate
+                        ..onEnd = _onDragEnd;
+                    },
+                  ),
+                },
+                behavior: HitTestBehavior.translucent,
+                child: Stack(
                   children: List.generate(pageCount, (i) {
                     final offset =
                         (i.toDouble() - _slideCtrl.value) * screenWidth;
@@ -504,15 +681,15 @@ RawGestureDetector(
                 ),
               ),
 
-              // ── Menu Overlay ───────────────────────────────────────────────
+              // ── Menu Overlay ──────────────────────────────────────────────
               if (_menuOpen)
                 GestureDetector(
                   onTap: _closeMenu,
-                  child:
-                      Container(color: Colors.black.withValues(alpha: 0.5)),
+                  child: Container(
+                      color: Colors.black.withValues(alpha: 0.5)),
                 ),
 
-              // ── Dropdown ───────────────────────────────────────────────────
+              // ── Dropdown ──────────────────────────────────────────────────
               AnimatedBuilder(
                 animation: _menuAnimController,
                 builder: (context, _) => Positioned(
@@ -530,11 +707,12 @@ RawGestureDetector(
                           decoration: BoxDecoration(
                             color: skin.bgCard,
                             borderRadius: BorderRadius.circular(18),
-                            border: Border.all(color: skin.borderMedium),
+                            border:
+                                Border.all(color: skin.borderMedium),
                             boxShadow: [
                               BoxShadow(
-                                color:
-                                    Colors.black.withValues(alpha: 0.3),
+                                color: Colors.black
+                                    .withValues(alpha: 0.3),
                                 blurRadius: 20,
                                 offset: const Offset(0, 8),
                               ),
@@ -602,7 +780,7 @@ RawGestureDetector(
                 ),
               ),
 
-              // ── Top Bar ────────────────────────────────────────────────────
+              // ── Top Bar ───────────────────────────────────────────────────
               Positioned(
                 top: 0,
                 left: 0,
@@ -660,7 +838,9 @@ RawGestureDetector(
                             turns: _menuOpen ? 0.125 : 0,
                             duration: const Duration(milliseconds: 250),
                             child: Icon(
-                              _menuOpen ? Icons.close : Icons.menu_rounded,
+                              _menuOpen
+                                  ? Icons.close
+                                  : Icons.menu_rounded,
                               color: skin.textPrimary,
                               size: 20,
                             ),
@@ -672,7 +852,7 @@ RawGestureDetector(
                 ),
               ),
 
-              // ── Bottom Nav ─────────────────────────────────────────────────
+              // ── Bottom Nav ────────────────────────────────────────────────
               Positioned(
                 bottom: 0,
                 left: 0,
@@ -680,7 +860,7 @@ RawGestureDetector(
                 child: _BottomNav(
                   pageValue: _slideCtrl.value,
                   selectedIndex: _currentPage,
-                  dienstplanEnabled: currentEnabled,
+                  dienstplanEnabled: true,
                   onTap: _selectTab,
                 ),
               ),
@@ -725,7 +905,8 @@ class _DropdownItem extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       child: Container(
         width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        padding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         child: Row(children: [
           Icon(icon, size: 20, color: skin.textMuted),
           const SizedBox(width: 12),
@@ -750,7 +931,7 @@ class _Divider extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Bottom Navigation – Pill groß genug für langen Text, exakt mittig
+// Bottom Navigation
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _BottomNav extends StatelessWidget {
@@ -772,18 +953,20 @@ class _BottomNav extends StatelessWidget {
     final count = dienstplanEnabled ? 3 : 2;
     final bottomPad = MediaQuery.of(context).padding.bottom;
 
+    // Dimensionen
     const double iconSize = 24.0;
     const double labelFontSize = 10.5;
     const double iconLabelGap = 4.0;
-    // Geschätzte Texthöhe
-    const double labelH = 13.0;
-    const double contentH = iconSize + iconLabelGap + labelH; // 41
-    // Pill hat 8px Luft oben+unten (je 4)
-    const double pillVPad = 4.0;
-    const double pillH = contentH + pillVPad * 2; // 49
+    const double labelH = 14.0;
+    const double contentH = iconSize + iconLabelGap + labelH; // 42
+    const double pillVPad = 7.0; // mehr Luft oben/unten in der Pill
+    const double pillH = contentH + pillVPad * 2; // 56
 
-    const double navTopPad = 10.0;
-    final double navH = navTopPad + pillH + bottomPad + 4.0;
+    // Gesamthöhe der NavBar: oben 12px Abstand, dann Pill, dann safe-area
+    const double navTopPad = 12.0;
+    // Nach der Pill noch etwas Luft + safe-area
+    final double navH =
+        navTopPad + pillH + (bottomPad > 0 ? bottomPad + 4.0 : 10.0);
 
     final items = [
       _NavItem(Icons.access_time_outlined, Icons.access_time_filled,
@@ -791,44 +974,48 @@ class _BottomNav extends StatelessWidget {
       _NavItem(Icons.calendar_month_outlined, Icons.calendar_month,
           'Monatsübersicht', 1),
       if (dienstplanEnabled)
-        _NavItem(Icons.event_note_outlined, Icons.event_note, 'Dienstplan', 2),
+        _NavItem(Icons.event_note_outlined, Icons.event_note,
+            'Dienstplan', 2),
     ];
 
     return Container(
       height: navH,
       decoration: BoxDecoration(
         color: skin.bgBase,
-        border:
-            Border(top: BorderSide(color: skin.borderSubtle, width: 0.5)),
+        border: Border(
+            top: BorderSide(color: skin.borderSubtle, width: 0.5)),
       ),
       child: LayoutBuilder(builder: (context, constraints) {
         final totalW = constraints.maxWidth;
         final itemW = totalW / count;
 
-        // Pill-Breite = itemW - 12px Rand (damit sie nie übersteht)
-        // Minimum so groß, dass Text passt (TextPainter wäre exact,
-        // hier nehmen wir itemW - 8 als sichere Obergrenze).
-        final pillW = (itemW - 8.0).clamp(60.0, itemW);
+        // Pill-Breite: etwas kleiner als itemW damit Ränder frei bleiben
+        final pillW = (itemW - 16.0).clamp(64.0, itemW - 8.0);
 
-        // Kontinuierliche Pill-Position
+        // Kontinuierliche Pill-X-Position
         final maxPages = (count - 1).toDouble().clamp(1.0, 99.0);
         final normPos = pageValue.clamp(0.0, maxPages) / maxPages;
         final pillCenterX = normPos * (totalW - itemW) + itemW / 2;
 
-        // Stretch-Effekt (max 12px extra, damit die Pill nie übersteht)
-        final frac = (pageValue - pageValue.truncateToDouble()).abs();
-        final stretch = frac < 0.5 ? frac * 2.0 : (1.0 - frac) * 2.0;
-        final stretchExtra = (itemW * 0.08 * stretch).clamp(0.0, 12.0);
-        final finalPillW = (pillW + stretchExtra).clamp(60.0, itemW);
+        // Stretch-Effekt
+        final frac =
+            (pageValue - pageValue.truncateToDouble()).abs();
+        final stretch =
+            frac < 0.5 ? frac * 2.0 : (1.0 - frac) * 2.0;
+        final stretchExtra =
+            (itemW * 0.07 * stretch).clamp(0.0, 10.0);
+        final finalPillW =
+            (pillW + stretchExtra).clamp(64.0, itemW - 4.0);
 
+        // Vertikale Positionierung: Pill oben, dann Items
         final pillTop = navTopPad;
-        // Icon+Label sollen vertikal mittig in der Pill sitzen
-        final contentTop = pillTop + pillVPad;
+        // Icon soll vertikal in der Pill zentriert sein
+        final iconTop = pillTop + pillVPad;
 
         return Stack(
           clipBehavior: Clip.none,
           children: [
-            // ── Pill ─────────────────────────────────────────────────────
+            // ── Pill ──────────────────────────────────────────────────
             Positioned(
               top: pillTop,
               left: pillCenterX - finalPillW / 2,
@@ -844,48 +1031,56 @@ class _BottomNav extends StatelessWidget {
               ),
             ),
 
-            // ── Items ────────────────────────────────────────────────────
-            Row(
-              children: items.map((item) {
-                final isSelected = selectedIndex == item.index;
-                return GestureDetector(
-                  onTap: () => onTap(item.index),
-                  behavior: HitTestBehavior.opaque,
-                  child: SizedBox(
-                    width: itemW,
-                    height: navH,
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.start,
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        SizedBox(height: contentTop),
-                        Icon(
-                          isSelected ? item.activeIcon : item.icon,
-                          color: isSelected
-                              ? skin.primary
-                              : skin.surface(0.38),
-                          size: iconSize,
+            // ── Items ─────────────────────────────────────────────────
+            SizedBox(
+              height: navH,
+              child: Row(
+                children: items.map((item) {
+                  final isSelected = selectedIndex == item.index;
+                  return GestureDetector(
+                    onTap: () => onTap(item.index),
+                    behavior: HitTestBehavior.opaque,
+                    child: SizedBox(
+                      width: itemW,
+                      height: navH,
+                      child: Padding(
+                        padding: EdgeInsets.only(top: iconTop),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment:
+                              CrossAxisAlignment.center,
+                          children: [
+                            Icon(
+                              isSelected
+                                  ? item.activeIcon
+                                  : item.icon,
+                              color: isSelected
+                                  ? skin.primary
+                                  : skin.surface(0.38),
+                              size: iconSize,
+                            ),
+                            const SizedBox(height: iconLabelGap),
+                            Text(
+                              item.label,
+                              textAlign: TextAlign.center,
+                              maxLines: 1,
+                              style: TextStyle(
+                                fontSize: labelFontSize,
+                                fontWeight: isSelected
+                                    ? FontWeight.w600
+                                    : FontWeight.w400,
+                                color: isSelected
+                                    ? skin.primary
+                                    : skin.surface(0.38),
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: iconLabelGap),
-                        Text(
-                          item.label,
-                          textAlign: TextAlign.center,
-                          maxLines: 1,
-                          style: TextStyle(
-                            fontSize: labelFontSize,
-                            fontWeight: isSelected
-                                ? FontWeight.w600
-                                : FontWeight.w400,
-                            color: isSelected
-                                ? skin.primary
-                                : skin.surface(0.38),
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
-                  ),
-                );
-              }).toList(),
+                  );
+                }).toList(),
+              ),
             ),
           ],
         );

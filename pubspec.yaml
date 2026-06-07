@@ -38,3 +38,5 @@ flutter:
   uses-material-design: true
   assets:
     - assets/logo.png
+  config:
+    enable-lldb-debugging: false

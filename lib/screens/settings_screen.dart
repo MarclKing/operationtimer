@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../theme/app_theme.dart';
-import '../services/pdf_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -13,10 +12,10 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   final _nameController = TextEditingController();
+  final _scheduleNameController = TextEditingController();
   int _deleteAfterMonths = 3;
   String _activeSkin = 'chrome';
   bool _nachtschichtModus = false;
-  bool _dienstplanEnabled = false;
   bool _dienstplanDevMode = false;
 
   @override
@@ -24,12 +23,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.initState();
     final box = Hive.box('einstellungen');
     _nameController.text = box.get('name', defaultValue: '');
+    _scheduleNameController.text =
+        box.get('dienstplan_name', defaultValue: '');
     _deleteAfterMonths = box.get('deleteAfterMonths', defaultValue: 3);
     _activeSkin = box.get(AppTheme.hiveKey, defaultValue: 'chrome') as String;
     _nachtschichtModus =
         box.get('nachtschicht_modus', defaultValue: false) as bool;
-    _dienstplanEnabled =
-        box.get('dienstplan_enabled', defaultValue: false) as bool;
     _dienstplanDevMode =
         box.get('dienstplan_dev_placeholder', defaultValue: false) as bool;
     _autoDeleteOldEntries();
@@ -38,6 +37,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void dispose() {
     _nameController.dispose();
+    _scheduleNameController.dispose();
     super.dispose();
   }
 
@@ -51,11 +51,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void _setNachtschichtModus(bool value) {
     setState(() => _nachtschichtModus = value);
     Hive.box('einstellungen').put('nachtschicht_modus', value);
-  }
-
-  void _setDienstplanEnabled(bool value) {
-    setState(() => _dienstplanEnabled = value);
-    Hive.box('einstellungen').put('dienstplan_enabled', value);
   }
 
   // ── Dev-Modus hinter PIN-Code ─────────────────────────────────────────────
@@ -73,24 +68,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   // ── PIN Dialog ────────────────────────────────────────────────────────────
-  //
-  // Behaviour:
-  //  • Auto-submits as soon as 4 digits are typed (no confirm button)
-  //  • Only one "Abbrechen" button visible
-  //  • Uses numberPad keyboard (large digit-only pad on iOS)
-  //  • After 3 wrong attempts the dialog closes silently and shows a
-  //    brief top-level alert ("PIN zu oft falsch eingegeben").
-  //    A 60-second cooldown runs invisibly. After cooldown the user
-  //    gets another 3 attempts – repeatable indefinitely.
-  //
   static int _pinFailCount = 0;
   static DateTime? _pinCooldownUntil;
 
   Future<bool> _showPinDialog() async {
-    // Check if we are still in cooldown (runs silently)
     if (_pinCooldownUntil != null &&
         DateTime.now().isBefore(_pinCooldownUntil!)) {
-      // Show the block alert and return false immediately
       await _showPinBlockedAlert();
       return false;
     }
@@ -102,43 +85,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     await showDialog(
       context: context,
-      barrierDismissible: true,       // dismiss by tapping outside
+      barrierDismissible: true,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialog) {
-          // Auto-submit handler – called by onChanged when length == 4
           void trySubmit(String value) {
             if (value.length != 4 || dialogClosed) return;
             if (value == '2210') {
-              // Correct
               dialogClosed = true;
               _pinFailCount = 0;
               _pinCooldownUntil = null;
               result = true;
               Navigator.pop(ctx);
             } else {
-              // Wrong attempt
               _pinFailCount++;
               controller.clear();
               if (_pinFailCount >= 3) {
-                // Lock out
                 dialogClosed = true;
                 _pinCooldownUntil =
                     DateTime.now().add(const Duration(minutes: 1));
                 _pinFailCount = 0;
                 Navigator.pop(ctx);
-                // Show alert after frame
                 WidgetsBinding.instance.addPostFrameCallback((_) {
                   _showPinBlockedAlert();
                 });
               } else {
-                // Just shake / show error via state
-                setDialog(() {}); // rebuild to show brief red tint
+                setDialog(() {});
               }
             }
           }
 
           return GestureDetector(
-            // Dismiss keyboard when tapping outside the TextField
             onTap: () => FocusScope.of(ctx).unfocus(),
             behavior: HitTestBehavior.translucent,
             child: AlertDialog(
@@ -153,7 +129,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     color: const Color(0xFFEF5B5B).withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(5),
                     border: Border.all(
-                        color: const Color(0xFFEF5B5B).withValues(alpha: 0.35)),
+                        color:
+                            const Color(0xFFEF5B5B).withValues(alpha: 0.35)),
                   ),
                   child: const Text('DEV',
                       style: TextStyle(
@@ -189,7 +166,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     child: TextField(
                       controller: controller,
                       autofocus: true,
-                      // number type + digitsOnly = large digit pad on iOS
                       keyboardType: TextInputType.number,
                       obscureText: true,
                       maxLength: 4,
@@ -202,8 +178,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           letterSpacing: 8),
                       decoration: InputDecoration(
                         hintText: '••••',
-                        hintStyle: TextStyle(
-                            color: skin.textHint, letterSpacing: 8),
+                        hintStyle:
+                            TextStyle(color: skin.textHint, letterSpacing: 8),
                         border: InputBorder.none,
                         isDense: true,
                         counterText: '',
@@ -214,7 +190,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                 ],
               ),
-              // Only Abbrechen – no confirm button needed (auto-submit)
               actions: [
                 TextButton(
                   onPressed: () {
@@ -298,6 +273,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final formatted = _capitalizeEachWord(_nameController.text);
     _nameController.text = formatted;
     box.put('name', formatted);
+    box.put('dienstplan_name', _scheduleNameController.text.trim());
     box.put('deleteAfterMonths', _deleteAfterMonths);
     _autoDeleteOldEntries();
     final skin = AppTheme.of(context);
@@ -309,29 +285,77 @@ class _SettingsScreenState extends State<SettingsScreen> {
     ));
   }
 
+  /// Löscht alle Einträge (Zeiterfassung + Dienstplan), deren Monat
+  /// kalendarisch älter als [_deleteAfterMonths] Monate ist.
+  ///
+  /// Beispiel: Heute = Juni, Einstellung = 3 Monate
+  /// → Cutoff-Monat = März  → alles vor April wird gelöscht.
   void _autoDeleteOldEntries() {
-    final box = Hive.box('arbeitszeiten');
-    final cutoff =
-        DateTime.now().subtract(Duration(days: _deleteAfterMonths * 30));
-    final keysToDelete = box.keys.where((key) {
+    final now = DateTime.now();
+    // Cutoff ist der erste Tag des Monats, der genau X Monate zurückliegt.
+    // Alles DAVOR (also älter) wird gelöscht.
+    final cutoffMonth = DateTime(now.year, now.month - _deleteAfterMonths);
+
+    // ── Zeiterfassung (Box 'arbeitszeiten', Keys: 'yyyy-MM-dd') ──────────
+    final zeitBox = Hive.box('arbeitszeiten');
+    final zeitKeysToDelete = zeitBox.keys.where((key) {
       try {
-        return DateTime.parse(key.toString()).isBefore(cutoff);
+        final date = DateTime.parse(key.toString());
+        // Monatsbeginn des Eintrags
+        final entryMonth = DateTime(date.year, date.month);
+        return entryMonth.isBefore(cutoffMonth);
       } catch (_) {
         return false;
       }
     }).toList();
-    for (final key in keysToDelete) {
-      box.delete(key);
+    for (final key in zeitKeysToDelete) {
+      zeitBox.delete(key);
     }
-  }
 
-  Future<void> _selectMonthForExport() async {
-    await PdfService.showMonthPickerAndExport(context);
+    // ── Dienstplan (Box 'einstellungen', Keys: 'schedule_yyyy-MM') ───────
+    final settingsBox = Hive.box('einstellungen');
+    final scheduleKeysToDelete = settingsBox.keys.where((key) {
+      final k = key.toString();
+      if (!k.startsWith('schedule_')) return false;
+      try {
+        // Key-Format: 'schedule_yyyy-MM'
+        final monthStr = k.substring('schedule_'.length); // → 'yyyy-MM'
+        final parts = monthStr.split('-');
+        if (parts.length < 2) return false;
+        final entryMonth =
+            DateTime(int.parse(parts[0]), int.parse(parts[1]));
+        return entryMonth.isBefore(cutoffMonth);
+      } catch (_) {
+        return false;
+      }
+    }).toList();
+    for (final key in scheduleKeysToDelete) {
+      settingsBox.delete(key);
+    }
+
+    // ── Dienstplan-Notizen (Keys: 'schedule_note_yyyy-MM-dd') ────────────
+    final noteKeysToDelete = settingsBox.keys.where((key) {
+      final k = key.toString();
+      if (!k.startsWith('schedule_note_')) return false;
+      try {
+        final dateStr = k.substring('schedule_note_'.length);
+        final date = DateTime.parse(dateStr);
+        final entryMonth = DateTime(date.year, date.month);
+        return entryMonth.isBefore(cutoffMonth);
+      } catch (_) {
+        return false;
+      }
+    }).toList();
+    for (final key in noteKeysToDelete) {
+      settingsBox.delete(key);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final skin = AppTheme.of(context);
+    final monthLabel =
+        '$_deleteAfterMonths Monat${_deleteAfterMonths > 1 ? 'en' : ''}';
 
     return Scaffold(
       backgroundColor: skin.bgBase,
@@ -509,31 +533,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
                         const SizedBox(height: 16),
 
-                        // ── PDF Export ──────────────────────────────────────
-                        _SettingsCard(
-                          emoji: '📄',
-                          title: 'PDF Export',
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Exportiere deine Arbeitszeiten als PDF inkl. Notizen und teile sie per Mail, WhatsApp oder AirDrop.',
-                                style: TextStyle(
-                                    fontSize: 13,
-                                    color: skin.textMuted,
-                                    height: 1.5),
-                              ),
-                              const SizedBox(height: 12),
-                              _GradientButton(
-                                label: '📤  Zeiten exportieren & teilen',
-                                onTap: _selectMonthForExport,
-                              ),
-                            ],
-                          ),
-                        ),
-
-                        const SizedBox(height: 16),
-
                         // ── Datenverwaltung ─────────────────────────────────
                         _SettingsCard(
                           emoji: '🗑',
@@ -542,7 +541,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'Alte Einträge werden automatisch gelöscht nach:',
+                                'Wähle, nach wie vielen Monaten alte Daten automatisch gelöscht werden sollen:',
                                 style: TextStyle(
                                     fontSize: 13, color: skin.textMuted),
                               ),
@@ -562,9 +561,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                       padding: const EdgeInsets.symmetric(
                                           horizontal: 16, vertical: 10),
                                       decoration: BoxDecoration(
-                                        gradient: isSelected
-                                            ? skin.gradient
-                                            : null,
+                                        gradient:
+                                            isSelected ? skin.gradient : null,
                                         color: isSelected
                                             ? null
                                             : skin.surface(0.05),
@@ -596,18 +594,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 decoration: BoxDecoration(
                                   color: skin.surface(0.03),
                                   borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(
+                                      color: skin.borderSubtle),
                                 ),
                                 child: Row(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
                                   children: [
                                     Icon(Icons.info_outline,
                                         color: skin.textMuted, size: 18),
                                     const SizedBox(width: 8),
                                     Expanded(
                                       child: Text(
-                                        'Einträge werden automatisch gelöscht, sobald sie älter als die ausgewählte Zeit sind.',
+                                        'Zeiterfassungs-Einträge und Dienstplan-Daten werden automatisch gelöscht, sobald ihr Monat kalendarisch mehr als $monthLabel zurückliegt – unabhängig davon, wann sie eingetragen wurden.',
                                         style: TextStyle(
                                             fontSize: 11,
-                                            color: skin.textMuted),
+                                            color: skin.textMuted,
+                                            height: 1.5),
                                       ),
                                     ),
                                   ],
@@ -684,35 +687,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text(
-                                    _dienstplanEnabled
-                                        ? '✅ Aktiviert'
-                                        : '⬜ Deaktiviert',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w600,
-                                      color: _dienstplanEnabled
-                                          ? skin.statComplete
-                                          : skin.textMuted,
-                                    ),
-                                  ),
-                                  Switch(
-                                    value: _dienstplanEnabled,
-                                    onChanged: _setDienstplanEnabled,
-                                    activeThumbColor: skin.statComplete,
-                                    activeTrackColor: skin.statComplete
-                                        .withValues(alpha: 0.3),
-                                    inactiveThumbColor: skin.textMuted,
-                                    inactiveTrackColor: skin.surface(0.1),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 12),
-
                               // Beta warning
                               Container(
                                 padding: const EdgeInsets.all(12),
@@ -747,83 +721,81 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 ),
                               ),
 
-                              if (_dienstplanEnabled) ...[
-                                const SizedBox(height: 16),
+                              const SizedBox(height: 16),
 
-                                // ── Entwickler-Modus ────────────────────────
-                                // NOTE: No "Speichern" button here – the switch
-                                // already persists to Hive immediately.
-                                Container(
-                                  padding: const EdgeInsets.all(14),
-                                  decoration: BoxDecoration(
-                                    color: skin.surface(0.03),
-                                    borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(
-                                        color: skin.borderSubtle),
-                                  ),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Row(
-                                        children: [
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(
-                                                horizontal: 6, vertical: 2),
-                                            decoration: BoxDecoration(
-                                              color: const Color(0xFFEF5B5B)
-                                                  .withValues(alpha: 0.15),
-                                              borderRadius:
-                                                  BorderRadius.circular(5),
-                                              border: Border.all(
-                                                  color: const Color(0xFFEF5B5B)
-                                                      .withValues(alpha: 0.35)),
-                                            ),
-                                            child: const Text('DEV',
-                                                style: TextStyle(
-                                                    fontSize: 10,
-                                                    fontWeight: FontWeight.w700,
-                                                    color: Color(0xFFEF5B5B),
-                                                    letterSpacing: 0.8)),
-                                          ),
-                                          const SizedBox(width: 8),
-                                          Expanded(
-                                            child: Text(
-                                              'Entwickler-Modus',
-                                              style: TextStyle(
-                                                fontSize: 14,
-                                                fontWeight: FontWeight.w600,
-                                                color: skin.textPrimary,
-                                              ),
-                                            ),
-                                          ),
-                                          Switch(
-                                            value: _dienstplanDevMode,
-                                            onChanged: _toggleDevMode,
-                                            activeThumbColor:
-                                                const Color(0xFFEF5B5B),
-                                            activeTrackColor:
-                                                const Color(0xFFEF5B5B)
-                                                    .withValues(alpha: 0.3),
-                                            inactiveThumbColor:
-                                                skin.textMuted,
-                                            inactiveTrackColor:
-                                                skin.surface(0.1),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 8),
-                                      Text(
-                                        'Aktiviert erweiterte Fehlermeldungen beim PDF-Import mit technischen Details. Erleichtert die Fehleranalyse bei Problemen mit dem Dienstplan-Import.',
-                                        style: TextStyle(
-                                            fontSize: 11,
-                                            color: skin.textMuted,
-                                            height: 1.45),
-                                      ),
-                                    ],
-                                  ),
+                              // ── Entwickler-Modus ──────────────────────────
+                              Container(
+                                padding: const EdgeInsets.all(14),
+                                decoration: BoxDecoration(
+                                  color: skin.surface(0.03),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                      color: skin.borderSubtle),
                                 ),
-                              ],
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 6, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFFEF5B5B)
+                                                .withValues(alpha: 0.15),
+                                            borderRadius:
+                                                BorderRadius.circular(5),
+                                            border: Border.all(
+                                                color:
+                                                    const Color(0xFFEF5B5B)
+                                                        .withValues(
+                                                            alpha: 0.35)),
+                                          ),
+                                          child: const Text('DEV',
+                                              style: TextStyle(
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.w700,
+                                                  color: Color(0xFFEF5B5B),
+                                                  letterSpacing: 0.8)),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            'Entwickler-Modus',
+                                            style: TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w600,
+                                              color: skin.textPrimary,
+                                            ),
+                                          ),
+                                        ),
+                                        Switch(
+                                          value: _dienstplanDevMode,
+                                          onChanged: _toggleDevMode,
+                                          activeThumbColor:
+                                              const Color(0xFFEF5B5B),
+                                          activeTrackColor:
+                                              const Color(0xFFEF5B5B)
+                                                  .withValues(alpha: 0.3),
+                                          inactiveThumbColor:
+                                              skin.textMuted,
+                                          inactiveTrackColor:
+                                              skin.surface(0.1),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      'Aktiviert erweiterte Fehlermeldungen beim PDF-Import mit technischen Details. Erleichtert die Fehleranalyse bei Problemen mit dem Dienstplan-Import.',
+                                      style: TextStyle(
+                                          fontSize: 11,
+                                          color: skin.textMuted,
+                                          height: 1.45),
+                                    ),
+                                  ],
+                                ),
+                              ),
                             ],
                           ),
                         ),

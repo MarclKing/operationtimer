@@ -1,6 +1,6 @@
-import Flutter
 import UIKit
-import receive_sharing_intent
+import Flutter
+import WidgetKit
 
 @main
 @objc class AppDelegate: FlutterAppDelegate {
@@ -9,18 +9,29 @@ import receive_sharing_intent
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
     GeneratedPluginRegistrant.register(with: self)
-    return super.application(application, didFinishLaunchingWithOptions: launchOptions)
-  }
 
-  override func application(
-    _ app: UIApplication,
-    open url: URL,
-    options: [UIApplication.OpenURLOptionsKey: Any] = [:]
-  ) -> Bool {
-    let sharingIntent = SwiftReceiveSharingIntentPlugin.instance
-    if sharingIntent.hasMatchingSchemePrefix(url: url) {
-      return sharingIntent.application(app, open: url, options: options)
+    let controller = window?.rootViewController as! FlutterViewController
+    let channel = FlutterMethodChannel(
+      name: "de.marcel.optimes/widget",
+      binaryMessenger: controller.binaryMessenger
+    )
+
+    channel.setMethodCallHandler { call, result in
+      if call.method == "updateWidget" {
+        if let args = call.arguments as? [String: Any],
+           let data = args["data"] as? String {
+          let defaults = UserDefaults(suiteName: "group.de.marcel.optimes")
+          defaults?.set(data, forKey: "schedule_entries")
+          if #available(iOS 14.0, *) {
+            WidgetCenter.shared.reloadAllTimelines()
+          }
+        }
+        result(nil)
+      } else {
+        result(FlutterMethodNotImplemented)
+      }
     }
-    return super.application(app, open: url, options: options)
+
+    return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 }
