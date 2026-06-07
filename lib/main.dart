@@ -161,6 +161,10 @@ void initState() {
 
   if (!kIsWeb) {
     ReceiveSharingIntent.instance.getInitialMedia().then((files) {
+      debugPrint('📥 getInitialMedia: ${files.length} Dateien');
+      for (final f in files) {
+        debugPrint('  → ${f.path} | type: ${f.type}');
+      }
       if (files.isNotEmpty) {
         final path = files.first.path;
         if (path != null && path.toLowerCase().endsWith('.pdf')) {
@@ -173,6 +177,10 @@ void initState() {
 
     _intentSub =
         ReceiveSharingIntent.instance.getMediaStream().listen((files) {
+      debugPrint('📡 getMediaStream: ${files.length} Dateien');
+      for (final f in files) {
+        debugPrint('  → ${f.path} | type: ${f.type}');
+      }
       if (files.isNotEmpty) {
         final path = files.first.path;
         if (path != null && path.toLowerCase().endsWith('.pdf')) {
@@ -194,15 +202,21 @@ void initState() {
   // ── Share Intent ───────────────────────────────────────────────────────────
 
   void _handleSharedPdf(String path) async {
-    final skin = AppTheme.of(context);
-    final fileName = path.split('/').last;
+  // DEBUG – zeigt was ankommt
+  debugPrint('📂 PDF empfangen: $path');
+  
+  final skin = AppTheme.of(context);
+  final fileName = path.split('/').last;
 
-    if (_dienstplanEnabled) {
-      await _animateToPage(2);
-    }
-    if (!mounted) return;
-    _autoImportPdf(path, fileName, skin);
+  debugPrint('📄 Dateiname: $fileName');
+  debugPrint('🔧 Dienstplan aktiviert: $_dienstplanEnabled');
+
+  if (_dienstplanEnabled) {
+    await _animateToPage(2);
   }
+  if (!mounted) return;
+  _autoImportPdf(path, fileName, skin);
+}
 
   void _autoImportPdf(String path, String fileName, AppSkin skin) async {
     final settingsBox = Hive.box('einstellungen');
