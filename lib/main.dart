@@ -12,6 +12,8 @@ import 'screens/settings_screen.dart';
 import 'screens/support_screen.dart';
 import 'services/pdf_service.dart';
 import 'theme/app_theme.dart';
+import 'package:flutter/gestures.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -104,10 +106,6 @@ class MyApp extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// MainScreen
-// ─────────────────────────────────────────────────────────────────────────────
-
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
 
@@ -118,9 +116,11 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   int _currentPage = 0;
 
+  // Slide-Controller: value = aktuelle Seite (0.0 / 1.0 / 2.0)
   late AnimationController _slideCtrl;
-
   bool _isDragging = false;
+  // Seite zu Beginn des Drags
+  double _dragStartValue = 0;
 
   late AnimationController _menuAnimController;
   bool _menuOpen = false;
@@ -141,25 +141,25 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   int get _pageCount => _dienstplanEnabled ? 3 : 2;
 
   @override
-  void initState() {
-    super.initState();
-    _prevDienstplanEnabled = _dienstplanEnabled;
+void initState() {
+  super.initState();
+  _prevDienstplanEnabled = _dienstplanEnabled;
 
-    _slideCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 320),
-      lowerBound: 0.0,
-      upperBound: 2.0,
-      value: 0.0,
-    );
-    _slideCtrl.addListener(() => setState(() {}));
+  _slideCtrl = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 320),
+    lowerBound: 0.0,
+    upperBound: 2.0,
+    value: 0.0,
+  );
+  _slideCtrl.addListener(() => setState(() {}));
 
-    _menuAnimController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 250),
-    );
+  _menuAnimController = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 250),
+  );
 
-    // Share Intent: App war geschlossen
+  if (!kIsWeb) {
     ReceiveSharingIntent.instance.getInitialMedia().then((files) {
       if (files.isNotEmpty) {
         final path = files.first.path;
@@ -171,7 +171,6 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       }
     });
 
-    // Share Intent: App war im Hintergrund
     _intentSub =
         ReceiveSharingIntent.instance.getMediaStream().listen((files) {
       if (files.isNotEmpty) {
@@ -182,6 +181,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       }
     });
   }
+}
 
   @override
   void dispose() {
@@ -191,7 +191,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     super.dispose();
   }
 
-  // ── Share Intent Handler ───────────────────────────────────────────────────
+  // ── Share Intent ───────────────────────────────────────────────────────────
 
   void _handleSharedPdf(String path) async {
     final skin = AppTheme.of(context);
@@ -200,7 +200,6 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     if (_dienstplanEnabled) {
       await _animateToPage(2);
     }
-
     if (!mounted) return;
     _autoImportPdf(path, fileName, skin);
   }
@@ -209,12 +208,10 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     final settingsBox = Hive.box('einstellungen');
     final scheduleName =
         settingsBox.get('dienstplan_name', defaultValue: '') as String;
-    final mainName =
-        settingsBox.get('name', defaultValue: '') as String;
+    final mainName = settingsBox.get('name', defaultValue: '') as String;
     final userName = scheduleName.isNotEmpty ? scheduleName : mainName;
-    final devMode =
-        settingsBox.get('dienstplan_dev_placeholder', defaultValue: false)
-            as bool;
+    final devMode = settingsBox
+        .get('dienstplan_dev_placeholder', defaultValue: false) as bool;
 
     List<int>? bytes;
     try {
@@ -243,24 +240,30 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     final data = Map<String, String>.from(result['data'] as Map? ?? {});
     final DateTime? month = result['month'] as DateTime?;
 
+    // Bei Fehler: Sheet öffnen (mit Dev-Info falls devMode)
     if ((error != null && error.isNotEmpty) || data.isEmpty || month == null) {
-      _openUploadSheet(path, fileName, skin, preloadedBytes: bytes);
+      _openUploadSheet(
+        path,
+        fileName,
+        skin,
+        preloadedBytes: bytes,
+        autoImportError: devMode ? (error ?? 'Unbekannter Fehler') : null,
+      );
       return;
     }
 
-    final monthKey = '${month.year.toString().padLeft(4, '0')}-'
-        '${month.month.toString().padLeft(2, '0')}';
+    // Erfolgreich → direkt speichern
+    final monthKey =
+        '${month.year.toString().padLeft(4, '0')}-${month.month.toString().padLeft(2, '0')}';
     settingsBox.put('schedule_$monthKey', data);
     setState(() => _scheduleViewMonth = month);
 
-    final monthLabel = _monthName(month.month);
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(
-          '✓ Dienstplan $monthLabel ${month.year} importiert (${data.length} Tage)'),
+          '✓ Dienstplan ${_monthName(month.month)} ${month.year} importiert (${data.length} Tage)'),
       backgroundColor: skin.statComplete,
       behavior: SnackBarBehavior.floating,
-      shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 100),
       duration: const Duration(seconds: 3),
     ));
@@ -280,6 +283,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     String fileName,
     AppSkin skin, {
     List<int>? preloadedBytes,
+    String? autoImportError,
   }) {
     showModalBottomSheet(
       context: context,
@@ -292,6 +296,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
         preloadedFilePath: path,
         preloadedFileName: fileName,
         preloadedBytes: preloadedBytes,
+        autoImportError: autoImportError,
         onImported: () => setState(() {}),
       ),
     );
@@ -317,16 +322,18 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
 
   void _selectTab(int index) => _goToPage(index);
 
-  // ── Wischgesten ────────────────────────────────────────────────────────────
+  // ── Wischgesten (zentral, für alle Seiten identisch) ──────────────────────
 
   void _onDragStart(DragStartDetails d) {
     if (_slideCtrl.isAnimating) _slideCtrl.stop();
+    _dragStartValue = _slideCtrl.value;
     _isDragging = true;
   }
 
   void _onDragUpdate(DragUpdateDetails d) {
     if (!_isDragging) return;
     final screenW = MediaQuery.of(context).size.width;
+    // Negativ: nach links = höhere Seite
     final delta = -d.delta.dx / screenW;
     final newVal =
         (_slideCtrl.value + delta).clamp(0.0, (_pageCount - 1).toDouble());
@@ -337,15 +344,17 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     if (!_isDragging) return;
     _isDragging = false;
 
-    final velocity = d.primaryVelocity ?? 0;
+    final velocity = d.primaryVelocity ?? 0; // positiv = Finger nach rechts
     final current = _slideCtrl.value;
     final nearest = current.round();
 
     int targetPage;
-    if (velocity < -500) {
-      targetPage = (nearest + 1).clamp(0, _pageCount - 1);
-    } else if (velocity > 500) {
-      targetPage = (nearest - 1).clamp(0, _pageCount - 1);
+    if (velocity < -400) {
+      // Schnell nach links → nächste Seite
+      targetPage = (current.ceil()).clamp(0, _pageCount - 1);
+    } else if (velocity > 400) {
+      // Schnell nach rechts → vorherige Seite
+      targetPage = (current.floor()).clamp(0, _pageCount - 1);
     } else {
       targetPage = nearest.clamp(0, _pageCount - 1);
     }
@@ -353,7 +362,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     setState(() => _currentPage = targetPage);
     _slideCtrl.animateTo(
       targetPage.toDouble(),
-      duration: const Duration(milliseconds: 280),
+      duration: const Duration(milliseconds: 260),
       curve: Curves.easeOutCubic,
     );
   }
@@ -431,13 +440,26 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
           backgroundColor: skin.bgBase,
           body: Stack(
             children: [
-              // ── Slides ─────────────────────────────────────────────────────
-              GestureDetector(
-                onHorizontalDragStart: _onDragStart,
-                onHorizontalDragUpdate: _onDragUpdate,
-                onHorizontalDragEnd: _onDragEnd,
-                behavior: HitTestBehavior.translucent,
-                child: Stack(
+              // ── Slides mit zentralem Gesture-Handler ───────────────────────
+              // RawGestureDetector hat höhere Priorität als GestureDetectors
+              // in den Child-Widgets → garantiert identisches Verhalten
+              // auf allen Seiten.
+              // RICHTIG – so muss es aussehen:
+RawGestureDetector(
+  gestures: <Type, GestureRecognizerFactory>{
+    HorizontalDragGestureRecognizer:
+        GestureRecognizerFactoryWithHandlers<HorizontalDragGestureRecognizer>(
+      () => HorizontalDragGestureRecognizer(),
+      (instance) {
+        instance
+          ..onStart = _onDragStart
+          ..onUpdate = _onDragUpdate
+          ..onEnd = _onDragEnd;
+      },
+    ),
+  },
+  behavior: HitTestBehavior.translucent,
+  child: Stack(
                   children: List.generate(pageCount, (i) {
                     final offset =
                         (i.toDouble() - _slideCtrl.value) * screenWidth;
@@ -457,11 +479,11 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
               if (_menuOpen)
                 GestureDetector(
                   onTap: _closeMenu,
-                  child: Container(
-                      color: Colors.black.withValues(alpha: 0.5)),
+                  child:
+                      Container(color: Colors.black.withValues(alpha: 0.5)),
                 ),
 
-              // ── Dropdown Menü ──────────────────────────────────────────────
+              // ── Dropdown ───────────────────────────────────────────────────
               AnimatedBuilder(
                 animation: _menuAnimController,
                 builder: (context, _) => Positioned(
@@ -609,9 +631,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                             turns: _menuOpen ? 0.125 : 0,
                             duration: const Duration(milliseconds: 250),
                             child: Icon(
-                              _menuOpen
-                                  ? Icons.close
-                                  : Icons.menu_rounded,
+                              _menuOpen ? Icons.close : Icons.menu_rounded,
                               color: skin.textPrimary,
                               size: 20,
                             ),
@@ -676,8 +696,7 @@ class _DropdownItem extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       child: Container(
         width: double.infinity,
-        padding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         child: Row(children: [
           Icon(icon, size: 20, color: skin.textMuted),
           const SizedBox(width: 12),
@@ -702,7 +721,7 @@ class _Divider extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Bottom Navigation
+// Bottom Navigation – Pill groß genug für langen Text, exakt mittig
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _BottomNav extends StatelessWidget {
@@ -724,13 +743,18 @@ class _BottomNav extends StatelessWidget {
     final count = dienstplanEnabled ? 3 : 2;
     final bottomPad = MediaQuery.of(context).padding.bottom;
 
-    const double iconSize    = 26.0;
-    const double labelH      = 14.0;
-    const double iconLabelGap = 4.0;
-    const double itemH       = iconSize + iconLabelGap + labelH; // 44
-    const double pillH       = itemH + 10.0;                     // 54
-    const double pillTopPad  = 6.0;
-    final double navH        = pillTopPad + pillH + bottomPad + 8.0;
+    const double iconSize = 18.0;
+    const double labelFontSize = 9.0;
+    const double iconLabelGap = 3.0;
+    // Geschätzte Texthöhe
+    const double labelH = 11.0;
+    const double contentH = iconSize + iconLabelGap + labelH; // 41
+    // Pill hat 8px Luft oben+unten (je 4)
+    const double pillVPad = 2.0;
+    const double pillH = contentH + pillVPad * 2; // 49
+
+    const double navTopPad = 6.0;
+    final double navH = navTopPad + pillH + bottomPad + 4.0;
 
     final items = [
       _NavItem(Icons.access_time_outlined, Icons.access_time_filled,
@@ -738,8 +762,7 @@ class _BottomNav extends StatelessWidget {
       _NavItem(Icons.calendar_month_outlined, Icons.calendar_month,
           'Monatsübersicht', 1),
       if (dienstplanEnabled)
-        _NavItem(
-            Icons.event_note_outlined, Icons.event_note, 'Dienstplan', 2),
+        _NavItem(Icons.event_note_outlined, Icons.event_note, 'Dienstplan', 2),
     ];
 
     return Container(
@@ -749,87 +772,95 @@ class _BottomNav extends StatelessWidget {
         border:
             Border(top: BorderSide(color: skin.borderSubtle, width: 0.5)),
       ),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final totalW = constraints.maxWidth;
-          final itemW  = totalW / count;
+      child: LayoutBuilder(builder: (context, constraints) {
+        final totalW = constraints.maxWidth;
+        final itemW = totalW / count;
 
-          // Pill-Mittelpunkt folgt pageValue kontinuierlich
-          final maxPages = (count - 1).toDouble().clamp(1.0, 99.0);
-          final normPos  = pageValue.clamp(0.0, maxPages) / maxPages;
-          final pillCenterX = normPos * (totalW - itemW) + itemW / 2;
+        // Pill-Breite = itemW - 12px Rand (damit sie nie übersteht)
+        // Minimum so groß, dass Text passt (TextPainter wäre exact,
+        // hier nehmen wir itemW - 8 als sichere Obergrenze).
+        final pillW = (itemW - 8.0).clamp(60.0, itemW);
 
-          // Stretch-Effekt
-          final frac    = (pageValue - pageValue.truncateToDouble()).abs();
-          final stretch = frac < 0.5 ? frac * 2.0 : (1.0 - frac) * 2.0;
-          final pillW   =
-              (72.0 + itemW * 0.26 * stretch).clamp(64.0, itemW - 6.0);
+        // Kontinuierliche Pill-Position
+        final maxPages = (count - 1).toDouble().clamp(1.0, 99.0);
+        final normPos = pageValue.clamp(0.0, maxPages) / maxPages;
+        final pillCenterX = normPos * (totalW - itemW) + itemW / 2;
 
-          return Stack(
-            clipBehavior: Clip.none,
-            children: [
-              // ── Pill ───────────────────────────────────────────────────
-              Positioned(
-                top: pillTopPad,
-                left: pillCenterX - pillW / 2,
-                child: Container(
-                  width: pillW,
-                  height: pillH,
-                  decoration: BoxDecoration(
-                    color: skin.primaryWithAlpha(0.14),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                        color: skin.primaryWithAlpha(0.28), width: 1),
-                  ),
+        // Stretch-Effekt (max 12px extra, damit die Pill nie übersteht)
+        final frac = (pageValue - pageValue.truncateToDouble()).abs();
+        final stretch = frac < 0.5 ? frac * 2.0 : (1.0 - frac) * 2.0;
+        final stretchExtra = (itemW * 0.08 * stretch).clamp(0.0, 12.0);
+        final finalPillW = (pillW + stretchExtra).clamp(60.0, itemW);
+
+        final pillTop = navTopPad;
+        // Icon+Label sollen vertikal mittig in der Pill sitzen
+        final contentTop = pillTop + pillVPad;
+
+        return Stack(
+          clipBehavior: Clip.none,
+          children: [
+            // ── Pill ─────────────────────────────────────────────────────
+            Positioned(
+              top: pillTop,
+              left: pillCenterX - finalPillW / 2,
+              child: Container(
+                width: finalPillW,
+                height: pillH,
+                decoration: BoxDecoration(
+                  color: skin.primaryWithAlpha(0.14),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                      color: skin.primaryWithAlpha(0.28), width: 1),
                 ),
               ),
+            ),
 
-              // ── Items ──────────────────────────────────────────────────
-              Row(
-                children: items.map((item) {
-                  final isSelected = selectedIndex == item.index;
-                  // Abstand oben so dass Icon+Label vertikal mittig in Pill
-                  final topPad = pillTopPad + (pillH - itemH) / 2;
-                  return GestureDetector(
-                    onTap: () => onTap(item.index),
-                    behavior: HitTestBehavior.opaque,
-                    child: SizedBox(
-                      width: itemW,
-                      height: navH,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          SizedBox(height: topPad),
-                          Icon(
-                            isSelected ? item.activeIcon : item.icon,
+            // ── Items ────────────────────────────────────────────────────
+            Row(
+              children: items.map((item) {
+                final isSelected = selectedIndex == item.index;
+                return GestureDetector(
+                  onTap: () => onTap(item.index),
+                  behavior: HitTestBehavior.opaque,
+                  child: SizedBox(
+                    width: itemW,
+                    height: navH,
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.start,
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        SizedBox(height: contentTop),
+                        Icon(
+                          isSelected ? item.activeIcon : item.icon,
+                          color: isSelected
+                              ? skin.primary
+                              : skin.surface(0.38),
+                          size: iconSize,
+                        ),
+                        const SizedBox(height: iconLabelGap),
+                        Text(
+                          item.label,
+                          textAlign: TextAlign.center,
+                          maxLines: 1,
+                          style: TextStyle(
+                            fontSize: labelFontSize,
+                            fontWeight: isSelected
+                                ? FontWeight.w600
+                                : FontWeight.w400,
                             color: isSelected
                                 ? skin.primary
                                 : skin.surface(0.38),
-                            size: iconSize,
                           ),
-                          const SizedBox(height: iconLabelGap),
-                          Text(
-                            item.label,
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: isSelected
-                                  ? FontWeight.w600
-                                  : FontWeight.w400,
-                              color: isSelected
-                                  ? skin.primary
-                                  : skin.surface(0.38),
-                            ),
-                          ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
-                  );
-                }).toList(),
-              ),
-            ],
-          );
-        },
-      ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ],
+        );
+      }),
     );
   }
 }

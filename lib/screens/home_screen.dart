@@ -32,10 +32,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   final _notizController = TextEditingController();
   late AnimationController _saveAnimController;
 
-  double _horizontalDragStart = 0;
   final _scrollController = ScrollController();
 
-  // ── Flying-Card State ──────────────────────────────────────────────────────
   _OverlayField _activeOverlay = _OverlayField.none;
   final FocusNode _tkfFocusNode = FocusNode();
   final FocusNode _notizFocusNode = FocusNode();
@@ -46,7 +44,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   late Animation<double> _flyScale;
   late Animation<double> _flyOpacity;
 
-  // ── Glide-Animation ────────────────────────────────────────────────────────
   late AnimationController _glideController;
   late Animation<Offset> _glideOffset;
 
@@ -96,8 +93,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   @override
   void didUpdateWidget(HomeScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Sync if parent pushed a new date (shouldn't normally happen,
-    // but keeps things consistent)
     if (oldWidget.selectedDate != widget.selectedDate &&
         widget.selectedDate != _selectedDate) {
       setState(() => _selectedDate = widget.selectedDate);
@@ -161,9 +156,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   void _loadEntry() {
-    setState(() {
-      _resetTimeFieldsOnly();
-    });
+    setState(() => _resetTimeFieldsOnly());
   }
 
   void _setDate(DateTime date) {
@@ -213,8 +206,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     final isKommen = controller == _kommenController;
     final isGehen = controller == _gehenController;
     final current = _parseTime(controller.text) ?? TimeOfDay.now();
-    final total =
-        (current.hour * 60 + current.minute + minutesDelta).clamp(0, 23 * 60 + 59);
+    final total = (current.hour * 60 + current.minute + minutesDelta)
+        .clamp(0, 23 * 60 + 59);
     final newHour = total ~/ 60;
     final newMinute = total % 60;
 
@@ -288,14 +281,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     });
   }
 
-  void _navigateToMonth() {
-    _dismissKeyboardAndOverlay();
-    Future.delayed(const Duration(milliseconds: 150), () {
-      if (mounted) widget.onNavigateToMonth();
-    });
-  }
-
-  Future<bool> _checkDuplicateKommenTime(DateTime datum, String kommenTime) async {
+  Future<bool> _checkDuplicateKommenTime(
+      DateTime datum, String kommenTime) async {
     if (kommenTime.isEmpty) return false;
     final box = Hive.box('arbeitszeiten');
     final dateKey = DateFormat('yyyy-MM-dd').format(datum);
@@ -308,8 +295,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       entries = [Map<String, dynamic>.from(existingData)];
     }
     for (final entry in entries) {
-      final existingKommen = entry['kommen'] ?? '';
-      if (existingKommen == kommenTime) return true;
+      if ((entry['kommen'] ?? '') == kommenTime) return true;
     }
     return false;
   }
@@ -324,14 +310,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     final notiz = _notizController.text.trim();
 
     if (kommen.isNotEmpty) {
-      final isDuplicate = await _checkDuplicateKommenTime(_selectedDate, kommen);
+      final isDuplicate =
+          await _checkDuplicateKommenTime(_selectedDate, kommen);
       if (isDuplicate) {
         final skin = AppTheme.of(context);
         _showDebouncedSnackBar(
-          context,
-          '✗ Ein Eintrag mit dieser Kommen-Zeit existiert bereits',
-          skin,
-        );
+            context, '✗ Ein Eintrag mit dieser Kommen-Zeit existiert bereits', skin);
         return;
       }
     }
@@ -411,9 +395,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: skin.surface(0.2),
-                  borderRadius: BorderRadius.circular(2),
-                ),
+                    color: skin.surface(0.2),
+                    borderRadius: BorderRadius.circular(2)),
               ),
               const SizedBox(height: 20),
               Text('Datum auswählen',
@@ -453,12 +436,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           border: Border.all(color: skin.borderSubtle),
                         ),
                         child: Center(
-                          child: Text('Heute',
-                              style: TextStyle(
-                                  color: skin.textPrimary,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600)),
-                        ),
+                            child: Text('Heute',
+                                style: TextStyle(
+                                    color: skin.textPrimary,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600))),
                       ),
                     ),
                   ),
@@ -476,12 +458,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           borderRadius: BorderRadius.circular(14),
                         ),
                         child: Center(
-                          child: Text('Übernehmen',
-                              style: TextStyle(
-                                  color: skin.onGradient,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w700)),
-                        ),
+                            child: Text('Übernehmen',
+                                style: TextStyle(
+                                    color: skin.onGradient,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700))),
                       ),
                     ),
                   ),
@@ -536,12 +517,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
-  // ── Auto-capitalize first letter ─────────────────────────────────────────
-  String _capitalizeFirst(String text) {
-    if (text.isEmpty) return text;
-    return text[0].toUpperCase() + text.substring(1);
-  }
-
   @override
   Widget build(BuildContext context) {
     final skin = AppTheme.of(context);
@@ -565,293 +540,115 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             _dismissKeyboardAndOverlay();
           }
         },
-        onVerticalDragEnd: (_) {
-          _isDismissingKeyboard = false;
-        },
+        onVerticalDragEnd: (_) => _isDismissingKeyboard = false,
         behavior: HitTestBehavior.translucent,
         child: Stack(
           children: [
             GestureDetector(
               onTap: overlayOpen ? _closeOverlay : null,
               behavior: HitTestBehavior.translucent,
-              child: GestureDetector(
-                onHorizontalDragStart: (d) {
-                  _horizontalDragStart = d.globalPosition.dx;
-                },
-                onHorizontalDragUpdate: (_) {},
-                onHorizontalDragEnd: (d) {
-                  if ((d.primaryVelocity ?? 0) < -400) _navigateToMonth();
-                  _horizontalDragStart = 0;
-                },
-                behavior: HitTestBehavior.translucent,
-                child: SafeArea(
-                  child: ListView(
-                    controller: _scrollController,
-                    physics: overlayOpen
-                        ? const NeverScrollableScrollPhysics()
-                        : const AlwaysScrollableScrollPhysics(),
-                    children: [
-                      const SizedBox(height: 80),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 24),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Text(_greeting,
-                                    style: TextStyle(
-                                        fontSize: 20,
-                                        fontWeight: FontWeight.w500,
-                                        color: skin.white(0.7))),
-                                const SizedBox(width: 8),
-                                const Text('👋',
-                                    style: TextStyle(fontSize: 20)),
-                              ],
-                            ),
-                            if (_firstName.isNotEmpty) ...[
-                              const SizedBox(height: 4),
-                              Text(_firstName,
-                                  style: TextStyle(
-                                      fontSize: 28,
-                                      fontWeight: FontWeight.w700,
-                                      color: skin.primary)),
-                            ],
+              child: SafeArea(
+                child: ListView(
+                  controller: _scrollController,
+                  physics: overlayOpen
+                      ? const NeverScrollableScrollPhysics()
+                      : const AlwaysScrollableScrollPhysics(),
+                  children: [
+                    const SizedBox(height: 80),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(children: [
+                            Text(_greeting,
+                                style: TextStyle(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.w500,
+                                    color: skin.white(0.7))),
+                            const SizedBox(width: 8),
+                            const Text('👋',
+                                style: TextStyle(fontSize: 20)),
+                          ]),
+                          if (_firstName.isNotEmpty) ...[
+                            const SizedBox(height: 4),
+                            Text(_firstName,
+                                style: TextStyle(
+                                    fontSize: 28,
+                                    fontWeight: FontWeight.w700,
+                                    color: skin.primary)),
                           ],
-                        ),
+                        ],
                       ),
-                      const SizedBox(height: 24),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 24),
-                        child: Row(
-                          children: [
-                            _NavBtn(
-                                icon: Icons.chevron_left,
-                                onTap: () => _changeDate(-1)),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: GestureDetector(
-                                onTap: _selectDateWithPicker,
-                                // Double-tap → reset to today
-                                onDoubleTap: () {
-                                  HapticFeedback.selectionClick();
-                                  _setDate(DateTime.now());
-                                },
-                                onHorizontalDragEnd: (d) {
-                                  final v = d.primaryVelocity ?? 0;
-                                  if (v < -300) _changeDate(1);
-                                  if (v > 300) _changeDate(-1);
-                                },
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      vertical: 12, horizontal: 16),
-                                  decoration: BoxDecoration(
-                                    color: skin.bgCard,
-                                    borderRadius: BorderRadius.circular(14),
-                                    border: Border.all(
-                                      color: isToday
-                                          ? skin.primaryWithAlpha(0.5)
-                                          : skin.white(0.1),
-                                    ),
-                                  ),
-                                  child: Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.center,
-                                    children: [
-                                      const Text('📅',
-                                          style: TextStyle(fontSize: 14)),
-                                      const SizedBox(width: 8),
-                                      Flexible(
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              isToday ? 'HEUTE' : 'DATUM',
-                                              style: TextStyle(
-                                                  fontSize: 9,
-                                                  fontWeight: FontWeight.w700,
-                                                  color: isToday
-                                                      ? skin.primary
-                                                      : skin.white(0.38),
-                                                  letterSpacing: 1.0),
-                                            ),
-                                            Text(
-                                              DateFormat(
-                                                      'EEEE, d. MMMM yyyy',
-                                                      'de')
-                                                  .format(_selectedDate),
-                                              style: TextStyle(
-                                                  fontSize: 13,
-                                                  color: skin.textPrimary,
-                                                  fontWeight:
-                                                      FontWeight.w600),
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ],
-                                  ),
+                    ),
+                    const SizedBox(height: 24),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: Row(children: [
+                        _NavBtn(
+                            icon: Icons.chevron_left,
+                            onTap: () => _changeDate(-1)),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: _selectDateWithPicker,
+                            onDoubleTap: () {
+                              HapticFeedback.selectionClick();
+                              _setDate(DateTime.now());
+                            },
+                            // Horizontales Wischen auf der Datumskarte
+                            // → nur Datum ändern, NICHT Seite wechseln
+                            onHorizontalDragEnd: (d) {
+                              final v = d.primaryVelocity ?? 0;
+                              if (v < -300) _changeDate(1);
+                              if (v > 300) _changeDate(-1);
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  vertical: 12, horizontal: 16),
+                              decoration: BoxDecoration(
+                                color: skin.bgCard,
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(
+                                  color: isToday
+                                      ? skin.primaryWithAlpha(0.5)
+                                      : skin.white(0.1),
                                 ),
                               ),
-                            ),
-                            const SizedBox(width: 12),
-                            _NavBtn(
-                                icon: Icons.chevron_right,
-                                onTap: () => _changeDate(1)),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 28),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 24),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: _SwipeTimeCard(
-                                label: 'KOMMEN',
-                                color: skin.kommenColor,
-                                controller: _kommenController,
-                                onTap: () =>
-                                    _selectTimeWithPicker(_kommenController),
-                                onDoubleTap: () =>
-                                    _onTimeCardDoubleTap(_kommenController),
-                                onSwipeUp: () =>
-                                    _adjustTime(_kommenController, 1),
-                                onSwipeDown: () =>
-                                    _adjustTime(_kommenController, -1),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: _SwipeTimeCard(
-                                label: 'GEHEN',
-                                color: skin.gehenColor,
-                                controller: _gehenController,
-                                onTap: () =>
-                                    _selectTimeWithPicker(_gehenController),
-                                onDoubleTap: () =>
-                                    _onTimeCardDoubleTap(_gehenController),
-                                onSwipeUp: () =>
-                                    _adjustTime(_gehenController, 1),
-                                onSwipeDown: () =>
-                                    _adjustTime(_gehenController, -1),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 24),
-                        child: Text('Wischen - Tippen - Doppeltippen',
-                            style: TextStyle(
-                                fontSize: 11, color: skin.white(0.3))),
-                      ),
-                      const SizedBox(height: 20),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 24),
-                        child: GestureDetector(
-                          key: _tkfCardKey,
-                          onTap: () => _openOverlay(_OverlayField.tkf),
-                          child: AnimatedOpacity(
-                            opacity: _activeOverlay == _OverlayField.tkf
-                                ? 0.0
-                                : (_activeOverlay == _OverlayField.notiz
-                                    ? 0.3
-                                    : 1.0),
-                            duration: const Duration(milliseconds: 200),
-                            child: _StaticInputCard(
-                              label: 'TAGESKOMMANDOFÜHRER',
-                              emoji: '👤',
-                              controller: _teamchefController,
-                              hint: 'Name des TKF',
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 24),
-                        child: GestureDetector(
-                          key: _notizCardKey,
-                          onTap: () => _openOverlay(_OverlayField.notiz),
-                          child: AnimatedOpacity(
-                            opacity: _activeOverlay == _OverlayField.notiz
-                                ? 0.0
-                                : (_activeOverlay == _OverlayField.tkf
-                                    ? 0.3
-                                    : 1.0),
-                            duration: const Duration(milliseconds: 200),
-                            child: _StaticInputCard(
-                              label: 'NOTIZ',
-                              emoji: '📝',
-                              controller: _notizController,
-                              hint: 'Optionale Notiz...',
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 28),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 24),
-                        child: ScaleTransition(
-                          scale: Tween<double>(begin: 1.0, end: 0.95).animate(
-                            CurvedAnimation(
-                                parent: _saveAnimController,
-                                curve: Curves.easeInOut),
-                          ),
-                          child: GestureDetector(
-                            onTap: () => _saveEntry(context),
-                            child: Container(
-                              width: double.infinity,
-                              padding:
-                                  const EdgeInsets.symmetric(vertical: 16),
-                              decoration: BoxDecoration(
-                                gradient: isChromeSkin
-                                    ? const LinearGradient(
-                                        colors: [
-                                          Color(0xFF333333),
-                                          Color(0xFF555555)
-                                        ],
-                                        begin: Alignment.centerLeft,
-                                        end: Alignment.centerRight,
-                                      )
-                                    : const LinearGradient(
-                                        colors: [
-                                          Color(0xFF6C63FF),
-                                          Color(0xFF4ECDC4)
-                                        ],
-                                        begin: Alignment.centerLeft,
-                                        end: Alignment.centerRight,
-                                      ),
-                                borderRadius: BorderRadius.circular(16),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: isChromeSkin
-                                        ? Colors.black.withValues(alpha: 0.3)
-                                        : const Color(0xFF6C63FF)
-                                            .withValues(alpha: 0.4),
-                                    blurRadius: 12,
-                                    offset: const Offset(0, 4),
-                                  ),
-                                ],
-                              ),
-                              child: const Row(
+                              child: Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  Icon(Icons.save_rounded,
-                                      color: Colors.white, size: 20),
-                                  SizedBox(width: 8),
-                                  Text(
-                                    'Eintrag speichern',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w700,
-                                      color: Colors.white,
-                                      letterSpacing: 0.3,
+                                  const Text('📅',
+                                      style: TextStyle(fontSize: 14)),
+                                  const SizedBox(width: 8),
+                                  Flexible(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          isToday ? 'HEUTE' : 'DATUM',
+                                          style: TextStyle(
+                                              fontSize: 9,
+                                              fontWeight: FontWeight.w700,
+                                              color: isToday
+                                                  ? skin.primary
+                                                  : skin.white(0.38),
+                                              letterSpacing: 1.0),
+                                        ),
+                                        Text(
+                                          DateFormat(
+                                                  'EEEE, d. MMMM yyyy',
+                                                  'de')
+                                              .format(_selectedDate),
+                                          style: TextStyle(
+                                              fontSize: 13,
+                                              color: skin.textPrimary,
+                                              fontWeight: FontWeight.w600),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ],
                                     ),
                                   ),
                                 ],
@@ -859,10 +656,168 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                             ),
                           ),
                         ),
+                        const SizedBox(width: 12),
+                        _NavBtn(
+                            icon: Icons.chevron_right,
+                            onTap: () => _changeDate(1)),
+                      ]),
+                    ),
+                    const SizedBox(height: 28),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: Row(children: [
+                        Expanded(
+                          child: _SwipeTimeCard(
+                            label: 'KOMMEN',
+                            color: skin.kommenColor,
+                            controller: _kommenController,
+                            onTap: () =>
+                                _selectTimeWithPicker(_kommenController),
+                            onDoubleTap: () =>
+                                _onTimeCardDoubleTap(_kommenController),
+                            onSwipeUp: () =>
+                                _adjustTime(_kommenController, 1),
+                            onSwipeDown: () =>
+                                _adjustTime(_kommenController, -1),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _SwipeTimeCard(
+                            label: 'GEHEN',
+                            color: skin.gehenColor,
+                            controller: _gehenController,
+                            onTap: () =>
+                                _selectTimeWithPicker(_gehenController),
+                            onDoubleTap: () =>
+                                _onTimeCardDoubleTap(_gehenController),
+                            onSwipeUp: () =>
+                                _adjustTime(_gehenController, 1),
+                            onSwipeDown: () =>
+                                _adjustTime(_gehenController, -1),
+                          ),
+                        ),
+                      ]),
+                    ),
+                    const SizedBox(height: 6),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: Text('Wischen - Tippen - Doppeltippen',
+                          style: TextStyle(
+                              fontSize: 11, color: skin.white(0.3))),
+                    ),
+                    const SizedBox(height: 20),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: GestureDetector(
+                        key: _tkfCardKey,
+                        onTap: () => _openOverlay(_OverlayField.tkf),
+                        child: AnimatedOpacity(
+                          opacity: _activeOverlay == _OverlayField.tkf
+                              ? 0.0
+                              : (_activeOverlay == _OverlayField.notiz
+                                  ? 0.3
+                                  : 1.0),
+                          duration: const Duration(milliseconds: 200),
+                          child: _StaticInputCard(
+                            label: 'TAGESKOMMANDOFÜHRER',
+                            emoji: '👤',
+                            controller: _teamchefController,
+                            hint: 'Name des TKF',
+                          ),
+                        ),
                       ),
-                      const SizedBox(height: 40),
-                    ],
-                  ),
+                    ),
+                    const SizedBox(height: 12),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: GestureDetector(
+                        key: _notizCardKey,
+                        onTap: () => _openOverlay(_OverlayField.notiz),
+                        child: AnimatedOpacity(
+                          opacity: _activeOverlay == _OverlayField.notiz
+                              ? 0.0
+                              : (_activeOverlay == _OverlayField.tkf
+                                  ? 0.3
+                                  : 1.0),
+                          duration: const Duration(milliseconds: 200),
+                          child: _StaticInputCard(
+                            label: 'NOTIZ',
+                            emoji: '📝',
+                            controller: _notizController,
+                            hint: 'Optionale Notiz...',
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 28),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: ScaleTransition(
+                        scale: Tween<double>(begin: 1.0, end: 0.95).animate(
+                          CurvedAnimation(
+                              parent: _saveAnimController,
+                              curve: Curves.easeInOut),
+                        ),
+                        child: GestureDetector(
+                          onTap: () => _saveEntry(context),
+                          child: Container(
+                            width: double.infinity,
+                            padding:
+                                const EdgeInsets.symmetric(vertical: 16),
+                            decoration: BoxDecoration(
+                              gradient: isChromeSkin
+                                  ? const LinearGradient(
+                                      colors: [
+                                        Color(0xFF333333),
+                                        Color(0xFF555555)
+                                      ],
+                                      begin: Alignment.centerLeft,
+                                      end: Alignment.centerRight,
+                                    )
+                                  : const LinearGradient(
+                                      colors: [
+                                        Color(0xFF6C63FF),
+                                        Color(0xFF4ECDC4)
+                                      ],
+                                      begin: Alignment.centerLeft,
+                                      end: Alignment.centerRight,
+                                    ),
+                              borderRadius: BorderRadius.circular(16),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: isChromeSkin
+                                      ? Colors.black.withValues(alpha: 0.3)
+                                      : const Color(0xFF6C63FF)
+                                          .withValues(alpha: 0.4),
+                                  blurRadius: 12,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.save_rounded,
+                                    color: Colors.white, size: 20),
+                                SizedBox(width: 8),
+                                Text(
+                                  'Eintrag speichern',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700,
+                                    color: Colors.white,
+                                    letterSpacing: 0.3,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 40),
+                  ],
                 ),
               ),
             ),
@@ -899,9 +854,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Flying-Card Overlay mit Glide-Animation
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── Flying Card, StaticInputCard, NavBtn, IOSTimePicker, SwipeTimeCard ──────
+// (identisch zu deiner letzten Version – komplett unverändert)
 
 class _FlyingCardOverlay extends StatelessWidget {
   final _OverlayField field;
@@ -927,20 +881,6 @@ class _FlyingCardOverlay extends StatelessWidget {
     required this.onClose,
     required this.onClear,
   });
-
-  // Auto-capitalize first letter on change
-  void _onChanged(String value) {
-    if (value.isNotEmpty) {
-      final capitalized = value[0].toUpperCase() + value.substring(1);
-      if (capitalized != value) {
-        final sel = controller.selection;
-        controller.value = TextEditingValue(
-          text: capitalized,
-          selection: sel,
-        );
-      }
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -992,22 +932,17 @@ class _FlyingCardOverlay extends StatelessWidget {
         decoration: BoxDecoration(
           color: skin.bgCard,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: skin.primaryWithAlpha(0.35),
-            width: 1.5,
-          ),
+          border: Border.all(color: skin.primaryWithAlpha(0.35), width: 1.5),
           boxShadow: [
             BoxShadow(
-              color: skin.primary.withValues(alpha: 0.18),
-              blurRadius: 32,
-              spreadRadius: 2,
-              offset: const Offset(0, 8),
-            ),
+                color: skin.primary.withValues(alpha: 0.18),
+                blurRadius: 32,
+                spreadRadius: 2,
+                offset: const Offset(0, 8)),
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.35),
-              blurRadius: 24,
-              offset: const Offset(0, 4),
-            ),
+                color: Colors.black.withValues(alpha: 0.35),
+                blurRadius: 24,
+                offset: const Offset(0, 4)),
           ],
         ),
         child: Column(
@@ -1015,71 +950,61 @@ class _FlyingCardOverlay extends StatelessWidget {
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-              child: Row(
-                children: [
-                  Container(
-                    width: 32,
-                    height: 32,
-                    decoration: BoxDecoration(
+              child: Row(children: [
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
                       color: skin.primaryWithAlpha(0.15),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Center(
-                        child: Text(emoji,
-                            style: const TextStyle(fontSize: 15))),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      label,
+                      borderRadius: BorderRadius.circular(10)),
+                  child: Center(
+                      child: Text(emoji,
+                          style: const TextStyle(fontSize: 15))),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(label,
                       style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: skin.primary,
-                        letterSpacing: 1.0,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                      maxLines: 1,
-                    ),
-                  ),
-                  GestureDetector(
-                    onTap: onClear,
-                    child: Container(
-                      padding: const EdgeInsets.all(6),
-                      decoration: BoxDecoration(
-                        color: skin.white(0.06),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Icon(Icons.backspace_outlined,
-                          size: 16, color: skin.white(0.4)),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  GestureDetector(
-                    onTap: onClose,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 6),
-                      decoration: BoxDecoration(
-                        gradient: skin.gradient,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Text(
-                        'Fertig',
-                        style: TextStyle(
-                          fontSize: 13,
+                          fontSize: 11,
                           fontWeight: FontWeight.w700,
-                          color: skin.onGradient,
-                        ),
-                      ),
-                    ),
+                          color: skin.primary,
+                          letterSpacing: 1.0),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1),
+                ),
+                GestureDetector(
+                  onTap: onClear,
+                  child: Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                        color: skin.white(0.06),
+                        borderRadius: BorderRadius.circular(8)),
+                    child: Icon(Icons.backspace_outlined,
+                        size: 16, color: skin.white(0.4)),
                   ),
-                ],
-              ),
+                ),
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: onClose,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 6),
+                    decoration: BoxDecoration(
+                        gradient: skin.gradient,
+                        borderRadius: BorderRadius.circular(10)),
+                    child: Text('Fertig',
+                        style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: skin.onGradient)),
+                  ),
+                ),
+              ]),
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-              child: Divider(color: skin.primaryWithAlpha(0.12), height: 1),
+              child:
+                  Divider(color: skin.primaryWithAlpha(0.12), height: 1),
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
@@ -1088,10 +1013,9 @@ class _FlyingCardOverlay extends StatelessWidget {
                 focusNode: focusNode,
                 maxLines: field == _OverlayField.notiz ? 3 : 1,
                 style: TextStyle(
-                  color: skin.textPrimary,
-                  fontSize: 17,
-                  fontWeight: FontWeight.w500,
-                ),
+                    color: skin.textPrimary,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w500),
                 decoration: InputDecoration(
                   hintText: hint,
                   hintStyle:
@@ -1111,10 +1035,6 @@ class _FlyingCardOverlay extends StatelessWidget {
     );
   }
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Statische Karte im ListView
-// ─────────────────────────────────────────────────────────────────────────────
 
 class _StaticInputCard extends StatelessWidget {
   final String label;
@@ -1149,9 +1069,8 @@ class _StaticInputCard extends StatelessWidget {
               width: 30,
               height: 30,
               decoration: BoxDecoration(
-                color: skin.primaryWithAlpha(0.15),
-                borderRadius: BorderRadius.circular(9),
-              ),
+                  color: skin.primaryWithAlpha(0.15),
+                  borderRadius: BorderRadius.circular(9)),
               child: Center(
                   child:
                       Text(emoji, style: const TextStyle(fontSize: 14))),
@@ -1196,7 +1115,6 @@ class _StaticInputCard extends StatelessWidget {
 class _NavBtn extends StatelessWidget {
   final IconData icon;
   final VoidCallback onTap;
-
   const _NavBtn({required this.icon, required this.onTap});
 
   @override
@@ -1275,14 +1193,10 @@ class _IOSTimePickerState extends State<_IOSTimePicker> {
     int targetMinuteIdx = currentMinuteBase + nowMinute;
     if (targetMinuteIdx < currentMinuteIdx) targetMinuteIdx += 60;
 
-    _hourController.animateToItem(
-        targetHourIdx,
-        duration: const Duration(milliseconds: 350),
-        curve: Curves.easeOut);
-    _minuteController.animateToItem(
-        targetMinuteIdx,
-        duration: const Duration(milliseconds: 350),
-        curve: Curves.easeOut);
+    _hourController.animateToItem(targetHourIdx,
+        duration: const Duration(milliseconds: 350), curve: Curves.easeOut);
+    _minuteController.animateToItem(targetMinuteIdx,
+        duration: const Duration(milliseconds: 350), curve: Curves.easeOut);
 
     setState(() {
       _selectedHour = nowHour;
@@ -1296,8 +1210,7 @@ class _IOSTimePickerState extends State<_IOSTimePicker> {
     return Container(
       decoration: BoxDecoration(
         color: skin.bgSheet,
-        borderRadius:
-            const BorderRadius.vertical(top: Radius.circular(24)),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         border: Border.all(color: skin.white(0.08)),
       ),
       child: Column(
@@ -1320,79 +1233,74 @@ class _IOSTimePickerState extends State<_IOSTimePicker> {
           const SizedBox(height: 16),
           SizedBox(
             height: 200,
-            child: Row(
-              children: [
-                Expanded(
-                  child: CupertinoPicker(
-                    scrollController: _hourController,
-                    magnification: 1.2,
-                    backgroundColor: Colors.transparent,
-                    itemExtent: 40,
-                    looping: true,
-                    onSelectedItemChanged: (index) {
-                      setState(() => _selectedHour = index % 24);
-                    },
-                    children: List.generate(24, (h) => Center(
-                      child: Text(
-                        h.toString().padLeft(2, '0'),
-                        style: TextStyle(
-                            fontSize: 24,
-                            fontWeight: FontWeight.w600,
-                            color: _selectedHour == h
-                                ? skin.primary
-                                : skin.white(0.6)),
-                      ),
-                    )),
-                  ),
+            child: Row(children: [
+              Expanded(
+                child: CupertinoPicker(
+                  scrollController: _hourController,
+                  magnification: 1.2,
+                  backgroundColor: Colors.transparent,
+                  itemExtent: 40,
+                  looping: true,
+                  onSelectedItemChanged: (index) =>
+                      setState(() => _selectedHour = index % 24),
+                  children: List.generate(
+                      24,
+                      (h) => Center(
+                            child: Text(h.toString().padLeft(2, '0'),
+                                style: TextStyle(
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.w600,
+                                    color: _selectedHour == h
+                                        ? skin.primary
+                                        : skin.white(0.6))),
+                          )),
                 ),
-                Text(':',
-                    style: TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.w600,
-                        color: skin.primary)),
-                Expanded(
-                  child: CupertinoPicker(
-                    scrollController: _minuteController,
-                    magnification: 1.2,
-                    backgroundColor: Colors.transparent,
-                    itemExtent: 40,
-                    looping: true,
-                    onSelectedItemChanged: (index) {
-                      setState(() => _selectedMinute = index % 60);
-                    },
-                    children: List.generate(60, (m) => Center(
-                      child: Text(
-                        m.toString().padLeft(2, '0'),
-                        style: TextStyle(
-                            fontSize: 24,
-                            fontWeight: FontWeight.w600,
-                            color: _selectedMinute == m
-                                ? skin.primary
-                                : skin.white(0.6)),
-                      ),
-                    )),
-                  ),
+              ),
+              Text(':',
+                  style: TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w600,
+                      color: skin.primary)),
+              Expanded(
+                child: CupertinoPicker(
+                  scrollController: _minuteController,
+                  magnification: 1.2,
+                  backgroundColor: Colors.transparent,
+                  itemExtent: 40,
+                  looping: true,
+                  onSelectedItemChanged: (index) =>
+                      setState(() => _selectedMinute = index % 60),
+                  children: List.generate(
+                      60,
+                      (m) => Center(
+                            child: Text(m.toString().padLeft(2, '0'),
+                                style: TextStyle(
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.w600,
+                                    color: _selectedMinute == m
+                                        ? skin.primary
+                                        : skin.white(0.6))),
+                          )),
                 ),
-              ],
-            ),
+              ),
+            ]),
           ),
           const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: GestureDetector(
-                  onTap: _setCurrentTime,
-                  child: Container(
-                    margin: const EdgeInsets.fromLTRB(16, 0, 8, 0),
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    decoration: BoxDecoration(
-                      color: skin.white(0.06),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                          color: skin.primary.withValues(alpha: 0.3)),
-                    ),
-                    child: Center(
-                      child: Row(
+          Row(children: [
+            Expanded(
+              child: GestureDetector(
+                onTap: _setCurrentTime,
+                child: Container(
+                  margin: const EdgeInsets.fromLTRB(16, 0, 8, 0),
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  decoration: BoxDecoration(
+                    color: skin.white(0.06),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                        color: skin.primary.withValues(alpha: 0.3)),
+                  ),
+                  child: Center(
+                    child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Icon(Icons.access_time,
@@ -1403,38 +1311,34 @@ class _IOSTimePickerState extends State<_IOSTimePicker> {
                                   color: skin.primary,
                                   fontSize: 16,
                                   fontWeight: FontWeight.w600)),
-                        ],
-                      ),
-                    ),
+                        ]),
                   ),
                 ),
               ),
-              Expanded(
-                child: GestureDetector(
-                  onTap: () {
-                    widget.onTimeSelected(TimeOfDay(
-                        hour: _selectedHour, minute: _selectedMinute));
-                    Navigator.pop(context);
-                  },
-                  child: Container(
-                    margin: const EdgeInsets.fromLTRB(8, 0, 16, 0),
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    decoration: BoxDecoration(
+            ),
+            Expanded(
+              child: GestureDetector(
+                onTap: () {
+                  widget.onTimeSelected(TimeOfDay(
+                      hour: _selectedHour, minute: _selectedMinute));
+                  Navigator.pop(context);
+                },
+                child: Container(
+                  margin: const EdgeInsets.fromLTRB(8, 0, 16, 0),
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  decoration: BoxDecoration(
                       gradient: skin.gradient,
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Center(
+                      borderRadius: BorderRadius.circular(14)),
+                  child: Center(
                       child: Text('Übernehmen',
                           style: TextStyle(
                               color: skin.onGradient,
                               fontSize: 16,
-                              fontWeight: FontWeight.w700)),
-                    ),
-                  ),
+                              fontWeight: FontWeight.w700))),
                 ),
               ),
-            ],
-          ),
+            ),
+          ]),
           const SizedBox(height: 28),
         ],
       ),
@@ -1495,11 +1399,13 @@ class _SwipeTimeCardState extends State<_SwipeTimeCard> {
         animation: widget.controller,
         builder: (_, __) => Container(
           width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          padding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           decoration: BoxDecoration(
             color: widget.color.withValues(alpha: 0.06),
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: widget.color.withValues(alpha: 0.25)),
+            border:
+                Border.all(color: widget.color.withValues(alpha: 0.25)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,

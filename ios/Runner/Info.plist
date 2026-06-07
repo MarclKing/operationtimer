@@ -26,6 +26,20 @@
     <string>$(FLUTTER_BUILD_NUMBER)</string>
     <key>LSRequiresIPhoneOS</key>
     <true/>
+
+    <!-- URL Scheme für receive_sharing_intent -->
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>optimes</string>
+            </array>
+            <key>CFBundleURLName</key>
+            <string>optimes</string>
+        </dict>
+    </array>
+
     <key>UIApplicationSceneManifest</key>
     <dict>
         <key>UIApplicationSupportsMultipleScenes</key>

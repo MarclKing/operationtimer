@@ -1308,6 +1308,7 @@ class DienstplanUploadSheet extends StatefulWidget {
   final String? preloadedFilePath;
   final String? preloadedFileName;
   final List<int>? preloadedBytes;
+  final String? autoImportError; // ← NEU: Dev-Mode Fehler vom Auto-Import
 
   const DienstplanUploadSheet({
     super.key,
@@ -1318,6 +1319,7 @@ class DienstplanUploadSheet extends StatefulWidget {
     this.preloadedFilePath,
     this.preloadedFileName,
     this.preloadedBytes,
+    this.autoImportError,        // ← NEU
   });
 
   @override
@@ -1345,7 +1347,15 @@ class _DienstplanUploadSheetState extends State<DienstplanUploadSheet> {
       _selectedFileName  = widget.preloadedFileName ?? 'Geteilte PDF';
       _selectedFileBytes = widget.preloadedBytes;
     }
+    // Dev-Fehler vom Auto-Import direkt anzeigen
+    if (widget.autoImportError != null) {
+      _errorMessage = widget.autoImportError;
+    }
   }
+
+  // ... Rest der State-Klasse bleibt IDENTISCH zu deiner letzten Version
+  // (bool _isDevMode, _pickFile, _clearFile, _importPdf, _askForMonth,
+  //  _deleteSelectedMonth, _copyError, build)
 
   bool get _isDevMode {
     final box = Hive.box('einstellungen');
