@@ -142,8 +142,8 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       DateTime(DateTime.now().year, DateTime.now().month);
 
   StreamSubscription? _intentSub;
-  final _scheduleKey = GlobalKey<_ScheduleScreenState>();
-final _monthKey = GlobalKey<_MonthScreenState>();
+  final _scheduleKey = GlobalKey<ScheduleScreenState>();
+final _monthKey = GlobalKey<MonthScreenState>();
 
   bool get _dienstplanEnabled => true;
 

@@ -26,7 +26,7 @@ class MonthScreen extends StatefulWidget {
   State<MonthScreen> createState() => _MonthScreenState();
 }
 
-class _MonthScreenState extends State<MonthScreen> {
+class MonthScreenState extends State<MonthScreen> {
   late DateTime _selectedMonth;
   final Map<String, GlobalKey<_SlidableRowState>> _rowKeys = {};
 

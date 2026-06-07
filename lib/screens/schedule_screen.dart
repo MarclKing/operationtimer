@@ -663,10 +663,10 @@ class ScheduleScreen extends StatefulWidget {
   });
 
   @override
-  State<ScheduleScreen> createState() => _ScheduleScreenState();
+State<ScheduleScreen> createState() => ScheduleScreenState();
 }
 
-class _ScheduleScreenState extends State<ScheduleScreen> {
+class ScheduleScreenState extends State<ScheduleScreen> {
   late DateTime _selectedMonth;
   Map<String, String> _scheduleData = {};
 
@@ -928,7 +928,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
       _activeNoteKey = null;
     });
   }
-  
+
   void closeOverlays() {
   if (_noteOverlayVisible) _closeNoteOverlay();
   if (_openSwipedCardKey != null) {
