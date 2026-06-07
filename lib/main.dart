@@ -65,6 +65,9 @@ void _migrateOldEntries() {
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
+  // GlobalKey damit wir von außen auf _MainScreenState zugreifen können
+  static final _mainScreenKey = GlobalKey<_MainScreenState>();
+
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder(
@@ -78,6 +81,15 @@ class MyApp extends StatelessWidget {
           child: MaterialApp(
             title: 'OpTimes',
             debugShowCheckedModeBanner: false,
+            onGenerateRoute: (settings) {
+              final name = settings.name ?? '';
+              if (name.isNotEmpty && name != '/' && !name.startsWith('http')) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  MyApp._mainScreenKey.currentState?.handleSharedPdf(name);
+                });
+              }
+              return null;
+            },
             theme: ThemeData(
               brightness: skin.isLight ? Brightness.light : Brightness.dark,
               scaffoldBackgroundColor: skin.bgBase,
@@ -98,7 +110,7 @@ class MyApp extends StatelessWidget {
               ),
               useMaterial3: true,
             ),
-            home: const MainScreen(),
+            home: MainScreen(key: MyApp._mainScreenKey),
           ),
         );
       },
@@ -217,6 +229,9 @@ void initState() {
   if (!mounted) return;
   _autoImportPdf(path, fileName, skin);
 }
+
+// ── Öffentlich zugänglich für GlobalKey ───────────────────────────────────
+void handleSharedPdf(String path) => _handleSharedPdf(path);
 
   void _autoImportPdf(String path, String fileName, AppSkin skin) async {
     final settingsBox = Hive.box('einstellungen');
@@ -767,7 +782,7 @@ class _BottomNav extends StatelessWidget {
     const double pillVPad = 4.0;
     const double pillH = contentH + pillVPad * 2; // 49
 
-    const double navTopPad = 12.0;
+    const double navTopPad = 10.0;
     final double navH = navTopPad + pillH + bottomPad + 4.0;
 
     final items = [
