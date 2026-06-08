@@ -688,22 +688,10 @@ class ScheduleScreenState extends State<ScheduleScreen> {
       final month = DateTime(today.year, today.month + offset);
       final monthKey = DateFormat('yyyy-MM').format(month);
       final raw = box.get('schedule_$monthKey');
+      debugPrint('Widget push: Monat $monthKey → ${raw == null ? "leer" : "gefunden"}');
       if (raw is Map) {
         for (final e in raw.entries) {
-          final dateKey = e.key.toString();
-          // Prüfe ob Notiz vorhanden
-          final noteRaw = box.get('schedule_note_$dateKey');
-          bool hasNote = false;
-          if (noteRaw is Map) {
-            final phone = (noteRaw['phone'] ?? '') as String;
-            final text = (noteRaw['text'] ?? '') as String;
-            hasNote = phone.isNotEmpty || text.isNotEmpty;
-          }
-          entries.add({
-            'date': dateKey,
-            'shift': e.value.toString(),
-            if (hasNote) 'hasNote': 'true',
-          });
+          // ... dein bestehender Code ...
         }
       }
     }
@@ -714,11 +702,15 @@ class ScheduleScreenState extends State<ScheduleScreen> {
         .toList()
       ..sort((a, b) => (a['date'] ?? '').compareTo(b['date'] ?? ''));
 
+    debugPrint('Widget push: ${filtered.length} Einträge werden gesendet');
+
     final json = jsonEncode(filtered);
     const channel = MethodChannel('de.marcel.optimes/widget');
     await channel.invokeMethod('updateSchedule', {'json': json});
+
+    debugPrint('Widget push: Channel-Aufruf erfolgreich');
   } catch (e) {
-    debugPrint('Widget push error: $e');
+    debugPrint('Widget push ERROR: $e');
   }
 }
 
