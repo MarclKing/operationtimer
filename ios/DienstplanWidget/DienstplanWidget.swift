@@ -175,6 +175,57 @@ struct SmallWidgetView: View {
     }
 }
 
+// ── Large Widget View ─────────────────────────────────────────────
+struct LargeWidgetView: View {
+    let entry: DienstplanTimelineEntry
+    let todayStr: String
+
+    var body: some View {
+        let fmt = DateFormatter()
+        fmt.dateFormat = "yyyy-MM-dd"
+        let today = Calendar.current.startOfDay(for: Date())
+        let shiftDict = Dictionary(uniqueKeysWithValues: entry.shifts.map { ($0.date, $0.shift) })
+
+        var cal = Calendar(identifier: .iso8601)
+        cal.locale = Locale(identifier: "de_DE")
+        let thisMonday = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: today))!
+
+        let weeks: [[Date]] = (0..<4).map { weekOffset in
+            let monday = cal.date(byAdding: .weekOfYear, value: weekOffset, to: thisMonday)!
+            return (0..<7).map { dayOffset in
+                cal.date(byAdding: .day, value: dayOffset, to: monday)!
+            }
+        }
+
+        VStack(spacing: 5) {
+            ForEach(0..<weeks.count, id: \.self) { wi in
+                HStack(spacing: 4) {
+                    ForEach(weeks[wi], id: \.self) { date in
+                        let dateStr = fmt.string(from: date)
+                        let shift = shiftDict[dateStr]
+                        let isToday = dateStr == todayStr
+                        let isPast = date < today
+
+                        if shift != nil || isToday {
+                            DayTile(
+                                entry: ShiftEntry(date: dateStr, shift: shift ?? ""),
+                                isToday: isToday
+                            )
+                        } else if isPast {
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(Color(.systemGray6).opacity(0.15))
+                        } else {
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(Color(.systemGray6).opacity(0.25))
+                        }
+                    }
+                }
+            }
+        }
+        .padding(10)
+    }
+}
+
 // ── Medium/Large Widget View ──────────────────────────────────────
 struct DienstplanWidgetView: View {
     var entry: DienstplanTimelineEntry
@@ -212,49 +263,7 @@ struct DienstplanWidgetView: View {
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if family == .systemLarge {
-    let fmt = DateFormatter()
-    fmt.dateFormat = "yyyy-MM-dd"
-    let today = Calendar.current.startOfDay(for: Date())
-    let shiftDict = Dictionary(uniqueKeysWithValues: entry.shifts.map { ($0.date, $0.shift) })
-
-    var cal = Calendar(identifier: .iso8601)
-    cal.locale = Locale(identifier: "de_DE")
-    let thisMonday = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: today))!
-
-    let weeks: [[Date]] = (0..<4).map { weekOffset in
-        let monday = cal.date(byAdding: .weekOfYear, value: weekOffset, to: thisMonday)!
-        return (0..<7).map { dayOffset in
-            cal.date(byAdding: .day, value: dayOffset, to: monday)!
-        }
-    }
-
-    VStack(spacing: 5) {
-        ForEach(0..<weeks.count, id: \.self) { wi in
-            HStack(spacing: 4) {
-                ForEach(weeks[wi], id: \.self) { date in
-                    let dateStr = fmt.string(from: date)
-                    let shift = shiftDict[dateStr]
-                    let isToday = dateStr == todayStr
-                    let isPast = date < today
-
-                    if shift != nil || isToday {
-                        DayTile(
-                            entry: ShiftEntry(date: dateStr, shift: shift ?? ""),
-                            isToday: isToday
-                        )
-                    } else if isPast {
-                        RoundedRectangle(cornerRadius: 10)
-                            .fill(Color(.systemGray6).opacity(0.15))
-                    } else {
-                        RoundedRectangle(cornerRadius: 10)
-                            .fill(Color(.systemGray6).opacity(0.25))
-                    }
-                }
-            }
-        }
-    }
-    .padding(10)
-    
+                    LargeWidgetView(entry: entry, todayStr: todayStr)
                 } else {
                     HStack(spacing: 6) {
                         ForEach(visible) { s in
@@ -266,7 +275,6 @@ struct DienstplanWidgetView: View {
             }
         }
         .modifier(WidgetBackgroundModifier())
-
         .widgetURL(URL(string: "optimes://dienstplan"))
     }
 }
