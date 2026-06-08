@@ -183,43 +183,64 @@ void initState() {
   );
 
   if (!kIsWeb) {
-    ReceiveSharingIntent.instance.getInitialMedia().then((files) {
-  if (files.isNotEmpty) {
-    final path = files.first.path;
-    if (path != null && path.toLowerCase().endsWith('.pdf')) {
-      dartio.File(path).readAsBytes().then((bytes) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
+  ReceiveSharingIntent.instance.getInitialMedia().then((files) {
+    debugPrint('📥 getInitialMedia: ${files.length} Dateien');
+    for (final f in files) {
+      debugPrint('📄 Datei: ${f.path}');
+    }
+    if (files.isNotEmpty) {
+      final path = files.first.path;
+      if (path != null && path.toLowerCase().endsWith('.pdf')) {
+        debugPrint('✅ PDF erkannt, lese Bytes...');
+        dartio.File(path).readAsBytes().then((bytes) {
+          debugPrint('📦 Bytes gelesen: ${bytes.length}');
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (bytes.isNotEmpty) {
+              _handleSharedPdfWithBytes(path, bytes);
+            } else {
+              debugPrint('⚠️ Bytes leer!');
+              _handleSharedPdf(path);
+            }
+          });
+        }).catchError((e) {
+          debugPrint('❌ Fehler beim Lesen: $e');
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _handleSharedPdf(path);
+          });
+        });
+      } else {
+        debugPrint('⚠️ Keine PDF oder kein Pfad: $path');
+      }
+    }
+  });
+
+  _intentSub =
+      ReceiveSharingIntent.instance.getMediaStream().listen((files) {
+    debugPrint('📡 getMediaStream: ${files.length} Dateien');
+    for (final f in files) {
+      debugPrint('📄 Stream-Datei: ${f.path}');
+    }
+    if (files.isNotEmpty) {
+      final path = files.first.path;
+      if (path != null && path.toLowerCase().endsWith('.pdf')) {
+        debugPrint('✅ Stream PDF erkannt, lese Bytes...');
+        dartio.File(path).readAsBytes().then((bytes) {
+          debugPrint('📦 Stream Bytes: ${bytes.length}');
           if (bytes.isNotEmpty) {
             _handleSharedPdfWithBytes(path, bytes);
           } else {
             _handleSharedPdf(path);
           }
-        });
-      }).catchError((_) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
+        }).catchError((e) {
+          debugPrint('❌ Stream Fehler: $e');
           _handleSharedPdf(path);
         });
-      });
+      }
     }
-  }
-});
-
-_intentSub =
-    ReceiveSharingIntent.instance.getMediaStream().listen((files) {
-  if (files.isNotEmpty) {
-    final path = files.first.path;
-    if (path != null && path.toLowerCase().endsWith('.pdf')) {
-      dartio.File(path).readAsBytes().then((bytes) {
-        if (bytes.isNotEmpty) {
-          _handleSharedPdfWithBytes(path, bytes);
-        } else {
-          _handleSharedPdf(path);
-        }
-      }).catchError((_) => _handleSharedPdf(path));
-    }
-  }
-});
-  }
+  }, onError: (e) {
+    debugPrint('❌ Stream onError: $e');
+  });
+}
 
   _navChannel.setMethodCallHandler((call) async {
   if (call.method == 'openFromWidget') {
