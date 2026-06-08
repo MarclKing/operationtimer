@@ -676,7 +676,7 @@ class ScheduleScreenState extends State<ScheduleScreen> {
   bool _noteOverlayVisible = false;
   String? _openSwipedCardKey;
 
-  Future<void> _pushScheduleToWidget() async {
+  static Future<void> pushScheduleToWidget() async {
   try {
     final box = Hive.box('einstellungen');
     final now = DateTime.now();
@@ -748,7 +748,7 @@ class ScheduleScreenState extends State<ScheduleScreen> {
       }
     }
   });
-  _pushScheduleToWidget(); // ← neu
+  ScheduleScreenState.pushScheduleToWidget();/ ← neu
 }
 
   void _setMonth(DateTime month) {
@@ -1285,6 +1285,7 @@ class _NoteOverlayState extends State<_NoteOverlay>
   void _saveAndClose() {
     _NoteData.save(widget.dateKey, _phoneCtrl.text.trim(), _textCtrl.text.trim());
     _ctrl.reverse().then((_) => widget.onClose());
+    ScheduleScreenState.pushScheduleToWidget();
   }
 
   void _dismissKeyboard() {

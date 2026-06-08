@@ -53,7 +53,7 @@ import WidgetKit
         )
         let path = url.host ?? ""          // z.B. "dienstplan"
         let fullPath = url.absoluteString  // z.B. "optimes://dienstplan/note/2026-06-08"
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
             channel.invokeMethod("openFromWidget", arguments: [
                 "path": path,
                 "url": fullPath

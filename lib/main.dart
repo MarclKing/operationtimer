@@ -208,11 +208,14 @@ void initState() {
     if (call.method == 'openFromWidget') {
       final args = Map<String, dynamic>.from(call.arguments as Map);
       final url = args['url'] as String;
+      // Kurz warten bis Widget-Tree bereit ist
+      await Future.delayed(const Duration(milliseconds: 100));
+      if (!mounted) return;
       if (url.contains('/note/')) {
         final dateKey = url.split('/').last;
-        _navigateToScheduleNote(dateKey);
+        await _navigateToScheduleNote(dateKey);
       } else {
-        _animateToPage(2);
+        await _animateToPage(2);
       }
     }
   });
