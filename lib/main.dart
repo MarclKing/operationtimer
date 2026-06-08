@@ -184,25 +184,41 @@ void initState() {
 
   if (!kIsWeb) {
     ReceiveSharingIntent.instance.getInitialMedia().then((files) {
-      if (files.isNotEmpty) {
-        final path = files.first.path;
-        if (path != null && path.toLowerCase().endsWith('.pdf')) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
+  if (files.isNotEmpty) {
+    final path = files.first.path;
+    if (path != null && path.toLowerCase().endsWith('.pdf')) {
+      dartio.File(path).readAsBytes().then((bytes) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (bytes.isNotEmpty) {
+            _handleSharedPdfWithBytes(path, bytes);
+          } else {
             _handleSharedPdf(path);
-          });
-        }
-      }
-    });
+          }
+        });
+      }).catchError((_) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _handleSharedPdf(path);
+        });
+      });
+    }
+  }
+});
 
-    _intentSub =
-        ReceiveSharingIntent.instance.getMediaStream().listen((files) {
-      if (files.isNotEmpty) {
-        final path = files.first.path;
-        if (path != null && path.toLowerCase().endsWith('.pdf')) {
+_intentSub =
+    ReceiveSharingIntent.instance.getMediaStream().listen((files) {
+  if (files.isNotEmpty) {
+    final path = files.first.path;
+    if (path != null && path.toLowerCase().endsWith('.pdf')) {
+      dartio.File(path).readAsBytes().then((bytes) {
+        if (bytes.isNotEmpty) {
+          _handleSharedPdfWithBytes(path, bytes);
+        } else {
           _handleSharedPdf(path);
         }
-      }
-    });
+      }).catchError((_) => _handleSharedPdf(path));
+    }
+  }
+});
   }
 
   _navChannel.setMethodCallHandler((call) async {
@@ -434,9 +450,29 @@ Future<void> _navigateToScheduleNote(String dateKey) async {
   }
 
   void handleSharedPdf(String path) => _handleSharedPdf(path);
+  void _handleSharedPdfWithBytes(String path, List<int> bytes) async {
+  if (!mounted) return;
+  final skin = AppTheme.of(context);
+  final fileName = path.split('/').last;
+
+  String displayName = fileName;
+  if (displayName.length > 40) {
+    displayName = '${displayName.substring(0, 37)}...';
+  }
+
+  final confirmed = await _showImportConfirmDialog(displayName, skin);
+  if (!mounted) return;
+  if (confirmed != true) return;
+
+  if (_dienstplanEnabled) {
+    await _animateToPage(2);
+  }
+  if (!mounted) return;
+  _autoImportPdf(path, fileName, skin, preloadedBytes: bytes);
+}
 
   void _autoImportPdf(
-      String path, String fileName, AppSkin skin) async {
+    String path, String fileName, AppSkin skin, {List<int>? preloadedBytes}) async {
     final settingsBox = Hive.box('einstellungen');
     final scheduleName =
         settingsBox.get('dienstplan_name', defaultValue: '') as String;
@@ -447,12 +483,14 @@ Future<void> _navigateToScheduleNote(String dateKey) async {
     final devMode = settingsBox
         .get('dienstplan_dev_placeholder', defaultValue: false) as bool;
 
-    List<int>? bytes;
+    List<int>? bytes = preloadedBytes;
+  if (bytes == null || bytes.isEmpty) {
     try {
       bytes = await dartio.File(path).readAsBytes();
     } catch (_) {
       bytes = null;
     }
+  }
 
     if (!mounted) return;
 
