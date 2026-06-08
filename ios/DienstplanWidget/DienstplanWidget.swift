@@ -262,7 +262,7 @@ var body: some View {
 
                     if shift != nil || isToday {
                         DayTile(
-                            entry: ShiftEntry(date: dateStr, shift: shift ?? ""),
+                            entry: ShiftEntry(date: dateStr, shift: shift ?? "", hasNote: false),
                             isToday: isToday
                         )
                         .overlay(
