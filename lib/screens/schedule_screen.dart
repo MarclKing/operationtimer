@@ -11,6 +11,7 @@ import '../theme/app_theme.dart';
 import 'package:archive/archive.dart';
 import 'dart:convert';
 import 'package:flutter/services.dart';
+import 'package:home_widget/home_widget.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shift colour helper
@@ -681,6 +682,7 @@ class ScheduleScreenState extends State<ScheduleScreen> {
     final box = Hive.box('einstellungen');
     final now = DateTime.now();
     final today = DateTime(now.year, now.month);
+    final todayStr = DateFormat('yyyy-MM-dd').format(now);
 
     final entries = <Map<String, String>>[];
 
@@ -691,24 +693,39 @@ class ScheduleScreenState extends State<ScheduleScreen> {
       debugPrint('Widget push: Monat $monthKey → ${raw == null ? "leer" : "gefunden"}');
       if (raw is Map) {
         for (final e in raw.entries) {
-          // ... dein bestehender Code ...
+          final dateKey = e.key.toString();
+          final noteRaw = box.get('schedule_note_$dateKey');
+          bool hasNote = false;
+          if (noteRaw is Map) {
+            final phone = (noteRaw['phone'] ?? '') as String;
+            final text = (noteRaw['text'] ?? '') as String;
+            hasNote = phone.isNotEmpty || text.isNotEmpty;
+          }
+          entries.add({
+            'date': dateKey,
+            'shift': e.value.toString(),
+            if (hasNote) 'hasNote': 'true',
+          });
         }
       }
     }
 
-    final todayStr = DateFormat('yyyy-MM-dd').format(now);
+    debugPrint('Widget push: vor Filter ${entries.length} Einträge, todayStr=$todayStr');
+
     final filtered = entries
         .where((e) => (e['date'] ?? '').compareTo(todayStr) >= 0)
         .toList()
       ..sort((a, b) => (a['date'] ?? '').compareTo(b['date'] ?? ''));
 
-    debugPrint('Widget push: ${filtered.length} Einträge werden gesendet');
+    debugPrint('Widget push: nach Filter ${filtered.length} Einträge');
 
     final json = jsonEncode(filtered);
-    const channel = MethodChannel('de.marcel.optimes/widget');
-    await channel.invokeMethod('updateSchedule', {'json': json});
 
-    debugPrint('Widget push: Channel-Aufruf erfolgreich');
+    await HomeWidget.setAppGroupId('group.de.marcel.optimes');
+    await HomeWidget.saveWidgetData<String>('schedule_entries', json);
+    await HomeWidget.updateWidget(iOSName: 'DienstplanWidgetExtension');
+
+    debugPrint('Widget push: home_widget erfolgreich');
   } catch (e) {
     debugPrint('Widget push ERROR: $e');
   }
