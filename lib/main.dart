@@ -14,6 +14,7 @@ import 'services/pdf_service.dart';
 import 'theme/app_theme.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/services.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -80,15 +81,25 @@ class MyApp extends StatelessWidget {
           child: MaterialApp(
             title: 'OpTimes',
             debugShowCheckedModeBanner: false,
-            onGenerateRoute: (settings) {
-              final name = settings.name ?? '';
-              if (name.isNotEmpty && name != '/' && !name.startsWith('http')) {
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  MyApp._mainScreenKey.currentState?.handleSharedPdf(name);
-                });
-              }
-              return null;
-            },
+            // NEU:
+onGenerateRoute: (settings) {
+  final name = settings.name ?? '';
+  if (name.startsWith('optimes://dienstplan/note/')) {
+    final dateKey = name.replaceFirst('optimes://dienstplan/note/', '');
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      MyApp._mainScreenKey.currentState?._navigateToScheduleNote(dateKey);
+    });
+  } else if (name == 'optimes://dienstplan' || name == '/dienstplan') {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      MyApp._mainScreenKey.currentState?._goToPage(2);
+    });
+  } else if (name.isNotEmpty && name != '/' && !name.startsWith('http')) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      MyApp._mainScreenKey.currentState?.handleSharedPdf(name);
+    });
+  }
+  return null;
+},
             onUnknownRoute: (settings) =>
                 MaterialPageRoute(builder: (_) => const MainScreen()),
             theme: ThemeData(
@@ -144,61 +155,85 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   StreamSubscription? _intentSub;
 final _scheduleKey = GlobalKey<ScheduleScreenState>();
 final _monthKey = GlobalKey<MonthScreenState>();
-final ValueNotifier<bool> _dayCardDragging = ValueNotifier(false); // ← NEU
+final ValueNotifier<bool> _dayCardDragging = ValueNotifier(false);
+static const _navChannel = MethodChannel('de.marcel.optimes/navigation');
 
   bool get _dienstplanEnabled => true;
 
   int get _pageCount => _dienstplanEnabled ? 3 : 2;
 
   @override
-  void initState() {
-    super.initState();
+void initState() {
+  super.initState();
 
-    _slideCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 320),
-      lowerBound: 0.0,
-      upperBound: 2.0,
-      value: 0.0,
-    );
-    _slideCtrl.addListener(() => setState(() {}));
+  _slideCtrl = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 320),
+    lowerBound: 0.0,
+    upperBound: 2.0,
+    value: 0.0,
+  );
+  _slideCtrl.addListener(() => setState(() {}));
 
-    _menuAnimController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 250),
-    );
+  _menuAnimController = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 250),
+  );
 
-    if (!kIsWeb) {
-      ReceiveSharingIntent.instance.getInitialMedia().then((files) {
-        if (files.isNotEmpty) {
-          final path = files.first.path;
-          if (path != null && path.toLowerCase().endsWith('.pdf')) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              _handleSharedPdf(path);
-            });
-          }
-        }
-      });
-
-      _intentSub =
-          ReceiveSharingIntent.instance.getMediaStream().listen((files) {
-        if (files.isNotEmpty) {
-          final path = files.first.path;
-          if (path != null && path.toLowerCase().endsWith('.pdf')) {
+  if (!kIsWeb) {
+    ReceiveSharingIntent.instance.getInitialMedia().then((files) {
+      if (files.isNotEmpty) {
+        final path = files.first.path;
+        if (path != null && path.toLowerCase().endsWith('.pdf')) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
             _handleSharedPdf(path);
-          }
+          });
         }
-      });
-    }
+      }
+    });
+
+    _intentSub =
+        ReceiveSharingIntent.instance.getMediaStream().listen((files) {
+      if (files.isNotEmpty) {
+        final path = files.first.path;
+        if (path != null && path.toLowerCase().endsWith('.pdf')) {
+          _handleSharedPdf(path);
+        }
+      }
+    });
   }
 
+  _navChannel.setMethodCallHandler((call) async {
+    if (call.method == 'openFromWidget') {
+      final args = Map<String, dynamic>.from(call.arguments as Map);
+      final url = args['url'] as String;
+      if (url.contains('/note/')) {
+        final dateKey = url.split('/').last;
+        _navigateToScheduleNote(dateKey);
+      } else {
+        _animateToPage(2);
+      }
+    }
+  });
+}
+
   @override
+// RICHTIG:
+@override
 void dispose() {
   _intentSub?.cancel();
   _slideCtrl.dispose();
   _menuAnimController.dispose();
-  _dayCardDragging.dispose(); // ← NEU
+  _dayCardDragging.dispose();
   super.dispose();
+}  // ← diese Klammer einfügen
+
+void _navigateToScheduleNote(String dateKey) async {
+  await _animateToPage(2);
+  if (!mounted) return;
+  await Future.delayed(const Duration(milliseconds: 350));
+  if (!mounted) return;
+  _scheduleKey.currentState?.openNoteOverlay(dateKey);
 }
 
   // ── Share Intent ───────────────────────────────────────────────────────────

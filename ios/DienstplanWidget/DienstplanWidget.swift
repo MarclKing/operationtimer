@@ -133,38 +133,66 @@ struct DayTile: View {
 struct SmallWidgetView: View {
     let shifts: [ShiftEntry]
 
-    var tomorrow: ShiftEntry? {
+    var todayEntry: ShiftEntry? {
         let fmt = DateFormatter()
         fmt.dateFormat = "yyyy-MM-dd"
-        guard let tmr = Calendar.current.date(byAdding: .day, value: 1, to: Date()) else { return nil }
-        let tmrStr = fmt.string(from: tmr)
-        return shifts.first { $0.date == tmrStr }
+        let todayStr = fmt.string(from: Date())
+        return shifts.first { $0.date == todayStr }
     }
 
-    var tomorrowLabel: String {
-        guard let d = Calendar.current.date(byAdding: .day, value: 1, to: Date()) else { return "Morgen" }
+    var todayLabel: String {
         let df = DateFormatter()
         df.locale = Locale(identifier: "de_DE")
         df.dateFormat = "EEE dd.MM"
-        return df.string(from: d)
+        return df.string(from: Date())
+    }
+
+    var hasNote: Bool {
+        let fmt = DateFormatter()
+        fmt.dateFormat = "yyyy-MM-dd"
+        let todayStr = fmt.string(from: Date())
+        let defaults = UserDefaults(suiteName: "group.de.marcel.optimes")
+        // Notiz-Key entspricht schedule_note_yyyy-MM-dd (Flutter-Hive-Key)
+        // Da Widgets keinen Hive-Zugriff haben, übergib hasNote im JSON
+        // Alternativ: aus schedule_entries ein extra Flag lesen
+        // Hier: prüfen ob im JSON ein "hasNote" Feld für heute vorhanden
+        let json = defaults?.string(forKey: "schedule_entries") ?? "[]"
+        let data = json.data(using: .utf8) ?? Data()
+        let decoded = (try? JSONSerialization.jsonObject(with: data) as? [[String: String]]) ?? []
+        return decoded.first(where: { $0["date"] == todayStr })?["hasNote"] == "true"
+    }
+
+    var todayDateKey: String {
+        let fmt = DateFormatter()
+        fmt.dateFormat = "yyyy-MM-dd"
+        return fmt.string(from: Date())
     }
 
     var body: some View {
         VStack(spacing: 6) {
-            Text("Morgen")
+            Text("Heute")
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundColor(.secondary)
 
-            Text(tomorrowLabel)
+            Text(todayLabel)
                 .font(.system(size: 10))
                 .foregroundColor(.secondary)
 
-            if let t = tomorrow {
-                Text(t.shift.isEmpty ? "—" : t.shift)
-                    .font(.system(size: 32, weight: .heavy))
-                    .foregroundColor(shiftColor(t.shift))
-                    .minimumScaleFactor(0.5)
-                    .lineLimit(1)
+            if let t = todayEntry {
+                HStack(spacing: 4) {
+                    Text(t.shift.isEmpty ? "—" : t.shift)
+                        .font(.system(size: 32, weight: .heavy))
+                        .foregroundColor(shiftColor(t.shift))
+                        .minimumScaleFactor(0.5)
+                        .lineLimit(1)
+
+                    if hasNote {
+                        Image(systemName: "note.text")
+                            .font(.system(size: 14))
+                            .foregroundColor(.secondary)
+                            .padding(.top, 4)
+                    }
+                }
             } else {
                 Text("—")
                     .font(.system(size: 32, weight: .heavy))
@@ -172,6 +200,9 @@ struct SmallWidgetView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .widgetURL(URL(string: hasNote
+            ? "optimes://dienstplan/note/\(todayDateKey)"
+            : "optimes://dienstplan"))
     }
 }
 
@@ -206,34 +237,74 @@ struct LargeWidgetView: View {
         return f
     }
 
-    var body: some View {
-        VStack(spacing: 5) {
-            ForEach(0..<weeks.count, id: \.self) { wi in
-                HStack(spacing: 4) {
-                    ForEach(weeks[wi], id: \.self) { date in
-                        let dateStr = fmt.string(from: date)
-                        let shift = shiftDict[dateStr]
-                        let isToday = dateStr == todayStr
-                        let isPast = date < today
+// NEU:
+var body: some View {
+    VStack(spacing: 5) {
+        ForEach(0..<weeks.count, id: \.self) { wi in
+            // Prüfen ob erste Kachel dieser Woche neuen Monat beginnt
+            let weekDates = weeks[wi]
+            let firstDate = weekDates.first!
+            let isMonthBoundaryWeek: Bool = {
+                if wi == 0 { return false }
+                let prevWeekLastDate = weeks[wi - 1].last!
+                return Calendar.current.component(.month, from: firstDate) !=
+                       Calendar.current.component(.month, from: prevWeekLastDate)
+            }()
 
-                        if shift != nil || isToday {
-                            DayTile(
-                                entry: ShiftEntry(date: dateStr, shift: shift ?? ""),
-                                isToday: isToday
-                            )
-                        } else if isPast {
-                            RoundedRectangle(cornerRadius: 10)
-                                .fill(Color(.systemGray6).opacity(0.15))
-                        } else {
-                            RoundedRectangle(cornerRadius: 10)
-                                .fill(Color(.systemGray6).opacity(0.25))
-                        }
+            if isMonthBoundaryWeek {
+    HStack(spacing: 4) {
+        Rectangle()
+            .fill(
+                LinearGradient(
+                    colors: [Color.clear, Color(.systemGray2), Color.clear],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            )
+            .frame(height: 2)
+    }
+    .padding(.vertical, 3)
+}
+
+            HStack(spacing: 4) {
+                ForEach(weekDates, id: \.self) { date in
+                    let dateStr = fmt.string(from: date)
+                    let shift = shiftDict[dateStr]
+                    let isToday = dateStr == todayStr
+                    let isPast = date < today
+                    let isFirstOfMonth = Calendar.current.component(.day, from: date) == 1
+
+                    if shift != nil || isToday {
+                        DayTile(
+                            entry: ShiftEntry(date: dateStr, shift: shift ?? ""),
+                            isToday: isToday
+                        )
+                        .overlay(
+    isFirstOfMonth && !isToday ?
+    RoundedRectangle(cornerRadius: 10)
+        .stroke(
+            LinearGradient(
+                colors: [Color.accentColor.opacity(0.8), Color.accentColor.opacity(0.3)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            ),
+            lineWidth: 2
+        )
+    : nil
+)
+                    } else if isPast {
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(Color(.systemGray6).opacity(0.15))
+                    } else {
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(Color(.systemGray6).opacity(0.25))
                     }
                 }
             }
         }
-        .padding(10)
     }
+    .padding(10)
+}
 }
 
 // ── Medium/Large Widget View ──────────────────────────────────────
@@ -241,14 +312,15 @@ struct DienstplanWidgetView: View {
     var entry: DienstplanTimelineEntry
     @Environment(\.widgetFamily) var family
 
-    var dayCount: Int {
-        switch family {
-        case .systemSmall:  return 2
-        case .systemMedium: return 5
-        case .systemLarge:  return 10
-        default:            return 5
-        }
+    // NEU:
+var dayCount: Int {
+    switch family {
+    case .systemSmall:  return 2
+    case .systemMedium: return 7
+    case .systemLarge:  return 10
+    default:            return 7
     }
+}
 
     var todayStr: String {
         let fmt = DateFormatter()

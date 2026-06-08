@@ -61,32 +61,29 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       vsync: this,
       duration: const Duration(milliseconds: 150),
     );
-    _flyController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 340),
-    );
-    _flyScale = CurvedAnimation(
-      parent: _flyController,
-      curve: Curves.easeOutBack,
-      reverseCurve: Curves.easeInBack,
-    );
-    _flyOpacity = CurvedAnimation(
-      parent: _flyController,
-      curve: Curves.easeOut,
-      reverseCurve: Curves.easeIn,
-    );
-    _glideController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 340),
-    );
-    _glideOffset = Tween<Offset>(
-      begin: Offset.zero,
-      end: Offset.zero,
-    ).animate(CurvedAnimation(
-      parent: _glideController,
-      curve: Curves.easeOutCubic,
-      reverseCurve: Curves.easeInCubic,
-    ));
+    // NEU:
+_flyController = AnimationController(
+  vsync: this,
+  duration: const Duration(milliseconds: 320),
+);
+_flyOpacity = CurvedAnimation(
+  parent: _flyController,
+  curve: Curves.easeOut,
+  reverseCurve: Curves.easeIn,
+);
+_flyScale = CurvedAnimation(
+  parent: _flyController,
+  curve: Curves.easeOutBack,
+  reverseCurve: Curves.easeInBack,
+);
+_glideController = AnimationController(
+  vsync: this,
+  duration: const Duration(milliseconds: 1),
+);
+_glideOffset = Tween<Offset>(
+  begin: Offset.zero,
+  end: Offset.zero,
+).animate(_glideController);
     _loadEntry();
   }
 
@@ -252,34 +249,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   void _openOverlay(_OverlayField field) {
-    if (_activeOverlay != _OverlayField.none) return;
-    HapticFeedback.lightImpact();
-
-    final cardKey = field == _OverlayField.tkf ? _tkfCardKey : _notizCardKey;
-    final glideTarget = _computeGlideOffset(cardKey);
-
-    _glideOffset = Tween<Offset>(
-      begin: Offset.zero,
-      end: glideTarget,
-    ).animate(CurvedAnimation(
-      parent: _glideController,
-      curve: Curves.easeOutCubic,
-      reverseCurve: Curves.easeInCubic,
-    ));
-
-    setState(() => _activeOverlay = field);
-    _flyController.forward(from: 0);
-    _glideController.forward(from: 0);
-
-    Future.delayed(const Duration(milliseconds: 200), () {
-      if (!mounted) return;
-      if (field == _OverlayField.tkf) {
-        FocusScope.of(context).requestFocus(_tkfFocusNode);
-      } else {
-        FocusScope.of(context).requestFocus(_notizFocusNode);
-      }
-    });
-  }
+  if (_activeOverlay != _OverlayField.none) return;
+  HapticFeedback.lightImpact();
+  setState(() => _activeOverlay = field);
+  _flyController.forward(from: 0);
+  Future.delayed(const Duration(milliseconds: 120), () {
+    if (!mounted) return;
+    if (field == _OverlayField.tkf) {
+      FocusScope.of(context).requestFocus(_tkfFocusNode);
+    } else {
+      FocusScope.of(context).requestFocus(_notizFocusNode);
+    }
+  });
+}
 
   Future<bool> _checkDuplicateKommenTime(
       DateTime datum, String kommenTime) async {
@@ -476,46 +458,50 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
-  Future<void> _selectTimeWithPicker(
-      TextEditingController controller) async {
-    _dismissKeyboardAndOverlay();
-    await Future.delayed(const Duration(milliseconds: 80));
-    if (!mounted) return;
+  Future<void> _selectTimeWithPicker(TextEditingController controller) async {
+  _dismissKeyboardAndOverlay();
+  await Future.delayed(const Duration(milliseconds: 80));
+  if (!mounted) return;
 
-    final isKommen = controller == _kommenController;
-    final isGehen = controller == _gehenController;
-    final nightShiftEnabled = NightShiftHelper.isNightShiftEnabled();
-    final skin = AppTheme.of(context);
+  final isKommen = controller == _kommenController;
+  final isGehen = controller == _gehenController;
+  final nightShiftEnabled = NightShiftHelper.isNightShiftEnabled();
+  final skin = AppTheme.of(context);
 
-    await showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (_) => _IOSTimePicker(
-        initialTime: _parseTime(controller.text) ?? TimeOfDay.now(),
-        skin: skin,
-        onTimeSelected: (t) {
-          final newMinutes = t.hour * 60 + t.minute;
-          if (!nightShiftEnabled &&
-              isKommen &&
-              _gehenController.text.isNotEmpty) {
-            final g = _parseTime(_gehenController.text);
-            if (g != null && newMinutes > g.hour * 60 + g.minute) return;
-          }
-          if (!nightShiftEnabled &&
-              isGehen &&
-              _kommenController.text.isNotEmpty) {
-            final k = _parseTime(_kommenController.text);
-            if (k != null && newMinutes < k.hour * 60 + k.minute) return;
-          }
-          setState(() {
-            controller.text =
-                '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
-          });
-        },
-      ),
-    );
+  TimeOfDay? selectedTime;
+
+  await showModalBottomSheet(
+    context: context,
+    backgroundColor: Colors.transparent,
+    isScrollControlled: true,
+    builder: (_) => _IOSTimePicker(
+  initialTime: _parseTime(controller.text) ?? TimeOfDay.now(),
+  skin: skin,
+  label: isKommen ? 'Uhrzeit Kommen' : 'Uhrzeit Gehen',   // ← NEU
+  onTimeSelected: (t) {
+    selectedTime = t;
+  },
+),
+  );
+
+  // Wird nach Schließen (egal ob per Button oder Tipp daneben) ausgeführt:
+  if (!mounted) return;
+  if (selectedTime == null) return;
+  final t = selectedTime!;
+  final newMinutes = t.hour * 60 + t.minute;
+  if (!nightShiftEnabled && isKommen && _gehenController.text.isNotEmpty) {
+    final g = _parseTime(_gehenController.text);
+    if (g != null && newMinutes > g.hour * 60 + g.minute) return;
   }
+  if (!nightShiftEnabled && isGehen && _kommenController.text.isNotEmpty) {
+    final k = _parseTime(_kommenController.text);
+    if (k != null && newMinutes < k.hour * 60 + k.minute) return;
+  }
+  setState(() {
+    controller.text =
+        '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+  });
+}
 
   @override
   Widget build(BuildContext context) {
@@ -901,41 +887,37 @@ class _FlyingCardOverlay extends StatelessWidget {
     final cardTop = screenH * 0.22;
 
     return AnimatedBuilder(
-      animation: Listenable.merge([flyAnimation, glideController]),
-      builder: (context, child) {
-        final glideProgress = glideController.value;
-        final flyProgress = flyAnimation.value;
-        final offsetDy = glideOffset.value.dy * (1.0 - glideProgress);
-        final offsetDx = glideOffset.value.dx * (1.0 - glideProgress);
+  animation: flyAnimation,
+  builder: (context, child) {
+    return Stack(
+      children: [
+        GestureDetector(
+          onTap: onClose,
+          child: Opacity(
+            opacity: opacityAnim.value * 0.55,
+            child: Container(
+              color: Colors.black,
+              width: double.infinity,
+              height: double.infinity,
+            ),
+          ),
+        ),
+        Positioned(
+  top: cardTop,
+  left: 24.0,
+  right: 24.0,
+  child: Transform.scale(
+    scale: 0.85 + scaleAnim.value * 0.15,
+    child: Opacity(
+      opacity: opacityAnim.value.clamp(0.0, 1.0),
+      child: child!,
+    ),
+  ),
+),
+      ],
+    );
+  },
 
-        return Stack(
-          children: [
-            GestureDetector(
-              onTap: onClose,
-              child: Opacity(
-                opacity: opacityAnim.value * 0.55,
-                child: Container(
-                  color: Colors.black,
-                  width: double.infinity,
-                  height: double.infinity,
-                ),
-              ),
-            ),
-            Positioned(
-              top: cardTop + offsetDy,
-              left: 24.0 + offsetDx,
-              right: 24.0 - offsetDx,
-              child: Transform.scale(
-                scale: 0.85 + flyProgress * 0.15,
-                child: Opacity(
-                  opacity: opacityAnim.value.clamp(0.0, 1.0),
-                  child: child!,
-                ),
-              ),
-            ),
-          ],
-        );
-      },
       child: Container(
         decoration: BoxDecoration(
           color: skin.bgCard,
@@ -1148,11 +1130,13 @@ class _IOSTimePicker extends StatefulWidget {
   final TimeOfDay initialTime;
   final AppSkin skin;
   final Function(TimeOfDay) onTimeSelected;
+  final String label;          // ← NEU
 
   const _IOSTimePicker({
     required this.initialTime,
     required this.skin,
     required this.onTimeSelected,
+    this.label = 'Uhrzeit auswählen',   // ← NEU
   });
 
   @override
@@ -1179,9 +1163,9 @@ class _IOSTimePickerState extends State<_IOSTimePicker> {
         initialItem: _minuteLoopOffset * 60 + _selectedMinute);
   }
 
-  @override
+  // NEU – dispose() ruft onTimeSelected NICHT mehr auf:
+@override
 void dispose() {
-  widget.onTimeSelected(TimeOfDay(hour: _selectedHour, minute: _selectedMinute));
   _hourController.dispose();
   _minuteController.dispose();
   super.dispose();
@@ -1234,11 +1218,13 @@ void dispose() {
                 borderRadius: BorderRadius.circular(2)),
           ),
           const SizedBox(height: 20),
-          Text('Uhrzeit auswählen',
-              style: TextStyle(
-                  color: skin.textPrimary,
-                  fontSize: 17,
-                  fontWeight: FontWeight.w600)),
+          Text(
+  widget.label,
+  style: TextStyle(
+      color: skin.textPrimary,
+      fontSize: 17,
+      fontWeight: FontWeight.w600),
+),
           const SizedBox(height: 16),
           SizedBox(
             height: 200,

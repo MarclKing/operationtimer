@@ -682,7 +682,6 @@ class ScheduleScreenState extends State<ScheduleScreen> {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month);
 
-    // Sammle Einträge für aktuellen und nächsten Monat
     final entries = <Map<String, String>>[];
 
     for (int offset = 0; offset <= 2; offset++) {
@@ -691,15 +690,24 @@ class ScheduleScreenState extends State<ScheduleScreen> {
       final raw = box.get('schedule_$monthKey');
       if (raw is Map) {
         for (final e in raw.entries) {
+          final dateKey = e.key.toString();
+          // Prüfe ob Notiz vorhanden
+          final noteRaw = box.get('schedule_note_$dateKey');
+          bool hasNote = false;
+          if (noteRaw is Map) {
+            final phone = (noteRaw['phone'] ?? '') as String;
+            final text = (noteRaw['text'] ?? '') as String;
+            hasNote = phone.isNotEmpty || text.isNotEmpty;
+          }
           entries.add({
-            'date': e.key.toString(),
+            'date': dateKey,
             'shift': e.value.toString(),
+            if (hasNote) 'hasNote': 'true',
           });
         }
       }
     }
 
-    // Nur zukünftige Einträge, sortiert
     final todayStr = DateFormat('yyyy-MM-dd').format(now);
     final filtered = entries
         .where((e) => (e['date'] ?? '').compareTo(todayStr) >= 0)
@@ -707,8 +715,6 @@ class ScheduleScreenState extends State<ScheduleScreen> {
       ..sort((a, b) => (a['date'] ?? '').compareTo(b['date'] ?? ''));
 
     final json = jsonEncode(filtered);
-
-    // In App Group schreiben via MethodChannel
     const channel = MethodChannel('de.marcel.optimes/widget');
     await channel.invokeMethod('updateSchedule', {'json': json});
   } catch (e) {
@@ -916,7 +922,7 @@ class ScheduleScreenState extends State<ScheduleScreen> {
     );
   }
 
-  void _openNoteOverlay(String dateKey) {
+  void openNoteOverlay(String dateKey) {
     HapticFeedback.lightImpact();
     setState(() {
       _activeNoteKey = dateKey;
@@ -1176,7 +1182,7 @@ class ScheduleScreenState extends State<ScheduleScreen> {
   isChanged: changedDays.contains(key),
   externallyOpenKey: _openSwipedCardKey,
   onCardSwiped: _onCardSwiped,
-  onOpenNote: () => _openNoteOverlay(key),
+  onOpenNote: () => openNoteOverlay(key),
   onNoteChanged: () => setState(() {}),
   dayCardDragging: widget.dayCardDragging, // ← NEU
 ),
