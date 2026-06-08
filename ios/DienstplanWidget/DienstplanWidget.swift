@@ -180,23 +180,33 @@ struct LargeWidgetView: View {
     let entry: DienstplanTimelineEntry
     let todayStr: String
 
-    var body: some View {
-        let fmt = DateFormatter()
-        fmt.dateFormat = "yyyy-MM-dd"
-        let today = Calendar.current.startOfDay(for: Date())
-        let shiftDict = Dictionary(uniqueKeysWithValues: entry.shifts.map { ($0.date, $0.shift) })
+    private var today: Date {
+        Calendar.current.startOfDay(for: Date())
+    }
 
+    private var shiftDict: [String: String] {
+        Dictionary(uniqueKeysWithValues: entry.shifts.map { ($0.date, $0.shift) })
+    }
+
+    private var weeks: [[Date]] {
         var cal = Calendar(identifier: .iso8601)
         cal.locale = Locale(identifier: "de_DE")
         let thisMonday = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: today))!
-
-        let weeks: [[Date]] = (0..<4).map { weekOffset in
+        return (0..<4).map { weekOffset in
             let monday = cal.date(byAdding: .weekOfYear, value: weekOffset, to: thisMonday)!
             return (0..<7).map { dayOffset in
                 cal.date(byAdding: .day, value: dayOffset, to: monday)!
             }
         }
+    }
 
+    private var fmt: DateFormatter {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }
+
+    var body: some View {
         VStack(spacing: 5) {
             ForEach(0..<weeks.count, id: \.self) { wi in
                 HStack(spacing: 4) {
