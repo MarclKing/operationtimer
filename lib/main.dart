@@ -153,6 +153,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       DateTime(DateTime.now().year, DateTime.now().month);
 
   StreamSubscription? _intentSub;
+final _homeKey = GlobalKey<_HomeScreenState>();
 final _scheduleKey = GlobalKey<ScheduleScreenState>();
 final _monthKey = GlobalKey<MonthScreenState>();
 final ValueNotifier<bool> _dayCardDragging = ValueNotifier(false);
@@ -582,6 +583,7 @@ void _navigateToScheduleNote(String dateKey) async {
   void _goToPage(int index) {
   FocusManager.instance.primaryFocus?.unfocus();
   _closeMenu();
+  _homeKey.currentState?.closeOverlays();
   _scheduleKey.currentState?.closeOverlays();
   _monthKey.currentState?.closeAllRows();
   _animateToPage(index);
@@ -627,6 +629,7 @@ void _navigateToScheduleNote(String dateKey) async {
 
   // ← NEU: Overlays/Slider schließen wenn Seite wechselt
   if (targetPage != _currentPage) {
+    _homeKey.currentState?.closeOverlays();
     _scheduleKey.currentState?.closeOverlays();
     _monthKey.currentState?.closeAllRows();
   }
@@ -643,7 +646,7 @@ void _navigateToScheduleNote(String dateKey) async {
 
   List<Widget> _buildPages() => [
         HomeScreen(
-          key: const ValueKey('home'),
+          key: _homeKey,
           selectedDate: _sharedDate,
           onDateChanged: (d) => setState(() => _sharedDate = d),
           onNavigateToMonth: () => _goToPage(1),

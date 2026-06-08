@@ -64,7 +64,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     // NEU:
 _flyController = AnimationController(
   vsync: this,
-  duration: const Duration(milliseconds: 320),
+  duration: const Duration(milliseconds: 220),
 );
 _flyOpacity = CurvedAnimation(
   parent: _flyController,
@@ -172,6 +172,8 @@ _glideOffset = Tween<Offset>(
       setState(() => _activeOverlay = _OverlayField.none);
     }
   }
+
+  void closeOverlays() => _dismissKeyboardAndOverlay();
 
   Future<void> _closeOverlay() async {
     _tkfFocusNode.unfocus();
