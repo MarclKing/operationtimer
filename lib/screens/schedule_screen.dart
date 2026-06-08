@@ -654,12 +654,14 @@ class ScheduleScreen extends StatefulWidget {
   final VoidCallback onNavigateToHome;
   final VoidCallback onNavigateToMonth;
   final void Function(DateTime)? onMonthChanged;
+  final ValueNotifier<bool>? dayCardDragging; // ← NEU
 
   const ScheduleScreen({
     super.key,
     required this.onNavigateToHome,
     required this.onNavigateToMonth,
     this.onMonthChanged,
+    this.dayCardDragging, // ← NEU
   });
 
   @override
@@ -1166,19 +1168,18 @@ class ScheduleScreenState extends State<ScheduleScreen> {
                                         padding:
                                             const EdgeInsets.only(bottom: 8),
                                         child: _DayCard(
-                                          day: day,
-                                          entry: entry,
-                                          skin: skin,
-                                          isChrome: isChrome,
-                                          dateKey: key,
-                                          isChanged: changedDays.contains(key),
-                                          externallyOpenKey: _openSwipedCardKey,
-                                          onCardSwiped: _onCardSwiped,
-                                          onOpenNote: () =>
-                                              _openNoteOverlay(key),
-                                          onNoteChanged: () =>
-                                              setState(() {}),
-                                        ),
+  day: day,
+  entry: entry,
+  skin: skin,
+  isChrome: isChrome,
+  dateKey: key,
+  isChanged: changedDays.contains(key),
+  externallyOpenKey: _openSwipedCardKey,
+  onCardSwiped: _onCardSwiped,
+  onOpenNote: () => _openNoteOverlay(key),
+  onNoteChanged: () => setState(() {}),
+  dayCardDragging: widget.dayCardDragging, // ← NEU
+),
                                       );
                                     },
                                   ),
@@ -1604,6 +1605,7 @@ class _DayCard extends StatefulWidget {
   final void Function(String?) onCardSwiped;
   final VoidCallback onOpenNote;
   final VoidCallback onNoteChanged;
+  final ValueNotifier<bool>? dayCardDragging; // ← NEU
 
   const _DayCard({
     required this.day,
@@ -1616,6 +1618,7 @@ class _DayCard extends StatefulWidget {
     required this.onCardSwiped,
     required this.onOpenNote,
     required this.onNoteChanged,
+    this.dayCardDragging, // ← NEU
   });
 
   @override
@@ -1704,28 +1707,30 @@ class _DayCardState extends State<_DayCard>
     if (totalDx > 0) return;
     if (totalDx.abs() < 8) return;
     _dragging = true;
+    widget.dayCardDragging?.value = true; // ← NEU
   }
-    final newOffset =
-        (_swipeOffset + d.delta.dx).clamp(-_revealWidth, 0.0);
-    setState(() => _swipeOffset = newOffset);
-  }
+  final newOffset =
+      (_swipeOffset + d.delta.dx).clamp(-_revealWidth, 0.0);
+  setState(() => _swipeOffset = newOffset);
+}
 
-  void _onPanEnd(DragEndDetails d) {
-    if (!_dragging) return;
-    _dragging = false;
-    final v = d.primaryVelocity ?? d.velocity.pixelsPerSecond.dx;
-    if (_swipeOffset < -_snapThreshold || v < -400) {
-      _animateTo(-_revealWidth);
-      setState(() => _isOpen = true);
-      widget.onCardSwiped(widget.dateKey);
-    } else {
-      _animateTo(0);
-      if (_isOpen) {
-        setState(() => _isOpen = false);
-        widget.onCardSwiped(null);
-      }
+void _onPanEnd(DragEndDetails d) {
+  if (!_dragging) return;
+  _dragging = false;
+  widget.dayCardDragging?.value = false; // ← NEU
+  final v = d.primaryVelocity ?? d.velocity.pixelsPerSecond.dx;
+  if (_swipeOffset < -_snapThreshold || v < -400) {
+    _animateTo(-_revealWidth);
+    setState(() => _isOpen = true);
+    widget.onCardSwiped(widget.dateKey);
+  } else {
+    _animateTo(0);
+    if (_isOpen) {
+      setState(() => _isOpen = false);
+      widget.onCardSwiped(null);
     }
   }
+}
 
   void _close() {
     _animateTo(0);

@@ -141,9 +141,10 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   DateTime _scheduleViewMonth =
       DateTime(DateTime.now().year, DateTime.now().month);
 
-  StreamSubscription? _intentSub;
-  final _scheduleKey = GlobalKey<ScheduleScreenState>();
+  SStreamSubscription? _intentSub;
+final _scheduleKey = GlobalKey<ScheduleScreenState>();
 final _monthKey = GlobalKey<MonthScreenState>();
+final ValueNotifier<bool> _dayCardDragging = ValueNotifier(false); // ← NEU
 
   bool get _dienstplanEnabled => true;
 
@@ -192,12 +193,13 @@ final _monthKey = GlobalKey<MonthScreenState>();
   }
 
   @override
-  void dispose() {
-    _intentSub?.cancel();
-    _slideCtrl.dispose();
-    _menuAnimController.dispose();
-    super.dispose();
-  }
+void dispose() {
+  _intentSub?.cancel();
+  _slideCtrl.dispose();
+  _menuAnimController.dispose();
+  _dayCardDragging.dispose(); // ← NEU
+  super.dispose();
+}
 
   // ── Share Intent ───────────────────────────────────────────────────────────
 
@@ -561,37 +563,44 @@ final _monthKey = GlobalKey<MonthScreenState>();
   }
 
   void _onDragUpdate(DragUpdateDetails d) {
-    if (!_isDragging) return;
-    final screenW = MediaQuery.of(context).size.width;
-    final delta = -d.delta.dx / screenW;
-    final newVal = (_slideCtrl.value + delta)
-        .clamp(0.0, (_pageCount - 1).toDouble());
-    _slideCtrl.value = newVal;
-  }
-
+  if (!_isDragging) return;
+  if (_dayCardDragging.value) return; // ← NEU
+  final screenW = MediaQuery.of(context).size.width;
+  final delta = -d.delta.dx / screenW;
+  final newVal = (_slideCtrl.value + delta)
+      .clamp(0.0, (_pageCount - 1).toDouble());
+  _slideCtrl.value = newVal;
+}
   void _onDragEnd(DragEndDetails d) {
-    if (!_isDragging) return;
-    _isDragging = false;
+  if (!_isDragging) return;
+  _isDragging = false;
+  _dayCardDragging.value = false; // ← NEU
 
-    final velocity = d.primaryVelocity ?? 0;
-    final current = _slideCtrl.value;
+  final velocity = d.primaryVelocity ?? 0;
+  final current = _slideCtrl.value;
 
-    int targetPage;
-    if (velocity < -400) {
-      targetPage = (current.ceil()).clamp(0, _pageCount - 1);
-    } else if (velocity > 400) {
-      targetPage = (current.floor()).clamp(0, _pageCount - 1);
-    } else {
-      targetPage = current.round().clamp(0, _pageCount - 1);
-    }
-
-    setState(() => _currentPage = targetPage);
-    _slideCtrl.animateTo(
-      targetPage.toDouble(),
-      duration: const Duration(milliseconds: 260),
-      curve: Curves.easeOutCubic,
-    );
+  int targetPage;
+  if (velocity < -400) {
+    targetPage = (current.ceil()).clamp(0, _pageCount - 1);
+  } else if (velocity > 400) {
+    targetPage = (current.floor()).clamp(0, _pageCount - 1);
+  } else {
+    targetPage = current.round().clamp(0, _pageCount - 1);
   }
+
+  // ← NEU: Overlays/Slider schließen wenn Seite wechselt
+  if (targetPage != _currentPage) {
+    _scheduleKey.currentState?.closeOverlays();
+    _monthKey.currentState?.closeAllRows();
+  }
+
+  setState(() => _currentPage = targetPage);
+  _slideCtrl.animateTo(
+    targetPage.toDouble(),
+    duration: const Duration(milliseconds: 260),
+    curve: Curves.easeOutCubic,
+  );
+}
 
   // ── Pages ──────────────────────────────────────────────────────────────────
 
@@ -615,6 +624,7 @@ final _monthKey = GlobalKey<MonthScreenState>();
     onNavigateToMonth: () => _goToPage(1),
     onMonthChanged: (m) =>
         setState(() => _scheduleViewMonth = m),
+    dayCardDragging: _dayCardDragging, // ← NEU
   ),
       ];
 
