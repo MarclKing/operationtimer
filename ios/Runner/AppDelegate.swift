@@ -62,14 +62,27 @@ import WidgetKit
         )
         let urlString = url.absoluteString
         let path = url.host ?? url.path
-        // Verzögerung damit Flutter-Handler registriert ist
+
+        // PDF aus Share Extension
+        if urlString == "optimes://shared-pdf" {
+            let defaults = UserDefaults(suiteName: "group.de.marcel.optimes")
+            let pdfPath = defaults?.string(forKey: "SharedPdfPath") ?? ""
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                navChannel.invokeMethod("openSharedPdf", arguments: ["path": pdfPath])
+                defaults?.removeObject(forKey: "SharedPdfPath")
+                defaults?.synchronize()
+            }
+            return true
+        }
+
+        // Widget-Navigation
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-    navChannel.invokeMethod("openFromWidget", arguments: [
-        "url": urlString,
-        "path": path
-    ])
-}
+                navChannel.invokeMethod("openFromWidget", arguments: [
+                    "url": urlString,
+                    "path": path
+                ])
+            }
         }
     }
     return true

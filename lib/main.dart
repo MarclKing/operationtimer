@@ -247,16 +247,31 @@ void initState() {
     final args = Map<String, dynamic>.from(call.arguments as Map);
     final url = args['url'] as String;
     final path = args['path'] as String;
-    
-    // Kurz warten bis Widget-Tree bereit ist
+
     await Future.delayed(const Duration(milliseconds: 150));
     if (!mounted) return;
-    
+
     if (url.contains('/note/')) {
       final dateKey = url.split('/').last;
       await _navigateToScheduleNote(dateKey);
     } else if (path == 'dienstplan') {
       await _animateToPage(2);
+    }
+  } else if (call.method == 'openSharedPdf') {
+    final args = Map<String, dynamic>.from(call.arguments as Map);
+    final path = args['path'] as String;
+    if (path.isEmpty) return;
+
+    await Future.delayed(const Duration(milliseconds: 150));
+    if (!mounted) return;
+
+    try {
+      final bytes = await dartio.File(path).readAsBytes();
+      if (bytes.isNotEmpty && mounted) {
+        _handleSharedPdfWithBytes(path, bytes);
+      }
+    } catch (e) {
+      debugPrint('❌ openSharedPdf Fehler: $e');
     }
   }
 });
