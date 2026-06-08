@@ -14,6 +14,7 @@ import WidgetKit
         let result = super.application(application, didFinishLaunchingWithOptions: launchOptions)
 
         if let controller = window?.rootViewController as? FlutterViewController {
+            // ── Widget Channel ──────────────────────────────────────────
             let widgetChannel = FlutterMethodChannel(
                 name: "de.marcel.optimes/widget",
                 binaryMessenger: controller.binaryMessenger
@@ -34,8 +35,41 @@ import WidgetKit
                     result(FlutterMethodNotImplemented)
                 }
             }
+
+            // ── Navigation Channel (Widget → App) ───────────────────────
+            let navChannel = FlutterMethodChannel(
+                name: "de.marcel.optimes/navigation",
+                binaryMessenger: controller.binaryMessenger
+            )
+            // Wird von Flutter selbst als Handler registriert – hier nur deklarieren
+            _ = navChannel
         }
 
         return result
+    }
+
+    // ── Widget-Tap → App öffnen ─────────────────────────────────────────────
+    override func application(
+        _ app: UIApplication,
+        open url: URL,
+        options: [UIApplication.OpenURLOptionsKey: Any] = [:]
+    ) -> Bool {
+        if url.scheme == "optimes" {
+            // URL an Flutter weiterleiten via onGenerateRoute
+            if let controller = window?.rootViewController as? FlutterViewController {
+                let navChannel = FlutterMethodChannel(
+                    name: "de.marcel.optimes/navigation",
+                    binaryMessenger: controller.binaryMessenger
+                )
+                let urlString = url.absoluteString
+                let path = url.host ?? url.path
+                navChannel.invokeMethod("openFromWidget", arguments: [
+                    "url": urlString,
+                    "path": path
+                ])
+            }
+            return true
+        }
+        return super.application(app, open: url, options: options)
     }
 }

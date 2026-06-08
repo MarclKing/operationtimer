@@ -740,18 +740,21 @@ class ScheduleScreenState extends State<ScheduleScreen> {
   }
 
   void _loadScheduleData() {
-    final box = Hive.box('einstellungen');
-    final monthKey = DateFormat('yyyy-MM').format(_selectedMonth);
-    final raw = box.get('schedule_$monthKey');
-    setState(() {
-      _scheduleData = {};
-      if (raw is Map) {
-        for (final entry in raw.entries) {
-          _scheduleData[entry.key.toString()] = entry.value.toString();
-        }
+  final box = Hive.box('einstellungen');
+  final monthKey = DateFormat('yyyy-MM').format(_selectedMonth);
+  final raw = box.get('schedule_$monthKey');
+  setState(() {
+    _scheduleData = {};
+    if (raw is Map) {
+      for (final entry in raw.entries) {
+        _scheduleData[entry.key.toString()] = entry.value.toString();
       }
-    });
-  }
+    }
+  });
+  Future.delayed(const Duration(milliseconds: 100), () {
+    if (mounted) ScheduleScreenState.pushScheduleToWidget();
+  });
+}
 
   void _setMonth(DateTime month) {
     setState(() => _selectedMonth = month);
@@ -964,10 +967,16 @@ class ScheduleScreenState extends State<ScheduleScreen> {
     final changedDays = _ChangedDays.load(monthKey);
 
     return ValueListenableBuilder(
-      valueListenable: Hive.box('einstellungen').listenable(),
-      builder: (context, box, _) {
+  valueListenable: Hive.box('einstellungen').listenable(),
+  builder: (context, box, _) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _loadScheduleData();
+        ScheduleScreenState.pushScheduleToWidget();
+      }
+    });
 
-        return Scaffold(
+    return Scaffold(
           backgroundColor: skin.bgBase,
           body: GestureDetector(
             onTap: () {
