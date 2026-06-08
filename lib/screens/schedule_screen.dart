@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:home_widget/home_widget.dart' if (dart.library.html) '../home_widget_stub.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:file_picker/file_picker.dart';
@@ -10,8 +10,7 @@ import 'dart:typed_data';
 import '../theme/app_theme.dart';
 import 'package:archive/archive.dart';
 import 'dart:convert';
-import 'package:flutter/services.dart';
-import 'package:home_widget/home_widget.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;  // ← DAS HINZUFÜGEN
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shift colour helper
@@ -678,6 +677,9 @@ class ScheduleScreenState extends State<ScheduleScreen> {
   String? _openSwipedCardKey;
 
   static Future<void> pushScheduleToWidget() async {
+  // Nur auf iOS/Android ausführen, nicht im Web
+  if (kIsWeb) return;
+  
   try {
     final box = Hive.box('einstellungen');
     final now = DateTime.now();
@@ -690,7 +692,6 @@ class ScheduleScreenState extends State<ScheduleScreen> {
       final month = DateTime(today.year, today.month + offset);
       final monthKey = DateFormat('yyyy-MM').format(month);
       final raw = box.get('schedule_$monthKey');
-      debugPrint('Widget push: Monat $monthKey → ${raw == null ? "leer" : "gefunden"}');
       if (raw is Map) {
         for (final e in raw.entries) {
           final dateKey = e.key.toString();
@@ -710,22 +711,17 @@ class ScheduleScreenState extends State<ScheduleScreen> {
       }
     }
 
-    debugPrint('Widget push: vor Filter ${entries.length} Einträge, todayStr=$todayStr');
-
     final filtered = entries
         .where((e) => (e['date'] ?? '').compareTo(todayStr) >= 0)
         .toList()
       ..sort((a, b) => (a['date'] ?? '').compareTo(b['date'] ?? ''));
 
-    debugPrint('Widget push: nach Filter ${filtered.length} Einträge');
-
     final json = jsonEncode(filtered);
 
+    // Diese Aufrufe nur auf mobilen Plattformen ausführen
     await HomeWidget.setAppGroupId('group.de.marcel.optimes');
     await HomeWidget.saveWidgetData<String>('schedule_entries', json);
     await HomeWidget.updateWidget(iOSName: 'DienstplanWidgetExtension');
-
-    debugPrint('Widget push: home_widget erfolgreich');
   } catch (e) {
     debugPrint('Widget push ERROR: $e');
   }
