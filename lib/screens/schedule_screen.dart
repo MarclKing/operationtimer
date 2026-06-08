@@ -748,7 +748,7 @@ class ScheduleScreenState extends State<ScheduleScreen> {
       }
     }
   });
-  ScheduleScreenState.pushScheduleToWidget();/ ← neu
+  ScheduleScreenState.pushScheduleToWidget(); ← neu
 }
 
   void _setMonth(DateTime month) {

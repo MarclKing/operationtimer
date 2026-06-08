@@ -232,7 +232,7 @@ void dispose() {
   super.dispose();
 }  // ← diese Klammer einfügen
 
-void _navigateToScheduleNote(String dateKey) async {
+Future<void> _navigateToScheduleNote(String dateKey) async {
   await _animateToPage(2);
   if (!mounted) return;
   await Future.delayed(const Duration(milliseconds: 350));
