@@ -152,14 +152,16 @@ struct SmallWidgetView: View {
         fmt.dateFormat = "yyyy-MM-dd"
         let todayStr = fmt.string(from: Date())
         let defaults = UserDefaults(suiteName: "group.de.marcel.optimes")
-        // Notiz-Key entspricht schedule_note_yyyy-MM-dd (Flutter-Hive-Key)
-        // Da Widgets keinen Hive-Zugriff haben, übergib hasNote im JSON
-        // Alternativ: aus schedule_entries ein extra Flag lesen
-        // Hier: prüfen ob im JSON ein "hasNote" Feld für heute vorhanden
         let json = defaults?.string(forKey: "schedule_entries") ?? "[]"
-        let data = json.data(using: .utf8) ?? Data()
-        let decoded = (try? JSONSerialization.jsonObject(with: data) as? [[String: String]]) ?? []
-        return decoded.first(where: { $0["date"] == todayStr })?["hasNote"] == "true"
+        guard let data = json.data(using: .utf8) else { return false }
+        do {
+            if let decoded = try JSONSerialization.jsonObject(with: data) as? [[String: String]] {
+                return decoded.first(where: { $0["date"] == todayStr })?["hasNote"] == "true"
+            }
+        } catch {
+            return false
+        }
+        return false
     }
 
     var todayDateKey: String {
@@ -186,6 +188,7 @@ struct SmallWidgetView: View {
                         .minimumScaleFactor(0.5)
                         .lineLimit(1)
 
+                    // NEU: Notiz-Icon (gleiches wie in schedule_screen)
                     if hasNote {
                         Image(systemName: "note.text")
                             .font(.system(size: 14))
@@ -200,6 +203,7 @@ struct SmallWidgetView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // NEU: URL basierend auf hasNote – bei Notiz direkt die Notiz öffnen
         .widgetURL(URL(string: hasNote
             ? "optimes://dienstplan/note/\(todayDateKey)"
             : "optimes://dienstplan"))
