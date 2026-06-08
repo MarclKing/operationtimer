@@ -29,16 +29,16 @@
 
     <!-- URL Scheme für receive_sharing_intent -->
     <key>CFBundleURLTypes</key>
-    <array>
-        <dict>
-            <key>CFBundleURLSchemes</key>
-            <array>
-                <string>optimes</string>
-            </array>
-            <key>CFBundleURLName</key>
-            <string>optimes</string>
-        </dict>
-    </array>
+<array>
+    <dict>
+        <key>CFBundleURLSchemes</key>
+        <array>
+            <string>ShareMedia-de.marcel.optimes</string>
+        </array>
+        <key>CFBundleURLName</key>
+        <string>de.marcel.optimes</string>
+    </dict>
+</array>
 
     <key>UIApplicationSceneManifest</key>
     <dict>
