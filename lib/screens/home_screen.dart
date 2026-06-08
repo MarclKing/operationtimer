@@ -710,8 +710,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 24),
                       child: GestureDetector(
-                        key: _tkfCardKey,
-                        onTap: () => _openOverlay(_OverlayField.tkf),
+  key: _tkfCardKey,
+  onTap: () => _openOverlay(_OverlayField.tkf),
+  onDoubleTap: () {
+    setState(() => _teamchefController.clear());
+    HapticFeedback.selectionClick();
+  },
                         child: AnimatedOpacity(
                           opacity: _activeOverlay == _OverlayField.tkf
                               ? 0.0
@@ -732,8 +736,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 24),
                       child: GestureDetector(
-                        key: _notizCardKey,
-                        onTap: () => _openOverlay(_OverlayField.notiz),
+  key: _notizCardKey,
+  onTap: () => _openOverlay(_OverlayField.notiz),
+  onDoubleTap: () {
+    setState(() => _notizController.clear());
+    HapticFeedback.selectionClick();
+  },
                         child: AnimatedOpacity(
                           opacity: _activeOverlay == _OverlayField.notiz
                               ? 0.0
@@ -1172,11 +1180,12 @@ class _IOSTimePickerState extends State<_IOSTimePicker> {
   }
 
   @override
-  void dispose() {
-    _hourController.dispose();
-    _minuteController.dispose();
-    super.dispose();
-  }
+void dispose() {
+  widget.onTimeSelected(TimeOfDay(hour: _selectedHour, minute: _selectedMinute));
+  _hourController.dispose();
+  _minuteController.dispose();
+  super.dispose();
+}
 
   void _setCurrentTime() {
     final now = DateTime.now();

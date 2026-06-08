@@ -2,37 +2,37 @@ import UIKit
 import Flutter
 import WidgetKit
 
-@main
+@UIApplicationMain
 @objc class AppDelegate: FlutterAppDelegate {
   override func application(
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
-    GeneratedPluginRegistrant.register(with: self)
 
-    let registrar = self.registrar(forPlugin: "WidgetChannel")
+    let controller = window?.rootViewController as! FlutterViewController
     let channel = FlutterMethodChannel(
       name: "de.marcel.optimes/widget",
-      binaryMessenger: registrar!.messenger()
+      binaryMessenger: controller.binaryMessenger
     )
 
     channel.setMethodCallHandler { call, result in
       if call.method == "updateSchedule" {
         if let args = call.arguments as? [String: Any],
-           let json = args["json"] as? String {
+           let json = args["json"] as? String {        // ← 'json' nicht 'entries'
           let defaults = UserDefaults(suiteName: "group.de.marcel.optimes")
           defaults?.set(json, forKey: "schedule_entries")
           defaults?.synchronize()
-          if #available(iOS 14.0, *) {
-            WidgetCenter.shared.reloadAllTimelines()
-          }
-          result(nil)
-        } else {
-          result(FlutterError(code: "INVALID_ARGS", message: nil, details: nil))
         }
+        if #available(iOS 14.0, *) {
+          WidgetCenter.shared.reloadAllTimelines()
+        }
+        result(nil)
+      } else {
+        result(FlutterMethodNotImplemented)
       }
     }
 
+    GeneratedPluginRegistrant.register(with: self)
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 }

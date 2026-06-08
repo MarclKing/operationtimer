@@ -23,7 +23,7 @@ class MonthScreen extends StatefulWidget {
   });
 
   @override
-State<MonthScreen> createState() => MonthScreenState();
+  State<MonthScreen> createState() => MonthScreenState();
 }
 
 class MonthScreenState extends State<MonthScreen> {
@@ -193,7 +193,8 @@ class MonthScreenState extends State<MonthScreen> {
           setState(() {});
           Navigator.pop(context);
           final skin = AppTheme.of(context);
-          _showSnackbar('Aktualisiert ✓',
+          _showSnackbar(
+              'Aktualisiert ✓',
               skin.primary == Colors.white
                   ? const Color(0xFF3DD6C8)
                   : skin.primary);
@@ -270,8 +271,7 @@ class MonthScreenState extends State<MonthScreen> {
                             color: PdfColors.teal)),
                     pw.SizedBox(height: 4),
                     pw.Text(kommen,
-                        style:
-                            pw.TextStyle(font: fontBold, fontSize: 26)),
+                        style: pw.TextStyle(font: fontBold, fontSize: 26)),
                   ],
                 ),
               ),
@@ -294,8 +294,7 @@ class MonthScreenState extends State<MonthScreen> {
                             color: PdfColors.red)),
                     pw.SizedBox(height: 4),
                     pw.Text(gehen,
-                        style:
-                            pw.TextStyle(font: fontBold, fontSize: 26)),
+                        style: pw.TextStyle(font: fontBold, fontSize: 26)),
                   ],
                 ),
               ),
@@ -495,16 +494,12 @@ class MonthScreenState extends State<MonthScreen> {
 
     final daysInMonth =
         DateUtils.getDaysInMonth(_selectedMonth.year, _selectedMonth.month);
-    final offeneEntries =
-        entries.where((e) => !_isEntryComplete(e)).length;
+    final offeneEntries = entries.where((e) => !_isEntryComplete(e)).length;
 
     return Scaffold(
       backgroundColor: skin.bgBase,
       body: Stack(
         children: [
-          // ── Kein eigener horizontaler GestureDetector mehr ─────────────────
-          // Der RawGestureDetector in main.dart übernimmt das Wischen.
-          // Nur vertikales Tippen zum Schließen von Rows bleibt.
           GestureDetector(
             onTap: closeAllRows,
             behavior: HitTestBehavior.translucent,
@@ -537,7 +532,6 @@ class MonthScreenState extends State<MonthScreen> {
                                 final now = DateTime.now();
                                 _setMonth(DateTime(now.year, now.month));
                               },
-                              // Wischen auf Monatskarte → nur Monat ändern
                               onHorizontalDragEnd: (d) {
                                 final v = d.primaryVelocity ?? 0;
                                 if (v < -300) _changeMonth(1);
@@ -630,8 +624,7 @@ class MonthScreenState extends State<MonthScreen> {
                                 itemCount: entries.length,
                                 itemBuilder: (context, index) {
                                   final entry = entries[index];
-                                  final datum =
-                                      entry['datum'] as String;
+                                  final datum = entry['datum'] as String;
                                   final entryId = entry['id'] as String;
                                   _rowKeys[entryId] ??=
                                       GlobalKey<_SlidableRowState>();
@@ -645,13 +638,11 @@ class MonthScreenState extends State<MonthScreen> {
                                       duration: _calcDuration(
                                           entry['kommen'] ?? '',
                                           entry['gehen'] ?? ''),
-                                      isComplete:
-                                          _isEntryComplete(entry),
+                                      isComplete: _isEntryComplete(entry),
                                       onEdit: () => _editEntry(entry),
                                       onDelete: () =>
                                           _deleteEntry(datum, entryId),
-                                      onShare: () =>
-                                          _shareEntry(entry),
+                                      onShare: () => _shareEntry(entry),
                                       onCloseOthers: () =>
                                           _closeOtherRows(entryId),
                                     ),
@@ -670,26 +661,19 @@ class MonthScreenState extends State<MonthScreen> {
             right: 24,
             bottom: bottomNavHeight + 20,
             child: GestureDetector(
-              onTap: () =>
-                  PdfService.exportMonth(context, _selectedMonth),
+              onTap: () => PdfService.exportMonth(context, _selectedMonth),
               child: Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 decoration: BoxDecoration(
                   gradient: isChromeSkin
                       ? const LinearGradient(
-                          colors: [
-                            Color(0xFF333333),
-                            Color(0xFF555555)
-                          ],
+                          colors: [Color(0xFF333333), Color(0xFF555555)],
                           begin: Alignment.centerLeft,
                           end: Alignment.centerRight,
                         )
                       : const LinearGradient(
-                          colors: [
-                            Color(0xFF6C63FF),
-                            Color(0xFF4ECDC4)
-                          ],
+                          colors: [Color(0xFF6C63FF), Color(0xFF4ECDC4)],
                           begin: Alignment.centerLeft,
                           end: Alignment.centerRight,
                         ),
@@ -698,8 +682,7 @@ class MonthScreenState extends State<MonthScreen> {
                     BoxShadow(
                       color: isChromeSkin
                           ? Colors.black.withValues(alpha: 0.3)
-                          : const Color(0xFF6C63FF)
-                              .withValues(alpha: 0.4),
+                          : const Color(0xFF6C63FF).withValues(alpha: 0.4),
                       blurRadius: 12,
                       offset: const Offset(0, 4),
                     ),
@@ -730,8 +713,7 @@ class MonthScreenState extends State<MonthScreen> {
   }
 }
 
-// ─── SlidableRow, EditSheet, Helper Widgets ───────────────────────────────────
-// Identisch zu deiner letzten Version – komplett unverändert ab hier
+// ─── SlidableRow ──────────────────────────────────────────────────────────────
 
 class _SlidableRow extends StatefulWidget {
   final Map<String, dynamic> entry;
@@ -1112,8 +1094,7 @@ class _SlidableRowState extends State<_SlidableRow>
                           const SizedBox(width: 12),
                           Expanded(
                             child: Column(
-                              crossAxisAlignment:
-                                  CrossAxisAlignment.start,
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Row(children: [
@@ -1136,8 +1117,7 @@ class _SlidableRowState extends State<_SlidableRow>
                                   ),
                                   const SizedBox(width: 6),
                                   Icon(Icons.arrow_forward,
-                                      size: 12,
-                                      color: skin.white(0.3)),
+                                      size: 12, color: skin.white(0.3)),
                                   const SizedBox(width: 6),
                                   Container(
                                     padding: const EdgeInsets.symmetric(
@@ -1170,8 +1150,7 @@ class _SlidableRowState extends State<_SlidableRow>
                                               fontSize: 10,
                                               color: skin.white(0.4)),
                                           maxLines: 1,
-                                          overflow:
-                                              TextOverflow.ellipsis),
+                                          overflow: TextOverflow.ellipsis),
                                     ),
                                   ],
                                   if (hasNotiz) ...[
@@ -1232,6 +1211,8 @@ class _SlidableRowState extends State<_SlidableRow>
     );
   }
 }
+
+// ─── EditSheet ────────────────────────────────────────────────────────────────
 
 class _EditSheet extends StatefulWidget {
   final DateTime datum;
@@ -1443,6 +1424,10 @@ class _EditSheetState extends State<_EditSheet> {
         ),
       ),
     );
+    setState(() {
+      ctrl.text =
+          '${selH.toString().padLeft(2, '0')}:${selM.toString().padLeft(2, '0')}';
+    });
   }
 
   @override
@@ -1450,111 +1435,140 @@ class _EditSheetState extends State<_EditSheet> {
     final skin = AppTheme.of(context);
     final isChromeSkin = skin.key == 'chrome';
 
-    return Padding(
-      padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom),
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
-        decoration: BoxDecoration(
-          color: skin.bgSheet,
-          borderRadius:
-              const BorderRadius.vertical(top: Radius.circular(24)),
-          border: Border.all(color: skin.borderMedium),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                    color: skin.surface(0.2),
-                    borderRadius: BorderRadius.circular(2)),
-              ),
-            ),
-            const SizedBox(height: 20),
-            Text(
-              'Bearbeiten – ${DateFormat('EEEE, dd.MM.yyyy', 'de').format(widget.datum)}',
-              style: TextStyle(
-                  color: skin.textPrimary,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 20),
-            Row(children: [
-              Expanded(
-                child: _SwipeEditTimeField(
-                  label: 'KOMMEN',
-                  ctrl: widget.kommenCtrl,
-                  color: skin.kommenColor,
-                  onTap: () => _pickTime(widget.kommenCtrl, false),
-                  onSwipeUp: () =>
-                      _adjustTime(widget.kommenCtrl, 1, false),
-                  onSwipeDown: () =>
-                      _adjustTime(widget.kommenCtrl, -1, false),
+    // ── FIX: GestureDetector korrekt geschlossen ──────────────────────────
+    return GestureDetector(
+      onVerticalDragUpdate: (d) {
+        if (d.delta.dy > 8) {
+          FocusScope.of(context).unfocus();
+        }
+      },
+      child: Padding(
+        padding: EdgeInsets.only(
+            bottom: MediaQuery.of(context).viewInsets.bottom),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+          decoration: BoxDecoration(
+            color: skin.bgSheet,
+            borderRadius:
+                const BorderRadius.vertical(top: Radius.circular(24)),
+            border: Border.all(color: skin.borderMedium),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                      color: skin.surface(0.2),
+                      borderRadius: BorderRadius.circular(2)),
                 ),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _SwipeEditTimeField(
-                  label: 'GEHEN',
-                  ctrl: widget.gehenCtrl,
-                  color: skin.gehenColor,
-                  onTap: () => _pickTime(widget.gehenCtrl, true),
-                  onSwipeUp: () =>
-                      _adjustTime(widget.gehenCtrl, 1, true),
-                  onSwipeDown: () =>
-                      _adjustTime(widget.gehenCtrl, -1, true),
+              const SizedBox(height: 20),
+              Text(
+                'Bearbeiten – ${DateFormat('EEEE, dd.MM.yyyy', 'de').format(widget.datum)}',
+                style: TextStyle(
+                    color: skin.textPrimary,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 20),
+              Row(children: [
+                Expanded(
+                  child: _SwipeEditTimeField(
+                    label: 'KOMMEN',
+                    ctrl: widget.kommenCtrl,
+                    color: skin.kommenColor,
+                    onTap: () => _pickTime(widget.kommenCtrl, false),
+                    onDoubleTap: () {
+                      setState(() => widget.kommenCtrl.clear());
+                      HapticFeedback.selectionClick();
+                    },
+                    onSwipeUp: () => _adjustTime(widget.kommenCtrl, 1, false),
+                    onSwipeDown: () =>
+                        _adjustTime(widget.kommenCtrl, -1, false),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _SwipeEditTimeField(
+                    label: 'GEHEN',
+                    ctrl: widget.gehenCtrl,
+                    color: skin.gehenColor,
+                    onTap: () => _pickTime(widget.gehenCtrl, true),
+                    onDoubleTap: () {
+                      setState(() => widget.gehenCtrl.clear());
+                      HapticFeedback.selectionClick();
+                    },
+                    onSwipeUp: () => _adjustTime(widget.gehenCtrl, 1, true),
+                    onSwipeDown: () =>
+                        _adjustTime(widget.gehenCtrl, -1, true),
+                  ),
+                ),
+              ]),
+              const SizedBox(height: 12),
+              GestureDetector(
+                onDoubleTap: () {
+                  setState(() => widget.tkfCtrl.clear());
+                  HapticFeedback.selectionClick();
+                },
+                child: _TextFieldInput(
+                    label: 'TKF', ctrl: widget.tkfCtrl, capitalize: true),
+              ),
+              const SizedBox(height: 12),
+              GestureDetector(
+                onDoubleTap: () {
+                  setState(() => widget.notizCtrl.clear());
+                  HapticFeedback.selectionClick();
+                },
+                child: _TextFieldInput(
+                    label: 'NOTIZ',
+                    ctrl: widget.notizCtrl,
+                    maxLines: 2,
+                    capitalize: true),
+              ),
+              const SizedBox(height: 20),
+              GestureDetector(
+                onTap: widget.onSave,
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  decoration: BoxDecoration(
+                    gradient: isChromeSkin
+                        ? const LinearGradient(
+                            colors: [Color(0xFF333333), Color(0xFF555555)],
+                            begin: Alignment.centerLeft,
+                            end: Alignment.centerRight,
+                          )
+                        : skin.gradient,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Center(
+                      child: Text('Speichern',
+                          style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 16))),
                 ),
               ),
-            ]),
-            const SizedBox(height: 12),
-            _TextFieldInput(
-                label: 'TKF', ctrl: widget.tkfCtrl, capitalize: true),
-            const SizedBox(height: 12),
-            _TextFieldInput(
-                label: 'NOTIZ',
-                ctrl: widget.notizCtrl,
-                maxLines: 2,
-                capitalize: true),
-            const SizedBox(height: 20),
-            GestureDetector(
-              onTap: widget.onSave,
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                decoration: BoxDecoration(
-                  gradient: isChromeSkin
-                      ? const LinearGradient(
-                          colors: [Color(0xFF333333), Color(0xFF555555)],
-                          begin: Alignment.centerLeft,
-                          end: Alignment.centerRight,
-                        )
-                      : skin.gradient,
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Center(
-                    child: Text('Speichern',
-                        style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w700,
-                            fontSize: 16))),
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
-    );
+    ); // ← GestureDetector
   }
 }
+
+// ─── SwipeEditTimeField ───────────────────────────────────────────────────────
 
 class _SwipeEditTimeField extends StatefulWidget {
   final String label;
   final TextEditingController ctrl;
   final Color color;
   final VoidCallback onTap;
+  final VoidCallback? onDoubleTap;
   final VoidCallback onSwipeUp;
   final VoidCallback onSwipeDown;
 
@@ -1563,6 +1577,7 @@ class _SwipeEditTimeField extends StatefulWidget {
     required this.ctrl,
     required this.color,
     required this.onTap,
+    this.onDoubleTap,
     required this.onSwipeUp,
     required this.onSwipeDown,
   });
@@ -1580,6 +1595,7 @@ class _SwipeEditTimeFieldState extends State<_SwipeEditTimeField> {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: widget.onTap,
+      onDoubleTap: widget.onDoubleTap,
       onVerticalDragStart: (d) {
         _dragStart = d.localPosition.dy;
         _accumulated = 0;
@@ -1645,6 +1661,8 @@ class _SwipeEditTimeFieldState extends State<_SwipeEditTimeField> {
   }
 }
 
+// ─── TextFieldInput ───────────────────────────────────────────────────────────
+
 class _TextFieldInput extends StatelessWidget {
   final String label;
   final TextEditingController ctrl;
@@ -1696,6 +1714,8 @@ class _TextFieldInput extends StatelessWidget {
   }
 }
 
+// ─── MonthNavBtn ──────────────────────────────────────────────────────────────
+
 class _MonthNavBtn extends StatelessWidget {
   final IconData icon;
   final VoidCallback onTap;
@@ -1719,6 +1739,8 @@ class _MonthNavBtn extends StatelessWidget {
     );
   }
 }
+
+// ─── StatCard ─────────────────────────────────────────────────────────────────
 
 class _StatCard extends StatelessWidget {
   final String label;
@@ -1755,6 +1777,8 @@ class _StatCard extends StatelessWidget {
     );
   }
 }
+
+// ─── FadingListView ───────────────────────────────────────────────────────────
 
 class _FadingListView extends StatelessWidget {
   final Widget child;

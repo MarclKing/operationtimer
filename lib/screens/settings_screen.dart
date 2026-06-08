@@ -637,25 +637,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                     height: 1.5),
                               ),
                               const SizedBox(height: 16),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: _SimpleSkinOption(
-                                      label: 'Chrome',
-                                      isSelected: _activeSkin == 'chrome',
-                                      onTap: () => _setSkin('chrome'),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: _SimpleSkinOption(
-                                      label: 'Space',
-                                      isSelected: _activeSkin == 'space',
-                                      onTap: () => _setSkin('space'),
-                                    ),
-                                  ),
-                                ],
-                              ),
+                              SizedBox(
+  height: 80,
+  child: ListView(
+    scrollDirection: Axis.horizontal,
+    children: [
+      _SkinOption(label: 'Chrome', skinKey: 'chrome', isSelected: _activeSkin == 'chrome', onTap: () => _setSkin('chrome')),
+      const SizedBox(width: 10),
+      _SkinOption(label: 'Space', skinKey: 'space', isSelected: _activeSkin == 'space', onTap: () => _setSkin('space')),
+      // Hier einfach weitere Themes hinzufügen:
+      // const SizedBox(width: 10),
+      // _SkinOption(label: 'Ocean', skinKey: 'ocean', ...),
+    ],
+  ),
+),
                             ],
                           ),
                         ),
@@ -965,6 +960,68 @@ class _GradientButton extends StatelessWidget {
                   color: skin.onGradient,
                   fontWeight: FontWeight.w700,
                   fontSize: 15)),
+        ),
+      ),
+    );
+  }
+}
+
+class _SkinOption extends StatelessWidget {
+  final String label;
+  final String skinKey;
+  final bool isSelected;
+  final VoidCallback onTap;
+  const _SkinOption({required this.label, required this.skinKey, required this.isSelected, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final skin = AppTheme.of(context);
+    final theme = AppTheme.fromKey(skinKey);
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        width: 100,
+        decoration: BoxDecoration(
+          gradient: isSelected ? theme.gradient : null,
+          color: isSelected ? null : skin.surface(0.05),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: isSelected ? Colors.transparent : skin.borderSubtle,
+            width: isSelected ? 0 : 1,
+          ),
+          boxShadow: isSelected ? [
+            BoxShadow(color: theme.primary.withValues(alpha: 0.3), blurRadius: 8, offset: const Offset(0, 3))
+          ] : null,
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                color: theme.primary.withValues(alpha: 0.2),
+                shape: BoxShape.circle,
+              ),
+              child: Center(
+                child: Container(
+                  width: 14,
+                  height: 14,
+                  decoration: BoxDecoration(
+                    color: theme.primary,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(label,
+                style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: isSelected ? theme.onGradient : skin.textMuted)),
+          ],
         ),
       ),
     );
