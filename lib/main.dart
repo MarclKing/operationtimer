@@ -141,7 +141,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   DateTime _scheduleViewMonth =
       DateTime(DateTime.now().year, DateTime.now().month);
 
-  SStreamSubscription? _intentSub;
+  StreamSubscription? _intentSub;
 final _scheduleKey = GlobalKey<ScheduleScreenState>();
 final _monthKey = GlobalKey<MonthScreenState>();
 final ValueNotifier<bool> _dayCardDragging = ValueNotifier(false); // ← NEU
