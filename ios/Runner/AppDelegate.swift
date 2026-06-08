@@ -54,6 +54,7 @@ import WidgetKit
         open url: URL,
         options: [UIApplication.OpenURLOptionsKey: Any] = [:]
     ) -> Bool {
+        print("🔗 URL erhalten: \(url.absoluteString)")
         if url.scheme == "optimes" {
     if let controller = window?.rootViewController as? FlutterViewController {
         let navChannel = FlutterMethodChannel(

@@ -37,6 +37,7 @@ class ShareViewController: UIViewController {
                         defaults?.synchronize()
 
                         if let appURL = URL(string: "optimes://shared-pdf") {
+                            print("📤 Öffne URL: \(appURL)")
                             _ = self.openURL(appURL)
                         }
                     }
