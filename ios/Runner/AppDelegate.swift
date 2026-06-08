@@ -18,7 +18,7 @@ import WidgetKit
     channel.setMethodCallHandler { call, result in
       if call.method == "updateSchedule" {
         if let args = call.arguments as? [String: Any],
-           let json = args["json"] as? String {        // ← 'json' nicht 'entries'
+           let json = args["json"] as? String {
           let defaults = UserDefaults(suiteName: "group.de.marcel.optimes")
           defaults?.set(json, forKey: "schedule_entries")
           defaults?.synchronize()
