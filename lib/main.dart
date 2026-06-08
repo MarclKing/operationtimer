@@ -153,7 +153,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       DateTime(DateTime.now().year, DateTime.now().month);
 
   StreamSubscription? _intentSub;
-final _homeKey = GlobalKey<_HomeScreenState>();
+final _homeKey = GlobalKey<HomeScreenState>();
 final _scheduleKey = GlobalKey<ScheduleScreenState>();
 final _monthKey = GlobalKey<MonthScreenState>();
 final ValueNotifier<bool> _dayCardDragging = ValueNotifier(false);
