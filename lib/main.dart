@@ -564,13 +564,15 @@ void dispose() {
 
   void _onDragUpdate(DragUpdateDetails d) {
   if (!_isDragging) return;
-  if (_dayCardDragging.value) return; // ← NEU
+  if (_dayCardDragging.value) return;
+  if (_currentPage == 2 && d.delta.dx < 0) return; // ← NEU
   final screenW = MediaQuery.of(context).size.width;
   final delta = -d.delta.dx / screenW;
   final newVal = (_slideCtrl.value + delta)
       .clamp(0.0, (_pageCount - 1).toDouble());
   _slideCtrl.value = newVal;
 }
+
   void _onDragEnd(DragEndDetails d) {
   if (!_isDragging) return;
   _isDragging = false;
