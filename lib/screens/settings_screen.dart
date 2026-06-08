@@ -497,36 +497,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   ),
                                 ],
                               ),
-                              if (_nachtschichtModus) ...[
-                                const SizedBox(height: 12),
-                                Container(
-                                  padding: const EdgeInsets.all(12),
-                                  decoration: BoxDecoration(
-                                    color: skin.statComplete
-                                        .withValues(alpha: 0.07),
-                                    borderRadius: BorderRadius.circular(10),
-                                    border: Border.all(
-                                        color: skin.statComplete
-                                            .withValues(alpha: 0.2)),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      const Text('🌙',
-                                          style: TextStyle(fontSize: 16)),
-                                      const SizedBox(width: 8),
-                                      Expanded(
-                                        child: Text(
-                                          'Beim Speichern wird ein Bestätigungs-Dialog angezeigt, bevor die zwei Einträge angelegt werden.',
-                                          style: TextStyle(
-                                              fontSize: 11,
-                                              color: skin.statComplete
-                                                  .withValues(alpha: 0.8)),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
+                              
                             ],
                           ),
                         ),
@@ -642,12 +613,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
   child: ListView(
     scrollDirection: Axis.horizontal,
     children: [
-      _SkinOption(label: 'Chrome', skinKey: 'chrome', isSelected: _activeSkin == 'chrome', onTap: () => _setSkin('chrome')),
+      _SkinOption(
+        label: 'Chrome',
+        skinKey: 'chrome',
+        isSelected: _activeSkin == 'chrome',
+        onTap: () => _setSkin('chrome'),
+      ),
       const SizedBox(width: 10),
-      _SkinOption(label: 'Space', skinKey: 'space', isSelected: _activeSkin == 'space', onTap: () => _setSkin('space')),
-      // Hier einfach weitere Themes hinzufügen:
-      // const SizedBox(width: 10),
-      // _SkinOption(label: 'Ocean', skinKey: 'ocean', ...),
+      _SkinOption(
+        label: 'Space',
+        skinKey: 'space',
+        isSelected: _activeSkin == 'space',
+        onTap: () => _setSkin('space'),
+      ),
+      const SizedBox(width: 10),
+      _SkinOption(                          // ← neu
+        label: 'Paper',
+        skinKey: 'paper',
+        isSelected: _activeSkin == 'paper',
+        onTap: () => _setSkin('paper'),
+      ),
     ],
   ),
 ),

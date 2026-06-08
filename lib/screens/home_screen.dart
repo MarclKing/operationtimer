@@ -553,7 +553,7 @@ _glideOffset = Tween<Offset>(
                                 style: TextStyle(
                                     fontSize: 20,
                                     fontWeight: FontWeight.w500,
-                                    color: skin.white(0.7))),
+                                    color: skin.surface(0.7))),
                             const SizedBox(width: 8),
                             const Text('👋',
                                 style: TextStyle(fontSize: 20)),
@@ -600,7 +600,7 @@ _glideOffset = Tween<Offset>(
                                 border: Border.all(
                                   color: isToday
                                       ? skin.primaryWithAlpha(0.5)
-                                      : skin.white(0.1),
+                                      : skin.surface(0.1),
                                 ),
                               ),
                               child: Row(
@@ -621,7 +621,7 @@ _glideOffset = Tween<Offset>(
                                               fontWeight: FontWeight.w700,
                                               color: isToday
                                                   ? skin.primary
-                                                  : skin.white(0.38),
+                                                  : skin.surface(0.38),
                                               letterSpacing: 1.0),
                                         ),
                                         Text(
@@ -692,7 +692,7 @@ _glideOffset = Tween<Offset>(
                       padding: const EdgeInsets.symmetric(horizontal: 24),
                       child: Text('Wischen - Tippen - Doppeltippen',
                           style: TextStyle(
-                              fontSize: 11, color: skin.white(0.3))),
+                              fontSize: 11, color: skin.surface(0.3))),
                     ),
                     const SizedBox(height: 20),
                     Padding(
@@ -747,72 +747,51 @@ _glideOffset = Tween<Offset>(
                       ),
                     ),
                     const SizedBox(height: 28),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 24),
-                      child: ScaleTransition(
-                        scale: Tween<double>(begin: 1.0, end: 0.95).animate(
-                          CurvedAnimation(
-                              parent: _saveAnimController,
-                              curve: Curves.easeInOut),
-                        ),
-                        child: GestureDetector(
-                          onTap: () => _saveEntry(context),
-                          child: Container(
-                            width: double.infinity,
-                            padding:
-                                const EdgeInsets.symmetric(vertical: 16),
-                            decoration: BoxDecoration(
-                              gradient: isChromeSkin
-                                  ? const LinearGradient(
-                                      colors: [
-                                        Color(0xFF333333),
-                                        Color(0xFF555555)
-                                      ],
-                                      begin: Alignment.centerLeft,
-                                      end: Alignment.centerRight,
-                                    )
-                                  : const LinearGradient(
-                                      colors: [
-                                        Color(0xFF6C63FF),
-                                        Color(0xFF4ECDC4)
-                                      ],
-                                      begin: Alignment.centerLeft,
-                                      end: Alignment.centerRight,
-                                    ),
-                              borderRadius: BorderRadius.circular(16),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: isChromeSkin
-                                      ? Colors.black.withValues(alpha: 0.3)
-                                      : const Color(0xFF6C63FF)
-                                          .withValues(alpha: 0.4),
-                                  blurRadius: 12,
-                                  offset: const Offset(0, 4),
-                                ),
-                              ],
-                            ),
-                            child: const Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(Icons.save_rounded,
-                                    color: Colors.white, size: 20),
-                                SizedBox(width: 8),
-                                Text(
-                                  'Eintrag speichern',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w700,
-                                    color: Colors.white,
-                                    letterSpacing: 0.3,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 40),
+Padding(
+  padding: const EdgeInsets.symmetric(horizontal: 24),
+  child: ScaleTransition(
+    scale: Tween<double>(begin: 1.0, end: 0.95).animate(
+      CurvedAnimation(
+          parent: _saveAnimController,
+          curve: Curves.easeInOut),
+    ),
+    child: GestureDetector(
+      onTap: () => _saveEntry(context),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        decoration: BoxDecoration(
+          gradient: skin.gradient,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: skin.primary.withValues(alpha: 0.3),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.save_rounded, color: skin.onGradient, size: 20),
+            const SizedBox(width: 8),
+            Text(
+              'Eintrag speichern',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: skin.onGradient,
+                letterSpacing: 0.3,
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  ),
+),
+const SizedBox(height: 40),
                   ],
                 ),
               ),
@@ -969,10 +948,10 @@ class _FlyingCardOverlay extends StatelessWidget {
                   child: Container(
                     padding: const EdgeInsets.all(6),
                     decoration: BoxDecoration(
-                        color: skin.white(0.06),
+                        color: skin.surface(0.06),
                         borderRadius: BorderRadius.circular(8)),
                     child: Icon(Icons.backspace_outlined,
-                        size: 16, color: skin.white(0.4)),
+                        size: 16, color: skin.surface(0.4)),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -1011,7 +990,7 @@ class _FlyingCardOverlay extends StatelessWidget {
                 decoration: InputDecoration(
                   hintText: hint,
                   hintStyle:
-                      TextStyle(color: skin.white(0.25), fontSize: 17),
+                      TextStyle(color: skin.surface(0.25), fontSize: 17),
                   border: InputBorder.none,
                   isDense: true,
                   contentPadding: EdgeInsets.zero,
@@ -1050,9 +1029,9 @@ class _StaticInputCard extends StatelessWidget {
         constraints: const BoxConstraints(minHeight: 68),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
-          color: skin.white(0.04),
+          color: skin.surface(0.04),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: skin.white(0.08)),
+          border: Border.all(color: skin.surface(0.08)),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
@@ -1087,8 +1066,8 @@ class _StaticInputCard extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 14,
                       color: controller.text.isEmpty
-                          ? skin.white(0.25)
-                          : skin.textPrimary,
+    ? skin.surface(0.35)
+    : skin.textPrimary,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -1096,7 +1075,7 @@ class _StaticInputCard extends StatelessWidget {
                 ],
               ),
             ),
-            Icon(Icons.edit_outlined, size: 15, color: skin.white(0.25)),
+            Icon(Icons.edit_outlined, size: 15, color: skin.surface(0.25)),
           ],
         ),
       ),
@@ -1118,11 +1097,11 @@ class _NavBtn extends StatelessWidget {
         width: 40,
         height: 40,
         decoration: BoxDecoration(
-          color: skin.white(0.06),
+          color: skin.surface(0.06),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: skin.white(0.1)),
+          border: Border.all(color: skin.surface(0.1)),
         ),
-        child: Icon(icon, color: skin.white(0.54), size: 22),
+        child: Icon(icon, color: skin.surface(0.54), size: 22),
       ),
     );
   }
@@ -1206,7 +1185,7 @@ void dispose() {
       decoration: BoxDecoration(
         color: skin.bgSheet,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-        border: Border.all(color: skin.white(0.08)),
+        border: Border.all(color: skin.surface(0.08)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -1216,7 +1195,7 @@ void dispose() {
             width: 40,
             height: 4,
             decoration: BoxDecoration(
-                color: skin.white(0.2),
+                color: skin.surface(0.2),
                 borderRadius: BorderRadius.circular(2)),
           ),
           const SizedBox(height: 20),
@@ -1249,7 +1228,7 @@ void dispose() {
                                     fontWeight: FontWeight.w600,
                                     color: _selectedHour == h
                                         ? skin.primary
-                                        : skin.white(0.6))),
+                                        : skin.surface(0.6))),
                           )),
                 ),
               ),
@@ -1276,7 +1255,7 @@ void dispose() {
                                     fontWeight: FontWeight.w600,
                                     color: _selectedMinute == m
                                         ? skin.primary
-                                        : skin.white(0.6))),
+                                        : skin.surface(0.6))),
                           )),
                 ),
               ),
@@ -1291,7 +1270,7 @@ void dispose() {
                   margin: const EdgeInsets.fromLTRB(16, 0, 8, 0),
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   decoration: BoxDecoration(
-                    color: skin.white(0.06),
+                    color: skin.surface(0.06),
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(
                         color: skin.primary.withValues(alpha: 0.3)),
@@ -1393,54 +1372,55 @@ class _SwipeTimeCardState extends State<_SwipeTimeCard> {
         }
       },
       child: AnimatedBuilder(
-        animation: widget.controller,
-        builder: (_, __) => Container(
-          width: double.infinity,
-          padding:
-              const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          decoration: BoxDecoration(
-            color: widget.color.withValues(alpha: 0.06),
-            borderRadius: BorderRadius.circular(20),
-            border:
-                Border.all(color: widget.color.withValues(alpha: 0.25)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+  animation: widget.controller,
+  builder: (context, __) {
+    final skin = AppTheme.of(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: widget.color.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: widget.color.withValues(alpha: 0.25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(widget.label,
-                      style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          color: widget.color,
-                          letterSpacing: 1.2)),
-                  Icon(Icons.unfold_more,
-                      color: widget.color.withValues(alpha: 0.5), size: 16),
-                ],
-              ),
-              const SizedBox(height: 8),
-              FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  widget.controller.text.isEmpty
-                      ? '--:--'
-                      : widget.controller.text,
-                  style: const TextStyle(
-                      fontSize: 28,
+              Text(widget.label,
+                  style: TextStyle(
+                      fontSize: 11,
                       fontWeight: FontWeight.w700,
-                      color: Colors.white,
-                      letterSpacing: -1),
-                  maxLines: 1,
-                ),
-              ),
-              const SizedBox(height: 4),
+                      color: widget.color,
+                      letterSpacing: 1.2)),
+              Icon(Icons.unfold_more,
+                  color: widget.color.withValues(alpha: 0.5), size: 16),
             ],
           ),
-        ),
+          const SizedBox(height: 8),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              widget.controller.text.isEmpty
+                  ? '--:--'
+                  : widget.controller.text,
+              style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w700,
+                  color: skin.textPrimary,
+                  letterSpacing: -1),
+              maxLines: 1,
+            ),
+          ),
+          const SizedBox(height: 4),
+        ],
       ),
+    );
+  },
+),
     );
   }
 }

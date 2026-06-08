@@ -729,6 +729,9 @@ class ScheduleScreenState extends State<ScheduleScreen> {
     final now = DateTime.now();
     _selectedMonth = DateTime(now.year, now.month);
     _loadScheduleData();
+    Future.delayed(const Duration(milliseconds: 300), () {
+      if (mounted) ScheduleScreenState.pushScheduleToWidget();
+    });
   }
 
   bool get _isDevMode {
@@ -737,24 +740,26 @@ class ScheduleScreenState extends State<ScheduleScreen> {
   }
 
   void _loadScheduleData() {
-  final box = Hive.box('einstellungen');
-  final monthKey = DateFormat('yyyy-MM').format(_selectedMonth);
-  final raw = box.get('schedule_$monthKey');
-  setState(() {
-    _scheduleData = {};
-    if (raw is Map) {
-      for (final entry in raw.entries) {
-        _scheduleData[entry.key.toString()] = entry.value.toString();
+    final box = Hive.box('einstellungen');
+    final monthKey = DateFormat('yyyy-MM').format(_selectedMonth);
+    final raw = box.get('schedule_$monthKey');
+    setState(() {
+      _scheduleData = {};
+      if (raw is Map) {
+        for (final entry in raw.entries) {
+          _scheduleData[entry.key.toString()] = entry.value.toString();
+        }
       }
-    }
-  });
-  ScheduleScreenState.pushScheduleToWidget(); 
-}
+    });
+  }
 
   void _setMonth(DateTime month) {
     setState(() => _selectedMonth = month);
     widget.onMonthChanged?.call(month);
     _loadScheduleData();
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (mounted) ScheduleScreenState.pushScheduleToWidget();
+    });
   }
 
   void _changeMonth(int delta) {
@@ -961,9 +966,6 @@ class ScheduleScreenState extends State<ScheduleScreen> {
     return ValueListenableBuilder(
       valueListenable: Hive.box('einstellungen').listenable(),
       builder: (context, box, _) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) _loadScheduleData();
-        });
 
         return Scaffold(
           backgroundColor: skin.bgBase,

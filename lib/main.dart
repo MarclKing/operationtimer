@@ -237,23 +237,17 @@ void dispose() {
 }  // ← diese Klammer einfügen
 
 Future<void> _navigateToScheduleNote(String dateKey) async {
-  // Erst zum Schedule-Screen navigieren (Tab 2)
-  await _animateToPage(2);
-  if (!mounted) return;
-  
-  // Kurz warten bis der Schedule-Screen vollständig geladen ist
-  await Future.delayed(const Duration(milliseconds: 350));
-  if (!mounted) return;
-  
-  // Jetzt das Notiz-Overlay öffnen
-  final scheduleState = _scheduleKey.currentState;
-  if (scheduleState != null) {
-    scheduleState.openNoteOverlay(dateKey);
+    await _animateToPage(2);
+    if (!mounted) return;
+    await Future.delayed(const Duration(milliseconds: 500));
+    if (!mounted) return;
+    final scheduleState = _scheduleKey.currentState;
+    if (scheduleState != null) {
+      scheduleState.openNoteOverlay(dateKey);
+    }
   }
-}
 
   // ── Share Intent ───────────────────────────────────────────────────────────
-
   void _handleSharedPdf(String path) async {
     if (!mounted) return;
     final skin = AppTheme.of(context);

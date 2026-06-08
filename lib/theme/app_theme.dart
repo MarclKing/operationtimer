@@ -154,6 +154,42 @@ const AppSkin skinSpace = AppSkin(
   editColor:      Color(0xFF6C63FF),
 );
 
+// ─── SKIN: Paper → Warmes Licht ───────────────────────────────────────────
+const AppSkin skinPaper = AppSkin(
+  key: 'paper',
+  displayName: 'Paper',
+  isLight: true,   // ← wichtig! steuert onGradient und surface()
+
+  bgBase:  Color(0xFFF5F0E8),
+  bgCard:  Color(0xFFEDE8DC),
+  bgSheet: Color(0xFFEDE8DC),
+  bgInput: Color(0xFFE8E2D4),
+
+  primary:     Color(0xFFB45309),   // Bernstein-Braun
+  secondary:   Color(0xFF78716C),   // Warm-Grau
+
+  kommenColor: Color(0xFFB45309),   // gleicher Bernstein
+  gehenColor:  Color(0xFF78716C),   // Grau für Gehen
+
+  textPrimary:   Color(0xFF2C2417),  // Sehr dunkles Braun
+  textMuted:     Color(0xFF78716C),
+  textHint:      Color(0xFFA8937A),
+  textOnSurface: Color(0xFF2C2417), // Dunkle Schrift auf hellen Flächen
+
+  borderSubtle: Color(0x22000000),   // Dezentes Schwarz-Alpha
+  borderMedium: Color(0x33000000),
+
+  gradientColors: [Color(0xFFB45309), Color(0xFF92400E)],
+
+  navActiveColor: Color(0xFFB45309),
+  statEntries:    Color(0xFFB45309),
+  statComplete:   Color(0xFF15803D),  // Grün für "vollständig"
+  statOpen:       Color(0xFF78716C),
+  deleteColor:    Color(0xFFDC2626),
+  editColor:      Color(0xFFB45309),
+);
+
+
 // ─────────────────────────────────────────────────────────────────────────────
 // AppTheme
 // ─────────────────────────────────────────────────────────────────────────────
@@ -162,11 +198,12 @@ class AppTheme {
   static const String hiveKey = 'skin';
 
   static AppSkin fromKey(String key) {
-    switch (key) {
-      case 'space': return skinSpace;
-      default:      return skinChrome;
-    }
+  switch (key) {
+    case 'space': return skinSpace;
+    case 'paper': return skinPaper;   // ← neu
+    default:      return skinChrome;
   }
+}
 
   static AppSkin of(BuildContext context) {
     return context
