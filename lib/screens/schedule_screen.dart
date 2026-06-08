@@ -2281,26 +2281,36 @@ class _DienstplanUploadSheetState extends State<DienstplanUploadSheet> {
     setState(() { _errorMessage = null; _errorCopied = false; });
     try {
       final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['pdf'],
-        allowMultiple: false,
-        withData: true,
-      );
-      if (result == null || result.files.isEmpty) return;
-      final picked = result.files.single;
-      final bytes = picked.bytes;
-      final path = kIsWeb ? null : picked.path;
-      if (bytes == null && path == null) {
-        setState(() => _errorMessage =
-            'Datei konnte nicht gelesen werden. Bitte erneut versuchen.');
-        return;
-      }
-      setState(() {
-        _selectedFileName = picked.name;
-        _selectedFileBytes = bytes?.toList();
-        _selectedFilePath = path;
-        _errorMessage = null;
-      });
+  type: FileType.custom,
+  allowedExtensions: ['pdf'],
+  allowMultiple: false,
+  withData: false,
+);
+if (result == null || result.files.isEmpty) return;
+final picked = result.files.single;
+final path = kIsWeb ? null : picked.path;
+if (path == null) {
+  setState(() => _errorMessage =
+      'Datei konnte nicht gelesen werden. Bitte erneut versuchen.');
+  return;
+}
+List<int>? bytes;
+try {
+  bytes = await dartio.File(path).readAsBytes();
+} catch (_) {
+  bytes = null;
+}
+if (bytes == null || bytes.isEmpty) {
+  setState(() => _errorMessage =
+      'Datei konnte nicht gelesen werden. Bitte erneut versuchen.');
+  return;
+}
+setState(() {
+  _selectedFileName = picked.name;
+  _selectedFileBytes = bytes;
+  _selectedFilePath = path;
+  _errorMessage = null;
+});
     } on Exception catch (e) {
       setState(() => _errorMessage =
           'Dateiauswahl konnte nicht geöffnet werden.\n'

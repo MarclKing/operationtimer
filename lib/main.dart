@@ -94,7 +94,7 @@ onGenerateRoute: (settings) {
     Future.delayed(const Duration(milliseconds: 200), () {
       MyApp._mainScreenKey.currentState?._goToPage(2);
     });
-  } else if (name.isNotEmpty && name != '/' && !name.startsWith('http')) {
+  } else if (name.isNotEmpty && name != '/' && !name.startsWith('http') && name.toLowerCase().endsWith('.pdf')) {
     Future.delayed(const Duration(milliseconds: 200), () {
       MyApp._mainScreenKey.currentState?.handleSharedPdf(name);
     });

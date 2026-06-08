@@ -55,21 +55,25 @@ import WidgetKit
         options: [UIApplication.OpenURLOptionsKey: Any] = [:]
     ) -> Bool {
         if url.scheme == "optimes" {
-            // URL an Flutter weiterleiten via onGenerateRoute
-            if let controller = window?.rootViewController as? FlutterViewController {
-                let navChannel = FlutterMethodChannel(
-                    name: "de.marcel.optimes/navigation",
-                    binaryMessenger: controller.binaryMessenger
-                )
-                let urlString = url.absoluteString
-                let path = url.host ?? url.path
-                navChannel.invokeMethod("openFromWidget", arguments: [
-                    "url": urlString,
-                    "path": path
-                ])
-            }
-            return true
+    if let controller = window?.rootViewController as? FlutterViewController {
+        let navChannel = FlutterMethodChannel(
+            name: "de.marcel.optimes/navigation",
+            binaryMessenger: controller.binaryMessenger
+        )
+        let urlString = url.absoluteString
+        let path = url.host ?? url.path
+        // Verzögerung damit Flutter-Handler registriert ist
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+    navChannel.invokeMethod("openFromWidget", arguments: [
+        "url": urlString,
+        "path": path
+    ])
+}
         }
+    }
+    return true
+}
         return super.application(app, open: url, options: options)
     }
 }
