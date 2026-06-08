@@ -6,6 +6,7 @@ struct ShiftEntry: Identifiable {
     let id = UUID()
     let date: String
     let shift: String
+    let hasNote: Bool
 }
 
 struct DienstplanTimelineEntry: TimelineEntry {
@@ -16,14 +17,14 @@ struct DienstplanTimelineEntry: TimelineEntry {
 // ── Provider ──────────────────────────────────────────────────────
 struct Provider: TimelineProvider {
     func placeholder(in context: Context) -> DienstplanTimelineEntry {
-        DienstplanTimelineEntry(date: Date(), shifts: [
-            ShiftEntry(date: "2026-06-08", shift: "P"),
-            ShiftEntry(date: "2026-06-09", shift: "F"),
-            ShiftEntry(date: "2026-06-10", shift: "U"),
-            ShiftEntry(date: "2026-06-11", shift: "P1"),
-            ShiftEntry(date: "2026-06-12", shift: "DA"),
-        ])
-    }
+    DienstplanTimelineEntry(date: Date(), shifts: [
+        ShiftEntry(date: "2026-06-08", shift: "P", hasNote: false),
+        ShiftEntry(date: "2026-06-09", shift: "F", hasNote: false),
+        ShiftEntry(date: "2026-06-10", shift: "U", hasNote: false),
+        ShiftEntry(date: "2026-06-11", shift: "P1", hasNote: false),
+        ShiftEntry(date: "2026-06-12", shift: "DA", hasNote: false),
+    ])
+}
 
     func getSnapshot(in context: Context, completion: @escaping (DienstplanTimelineEntry) -> Void) {
         completion(loadEntry())
@@ -46,14 +47,15 @@ struct Provider: TimelineProvider {
         let today = Calendar.current.startOfDay(for: Date())
 
         let filtered = decoded
-            .compactMap { dict -> ShiftEntry? in
-                guard let dateStr = dict["date"],
-                      let shift = dict["shift"],
-                      let d = fmt.date(from: dateStr),
-                      d >= today else { return nil }
-                return ShiftEntry(date: dateStr, shift: shift)
-            }
-            .sorted { $0.date < $1.date }
+    .compactMap { dict -> ShiftEntry? in
+        guard let dateStr = dict["date"],
+              let shift = dict["shift"],
+              let d = fmt.date(from: dateStr),
+              d >= today else { return nil }
+        let hasNote = dict["hasNote"] == "true"
+        return ShiftEntry(date: dateStr, shift: shift, hasNote: hasNote)
+    }
+    .sorted { $0.date < $1.date }
 
         return DienstplanTimelineEntry(date: Date(), shifts: filtered)
     }
@@ -130,6 +132,7 @@ struct DayTile: View {
 }
 
 // ── Small Widget ──────────────────────────────────────────────────
+// ── Small Widget ──────────────────────────────────────────────────
 struct SmallWidgetView: View {
     let shifts: [ShiftEntry]
 
@@ -145,23 +148,6 @@ struct SmallWidgetView: View {
         df.locale = Locale(identifier: "de_DE")
         df.dateFormat = "EEE dd.MM"
         return df.string(from: Date())
-    }
-
-    var hasNote: Bool {
-        let fmt = DateFormatter()
-        fmt.dateFormat = "yyyy-MM-dd"
-        let todayStr = fmt.string(from: Date())
-        let defaults = UserDefaults(suiteName: "group.de.marcel.optimes")
-        let json = defaults?.string(forKey: "schedule_entries") ?? "[]"
-        guard let data = json.data(using: .utf8) else { return false }
-        do {
-            if let decoded = try JSONSerialization.jsonObject(with: data) as? [[String: String]] {
-                return decoded.first(where: { $0["date"] == todayStr })?["hasNote"] == "true"
-            }
-        } catch {
-            return false
-        }
-        return false
     }
 
     var todayDateKey: String {
@@ -188,8 +174,7 @@ struct SmallWidgetView: View {
                         .minimumScaleFactor(0.5)
                         .lineLimit(1)
 
-                    // NEU: Notiz-Icon (gleiches wie in schedule_screen)
-                    if hasNote {
+                    if t.hasNote {
                         Image(systemName: "note.text")
                             .font(.system(size: 14))
                             .foregroundColor(.secondary)
@@ -203,8 +188,7 @@ struct SmallWidgetView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        // NEU: URL basierend auf hasNote – bei Notiz direkt die Notiz öffnen
-        .widgetURL(URL(string: hasNote
+        .widgetURL(URL(string: todayEntry?.hasNote == true
             ? "optimes://dienstplan/note/\(todayDateKey)"
             : "optimes://dienstplan"))
     }
@@ -241,11 +225,9 @@ struct LargeWidgetView: View {
         return f
     }
 
-// NEU:
 var body: some View {
     VStack(spacing: 5) {
         ForEach(0..<weeks.count, id: \.self) { wi in
-            // Prüfen ob erste Kachel dieser Woche neuen Monat beginnt
             let weekDates = weeks[wi]
             let firstDate = weekDates.first!
             let isMonthBoundaryWeek: Bool = {
@@ -256,19 +238,19 @@ var body: some View {
             }()
 
             if isMonthBoundaryWeek {
-    HStack(spacing: 4) {
-        Rectangle()
-            .fill(
-                LinearGradient(
-                    colors: [Color.clear, Color(.systemGray2), Color.clear],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
-            )
-            .frame(height: 2)
-    }
-    .padding(.vertical, 3)
-}
+                HStack(spacing: 4) {
+                    Rectangle()
+                        .fill(
+                            LinearGradient(
+                                colors: [Color.clear, Color(.systemGray2), Color.clear],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .frame(height: 2)
+                }
+                .padding(.vertical, 3)
+            }
 
             HStack(spacing: 4) {
                 ForEach(weekDates, id: \.self) { date in
@@ -284,24 +266,50 @@ var body: some View {
                             isToday: isToday
                         )
                         .overlay(
-    isFirstOfMonth && !isToday ?
-    RoundedRectangle(cornerRadius: 10)
-        .stroke(
-            LinearGradient(
-                colors: [Color.accentColor.opacity(0.8), Color.accentColor.opacity(0.3)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            ),
-            lineWidth: 2
-        )
-    : nil
-)
+                            isFirstOfMonth && !isToday ?
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(
+                                    LinearGradient(
+                                        colors: [Color.accentColor.opacity(0.8), Color.accentColor.opacity(0.3)],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    ),
+                                    lineWidth: 2
+                                )
+                            : nil
+                        )
                     } else if isPast {
                         RoundedRectangle(cornerRadius: 10)
                             .fill(Color(.systemGray6).opacity(0.15))
+                            .overlay(
+                                isFirstOfMonth ?
+                                RoundedRectangle(cornerRadius: 10)
+                                    .stroke(
+                                        LinearGradient(
+                                            colors: [Color.accentColor.opacity(0.5), Color.accentColor.opacity(0.2)],
+                                            startPoint: .topLeading,
+                                            endPoint: .bottomTrailing
+                                        ),
+                                        lineWidth: 2
+                                    )
+                                : nil
+                            )
                     } else {
                         RoundedRectangle(cornerRadius: 10)
                             .fill(Color(.systemGray6).opacity(0.25))
+                            .overlay(
+                                isFirstOfMonth ?
+                                RoundedRectangle(cornerRadius: 10)
+                                    .stroke(
+                                        LinearGradient(
+                                            colors: [Color.accentColor.opacity(0.8), Color.accentColor.opacity(0.3)],
+                                            startPoint: .topLeading,
+                                            endPoint: .bottomTrailing
+                                        ),
+                                        lineWidth: 2
+                                    )
+                                : nil
+                            )
                     }
                 }
             }
