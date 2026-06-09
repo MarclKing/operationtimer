@@ -483,7 +483,29 @@ Future<void> _navigateToScheduleNote(String dateKey) async {
     );
   }
 
-  void handleSharedPdf(String path) => _handleSharedPdf(path);
+  void handleSharedPdf(String path) => _handleSharedPdfWithBytes(path, []);
+
+void _handleSharedPdf(String path) async {
+  if (!mounted) return;
+  final skin = AppTheme.of(context);
+  final fileName = path.split('/').last;
+
+  String displayName = fileName;
+  if (displayName.length > 40) {
+    displayName = '${displayName.substring(0, 37)}...';
+  }
+
+  final confirmed = await _showImportConfirmDialog(displayName, skin);
+  if (!mounted) return;
+  if (confirmed != true) return;
+
+  if (_dienstplanEnabled) {
+    await _animateToPage(2);
+  }
+  if (!mounted) return;
+  _autoImportPdf(path, fileName, skin);
+}
+
   void _handleSharedPdfWithBytes(String path, List<int> bytes) async {
   if (!mounted) return;
   final skin = AppTheme.of(context);
