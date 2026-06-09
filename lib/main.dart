@@ -15,6 +15,7 @@ import 'theme/app_theme.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart';
+import 'dart:convert';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -81,26 +82,30 @@ class MyApp extends StatelessWidget {
           child: MaterialApp(
             title: 'OpTimes',
             debugShowCheckedModeBanner: false,
-            // NEU:
-onGenerateRoute: (settings) {
-  final name = settings.name ?? '';
-  if (name.startsWith('optimes://dienstplan/note/')) {
-    final dateKey = name.replaceFirst('optimes://dienstplan/note/', '');
-    // Verzögerung, damit der App-Start abgeschlossen ist
-    Future.delayed(const Duration(milliseconds: 200), () {
-      MyApp._mainScreenKey.currentState?._navigateToScheduleNote(dateKey);
-    });
-  } else if (name == 'optimes://dienstplan' || name == '/dienstplan') {
-    Future.delayed(const Duration(milliseconds: 200), () {
-      MyApp._mainScreenKey.currentState?._goToPage(2);
-    });
-  } else if (name.isNotEmpty && name != '/' && !name.startsWith('http') && name.toLowerCase().endsWith('.pdf')) {
-    Future.delayed(const Duration(milliseconds: 200), () {
-      MyApp._mainScreenKey.currentState?.handleSharedPdf(name);
-    });
-  }
-  return null;
-},
+            onGenerateRoute: (settings) {
+              final name = settings.name ?? '';
+              if (name.startsWith('optimes://dienstplan/note/')) {
+                final dateKey =
+                    name.replaceFirst('optimes://dienstplan/note/', '');
+                Future.delayed(const Duration(milliseconds: 200), () {
+                  MyApp._mainScreenKey.currentState
+                      ?._navigateToScheduleNote(dateKey);
+                });
+              } else if (name == 'optimes://dienstplan' ||
+                  name == '/dienstplan') {
+                Future.delayed(const Duration(milliseconds: 200), () {
+                  MyApp._mainScreenKey.currentState?._goToPage(2);
+                });
+              } else if (name.isNotEmpty &&
+                  name != '/' &&
+                  !name.startsWith('http') &&
+                  name.toLowerCase().endsWith('.pdf')) {
+                Future.delayed(const Duration(milliseconds: 200), () {
+                  MyApp._mainScreenKey.currentState?.handleSharedPdf(name);
+                });
+              }
+              return null;
+            },
             onUnknownRoute: (settings) =>
                 MaterialPageRoute(builder: (_) => const MainScreen()),
             theme: ThemeData(
@@ -154,142 +159,141 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       DateTime(DateTime.now().year, DateTime.now().month);
 
   StreamSubscription? _intentSub;
-final _homeKey = GlobalKey<HomeScreenState>();
-final _scheduleKey = GlobalKey<ScheduleScreenState>();
-final _monthKey = GlobalKey<MonthScreenState>();
-final ValueNotifier<bool> _dayCardDragging = ValueNotifier(false);
-static const _navChannel = MethodChannel('de.marcel.optimes/navigation');
+  final _homeKey = GlobalKey<HomeScreenState>();
+  final _scheduleKey = GlobalKey<ScheduleScreenState>();
+  final _monthKey = GlobalKey<MonthScreenState>();
+  final ValueNotifier<bool> _dayCardDragging = ValueNotifier(false);
+  static const _navChannel = MethodChannel('de.marcel.optimes/navigation');
 
   bool get _dienstplanEnabled => true;
 
   int get _pageCount => _dienstplanEnabled ? 3 : 2;
 
   @override
-void initState() {
-  super.initState();
+  void initState() {
+    super.initState();
 
-  _slideCtrl = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 320),
-    lowerBound: 0.0,
-    upperBound: 2.0,
-    value: 0.0,
-  );
-  _slideCtrl.addListener(() => setState(() {}));
+    _slideCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 320),
+      lowerBound: 0.0,
+      upperBound: 2.0,
+      value: 0.0,
+    );
+    _slideCtrl.addListener(() => setState(() {}));
 
-  _menuAnimController = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 250),
-  );
+    _menuAnimController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 250),
+    );
 
-  if (!kIsWeb) {
-  ReceiveSharingIntent.instance.getInitialMedia().then((files) {
-    debugPrint('📥 getInitialMedia: ${files.length} Dateien');
-    for (final f in files) {
-      debugPrint('📄 Datei: ${f.path}');
-    }
-    if (files.isNotEmpty) {
-      final path = files.first.path;
-      if (path != null && path.toLowerCase().endsWith('.pdf')) {
-        debugPrint('✅ PDF erkannt, lese Bytes...');
-        dartio.File(path).readAsBytes().then((bytes) {
-          debugPrint('📦 Bytes gelesen: ${bytes.length}');
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (bytes.isNotEmpty) {
-              _handleSharedPdfWithBytes(path, bytes);
-            } else {
-              debugPrint('⚠️ Bytes leer!');
-              _handleSharedPdf(path);
-            }
-          });
-        }).catchError((e) {
-          debugPrint('❌ Fehler beim Lesen: $e');
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            _handleSharedPdf(path);
-          });
-        });
-      } else {
-        debugPrint('⚠️ Keine PDF oder kein Pfad: $path');
-      }
-    }
-  });
-
-  _intentSub =
-      ReceiveSharingIntent.instance.getMediaStream().listen((files) {
-    debugPrint('📡 getMediaStream: ${files.length} Dateien');
-    for (final f in files) {
-      debugPrint('📄 Stream-Datei: ${f.path}');
-    }
-    if (files.isNotEmpty) {
-      final path = files.first.path;
-      if (path != null && path.toLowerCase().endsWith('.pdf')) {
-        debugPrint('✅ Stream PDF erkannt, lese Bytes...');
-        dartio.File(path).readAsBytes().then((bytes) {
-          debugPrint('📦 Stream Bytes: ${bytes.length}');
-          if (bytes.isNotEmpty) {
-            _handleSharedPdfWithBytes(path, bytes);
+    if (!kIsWeb) {
+      ReceiveSharingIntent.instance.getInitialMedia().then((files) {
+        debugPrint('📥 getInitialMedia: ${files.length} Dateien');
+        for (final f in files) {
+          debugPrint('📄 Datei: ${f.path}');
+        }
+        if (files.isNotEmpty) {
+          final path = files.first.path;
+          if (path != null && path.toLowerCase().endsWith('.pdf')) {
+            debugPrint('✅ PDF erkannt, lese Bytes...');
+            dartio.File(path).readAsBytes().then((bytes) {
+              debugPrint('📦 Bytes gelesen: ${bytes.length}');
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (bytes.isNotEmpty) {
+                  _handleSharedPdfWithBytes(path, bytes);
+                } else {
+                  debugPrint('⚠️ Bytes leer!');
+                  _handleSharedPdf(path);
+                }
+              });
+            }).catchError((e) {
+              debugPrint('❌ Fehler beim Lesen: $e');
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                _handleSharedPdf(path);
+              });
+            });
           } else {
-            _handleSharedPdf(path);
+            debugPrint('⚠️ Keine PDF oder kein Pfad: $path');
           }
-        }).catchError((e) {
-          debugPrint('❌ Stream Fehler: $e');
-          _handleSharedPdf(path);
-        });
+        }
+      });
+
+      _intentSub =
+          ReceiveSharingIntent.instance.getMediaStream().listen((files) {
+        debugPrint('📡 getMediaStream: ${files.length} Dateien');
+        for (final f in files) {
+          debugPrint('📄 Stream-Datei: ${f.path}');
+        }
+        if (files.isNotEmpty) {
+          final path = files.first.path;
+          if (path != null && path.toLowerCase().endsWith('.pdf')) {
+            debugPrint('✅ Stream PDF erkannt, lese Bytes...');
+            dartio.File(path).readAsBytes().then((bytes) {
+              debugPrint('📦 Stream Bytes: ${bytes.length}');
+              if (bytes.isNotEmpty) {
+                _handleSharedPdfWithBytes(path, bytes);
+              } else {
+                _handleSharedPdf(path);
+              }
+            }).catchError((e) {
+              debugPrint('❌ Stream Fehler: $e');
+              _handleSharedPdf(path);
+            });
+          }
+        }
+      }, onError: (e) {
+        debugPrint('❌ Stream onError: $e');
+      });
+    }
+
+    _navChannel.setMethodCallHandler((call) async {
+      if (call.method == 'openFromWidget') {
+        final args = Map<String, dynamic>.from(call.arguments as Map);
+        final url = args['url'] as String;
+        final path = args['path'] as String;
+
+        await Future.delayed(const Duration(milliseconds: 150));
+        if (!mounted) return;
+
+        if (url.contains('/note/')) {
+          final dateKey = url.split('/').last;
+          await _navigateToScheduleNote(dateKey);
+        } else if (path == 'dienstplan') {
+          await _animateToPage(2);
+        }
+      } else if (call.method == 'openSharedPdf') {
+        final args = Map<String, dynamic>.from(call.arguments as Map);
+        final path = args['path'] as String;
+        final fileName =
+            (args['fileName'] as String?) ?? 'dienstplan.pdf';
+        if (path.isEmpty) return;
+
+        await Future.delayed(const Duration(milliseconds: 150));
+        if (!mounted) return;
+
+        try {
+          final bytes = await dartio.File(path).readAsBytes();
+          if (bytes.isNotEmpty && mounted) {
+            _handleSharedPdfWithBytesAndName(path, bytes, fileName);
+          }
+        } catch (e) {
+          debugPrint('❌ openSharedPdf Fehler: $e');
+        }
       }
-    }
-  }, onError: (e) {
-    debugPrint('❌ Stream onError: $e');
-  });
-}
-
-  _navChannel.setMethodCallHandler((call) async {
-  if (call.method == 'openFromWidget') {
-    final args = Map<String, dynamic>.from(call.arguments as Map);
-    final url = args['url'] as String;
-    final path = args['path'] as String;
-
-    await Future.delayed(const Duration(milliseconds: 150));
-    if (!mounted) return;
-
-    if (url.contains('/note/')) {
-      final dateKey = url.split('/').last;
-      await _navigateToScheduleNote(dateKey);
-    } else if (path == 'dienstplan') {
-      await _animateToPage(2);
-    }
-  } else if (call.method == 'openSharedPdf') {
-    final args = Map<String, dynamic>.from(call.arguments as Map);
-    final path = args['path'] as String;
-    final fileName = (args['fileName'] as String?) ?? 'dienstplan.pdf'; // NEU
-    if (path.isEmpty) return;
-
-    await Future.delayed(const Duration(milliseconds: 150));
-    if (!mounted) return;
-
-    try {
-      final bytes = await dartio.File(path).readAsBytes();
-      if (bytes.isNotEmpty && mounted) {
-        _handleSharedPdfWithBytesAndName(path, bytes, fileName); // NEU
-      }
-    } catch (e) {
-      debugPrint('❌ openSharedPdf Fehler: $e');
-    }
-}
-});
-}
+    });
+  }
 
   @override
-// RICHTIG:
-@override
-void dispose() {
-  _intentSub?.cancel();
-  _slideCtrl.dispose();
-  _menuAnimController.dispose();
-  _dayCardDragging.dispose();
-  super.dispose();
-}  // ← diese Klammer einfügen
+  void dispose() {
+    _intentSub?.cancel();
+    _slideCtrl.dispose();
+    _menuAnimController.dispose();
+    _dayCardDragging.dispose();
+    super.dispose();
+  }
 
-Future<void> _navigateToScheduleNote(String dateKey) async {
+  Future<void> _navigateToScheduleNote(String dateKey) async {
     _closeMenu();
     _homeKey.currentState?.closeOverlays();
     _scheduleKey.currentState?.closeOverlays();
@@ -306,31 +310,32 @@ Future<void> _navigateToScheduleNote(String dateKey) async {
   }
 
   // ── Share Intent ───────────────────────────────────────────────────────────
-  void _handleSharedPdfWithBytesAndName(String path, List<int> bytes, String fileName) async {
-  if (!mounted) return;
-  // Alle offenen Overlays schließen
-  _closeMenu();
-  _homeKey.currentState?.closeOverlays();
-  _scheduleKey.currentState?.closeOverlays();
-  await Future.delayed(const Duration(milliseconds: 250));
-  if (!mounted) return;
-  final skin = AppTheme.of(context);
 
-  String displayName = fileName;
-  if (displayName.length > 40) {
-    displayName = '${displayName.substring(0, 37)}...';
+  void _handleSharedPdfWithBytesAndName(
+      String path, List<int> bytes, String fileName) async {
+    if (!mounted) return;
+    _closeMenu();
+    _homeKey.currentState?.closeOverlays();
+    _scheduleKey.currentState?.closeOverlays();
+    await Future.delayed(const Duration(milliseconds: 250));
+    if (!mounted) return;
+    final skin = AppTheme.of(context);
+
+    String displayName = fileName;
+    if (displayName.length > 40) {
+      displayName = '${displayName.substring(0, 37)}...';
+    }
+
+    final confirmed = await _showImportConfirmDialog(displayName, skin);
+    if (!mounted) return;
+    if (confirmed != true) return;
+
+    if (_dienstplanEnabled) {
+      await _animateToPage(2);
+    }
+    if (!mounted) return;
+    _autoImportPdf(path, fileName, skin, preloadedBytes: bytes);
   }
-
-  final confirmed = await _showImportConfirmDialog(displayName, skin);
-  if (!mounted) return;
-  if (confirmed != true) return;
-
-  if (_dienstplanEnabled) {
-    await _animateToPage(2);
-  }
-  if (!mounted) return;
-  _autoImportPdf(path, fileName, skin, preloadedBytes: bytes);
-}
 
   Future<bool?> _showImportConfirmDialog(
       String displayName, AppSkin skin) async {
@@ -376,7 +381,6 @@ Future<void> _navigateToScheduleNote(String dateKey) async {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Icon + Titel
                 Row(children: [
                   Container(
                     width: 42,
@@ -401,7 +405,6 @@ Future<void> _navigateToScheduleNote(String dateKey) async {
                   ),
                 ]),
                 const SizedBox(height: 16),
-                // Datei-Vorschau
                 Container(
                   padding: const EdgeInsets.symmetric(
                       horizontal: 12, vertical: 10),
@@ -496,78 +499,76 @@ Future<void> _navigateToScheduleNote(String dateKey) async {
 
   void handleSharedPdf(String path) => _handleSharedPdfWithBytes(path, []);
 
-void _handleSharedPdf(String path) async {
-  if (!mounted) return;
-  _closeMenu();
-  _homeKey.currentState?.closeOverlays();
-  _scheduleKey.currentState?.closeOverlays();
-  await Future.delayed(const Duration(milliseconds: 250));
-  if (!mounted) return;
-  final skin = AppTheme.of(context);
-  final fileName = path.split('/').last;
+  void _handleSharedPdf(String path) async {
+    if (!mounted) return;
+    _closeMenu();
+    _homeKey.currentState?.closeOverlays();
+    _scheduleKey.currentState?.closeOverlays();
+    await Future.delayed(const Duration(milliseconds: 250));
+    if (!mounted) return;
+    final skin = AppTheme.of(context);
+    final fileName = path.split('/').last;
 
-  String displayName = fileName;
-  if (displayName.length > 40) {
-    displayName = '${displayName.substring(0, 37)}...';
+    String displayName = fileName;
+    if (displayName.length > 40) {
+      displayName = '${displayName.substring(0, 37)}...';
+    }
+
+    final confirmed = await _showImportConfirmDialog(displayName, skin);
+    if (!mounted) return;
+    if (confirmed != true) return;
+
+    if (_dienstplanEnabled) {
+      await _animateToPage(2);
+    }
+    if (!mounted) return;
+    _autoImportPdf(path, fileName, skin);
   }
-
-  final confirmed = await _showImportConfirmDialog(displayName, skin);
-  if (!mounted) return;
-  if (confirmed != true) return;
-
-  if (_dienstplanEnabled) {
-    await _animateToPage(2);
-  }
-  if (!mounted) return;
-  _autoImportPdf(path, fileName, skin);
-}
 
   void _handleSharedPdfWithBytes(String path, List<int> bytes) async {
-  if (!mounted) return;
-  _closeMenu();
-  _homeKey.currentState?.closeOverlays();
-  _scheduleKey.currentState?.closeOverlays();
-  await Future.delayed(const Duration(milliseconds: 250));
-  if (!mounted) return;
-  final skin = AppTheme.of(context);
-  final fileName = path.split('/').last;
+    if (!mounted) return;
+    _closeMenu();
+    _homeKey.currentState?.closeOverlays();
+    _scheduleKey.currentState?.closeOverlays();
+    await Future.delayed(const Duration(milliseconds: 250));
+    if (!mounted) return;
+    final skin = AppTheme.of(context);
+    final fileName = path.split('/').last;
 
-  String displayName = fileName;
-  if (displayName.length > 40) {
-    displayName = '${displayName.substring(0, 37)}...';
+    String displayName = fileName;
+    if (displayName.length > 40) {
+      displayName = '${displayName.substring(0, 37)}...';
+    }
+
+    final confirmed = await _showImportConfirmDialog(displayName, skin);
+    if (!mounted) return;
+    if (confirmed != true) return;
+
+    if (_dienstplanEnabled) {
+      await _animateToPage(2);
+    }
+    if (!mounted) return;
+    _autoImportPdf(path, fileName, skin, preloadedBytes: bytes);
   }
 
-  final confirmed = await _showImportConfirmDialog(displayName, skin);
-  if (!mounted) return;
-  if (confirmed != true) return;
-
-  if (_dienstplanEnabled) {
-    await _animateToPage(2);
-  }
-  if (!mounted) return;
-  _autoImportPdf(path, fileName, skin, preloadedBytes: bytes);
-}
-
-  void _autoImportPdf(
-    String path, String fileName, AppSkin skin, {List<int>? preloadedBytes}) async {
+  void _autoImportPdf(String path, String fileName, AppSkin skin,
+      {List<int>? preloadedBytes}) async {
     final settingsBox = Hive.box('einstellungen');
     final scheduleName =
         settingsBox.get('dienstplan_name', defaultValue: '') as String;
-    final mainName =
-        settingsBox.get('name', defaultValue: '') as String;
-    final userName =
-        scheduleName.isNotEmpty ? scheduleName : mainName;
+    final mainName = settingsBox.get('name', defaultValue: '') as String;
+    final userName = scheduleName.isNotEmpty ? scheduleName : mainName;
     final devMode = settingsBox
         .get('dienstplan_dev_placeholder', defaultValue: false) as bool;
 
     List<int>? bytes = preloadedBytes;
-  if (bytes == null || bytes.isEmpty) {
-    try {
-      bytes = await dartio.File(path).readAsBytes();
-    } catch (_) {
-      bytes = null;
+    if (bytes == null || bytes.isEmpty) {
+      try {
+        bytes = await dartio.File(path).readAsBytes();
+      } catch (_) {
+        bytes = null;
+      }
     }
-  }
 
     if (!mounted) return;
 
@@ -586,8 +587,7 @@ void _handleSharedPdf(String path) async {
     if (!mounted) return;
 
     final error = result['error'] as String?;
-    final data =
-        Map<String, String>.from(result['data'] as Map? ?? {});
+    final data = Map<String, String>.from(result['data'] as Map? ?? {});
     final DateTime? month = result['month'] as DateTime?;
 
     if ((error != null && error.isNotEmpty) ||
@@ -635,6 +635,23 @@ void _handleSharedPdf(String path) async {
     }
 
     settingsBox.put('schedule_$monthKey', data);
+
+    // ── Kollegen speichern ─────────────────────────────────────────────────
+    try {
+      if (bytes != null && bytes.isNotEmpty) {
+        final colleagues = DienstplanParser.parseAllColleagues(
+          bytes: bytes,
+          fileName: fileName,
+          ownUserName: userName,
+        );
+        if (colleagues.isNotEmpty) {
+          final encoded =
+              jsonEncode(colleagues.map((k, v) => MapEntry(k, v)));
+          settingsBox.put('colleagues_$monthKey', encoded);
+        }
+      }
+    } catch (_) {}
+
     setState(() => _scheduleViewMonth = month);
     await ScheduleScreenState.pushScheduleToWidget();
 
@@ -642,9 +659,11 @@ void _handleSharedPdf(String path) async {
     final changedCount = wasOverwritten
         ? (() {
             final allKeys = {...oldData.keys, ...data.keys};
-            return allKeys.where((k) =>
-                (oldData[k] ?? '').trim().toUpperCase() !=
-                (data[k] ?? '').trim().toUpperCase()).length;
+            return allKeys
+                .where((k) =>
+                    (oldData[k] ?? '').trim().toUpperCase() !=
+                    (data[k] ?? '').trim().toUpperCase())
+                .length;
           })()
         : 0;
 
@@ -723,13 +742,13 @@ void _handleSharedPdf(String path) async {
   }
 
   void _goToPage(int index) {
-  FocusManager.instance.primaryFocus?.unfocus();
-  _closeMenu();
-  _homeKey.currentState?.closeOverlays();
-  _scheduleKey.currentState?.closeOverlays();
-  _monthKey.currentState?.closeAllRows();
-  _animateToPage(index);
-}
+    FocusManager.instance.primaryFocus?.unfocus();
+    _closeMenu();
+    _homeKey.currentState?.closeOverlays();
+    _scheduleKey.currentState?.closeOverlays();
+    _monthKey.currentState?.closeAllRows();
+    _animateToPage(index);
+  }
 
   void _selectTab(int index) => _goToPage(index);
 
@@ -742,47 +761,46 @@ void _handleSharedPdf(String path) async {
   }
 
   void _onDragUpdate(DragUpdateDetails d) {
-  if (!_isDragging) return;
-  if (_dayCardDragging.value) return;
-  if (_currentPage == 2 && d.delta.dx < 0) return; // ← NEU
-  final screenW = MediaQuery.of(context).size.width;
-  final delta = -d.delta.dx / screenW;
-  final newVal = (_slideCtrl.value + delta)
-      .clamp(0.0, (_pageCount - 1).toDouble());
-  _slideCtrl.value = newVal;
-}
+    if (!_isDragging) return;
+    if (_dayCardDragging.value) return;
+    if (_currentPage == 2 && d.delta.dx < 0) return;
+    final screenW = MediaQuery.of(context).size.width;
+    final delta = -d.delta.dx / screenW;
+    final newVal = (_slideCtrl.value + delta)
+        .clamp(0.0, (_pageCount - 1).toDouble());
+    _slideCtrl.value = newVal;
+  }
 
   void _onDragEnd(DragEndDetails d) {
-  if (!_isDragging) return;
-  _isDragging = false;
-  _dayCardDragging.value = false; // ← NEU
+    if (!_isDragging) return;
+    _isDragging = false;
+    _dayCardDragging.value = false;
 
-  final velocity = d.primaryVelocity ?? 0;
-  final current = _slideCtrl.value;
+    final velocity = d.primaryVelocity ?? 0;
+    final current = _slideCtrl.value;
 
-  int targetPage;
-  if (velocity < -400) {
-    targetPage = (current.ceil()).clamp(0, _pageCount - 1);
-  } else if (velocity > 400) {
-    targetPage = (current.floor()).clamp(0, _pageCount - 1);
-  } else {
-    targetPage = current.round().clamp(0, _pageCount - 1);
+    int targetPage;
+    if (velocity < -400) {
+      targetPage = (current.ceil()).clamp(0, _pageCount - 1);
+    } else if (velocity > 400) {
+      targetPage = (current.floor()).clamp(0, _pageCount - 1);
+    } else {
+      targetPage = current.round().clamp(0, _pageCount - 1);
+    }
+
+    if (targetPage != _currentPage) {
+      _homeKey.currentState?.closeOverlays();
+      _scheduleKey.currentState?.closeOverlays();
+      _monthKey.currentState?.closeAllRows();
+    }
+
+    setState(() => _currentPage = targetPage);
+    _slideCtrl.animateTo(
+      targetPage.toDouble(),
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOutCubic,
+    );
   }
-
-  // ← NEU: Overlays/Slider schließen wenn Seite wechselt
-  if (targetPage != _currentPage) {
-    _homeKey.currentState?.closeOverlays();
-    _scheduleKey.currentState?.closeOverlays();
-    _monthKey.currentState?.closeAllRows();
-  }
-
-  setState(() => _currentPage = targetPage);
-  _slideCtrl.animateTo(
-    targetPage.toDouble(),
-    duration: const Duration(milliseconds: 260),
-    curve: Curves.easeOutCubic,
-  );
-}
 
   // ── Pages ──────────────────────────────────────────────────────────────────
 
@@ -794,20 +812,20 @@ void _handleSharedPdf(String path) async {
           onNavigateToMonth: () => _goToPage(1),
         ),
         MonthScreen(
-  key: _monthKey,
-  selectedMonth: _sharedMonth,
-  onMonthChanged: (m) => setState(() => _sharedMonth = m),
-  onNavigateToHome: () => _goToPage(0),
-),
+          key: _monthKey,
+          selectedMonth: _sharedMonth,
+          onMonthChanged: (m) => setState(() => _sharedMonth = m),
+          onNavigateToHome: () => _goToPage(0),
+        ),
         if (_dienstplanEnabled)
-  ScheduleScreen(
-    key: _scheduleKey,
-    onNavigateToHome: () => _goToPage(0),
-    onNavigateToMonth: () => _goToPage(1),
-    onMonthChanged: (m) =>
-        setState(() => _scheduleViewMonth = m),
-    dayCardDragging: _dayCardDragging, // ← NEU
-  ),
+          ScheduleScreen(
+            key: _scheduleKey,
+            onNavigateToHome: () => _goToPage(0),
+            onNavigateToMonth: () => _goToPage(1),
+            onMonthChanged: (m) =>
+                setState(() => _scheduleViewMonth = m),
+            dayCardDragging: _dayCardDragging,
+          ),
       ];
 
   bool get _isOnSchedulePage =>
@@ -1152,18 +1170,15 @@ class _BottomNav extends StatelessWidget {
     final count = dienstplanEnabled ? 3 : 2;
     final bottomPad = MediaQuery.of(context).padding.bottom;
 
-    // Dimensionen
     const double iconSize = 24.0;
     const double labelFontSize = 10.5;
     const double iconLabelGap = 4.0;
     const double labelH = 14.0;
-    const double contentH = iconSize + iconLabelGap + labelH; // 42
-    const double pillVPad = 7.0; // mehr Luft oben/unten in der Pill
-    const double pillH = contentH + pillVPad * 2; // 56
+    const double contentH = iconSize + iconLabelGap + labelH;
+    const double pillVPad = 7.0;
+    const double pillH = contentH + pillVPad * 2;
 
-    // Gesamthöhe der NavBar: oben 12px Abstand, dann Pill, dann safe-area
     const double navTopPad = 12.0;
-    // Nach der Pill noch etwas Luft + safe-area
     final double navH =
         navTopPad + pillH + (bottomPad > 0 ? bottomPad + 4.0 : 10.0);
 
@@ -1188,15 +1203,12 @@ class _BottomNav extends StatelessWidget {
         final totalW = constraints.maxWidth;
         final itemW = totalW / count;
 
-        // Pill-Breite: etwas kleiner als itemW damit Ränder frei bleiben
         final pillW = (itemW - 16.0).clamp(64.0, itemW - 8.0);
 
-        // Kontinuierliche Pill-X-Position
         final maxPages = (count - 1).toDouble().clamp(1.0, 99.0);
         final normPos = pageValue.clamp(0.0, maxPages) / maxPages;
         final pillCenterX = normPos * (totalW - itemW) + itemW / 2;
 
-        // Stretch-Effekt
         final frac =
             (pageValue - pageValue.truncateToDouble()).abs();
         final stretch =
@@ -1206,9 +1218,7 @@ class _BottomNav extends StatelessWidget {
         final finalPillW =
             (pillW + stretchExtra).clamp(64.0, itemW - 4.0);
 
-        // Vertikale Positionierung: Pill oben, dann Items
         final pillTop = navTopPad;
-        // Icon soll vertikal in der Pill zentriert sein
         final iconTop = pillTop + pillVPad;
 
         return Stack(

@@ -336,8 +336,9 @@ class MonthScreenState extends State<MonthScreen> {
   }
 
   void _showMonthPicker() {
-    final skin = AppTheme.of(context);
-    int pickedYear = _selectedMonth.year;
+  closeAllRows();   // ← NEU: erste Zeile
+  final skin = AppTheme.of(context);
+  int pickedYear = _selectedMonth.year;
     int pickedMonth = _selectedMonth.month - 1;
     final yearCount = DateTime.now().year - 2020 + 2;
     final monthCtrl =
@@ -651,13 +652,14 @@ class MonthScreenState extends State<MonthScreen> {
             bottom: bottomNavHeight + 20,
             child: GestureDetector(
               onTap: () {
-                if (entries.isEmpty) {
-                  final monthName = DateFormat('MMMM yyyy', 'de').format(_selectedMonth);
-                  _showSnackbar('Keine Einträge für $monthName vorhanden', skin.deleteColor);
-                  return;
-                }
-                PdfService.exportMonth(context, _selectedMonth);
-              },
+  closeAllRows();   // ← NEU: erste Zeile
+  if (entries.isEmpty) {
+    final monthName = DateFormat('MMMM yyyy', 'de').format(_selectedMonth);
+    _showSnackbar('Keine Einträge für $monthName vorhanden', skin.deleteColor);
+    return;
+  }
+  PdfService.exportMonth(context, _selectedMonth);
+},
               child: Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(vertical: 16),
@@ -893,8 +895,8 @@ class _SlidableRowState extends State<_SlidableRow>
               children: [
                 Positioned(
                   left: 0,
-                  top: 0,
-                  bottom: 0,
+                  top: 4,
+                  bottom: 4,
                   width: _editReveal,
                   child: Row(children: [
                     Expanded(
@@ -906,27 +908,22 @@ class _SlidableRowState extends State<_SlidableRow>
                               widget.onEdit);
                         },
                         child: Container(
-                          decoration: BoxDecoration(
-                            color: skin.editColor,
-                            borderRadius: const BorderRadius.only(
-                              topLeft: Radius.circular(18),
-                              bottomLeft: Radius.circular(18),
-                            ),
-                          ),
+  margin: const EdgeInsets.only(right: 5),
+  decoration: BoxDecoration(
+    color: skin.editColor.withValues(alpha: 0.10),
+    borderRadius: BorderRadius.circular(14),
+    border: Border.all(color: skin.editColor.withValues(alpha: 0.22)),
+  ),
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Icon(Icons.edit_outlined,
-                                  color: skin.primary == Colors.white
-                                      ? Colors.black
-                                      : Colors.white,
+                                  color: skin.editColor,
                                   size: 22),
                               const SizedBox(height: 4),
                               Text('Bearbeiten',
                                   style: TextStyle(
-                                      color: skin.primary == Colors.white
-                                          ? Colors.black
-                                          : Colors.white,
+                                      color: skin.editColor,
                                       fontSize: 11,
                                       fontWeight: FontWeight.w600)),
                             ],
@@ -943,35 +940,30 @@ class _SlidableRowState extends State<_SlidableRow>
                               widget.onShare);
                         },
                         child: Container(
-                          decoration: BoxDecoration(
-                            color: skin.statComplete,
-                            borderRadius: const BorderRadius.only(
-                              topRight: Radius.circular(18),
-                              bottomRight: Radius.circular(18),
-                            ),
-                          ),
-                          child: const Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.ios_share_outlined,
-                                  color: Colors.white, size: 22),
-                              SizedBox(height: 4),
-                              Text('Teilen',
-                                  style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w600)),
-                            ],
-                          ),
-                        ),
+  margin: const EdgeInsets.only(right: 5), // Abstand zur Card
+  decoration: BoxDecoration(
+    color: skin.statComplete.withValues(alpha: 0.10),
+    borderRadius: BorderRadius.circular(14),
+    border: Border.all(color: skin.statComplete.withValues(alpha: 0.22)),
+  ),
+  child: Column(
+    mainAxisAlignment: MainAxisAlignment.center,
+    children: [
+      Icon(Icons.ios_share_outlined, color: skin.statComplete, size: 22),
+      const SizedBox(height: 4),
+      Text('Teilen',
+          style: TextStyle(color: skin.statComplete, fontSize: 11, fontWeight: FontWeight.w600)),
+    ],
+  ),
+),
                       ),
                     ),
                   ]),
                 ),
                 Positioned(
                   right: 0,
-                  top: 0,
-                  bottom: 0,
+                  top: 4,
+                  bottom: 4,
                   width: _deleteReveal,
                   child: GestureDetector(
                     onTap: () => widget.onDelete(),
@@ -981,37 +973,31 @@ class _SlidableRowState extends State<_SlidableRow>
                         scale: _deleteScaleAnim.value,
                         alignment: Alignment.center,
                         child: Container(
-                          decoration: BoxDecoration(
-                            color: skin.deleteColor,
-                            borderRadius: BorderRadius.circular(18),
-                            boxShadow: _deleteAnimController.value > 0
-                                ? [
-                                    BoxShadow(
-                                      color: skin.deleteColor.withValues(
-                                          alpha: 0.5 *
-                                              _deleteAnimController.value),
-                                      blurRadius:
-                                          16 * _deleteAnimController.value,
-                                      spreadRadius:
-                                          2 * _deleteAnimController.value,
-                                    )
-                                  ]
-                                : null,
-                          ),
-                          child: const Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.delete_outline,
-                                  color: Colors.white, size: 22),
-                              SizedBox(height: 4),
-                              Text('Löschen',
-                                  style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w600)),
-                            ],
-                          ),
-                        ),
+  margin: const EdgeInsets.only(left: 5), // Abstand zur Card
+  decoration: BoxDecoration(
+    color: skin.deleteColor.withValues(alpha: 0.10),
+    borderRadius: BorderRadius.circular(14),
+    border: Border.all(color: skin.deleteColor.withValues(alpha: 0.22)),
+    boxShadow: _deleteAnimController.value > 0
+        ? [
+            BoxShadow(
+              color: skin.deleteColor.withValues(alpha: 0.5 * _deleteAnimController.value),
+              blurRadius: 16 * _deleteAnimController.value,
+              spreadRadius: 2 * _deleteAnimController.value,
+            )
+          ]
+        : null,
+  ),
+  child: Column(
+    mainAxisAlignment: MainAxisAlignment.center,
+    children: [
+      Icon(Icons.delete_outline, color: skin.deleteColor, size: 22),
+      const SizedBox(height: 4),
+      Text('Löschen',
+          style: TextStyle(color: skin.deleteColor, fontSize: 11, fontWeight: FontWeight.w600)),
+    ],
+  ),
+),
                       ),
                     ),
                   ),
@@ -1025,10 +1011,10 @@ class _SlidableRowState extends State<_SlidableRow>
                     offset: Offset(_offset + _slideAnim.value, 0),
                     child: Container(
                       decoration: BoxDecoration(
-                        color: skin.bgCard,
-                        borderRadius: BorderRadius.circular(18),
-                        border: Border.all(color: borderColor),
-                      ),
+  color: skin.bgCard,
+  borderRadius: BorderRadius.circular(14), // war: 18
+  border: Border.all(color: borderColor),
+),
                       padding: const EdgeInsets.symmetric(
                           horizontal: 12, vertical: 10),
                       child: Row(

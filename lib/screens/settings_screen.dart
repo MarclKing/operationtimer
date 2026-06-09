@@ -1031,16 +1031,16 @@ class _SkinPickerState extends State<_SkinPicker> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SizedBox(
-          height: 80,
-          child: ListView.builder(
-            controller: _scrollCtrl,
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.only(left: 0, right: 4),
-            itemCount: _skins.length,
-            itemBuilder: (context, index) {
-              return Padding(
-                padding: EdgeInsets.only(right: index < _skins.length - 1 ? 10 : 0),
-                child: _SkinOption(
+  height: 88,
+  child: ListView.builder(
+    controller: _scrollCtrl,
+    scrollDirection: Axis.horizontal,
+    padding: const EdgeInsets.only(left: 4, right: 4, top: 4, bottom: 4),
+    itemCount: _skins.length,
+    itemBuilder: (context, index) {
+      return Padding(
+        padding: EdgeInsets.only(right: index < _skins.length - 1 ? 10 : 0),
+        child: _SkinOption(
                   label: _labels[index],
                   skinKey: _skins[index],
                   isSelected: widget.activeSkin == _skins[index],

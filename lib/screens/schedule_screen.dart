@@ -10,7 +10,7 @@ import 'dart:typed_data';
 import '../theme/app_theme.dart';
 import 'package:archive/archive.dart';
 import 'dart:convert';
-import 'package:flutter/foundation.dart' show kIsWeb;  // ← DAS HINZUFÜGEN
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shift colour helper
@@ -84,24 +84,20 @@ enum ShiftCategory { work, free, other, mixed }
 class _ChangedDays {
   static String _hiveKey(String monthKey) => 'schedule_changed_$monthKey';
 
-  /// Speichert eine Liste geänderter Tage (yyyy-MM-dd) für einen Monat.
   static void save(String monthKey, Set<String> days) {
     Hive.box('einstellungen').put(_hiveKey(monthKey), days.toList());
   }
 
-  /// Lädt die geänderten Tage für einen Monat.
   static Set<String> load(String monthKey) {
     final raw = Hive.box('einstellungen').get(_hiveKey(monthKey));
     if (raw is List) return raw.map((e) => e.toString()).toSet();
     return {};
   }
 
-  /// Löscht die Markierungen für einen Monat.
   static void clear(String monthKey) {
     Hive.box('einstellungen').delete(_hiveKey(monthKey));
   }
 
-  /// Vergleicht alten und neuen Dienstplan und gibt geänderte Tage zurück.
   static Set<String> diff(
       Map<String, String> oldData, Map<String, String> newData) {
     final changed = <String>{};
@@ -277,6 +273,278 @@ class DienstplanParser {
     }
 
     return {'month': detectedMonth, 'data': result, 'error': null};
+  }
+
+  /// Gibt für jeden Tag des Monats eine Map von Nachname → Dienst zurück.
+  /// Struktur: { 'yyyy-MM-dd': { 'Mustermann': 'P1', 'Schmidt': 'F', ... } }
+  static Map<String, Map<String, String>> parseAllColleagues({
+    required List<int> bytes,
+    required String fileName,
+    required String ownUserName,
+    bool devMode = false,
+    StringBuffer? debugLog,
+  }) {
+    final log = debugLog ?? StringBuffer();
+    try {
+      final innerLog = StringBuffer();
+      final stream = _decompress(bytes, innerLog, devMode);
+      if (devMode) log.write(innerLog);
+
+      if (stream == null) {
+        if (devMode) log.writeln('[KOLLEGEN] Stream konnte nicht dekomprimiert werden.');
+        return {};
+      }
+
+      final items = _extractCoordText(stream);
+      final rows = _groupByY(items);
+      final sortedYsDesc = rows.keys.toList()..sort((a, b) => b.compareTo(a));
+
+      final detectedMonth = _detectMonthFromText(rows, fileName);
+      if (detectedMonth == null) {
+        if (devMode) log.writeln('[KOLLEGEN] Monat konnte nicht erkannt werden.');
+        return {};
+      }
+
+      if (devMode) {
+        log.writeln('[KOLLEGEN] Monat erkannt: $detectedMonth');
+        log.writeln('[KOLLEGEN] Anzahl Zeilen: ${rows.length}');
+      }
+
+      final dateRow = _findDateRow(rows);
+      final ownTerms = _searchTerms(ownUserName);
+
+      if (devMode) {
+        log.writeln('[KOLLEGEN] Eigene Suchbegriffe: $ownTerms');
+        log.writeln('[KOLLEGEN] Datumszeile gefunden: ${dateRow != null}');
+        if (dateRow != null) {
+          log.writeln('[KOLLEGEN] Datum-Einträge: ${dateRow.length}');
+        }
+      }
+
+      // ── Schritt 1: Datumszeile Y-Position finden ──────────────────────
+      double? dateRowY;
+      {
+        final dateRe = RegExp(r'^\d{1,2}\.\d{2}\.$');
+        for (final y in sortedYsDesc) {
+          final rowItems = rows[y]!;
+          final matches = rowItems.where((e) => dateRe.hasMatch(e.$2)).length;
+          if (matches >= 5) {
+            dateRowY = y;
+            break;
+          }
+        }
+      }
+
+      if (dateRowY == null) {
+        if (devMode) log.writeln('[KOLLEGEN] Datumszeile Y nicht gefunden.');
+        return {};
+      }
+
+      // ── Schritt 2: Alle Dienst-Zeilen OBERHALB der Datumszeile ────────
+      // (In PDF-Koordinaten ist oben = höhere Y-Werte)
+      // Dienst-Zeilen haben hauptsächlich Shift-Tokens, keinen Namen
+      final List<(double, List<(double, String)>)> shiftRows = [];
+      for (final y in sortedYsDesc) {
+        if (y >= dateRowY) continue; // Datumszeile und alles drüber überspringen
+        final rowItems = (rows[y]!.toList())
+          ..sort((a, b) => a.$1.compareTo(b.$1));
+        final rowText = rowItems.map((e) => e.$2).join(' ');
+
+        // Zeile überspringen wenn sie aussieht wie Monatstitel, "Personal offen" etc.
+        if (rowText.contains('Personal') ||
+            rowText.contains('Reserve') ||
+            rowText.contains('Juli') ||
+            rowText.contains('Juni') ||
+            rowText.contains('August') ||
+            rowText.contains('Sommerfest') ||
+            rowText.contains('Kalenderwoche')) continue;
+
+        // Nur Zeilen mit Dienst-Tokens
+        final shiftTokens = rowItems
+            .where((e) => _looksLikeShift(e.$2))
+            .toList();
+        if (shiftTokens.isEmpty) continue;
+
+        // Relevante Dienste prüfen
+        final relevantShifts = ['P', 'P1', 'P2', 'F', 'F1', 'F2', 'VK', 'GEB'];
+        bool hasRelevant = shiftTokens.any((sc) {
+          final u = sc.$2.trim().toUpperCase();
+          final parts = u.split('/').map((s) => s.trim()).toList();
+          return parts.any((p) => relevantShifts.contains(p));
+        });
+        if (!hasRelevant) continue;
+
+        shiftRows.add((y, shiftTokens));
+      }
+
+      // ── Schritt 3: Namen-Spalte finden ────────────────────────────────
+      // Namen stehen UNTERHALB der Datumszeile als separate Liste
+      // Format: "Nachname, Vo" — hohe X-Koordinate (rechte Spalte)
+      // ODER: in einer separaten Spalte links mit niedrigem X
+      // Wir sammeln alle Tokens die wie Namen aussehen
+      final List<(double, String)> nameTokens = []; // (y, nachname)
+
+      // Suche nach Zeilen die Namen enthalten (unterhalb dateRowY ODER überall)
+      // Namen-Format: "Nachname, Vo" oder "Nachname,"
+      final nameRowRe = RegExp(r'^[A-ZÄÖÜ][a-zA-ZäöüÄÖÜ\-]+,');
+
+      // Sammle alle Y-Positionen mit Namen-Tokens
+      for (final y in sortedYsDesc) {
+        final rowItems = rows[y]!;
+        for (final (x, text) in rowItems) {
+          if (nameRowRe.hasMatch(text.trim())) {
+            final lastName = text.split(',').first.trim();
+            if (lastName.length >= 2) {
+              nameTokens.add((y, lastName));
+              if (devMode) log.writeln('[KOLLEGEN] Name gefunden: "$lastName" bei y=$y, x=$x');
+            }
+          }
+        }
+      }
+
+      // Sortiere Namen nach Y absteigend (wie Dienst-Zeilen)
+      nameTokens.sort((a, b) => b.$1.compareTo(a.$1));
+
+      if (devMode) {
+        log.writeln('[KOLLEGEN] Dienst-Zeilen gefunden: ${shiftRows.length}');
+        log.writeln('[KOLLEGEN] Namen gefunden: ${nameTokens.length}');
+        for (int i = 0; i < nameTokens.length; i++) {
+          log.writeln('[KOLLEGEN] Name[$i]: "${nameTokens[i].$2}" bei y=${nameTokens[i].$1}');
+        }
+      }
+
+      // ── Schritt 4: Namen und Dienst-Zeilen per Y-Nähe zuordnen ────────
+      // Beide Listen sind nach Y absteigend sortiert
+      // Wir ordnen per Index zu: shiftRows[i] → nameTokens[i]
+      // ABER: Eigene Zeile überspringen
+
+      // Finde zuerst die eigene Zeile
+      int ownRowIndex = -1;
+      for (int i = 0; i < shiftRows.length; i++) {
+        final (y, _) = shiftRows[i];
+        final rowItems = (rows[y]!.toList())
+          ..sort((a, b) => a.$1.compareTo(b.$1));
+        final rowText = rowItems.map((e) => e.$2).join(' ');
+        bool isOwn = false;
+        for (final t in ownTerms) {
+          if (rowText.toLowerCase().contains(t.toLowerCase())) {
+            isOwn = true;
+            break;
+          }
+        }
+        if (isOwn) {
+          ownRowIndex = i;
+          if (devMode) log.writeln('[KOLLEGEN] Eigene Dienst-Zeile Index: $i bei y=$y');
+          break;
+        }
+      }
+
+      // Versuche Y-basierte Zuordnung: finde für jede Dienst-Zeile den nächsten Namen
+      // Da die Namen in einer separaten Spalte stehen, matchen wir per Y-Nähe
+      final result = <String, Map<String, String>>{};
+      int personsAdded = 0;
+
+      // Strategie: Für jede Dienst-Zeile, finde den Namen mit dem nächsten Y-Wert
+      final usedNameIndices = <int>{};
+
+      for (int si = 0; si < shiftRows.length; si++) {
+        final (shiftY, shiftTokens) = shiftRows[si];
+
+        // Finde nächsten unbenutzten Namen per Y-Abstand
+        int bestNameIdx = -1;
+        double bestDist = double.infinity;
+        for (int ni = 0; ni < nameTokens.length; ni++) {
+          if (usedNameIndices.contains(ni)) continue;
+          final dist = (nameTokens[ni].$1 - shiftY).abs();
+          if (dist < bestDist) {
+            bestDist = dist;
+            bestNameIdx = ni;
+          }
+        }
+
+        if (bestNameIdx == -1 || bestDist > 50.0) {
+          if (devMode) log.writeln('[KOLLEGEN] Keine Name-Zuordnung für Dienst-Zeile y=$shiftY (beste Dist: $bestDist)');
+          continue;
+        }
+
+        usedNameIndices.add(bestNameIdx);
+        final lastName = nameTokens[bestNameIdx].$2;
+
+        // Eigene Zeile überspringen
+        bool isOwn = false;
+        for (final t in ownTerms) {
+          if (lastName.toLowerCase().contains(t.toLowerCase()) ||
+              t.toLowerCase().contains(lastName.toLowerCase())) {
+            isOwn = true;
+            break;
+          }
+        }
+        if (isOwn) {
+          if (devMode) log.writeln('[KOLLEGEN] Überspringe eigene Zeile: $lastName');
+          continue;
+        }
+
+        if (devMode) log.writeln('[KOLLEGEN] Zuordnung: "$lastName" (y=${nameTokens[bestNameIdx].$1}) → Dienst-Zeile y=$shiftY (Dist: $bestDist)');
+
+        // Dienste dem Datum zuordnen
+        if (dateRow != null) {
+          final usedDateIndices = <int>{};
+          for (final (sx, shift) in shiftTokens) {
+            int? bestIdx;
+            double bestDateDist = double.infinity;
+            for (int di = 0; di < dateRow.length; di++) {
+              if (usedDateIndices.contains(di)) continue;
+              final dist = (sx - dateRow[di].$1).abs();
+              if (dist < bestDateDist) {
+                bestDateDist = dist;
+                bestIdx = di;
+              }
+            }
+            if (bestIdx != null && bestDateDist <= 30.0) {
+              usedDateIndices.add(bestIdx);
+              final dateLabel = dateRow[bestIdx].$2;
+              final parts = dateLabel.replaceAll(' ', '').split('.');
+              if (parts.length >= 2) {
+                final day = int.tryParse(parts[0]);
+                final month = int.tryParse(parts[1]);
+                if (day != null && month != null) {
+                  final key = DateFormat('yyyy-MM-dd').format(
+                      DateTime(detectedMonth.year, month, day));
+                  final normalizedShift =
+                      shift.trim().toLowerCase() == 'x' ? 'X' : shift.trim().toUpperCase();
+                  // GEB normalisieren
+                  final finalShift = normalizedShift.toUpperCase() == 'GEB'
+                      ? 'GEB'
+                      : normalizedShift;
+                  result.putIfAbsent(key, () => {})[lastName] = finalShift;
+                }
+              }
+            }
+          }
+          personsAdded++;
+        }
+      }
+
+      if (devMode) {
+        log.writeln('[KOLLEGEN] ── ZUSAMMENFASSUNG ──');
+        log.writeln('[KOLLEGEN] Dienst-Zeilen:        ${shiftRows.length}');
+        log.writeln('[KOLLEGEN] Namen:                ${nameTokens.length}');
+        log.writeln('[KOLLEGEN] Personen verarbeitet: $personsAdded');
+        log.writeln('[KOLLEGEN] Tage mit Daten:       ${result.length}');
+        if (result.isNotEmpty) {
+          final firstKey = (result.keys.toList()..sort()).first;
+          log.writeln('[KOLLEGEN] Beispiel $firstKey: ${result[firstKey]}');
+        }
+      }
+
+      return result;
+    } catch (e, stack) {
+      if (devMode) {
+        log.writeln('[KOLLEGEN] FEHLER: $e');
+        log.writeln('[KOLLEGEN] Stack: $stack');
+      }
+      return {};
+    }
   }
 
   static String? _decompress(List<int> pdfBytes, StringBuffer log, bool devMode) {
@@ -654,18 +922,18 @@ class ScheduleScreen extends StatefulWidget {
   final VoidCallback onNavigateToHome;
   final VoidCallback onNavigateToMonth;
   final void Function(DateTime)? onMonthChanged;
-  final ValueNotifier<bool>? dayCardDragging; // ← NEU
+  final ValueNotifier<bool>? dayCardDragging;
 
   const ScheduleScreen({
     super.key,
     required this.onNavigateToHome,
     required this.onNavigateToMonth,
     this.onMonthChanged,
-    this.dayCardDragging, // ← NEU
+    this.dayCardDragging,
   });
 
   @override
-State<ScheduleScreen> createState() => ScheduleScreenState();
+  State<ScheduleScreen> createState() => ScheduleScreenState();
 }
 
 class ScheduleScreenState extends State<ScheduleScreen> {
@@ -674,60 +942,62 @@ class ScheduleScreenState extends State<ScheduleScreen> {
 
   String? _activeNoteKey;
   bool _noteOverlayVisible = false;
+
+  // ── NEU: Kollegen Overlay State ───────────────────────────────────────────
+  String? _activeColleaguesKey;
+  bool _colleaguesOverlayVisible = false;
+
   String? _openSwipedCardKey;
 
   static Future<void> pushScheduleToWidget() async {
-  if (kIsWeb) return;
-  
-  try {
-    debugPrint('🔄 pushScheduleToWidget: START');
-    final box = Hive.box('einstellungen');
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month);
-    final todayStr = DateFormat('yyyy-MM-dd').format(now);
+    if (kIsWeb) return;
 
-    final entries = <Map<String, String>>[];
+    try {
+      debugPrint('🔄 pushScheduleToWidget: START');
+      final box = Hive.box('einstellungen');
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month);
+      final todayStr = DateFormat('yyyy-MM-dd').format(now);
 
-    for (int offset = 0; offset <= 2; offset++) {
-      final month = DateTime(today.year, today.month + offset);
-      final monthKey = DateFormat('yyyy-MM').format(month);
-      final raw = box.get('schedule_$monthKey');
-      if (raw is Map) {
-        for (final e in raw.entries) {
-          final dateKey = e.key.toString();
-          final noteRaw = box.get('schedule_note_$dateKey');
-          bool hasNote = false;
-          if (noteRaw is Map) {
-            final phone = (noteRaw['phone'] ?? '') as String;
-            final text = (noteRaw['text'] ?? '') as String;
-            hasNote = phone.isNotEmpty || text.isNotEmpty;
+      final entries = <Map<String, String>>[];
+
+      for (int offset = 0; offset <= 2; offset++) {
+        final month = DateTime(today.year, today.month + offset);
+        final monthKey = DateFormat('yyyy-MM').format(month);
+        final raw = box.get('schedule_$monthKey');
+        if (raw is Map) {
+          for (final e in raw.entries) {
+            final dateKey = e.key.toString();
+            final noteRaw = box.get('schedule_note_$dateKey');
+            bool hasNote = false;
+            if (noteRaw is Map) {
+              final phone = (noteRaw['phone'] ?? '') as String;
+              final text = (noteRaw['text'] ?? '') as String;
+              hasNote = phone.isNotEmpty || text.isNotEmpty;
+            }
+            entries.add({
+              'date': dateKey,
+              'shift': e.value.toString(),
+              if (hasNote) 'hasNote': 'true',
+            });
           }
-          entries.add({
-            'date': dateKey,
-            'shift': e.value.toString(),
-            if (hasNote) 'hasNote': 'true',
-          });
         }
       }
+
+      final filtered = entries
+          .where((e) => (e['date'] ?? '').compareTo(todayStr) >= 0)
+          .toList()
+        ..sort((a, b) => (a['date'] ?? '').compareTo(b['date'] ?? ''));
+
+      final json = jsonEncode(filtered);
+      debugPrint('🔄 pushScheduleToWidget: ${filtered.length} Einträge');
+
+      const _widgetChannel = MethodChannel('de.marcel.optimes/widget');
+      await _widgetChannel.invokeMethod('updateSchedule', {'json': json});
+    } catch (e) {
+      debugPrint('❌ Widget push ERROR: $e');
     }
-
-    final filtered = entries
-        .where((e) => (e['date'] ?? '').compareTo(todayStr) >= 0)
-        .toList()
-      ..sort((a, b) => (a['date'] ?? '').compareTo(b['date'] ?? ''));
-
-    final json = jsonEncode(filtered);
-    debugPrint('🔄 pushScheduleToWidget: ${filtered.length} Einträge');
-
-    // Direkt über nativen Channel schreiben + Widget neu laden
-    const _widgetChannel = MethodChannel('de.marcel.optimes/widget');
-    await _widgetChannel.invokeMethod('updateSchedule', {'json': json});
-    
-  } catch (e) {
-    debugPrint('❌ Widget push ERROR: $e');
   }
-}
-
 
   @override
   void initState() {
@@ -743,18 +1013,18 @@ class ScheduleScreenState extends State<ScheduleScreen> {
   }
 
   void loadScheduleData() {
-  final box = Hive.box('einstellungen');
-  final monthKey = DateFormat('yyyy-MM').format(_selectedMonth);
-  final raw = box.get('schedule_$monthKey');
-  setState(() {
-    _scheduleData = {};
-    if (raw is Map) {
-      for (final entry in raw.entries) {
-        _scheduleData[entry.key.toString()] = entry.value.toString();
+    final box = Hive.box('einstellungen');
+    final monthKey = DateFormat('yyyy-MM').format(_selectedMonth);
+    final raw = box.get('schedule_$monthKey');
+    setState(() {
+      _scheduleData = {};
+      if (raw is Map) {
+        for (final entry in raw.entries) {
+          _scheduleData[entry.key.toString()] = entry.value.toString();
+        }
       }
-    }
-  });
-}
+    });
+  }
 
   void _setMonth(DateTime month) {
     setState(() => _selectedMonth = month);
@@ -942,14 +1212,31 @@ class ScheduleScreenState extends State<ScheduleScreen> {
     });
   }
 
-  void closeOverlays() {
-  if (_noteOverlayVisible) _closeNoteOverlay();
-  if (_openSwipedCardKey != null) {
-    setState(() => _openSwipedCardKey = null);
+  // ── NEU: Kollegen Overlay öffnen / schließen ──────────────────────────────
+  void openColleaguesOverlay(String dateKey) {
+    HapticFeedback.lightImpact();
+    setState(() {
+      _activeColleaguesKey = dateKey;
+      _colleaguesOverlayVisible = true;
+    });
   }
-}
 
-Future<void> _deleteCurrentMonth(AppSkin skin) async {
+  void _closeColleaguesOverlay() {
+    setState(() {
+      _colleaguesOverlayVisible = false;
+      _activeColleaguesKey = null;
+    });
+  }
+
+  void closeOverlays() {
+    if (_noteOverlayVisible) _closeNoteOverlay();
+    if (_colleaguesOverlayVisible) _closeColleaguesOverlay(); // NEU
+    if (_openSwipedCardKey != null) {
+      setState(() => _openSwipedCardKey = null);
+    }
+  }
+
+  Future<void> _deleteCurrentMonth(AppSkin skin) async {
     final monthKey = DateFormat('yyyy-MM').format(_selectedMonth);
     final displayMonth = DateFormat('MMMM yyyy', 'de').format(_selectedMonth);
 
@@ -1140,279 +1427,292 @@ Future<void> _deleteCurrentMonth(AppSkin skin) async {
     final changedDays = _ChangedDays.load(monthKey);
 
     return Scaffold(
-          backgroundColor: skin.bgBase,
-          body: GestureDetector(
-            onTap: () {
-              if (_openSwipedCardKey != null) {
-                setState(() => _openSwipedCardKey = null);
-              }
-            },
-            behavior: HitTestBehavior.translucent,
-            child: Stack(
-              children: [
-                SafeArea(
-                  bottom: false,
-                  child: ColoredBox(
-                    color: skin.bgBase,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const SizedBox(height: 50),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 24),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(children: [
-                                Text('Dienstplan',
-                                    style: TextStyle(
-                                        fontSize: 26,
-                                        fontWeight: FontWeight.w700,
-                                        color: skin.textPrimary)),
-                                const SizedBox(width: 10),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 8, vertical: 3),
-                                  decoration: BoxDecoration(
+      backgroundColor: skin.bgBase,
+      body: GestureDetector(
+        onTap: () {
+          if (_openSwipedCardKey != null) {
+            setState(() => _openSwipedCardKey = null);
+          }
+        },
+        behavior: HitTestBehavior.translucent,
+        child: Stack(
+          children: [
+            SafeArea(
+              bottom: false,
+              child: ColoredBox(
+                color: skin.bgBase,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 50),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(children: [
+                            Text('Dienstplan',
+                                style: TextStyle(
+                                    fontSize: 26,
+                                    fontWeight: FontWeight.w700,
+                                    color: skin.textPrimary)),
+                            const SizedBox(width: 10),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFFB347)
+                                    .withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(
                                     color: const Color(0xFFFFB347)
-                                        .withValues(alpha: 0.15),
-                                    borderRadius: BorderRadius.circular(6),
-                                    border: Border.all(
-                                        color: const Color(0xFFFFB347)
-                                            .withValues(alpha: 0.4)),
-                                  ),
-                                  child: const Text('BETA',
-                                      style: TextStyle(
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.w700,
-                                          color: Color(0xFFFFB347),
-                                          letterSpacing: 0.8)),
-                                ),
-                                if (_isDevMode) ...[
-                                  const SizedBox(width: 6),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 8, vertical: 3),
-                                    decoration: BoxDecoration(
+                                        .withValues(alpha: 0.4)),
+                              ),
+                              child: const Text('BETA',
+                                  style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w700,
+                                      color: Color(0xFFFFB347),
+                                      letterSpacing: 0.8)),
+                            ),
+                            if (_isDevMode) ...[
+                              const SizedBox(width: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFEF5B5B)
+                                      .withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(
                                       color: const Color(0xFFEF5B5B)
-                                          .withValues(alpha: 0.15),
-                                      borderRadius: BorderRadius.circular(6),
-                                      border: Border.all(
-                                          color: const Color(0xFFEF5B5B)
-                                              .withValues(alpha: 0.4)),
-                                    ),
-                                    child: const Text('DEV',
-                                        style: TextStyle(
-                                            fontSize: 10,
-                                            fontWeight: FontWeight.w700,
-                                            color: Color(0xFFEF5B5B),
-                                            letterSpacing: 0.8)),
-                                  ),
-                                ],
-                              ]),
-                              const SizedBox(height: 16),
-                              Row(children: [
-                                _MonthNavBtn(
-                                    icon: Icons.chevron_left,
-                                    onTap: () => _changeMonth(-1)),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: GestureDetector(
-                                    onTap: _showMonthPicker,
-                                    onDoubleTap: () {
-                                      HapticFeedback.selectionClick();
-                                      final now = DateTime.now();
-                                      _setMonth(DateTime(now.year, now.month));
-                                    },
-                                    onHorizontalDragEnd: (d) {
-                                      final v = d.primaryVelocity ?? 0;
-                                      if (v < -300) _changeMonth(1);
-                                      if (v > 300) _changeMonth(-1);
-                                    },
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(
-                                          vertical: 13),
-                                      decoration: BoxDecoration(
-                                        color: skin.bgCard,
-                                        borderRadius:
-                                            BorderRadius.circular(14),
-                                        border: Border.all(
-                                            color:
-                                                skin.primaryWithAlpha(0.35)),
-                                      ),
-                                      child: Row(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.center,
-                                          children: [
-                                            Text(monthName,
-                                                style: TextStyle(
-                                                    fontSize: 16,
-                                                    fontWeight:
-                                                        FontWeight.w600,
-                                                    color:
-                                                        skin.textPrimary)),
-                                            const SizedBox(width: 6),
-                                            Icon(Icons.expand_more,
-                                                color: skin.primary,
-                                                size: 18),
-                                          ]),
-                                    ),
-                                  ),
+                                          .withValues(alpha: 0.4)),
                                 ),
-                                const SizedBox(width: 10),
-                                _MonthNavBtn(
-                                    icon: Icons.chevron_right,
-                                    onTap: () => _changeMonth(1)),
-                              ]),
-                              const SizedBox(height: 12),
-                              Row(children: [
-                                _StatCard(
-                                    label: 'Arbeit',
-                                    value: '$_workDays',
-                                    color: isChrome
-                                        ? const Color(0xFFDDDDDD)
-                                        : const Color(0xFF5B8DEF)),
-                                const SizedBox(width: 10),
-                                _StatCard(
-                                    label: 'Frei',
-                                    value: '$_freeDays',
-                                    color: isChrome
-                                        ? const Color(0xFF666666)
-                                        : const Color(0xFF6B7280)),
-                                const SizedBox(width: 10),
-                                _StatCard(
-                                    label: 'VK',
-                                    value: '$_vkDays',
-                                    color: isChrome
-                                        ? const Color(0xFF999999)
-                                        : const Color(0xFFEF5B5B)),
-                              ]),
-                              if (_hasSchedule) ...[
-                                const SizedBox(height: 8),
-                                Row(children: [
-                                  Icon(Icons.info_outline,
-                                      size: 11, color: skin.surface(0.28)),
-                                  const SizedBox(width: 5),
-                                  Text(
-                                    'Gedrückt halten oder ← wischen für Notizen',
+                                child: const Text('DEV',
                                     style: TextStyle(
-                                        fontSize: 11,
-                                        color: skin.surface(0.28)),
-                                  ),
-                                ]),
-                              ],
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w700,
+                                        color: Color(0xFFEF5B5B),
+                                        letterSpacing: 0.8)),
+                              ),
                             ],
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Expanded(
-                          child: !_hasSchedule
-                              ? Center(
-                                  child: Column(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.center,
-                                    children: [
-                                      const Text('📋',
-                                          style: TextStyle(fontSize: 48)),
-                                      const SizedBox(height: 12),
-                                      Text('Kein Dienstplan hinterlegt',
-                                          style: TextStyle(
-                                              color: skin.surface(0.3),
-                                              fontSize: 15)),
-                                      const SizedBox(height: 8),
-                                      Text(
-                                          'Tippe oben auf ☰ → Dienstplan importieren',
-                                          style: TextStyle(
-                                              color: skin.surface(0.2),
-                                              fontSize: 12),
-                                          textAlign: TextAlign.center),
-                                    ],
+                          ]),
+                          const SizedBox(height: 16),
+                          Row(children: [
+                            _MonthNavBtn(
+                                icon: Icons.chevron_left,
+                                onTap: () => _changeMonth(-1)),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: GestureDetector(
+                                onTap: _showMonthPicker,
+                                onDoubleTap: () {
+                                  HapticFeedback.selectionClick();
+                                  final now = DateTime.now();
+                                  _setMonth(DateTime(now.year, now.month));
+                                },
+                                onHorizontalDragEnd: (d) {
+                                  final v = d.primaryVelocity ?? 0;
+                                  if (v < -300) _changeMonth(1);
+                                  if (v > 300) _changeMonth(-1);
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      vertical: 13),
+                                  decoration: BoxDecoration(
+                                    color: skin.bgCard,
+                                    borderRadius:
+                                        BorderRadius.circular(14),
+                                    border: Border.all(
+                                        color:
+                                            skin.primaryWithAlpha(0.35)),
                                   ),
-                                )
-                              : _FadingListView(
-                                  fadeFromBottom: bottomNavHeight + 20,
-                                  child: ListView.builder(
-                                    padding: const EdgeInsets.fromLTRB(24, 4, 24, 0),
-itemCount: days.length + 1,
-itemBuilder: (context, index) {
-  if (index == days.length) {
-    return Padding(
-      padding: EdgeInsets.only(
-          top: 8,
-          bottom: bottomNavHeight + 40),
-      child: GestureDetector(
-        onTap: () => _deleteCurrentMonth(skin),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 11),
-          decoration: BoxDecoration(
-            color: skin.deleteColor.withValues(alpha: 0.07),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-                color: skin.deleteColor.withValues(alpha: 0.22)),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.delete_outline,
-                  color: skin.deleteColor, size: 16),
-              const SizedBox(width: 7),
-              Text(
-                'Aktuellen Monat löschen',
-                style: TextStyle(
-                    color: skin.deleteColor,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600),
+                                  child: Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Text(monthName,
+                                            style: TextStyle(
+                                                fontSize: 16,
+                                                fontWeight:
+                                                    FontWeight.w600,
+                                                color:
+                                                    skin.textPrimary)),
+                                        const SizedBox(width: 6),
+                                        Icon(Icons.expand_more,
+                                            color: skin.primary,
+                                            size: 18),
+                                      ]),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            _MonthNavBtn(
+                                icon: Icons.chevron_right,
+                                onTap: () => _changeMonth(1)),
+                          ]),
+                          const SizedBox(height: 12),
+                          Row(children: [
+                            _StatCard(
+                                label: 'Arbeit',
+                                value: '$_workDays',
+                                color: isChrome
+                                    ? const Color(0xFFDDDDDD)
+                                    : const Color(0xFF5B8DEF)),
+                            const SizedBox(width: 10),
+                            _StatCard(
+                                label: 'Frei',
+                                value: '$_freeDays',
+                                color: isChrome
+                                    ? const Color(0xFF666666)
+                                    : const Color(0xFF6B7280)),
+                            const SizedBox(width: 10),
+                            _StatCard(
+                                label: 'VK',
+                                value: '$_vkDays',
+                                color: isChrome
+                                    ? const Color(0xFF999999)
+                                    : const Color(0xFFEF5B5B)),
+                          ]),
+                          if (_hasSchedule) ...[
+  const SizedBox(height: 8),
+  Row(children: [
+    Icon(Icons.info_outline, size: 11, color: skin.surface(0.28)),
+    const SizedBox(width: 5),
+    Text(
+      'wischen  •  gedrückt halten  •  doppeltippen',
+      style: TextStyle(fontSize: 11, color: skin.surface(0.28)),
+    ),
+  ]),
+],
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Expanded(
+                      child: !_hasSchedule
+                          ? Center(
+                              child: Column(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.center,
+                                children: [
+                                  const Text('📋',
+                                      style: TextStyle(fontSize: 48)),
+                                  const SizedBox(height: 12),
+                                  Text('Kein Dienstplan hinterlegt',
+                                      style: TextStyle(
+                                          color: skin.surface(0.3),
+                                          fontSize: 15)),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                      'Tippe oben auf ☰ → Dienstplan importieren',
+                                      style: TextStyle(
+                                          color: skin.surface(0.2),
+                                          fontSize: 12),
+                                      textAlign: TextAlign.center),
+                                ],
+                              ),
+                            )
+                          : _FadingListView(
+                              fadeFromBottom: bottomNavHeight + 20,
+                              child: ListView.builder(
+                                padding: const EdgeInsets.fromLTRB(24, 4, 24, 0),
+                                itemCount: days.length + 1,
+                                itemBuilder: (context, index) {
+                                  if (index == days.length) {
+                                    return Padding(
+                                      padding: EdgeInsets.only(
+                                          top: 8,
+                                          bottom: bottomNavHeight + 40),
+                                      child: GestureDetector(
+                                        onTap: () => _deleteCurrentMonth(skin),
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(
+                                              vertical: 11),
+                                          decoration: BoxDecoration(
+                                            color: skin.deleteColor
+                                                .withValues(alpha: 0.07),
+                                            borderRadius:
+                                                BorderRadius.circular(12),
+                                            border: Border.all(
+                                                color: skin.deleteColor
+                                                    .withValues(alpha: 0.22)),
+                                          ),
+                                          child: Row(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.center,
+                                            children: [
+                                              Icon(Icons.delete_outline,
+                                                  color: skin.deleteColor,
+                                                  size: 16),
+                                              const SizedBox(width: 7),
+                                              Text(
+                                                'Aktuellen Monat löschen',
+                                                style: TextStyle(
+                                                    color: skin.deleteColor,
+                                                    fontSize: 13,
+                                                    fontWeight:
+                                                        FontWeight.w600),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  }
+
+                                  final day = days[index];
+                                  final key =
+                                      DateFormat('yyyy-MM-dd').format(day);
+                                  final shift = _scheduleData[key] ?? '';
+                                  final entry = shift.isEmpty
+                                      ? null
+                                      : ScheduleEntry(shift);
+                                  return Padding(
+                                    padding:
+                                        const EdgeInsets.only(bottom: 8),
+                                    child: _DayCard(
+                                      day: day,
+                                      entry: entry,
+                                      skin: skin,
+                                      isChrome: isChrome,
+                                      dateKey: key,
+                                      isChanged: changedDays.contains(key),
+                                      externallyOpenKey: _openSwipedCardKey,
+                                      onCardSwiped: _onCardSwiped,
+                                      onOpenNote: () => openNoteOverlay(key),
+                                      onNoteChanged: () => setState(() {}),
+                                      onOpenColleagues: () =>
+                                          openColleaguesOverlay(key), // NEU
+                                      dayCardDragging: widget.dayCardDragging,
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                    ),
+                  ],
+                ),
               ),
-            ],
-          ),
+            ),
+            // ── Note Overlay ─────────────────────────────────────────────────
+            if (_noteOverlayVisible && _activeNoteKey != null)
+              _NoteOverlay(
+                dateKey: _activeNoteKey!,
+                skin: skin,
+                onClose: _closeNoteOverlay,
+              ),
+            // ── Kollegen Overlay (NEU) ────────────────────────────────────────
+            if (_colleaguesOverlayVisible && _activeColleaguesKey != null)
+              _ColleaguesOverlay(
+                dateKey: _activeColleaguesKey!,
+                skin: skin,
+                onClose: _closeColleaguesOverlay,
+              ),
+          ],
         ),
       ),
     );
-  }
-
-  final day = days[index];
-  final key =
-      DateFormat('yyyy-MM-dd').format(day);
-  final shift =
-      _scheduleData[key] ?? '';
-  final entry = shift.isEmpty
-      ? null
-      : ScheduleEntry(shift);
-  return Padding(
-    padding:
-        const EdgeInsets.only(bottom: 8),
-    child: _DayCard(
-  day: day,
-  entry: entry,
-  skin: skin,
-  isChrome: isChrome,
-  dateKey: key,
-  isChanged: changedDays.contains(key),
-  externallyOpenKey: _openSwipedCardKey,
-  onCardSwiped: _onCardSwiped,
-  onOpenNote: () => openNoteOverlay(key),
-  onNoteChanged: () => setState(() {}),
-  dayCardDragging: widget.dayCardDragging, // ← NEU
-),
-                                      );
-                                    },
-                                  ),
-                                ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                if (_noteOverlayVisible && _activeNoteKey != null)
-                  _NoteOverlay(
-                    dateKey: _activeNoteKey!,
-                    skin: skin,
-                    onClose: _closeNoteOverlay,
-                  ),
-              ],
-            ),
-          ),
-        );
   }
 }
 
@@ -1489,7 +1789,8 @@ class _NoteOverlayState extends State<_NoteOverlay>
   }
 
   void _saveAndClose() {
-    _NoteData.save(widget.dateKey, _phoneCtrl.text.trim(), _textCtrl.text.trim());
+    _NoteData.save(
+        widget.dateKey, _phoneCtrl.text.trim(), _textCtrl.text.trim());
     _ctrl.reverse().then((_) => widget.onClose());
     ScheduleScreenState.pushScheduleToWidget();
   }
@@ -1687,9 +1988,8 @@ class _NoteOverlayState extends State<_NoteOverlay>
                                 ),
                               ),
                               AnimatedOpacity(
-                                opacity: _phoneCtrl.text.trim().isEmpty
-                                    ? 0.0
-                                    : 1.0,
+                                opacity:
+                                    _phoneCtrl.text.trim().isEmpty ? 0.0 : 1.0,
                                 duration:
                                     const Duration(milliseconds: 200),
                                 child: GestureDetector(
@@ -1804,6 +2104,507 @@ class _NoteOverlayState extends State<_NoteOverlay>
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Kollegen Overlay (NEU)
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _ColleaguesOverlay extends StatefulWidget {
+  final String dateKey;
+  final AppSkin skin;
+  final VoidCallback onClose;
+
+  const _ColleaguesOverlay({
+    required this.dateKey,
+    required this.skin,
+    required this.onClose,
+  });
+
+  @override
+  State<_ColleaguesOverlay> createState() => _ColleaguesOverlayState();
+}
+
+class _ColleaguesOverlayState extends State<_ColleaguesOverlay>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _ctrl;
+  late Animation<double> _scaleAnim;
+  late Animation<double> _opacityAnim;
+
+  Map<String, String> _colleagues = {};
+  String? _debugLog;
+  bool _debugLogCopied = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 320),
+    );
+    _scaleAnim = CurvedAnimation(
+        parent: _ctrl,
+        curve: Curves.easeOutBack,
+        reverseCurve: Curves.easeInBack);
+    _opacityAnim = CurvedAnimation(
+        parent: _ctrl,
+        curve: Curves.easeOut,
+        reverseCurve: Curves.easeIn);
+    _ctrl.forward();
+    _loadColleagues();
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  void _loadColleagues() {
+    final box = Hive.box('einstellungen');
+    final monthKey = widget.dateKey.substring(0, 7);
+    final raw = box.get('colleagues_$monthKey');
+    if (raw is String) {
+      try {
+        final decoded = jsonDecode(raw) as Map<String, dynamic>;
+        final dayData = decoded[widget.dateKey];
+        if (dayData is Map) {
+          setState(() {
+            _colleagues = Map<String, String>.from(
+                dayData.map((k, v) =>
+                    MapEntry(k.toString(), v.toString())));
+          });
+        }
+      } catch (_) {}
+    }
+
+    // Debug-Log nur im Dev-Mode laden
+    final box2 = Hive.box('einstellungen');
+    final isDevMode = box2.get('dienstplan_dev_placeholder', defaultValue: false) as bool;
+    if (isDevMode) {
+      final debugRaw = box.get('colleagues_debug_$monthKey');
+      if (debugRaw is String && debugRaw.isNotEmpty) {
+        setState(() => _debugLog = debugRaw);
+      }
+    }
+  }
+
+  void _close() {
+    _ctrl.reverse().then((_) => widget.onClose());
+  }
+
+  AppSkin get skin => widget.skin;
+
+  List<String> _namesForShifts(List<String> shiftCodes) {
+    final result = <String>[];
+    final upperCodes = shiftCodes.map((c) => c.toUpperCase()).toList();
+
+    for (final entry in _colleagues.entries) {
+      final rawShift = entry.value.trim().toUpperCase();
+      final shiftParts = rawShift.split('/').map((s) => s.trim()).toList();
+      bool matches = false;
+      for (final code in upperCodes) {
+        if (shiftParts.contains(code)) {
+          matches = true;
+          break;
+        }
+      }
+      if (matches) {
+        final name = entry.key.contains(',')
+            ? entry.key.split(',').first.trim()
+            : entry.key.trim();
+        result.add(name);
+      }
+    }
+    result.sort();
+    return result;
+  }
+
+  List<String> _birthdayNames() {
+    return _colleagues.entries
+        .where((e) {
+          final parts = e.value
+              .trim()
+              .toUpperCase()
+              .split('/')
+              .map((s) => s.trim())
+              .toList();
+          return parts.contains('GEB');
+        })
+        .map((e) {
+          return e.key.contains(',')
+              ? e.key.split(',').first.trim()
+              : e.key.trim();
+        })
+        .toList()
+      ..sort();
+  }
+
+  Widget _sectionDivider(AppSkin skin) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Row(
+        children: [
+          const SizedBox(width: 4),
+          Expanded(
+            child: Container(
+              height: 0.5,
+              margin: const EdgeInsets.symmetric(horizontal: 8),
+              color: skin.borderSubtle.withValues(alpha: 0.6),
+            ),
+          ),
+          const SizedBox(width: 4),
+        ],
+      ),
+    );
+  }
+
+  Widget _shiftGroup({
+  required List<({String label, List<String> names, Color color})> slots,
+}) {
+  if (slots.isEmpty) return const SizedBox.shrink();
+  return Container(
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+    decoration: BoxDecoration(
+      color: skin.surface(0.04),
+      borderRadius: BorderRadius.circular(10),
+    ),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (int i = 0; i < slots.length; i++) ...[
+          if (i > 0)
+            Container(
+              width: 1,
+              height: 40,
+              margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+              color: skin.surface(0.08),
+            ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: slots[i].color.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(5),
+                  ),
+                  child: Text(
+                    slots[i].label,
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: slots[i].color,
+                      letterSpacing: 0.4,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 5),
+                ...slots[i].names.map((n) => Padding(
+                  padding: const EdgeInsets.only(bottom: 2),
+                  child: Text(
+                    n,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: skin.textPrimary,
+                      height: 1.3,
+                    ),
+                  ),
+                )),
+              ],
+            ),
+          ),
+        ],
+      ],
+    ),
+  );
+}
+
+  @override
+  Widget build(BuildContext context) {
+    final screenH = MediaQuery.of(context).size.height;
+    final keyboardH = MediaQuery.of(context).viewInsets.bottom;
+    final safeTop = MediaQuery.of(context).padding.top;
+    final cardTop =
+        (safeTop + 56.0).clamp(safeTop + 48.0, screenH * 0.3);
+    final maxCardHeight = screenH - cardTop - keyboardH - 32.0;
+
+    final isChrome = skin.key == 'chrome';
+    final workColor =
+        isChrome ? const Color(0xFFCCCCCC) : const Color(0xFF5B8DEF);
+    final fColor =
+        isChrome ? const Color(0xFFAAAAAA) : const Color(0xFF5B8DEF);
+    const vkColor = Color(0xFFEF5B5B);
+    const gebColor = Color(0xFFFF6B9D);
+
+    final p1Names = _namesForShifts(['P1']);
+    final p2Names = _namesForShifts(['P2']);
+    final pNames = _namesForShifts(['P']);
+    final vkNames = _namesForShifts(['VK']);
+    final f1Names = _namesForShifts(['F1']);
+    final fNames = _namesForShifts(['F']);
+    final f2Names = _namesForShifts(['F2']);
+    final gebNames = _birthdayNames();
+
+    final hasAny = [
+      p1Names, p2Names, pNames, vkNames, f1Names, fNames, f2Names, gebNames
+    ].any((l) => l.isNotEmpty);
+
+    return AnimatedBuilder(
+      animation: _ctrl,
+      builder: (context, child) {
+        return Stack(
+          children: [
+            GestureDetector(
+              onTap: _close,
+              child: Opacity(
+                opacity: _opacityAnim.value * 0.55,
+                child: Container(
+                    color: Colors.black,
+                    width: double.infinity,
+                    height: double.infinity),
+              ),
+            ),
+            AnimatedPositioned(
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOut,
+              top: cardTop,
+              left: 20,
+              right: 20,
+              child: Transform.scale(
+                scale: 0.85 + _scaleAnim.value * 0.15,
+                child: Opacity(
+                    opacity: _opacityAnim.value.clamp(0.0, 1.0),
+                    child: child!),
+              ),
+            ),
+          ],
+        );
+      },
+      child: Material(
+        color: Colors.transparent,
+        child: GestureDetector(
+          onTap: () {},
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+                maxHeight: maxCardHeight.clamp(180.0, double.infinity)),
+            child: Container(
+              decoration: BoxDecoration(
+  color: skin.bgCard,
+  borderRadius: BorderRadius.circular(20),
+  border: Border.all(color: const Color(0xFF3DD6C8).withValues(alpha: 0.55), width: 1.5),
+  boxShadow: [
+                  BoxShadow(
+                      color: skin.primary.withValues(alpha: 0.18),
+                      blurRadius: 32,
+                      spreadRadius: 2,
+                      offset: const Offset(0, 8)),
+                  BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.35),
+                      blurRadius: 24,
+                      offset: const Offset(0, 4)),
+                ],
+              ),
+              child: SingleChildScrollView(
+                physics: const ClampingScrollPhysics(),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // ── Header ──────────────────────────────────────────────
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
+                      child: Row(children: [
+                        Container(
+                          width: 30,
+                          height: 30,
+                          decoration: BoxDecoration(
+                              color: skin.primaryWithAlpha(0.15),
+                              borderRadius: BorderRadius.circular(9)),
+                          child: const Center(
+                              child: Text('👥',
+                                  style: TextStyle(fontSize: 14))),
+                        ),
+                        const SizedBox(width: 9),
+                        Expanded(
+                          child: Text('KOLLEGEN',
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: skin.primary,
+                                  letterSpacing: 1.0)),
+                        ),
+                        GestureDetector(
+                          onTap: _close,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 13, vertical: 6),
+                            decoration: BoxDecoration(
+                                gradient: skin.gradient,
+                                borderRadius: BorderRadius.circular(10)),
+                            child: Text('Fertig',
+                                style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w700,
+                                    color: skin.onGradient)),
+                          ),
+                        ),
+                      ]),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
+                      child: Divider(
+                          color: skin.primaryWithAlpha(0.12), height: 1),
+                    ),
+                    // ── Content ─────────────────────────────────────────────
+                    // ── Content ─────────────────────────────────────────────
+Padding(
+  padding: const EdgeInsets.fromLTRB(14, 12, 14, 16),
+  child: Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      if (_debugLog != null) ...[
+        Container(
+          constraints: const BoxConstraints(maxHeight: 200),
+          decoration: BoxDecoration(
+            color: const Color(0xFFEF5B5B).withValues(alpha: 0.07),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: const Color(0xFFEF5B5B).withValues(alpha: 0.28)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(10, 8, 8, 6),
+                child: Row(children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEF5B5B).withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: const Color(0xFFEF5B5B).withValues(alpha: 0.35)),
+                    ),
+                    child: const Text('DEV', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: Color(0xFFEF5B5B), letterSpacing: 0.8)),
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(child: Text('Parser-Log', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: const Color(0xFFEF5B5B)))),
+                  GestureDetector(
+                    onTap: () {
+                      Clipboard.setData(ClipboardData(text: _debugLog!));
+                      setState(() => _debugLogCopied = true);
+                      HapticFeedback.selectionClick();
+                      Future.delayed(const Duration(seconds: 2), () {
+                        if (mounted) setState(() => _debugLogCopied = false);
+                      });
+                    },
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: _debugLogCopied ? skin.statComplete.withValues(alpha: 0.15) : const Color(0xFFEF5B5B).withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(7),
+                        border: Border.all(color: _debugLogCopied ? skin.statComplete.withValues(alpha: 0.4) : const Color(0xFFEF5B5B).withValues(alpha: 0.3)),
+                      ),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        Icon(_debugLogCopied ? Icons.check_rounded : Icons.copy_outlined, size: 12, color: _debugLogCopied ? skin.statComplete : const Color(0xFFEF5B5B)),
+                        const SizedBox(width: 3),
+                        Text(_debugLogCopied ? 'Kopiert' : 'Kopieren', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: _debugLogCopied ? skin.statComplete : const Color(0xFFEF5B5B))),
+                      ]),
+                    ),
+                  ),
+                ]),
+              ),
+              Divider(height: 1, color: const Color(0xFFEF5B5B).withValues(alpha: 0.15)),
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(10),
+                  child: Text(_debugLog!, style: const TextStyle(fontSize: 10, color: Color(0xFFEF5B5B), height: 1.4)),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+      ],
+      if (!hasAny)
+        Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            child: Column(
+              children: [
+                Icon(Icons.people_outline, size: 32, color: skin.textMuted.withValues(alpha: 0.4)),
+                const SizedBox(height: 8),
+                Text('Keine Kollegen-Daten verfügbar.',
+                    style: TextStyle(color: skin.textMuted, fontSize: 13, fontWeight: FontWeight.w500),
+                    textAlign: TextAlign.center),
+                const SizedBox(height: 3),
+                Text('Bitte Dienstplan erneut importieren.',
+                    style: TextStyle(color: skin.textMuted.withValues(alpha: 0.6), fontSize: 11),
+                    textAlign: TextAlign.center),
+              ],
+            ),
+          ),
+        ),
+      if (hasAny) ...[
+        if (p1Names.isNotEmpty || pNames.isNotEmpty || p2Names.isNotEmpty)
+          _shiftGroup(
+            slots: [
+              if (p1Names.isNotEmpty) (label: 'P1', names: p1Names, color: workColor),
+              if (pNames.isNotEmpty)  (label: 'P',  names: pNames,  color: workColor),
+              if (p2Names.isNotEmpty) (label: 'P2', names: p2Names, color: workColor),
+            ],
+          ),
+        if (vkNames.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          _shiftGroup(slots: [(label: 'VK', names: vkNames, color: vkColor)]),
+        ],
+        if (f1Names.isNotEmpty || fNames.isNotEmpty || f2Names.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          _shiftGroup(
+            slots: [
+              if (f1Names.isNotEmpty) (label: 'F1', names: f1Names, color: fColor),
+              if (fNames.isNotEmpty)  (label: 'F',  names: fNames,  color: fColor),
+              if (f2Names.isNotEmpty) (label: 'F2', names: f2Names, color: fColor),
+            ],
+          ),
+        ],
+        if (gebNames.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: gebColor.withValues(alpha: 0.07),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Row(
+              children: [
+                const Text('🎂', style: TextStyle(fontSize: 15)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(gebNames.join(', '),
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: gebColor)),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
+    ],
+  ),
+),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Day Card
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1818,7 +2619,8 @@ class _DayCard extends StatefulWidget {
   final void Function(String?) onCardSwiped;
   final VoidCallback onOpenNote;
   final VoidCallback onNoteChanged;
-  final ValueNotifier<bool>? dayCardDragging; // ← NEU
+  final VoidCallback onOpenColleagues; // NEU
+  final ValueNotifier<bool>? dayCardDragging;
 
   const _DayCard({
     required this.day,
@@ -1831,7 +2633,8 @@ class _DayCard extends StatefulWidget {
     required this.onCardSwiped,
     required this.onOpenNote,
     required this.onNoteChanged,
-    this.dayCardDragging, // ← NEU
+    required this.onOpenColleagues, // NEU
+    this.dayCardDragging,
   });
 
   @override
@@ -1841,7 +2644,8 @@ class _DayCard extends StatefulWidget {
 class _DayCardState extends State<_DayCard>
     with SingleTickerProviderStateMixin {
   double _swipeOffset = 0;
-  static const double _revealWidth = 150.0;
+  // NEU: Breite für 2 Kacheln (je ~140px + 12px Gap + je 6px margin)
+  static const double _revealWidth = 180.0;
   static const double _snapThreshold = 65.0;
   bool _isOpen = false;
 
@@ -1849,7 +2653,6 @@ class _DayCardState extends State<_DayCard>
   double _dragStartX = 0;
   double _dragStartY = 0;
 
-  // ── Long-press highlight animation ────────────────────────────────────────
   late AnimationController _lpCtrl;
   late Animation<double> _lpAnim;
 
@@ -1913,37 +2716,37 @@ class _DayCardState extends State<_DayCard>
   }
 
   void _onPanUpdate(DragUpdateDetails d) {
-  final totalDx = d.globalPosition.dx - _dragStartX;
-  final totalDy = (d.globalPosition.dy - _dragStartY).abs();
-  if (!_dragging) {
-    if (totalDy > totalDx.abs()) return;
-    if (totalDx > 0) return;
-    if (totalDx.abs() < 8) return;
-    _dragging = true;
-    widget.dayCardDragging?.value = true; // ← NEU
+    final totalDx = d.globalPosition.dx - _dragStartX;
+    final totalDy = (d.globalPosition.dy - _dragStartY).abs();
+    if (!_dragging) {
+      if (totalDy > totalDx.abs()) return;
+      if (totalDx > 0) return;
+      if (totalDx.abs() < 8) return;
+      _dragging = true;
+      widget.dayCardDragging?.value = true;
+    }
+    final newOffset =
+        (_swipeOffset + d.delta.dx).clamp(-_revealWidth, 0.0);
+    setState(() => _swipeOffset = newOffset);
   }
-  final newOffset =
-      (_swipeOffset + d.delta.dx).clamp(-_revealWidth, 0.0);
-  setState(() => _swipeOffset = newOffset);
-}
 
-void _onPanEnd(DragEndDetails d) {
-  if (!_dragging) return;
-  _dragging = false;
-  widget.dayCardDragging?.value = false; // ← NEU
-  final v = d.primaryVelocity ?? d.velocity.pixelsPerSecond.dx;
-  if (_swipeOffset < -_snapThreshold || v < -400) {
-    _animateTo(-_revealWidth);
-    setState(() => _isOpen = true);
-    widget.onCardSwiped(widget.dateKey);
-  } else {
-    _animateTo(0);
-    if (_isOpen) {
-      setState(() => _isOpen = false);
-      widget.onCardSwiped(null);
+  void _onPanEnd(DragEndDetails d) {
+    if (!_dragging) return;
+    _dragging = false;
+    widget.dayCardDragging?.value = false;
+    final v = d.primaryVelocity ?? d.velocity.pixelsPerSecond.dx;
+    if (_swipeOffset < -_snapThreshold || v < -400) {
+      _animateTo(-_revealWidth);
+      setState(() => _isOpen = true);
+      widget.onCardSwiped(widget.dateKey);
+    } else {
+      _animateTo(0);
+      if (_isOpen) {
+        setState(() => _isOpen = false);
+        widget.onCardSwiped(null);
+      }
     }
   }
-}
 
   void _close() {
     _animateTo(0);
@@ -1957,12 +2760,19 @@ void _onPanEnd(DragEndDetails d) {
     _lpCtrl.forward();
   }
 
-  void _onLongPress() {
-    HapticFeedback.mediumImpact();
-    _lpCtrl.reverse();
+  // NACHHER:
+void _onLongPress() {
+  HapticFeedback.mediumImpact();
+  _lpCtrl.reverse();
+  if (_isOpen) {
+    _close();
+    Future.delayed(const Duration(milliseconds: 150), () {
+      if (mounted) widget.onOpenNote();
+    });
+  } else {
     widget.onOpenNote();
-    if (_isOpen) _close();
   }
+}
 
   void _onLongPressCancel() {
     _lpCtrl.reverse();
@@ -1992,12 +2802,12 @@ void _onPanEnd(DragEndDetails d) {
   }
 
   bool get _isVkDay =>
-    widget.entry != null &&
-    widget.entry!.parts.any((p) => p.trim().toUpperCase() == 'VK');
+      widget.entry != null &&
+      widget.entry!.parts.any((p) => p.trim().toUpperCase() == 'VK');
 
-Color get _vkAccent => const Color(0xFFEF5B5B);
+  Color get _vkAccent => const Color(0xFFEF5B5B);
 
-Color get _cardBgColor {
+  Color get _cardBgColor {
     if (_isBirthdayDay)
       return Color.alphaBlend(
         const Color(0xFFFF6B9D).withValues(alpha: 0.06),
@@ -2054,7 +2864,8 @@ Color get _cardBgColor {
         final isGeb = part.trim().toUpperCase() == 'GEB';
         if (isGeb) {
           return Container(
-            padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
             decoration: BoxDecoration(
               gradient: const LinearGradient(
                 colors: [Color(0xFFFF6B9D), Color(0xFFFFB347)],
@@ -2186,14 +2997,17 @@ Color get _cardBgColor {
       ],
     );
 
-    // ── Card widget (birthday vs normal) ─────────────────────────────────────
     Widget cardWidget;
     if (_isBirthdayDay) {
       cardWidget = Container(
         padding: const EdgeInsets.all(1.5),
         decoration: BoxDecoration(
           gradient: const LinearGradient(
-            colors: [Color(0xFFFF6B9D), Color(0xFFFFB347), Color(0xFFFF6B9D)],
+            colors: [
+              Color(0xFFFF6B9D),
+              Color(0xFFFFB347),
+              Color(0xFFFF6B9D)
+            ],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
@@ -2229,7 +3043,6 @@ Color get _cardBgColor {
       );
 
       if (_isVkDay) {
-        // Linker roter Akzentbalken (Variante A-Element) über ClipRRect
         cardWidget = ClipRRect(
           borderRadius: BorderRadius.circular(14),
           child: Stack(
@@ -2258,20 +3071,18 @@ Color get _cardBgColor {
       }
     }
 
-    // ── Long-press highlight overlay ──────────────────────────────────────────
     Widget animatedCard = AnimatedBuilder(
       animation: _lpAnim,
       builder: (context, child) {
         final p = _lpAnim.value;
-        // Highlight-Farbe: primary-tinted glow + dickerer Rahmen
         final highlightColor = skin.primary.withValues(alpha: p * 0.18);
         final borderColor = skin.primary.withValues(alpha: p * 0.7);
-        final borderWidth = 1.0 + p * 1.5; // 1 → 2.5 px
+        final borderWidth = 1.0 + p * 1.5;
 
         return Container(
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(_isBirthdayDay ? 15.5 : 14),
-            // Glow-Effekt
+            borderRadius:
+                BorderRadius.circular(_isBirthdayDay ? 15.5 : 14),
             boxShadow: p > 0
                 ? [
                     BoxShadow(
@@ -2284,20 +3095,18 @@ Color get _cardBgColor {
           ),
           child: Stack(
             children: [
-              // Leichter Scale-down wie beim iPhone
               Transform.scale(
                 scale: 1.0 - 0.015 * p,
                 child: child!,
               ),
-              // Highlight-Overlay mit dicker werdendem Rahmen
               if (p > 0)
                 Positioned.fill(
                   child: IgnorePointer(
                     child: Container(
                       decoration: BoxDecoration(
                         color: highlightColor,
-                        borderRadius:
-                            BorderRadius.circular(_isBirthdayDay ? 15.5 : 14),
+                        borderRadius: BorderRadius.circular(
+                            _isBirthdayDay ? 15.5 : 14),
                         border: Border.all(
                           color: borderColor,
                           width: borderWidth,
@@ -2314,54 +3123,102 @@ Color get _cardBgColor {
     );
 
     return GestureDetector(
-  onHorizontalDragStart: _onPanStart,
-  onHorizontalDragUpdate: _onPanUpdate,
-  onHorizontalDragEnd: _onPanEnd,
-  onLongPressStart: _onLongPressStart,
-  onLongPress: _onLongPress,
-  onLongPressEnd: _onLongPressEnd,
-  onLongPressCancel: _onLongPressCancel,
-  onTap: _isOpen ? _close : null,
-  child: LayoutBuilder(
+      onHorizontalDragStart: _onPanStart,
+      onHorizontalDragUpdate: _onPanUpdate,
+      onHorizontalDragEnd: _onPanEnd,
+      onLongPressStart: _onLongPressStart,
+      onLongPress: _onLongPress,
+      onLongPressEnd: _onLongPressEnd,
+      onLongPressCancel: _onLongPressCancel,
+      onTap: _isOpen ? _close : null,
+      // NEU: Doppeltippen öffnet Kollegen-Overlay
+      onDoubleTap: () {
+  HapticFeedback.lightImpact();
+  if (_isOpen) {
+    _close();
+    Future.delayed(const Duration(milliseconds: 150), () {
+      if (mounted) widget.onOpenColleagues();
+    });
+  } else {
+    widget.onOpenColleagues();
+  }
+},
+      child: LayoutBuilder(
         builder: (context, constraints) {
           return SizedBox(
             child: ClipRect(
               child: Stack(
                 clipBehavior: Clip.hardEdge,
                 children: [
+                  // ── NEU: Zwei Kacheln nebeneinander hinter der Card ──────
                   Positioned(
-                    right: 0,
-                    top: 0,
-                    bottom: 0,
-                    width: _revealWidth,
-                    child: GestureDetector(
-                      onTap: () {
-                        _close();
-                        widget.onOpenNote();
-                      },
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: noteColor.withValues(alpha: 0.10),
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(
-                              color: noteColor.withValues(alpha: 0.22)),
-                        ),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.sticky_note_2_outlined,
-                                color: noteColor, size: 22),
-                            const SizedBox(height: 4),
-                            Text('Notiz',
-                                style: TextStyle(
-                                    color: noteColor,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600)),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
+  right: 0,
+  top: 4,        // NEU: kleiner Abstand oben
+  bottom: 4,     // NEU: kleiner Abstand unten
+  width: _revealWidth,
+  child: Row(
+    children: [
+      const SizedBox(width: 6), // NEU: Abstand zur DayCard
+      // ── Kollegen ─────────────────────────────────────
+      Expanded(
+        child: GestureDetector(
+          onTap: () {
+            _close();
+            widget.onOpenColleagues();
+          },
+          child: Container(
+  margin: const EdgeInsets.only(right: 5),
+  decoration: BoxDecoration(
+    color: const Color(0xFF3DD6C8).withValues(alpha: 0.10),
+    borderRadius: BorderRadius.circular(14),
+    border: Border.all(color: const Color(0xFF3DD6C8).withValues(alpha: 0.22)),
+  ),
+  child: Column(
+    mainAxisAlignment: MainAxisAlignment.center,
+    children: [
+      Icon(Icons.people_outline, color: const Color(0xFF3DD6C8), size: 22),
+      const SizedBox(height: 4),
+      Text('Kollegen',
+          style: TextStyle(color: const Color(0xFF3DD6C8), fontSize: 11, fontWeight: FontWeight.w600)),
+    ],
+  ),
+),
+        ),
+      ),
+      // ── Notiz ────────────────────────────────────────
+      Expanded(
+        child: GestureDetector(
+          onTap: () {
+            _close();
+            widget.onOpenNote();
+          },
+          child: Container(
+            decoration: BoxDecoration(
+              color: noteColor.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                  color: noteColor.withValues(alpha: 0.22)),
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.sticky_note_2_outlined,
+                    color: noteColor, size: 22),
+                const SizedBox(height: 4),
+                Text('Notiz',
+                    style: TextStyle(
+                        color: noteColor,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600)),
+              ],
+            ),
+          ),
+        ),
+      ),
+    ],
+  ),
+),
+                  // ── Card (verschiebt sich beim Swipe) ────────────────────
                   Transform.translate(
                     offset: Offset(_swipeOffset, 0),
                     child: animatedCard,
@@ -2377,7 +3234,7 @@ Color get _cardBgColor {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Category Dot — gelb wenn Dienst geändert wurde
+// Category Dot
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _CategoryDot extends StatelessWidget {
@@ -2395,7 +3252,6 @@ class _CategoryDot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Geänderter Dienst → immer gelb/orange
     if (isChanged) {
       return Container(
         width: 7,
@@ -2516,43 +3372,59 @@ class _DienstplanUploadSheetState extends State<DienstplanUploadSheet> {
   }
 
   Future<void> _pickFile() async {
-    setState(() { _errorMessage = null; _errorCopied = false; });
+    setState(() {
+      _errorMessage = null;
+      _errorCopied = false;
+    });
     try {
       final result = await FilePicker.platform.pickFiles(
-  type: FileType.custom,
-  allowedExtensions: ['pdf'],
-  allowMultiple: false,
-  withData: false,
-);
-if (result == null || result.files.isEmpty) return;
-final picked = result.files.single;
-final path = kIsWeb ? null : picked.path;
-if (path == null) {
-  setState(() => _errorMessage =
-      'Datei konnte nicht gelesen werden. Bitte erneut versuchen.');
-  return;
-}
-List<int>? bytes;
-try {
-  bytes = await dartio.File(path).readAsBytes();
-} catch (_) {
-  bytes = null;
-}
-if (bytes == null || bytes.isEmpty) {
-  setState(() => _errorMessage =
-      'Datei konnte nicht gelesen werden. Bitte erneut versuchen.');
-  return;
-}
-setState(() {
-  _selectedFileName = picked.name;
-  _selectedFileBytes = bytes;
-  _selectedFilePath = path;
-  _errorMessage = null;
-});
+        type: FileType.custom,
+        allowedExtensions: ['pdf'],
+        allowMultiple: false,
+        withData: kIsWeb,
+      );
+      if (result == null || result.files.isEmpty) return;
+      final picked = result.files.single;
+
+      List<int>? bytes;
+
+      if (kIsWeb) {
+        final raw = picked.bytes;
+        if (raw == null || raw.isEmpty) {
+          setState(() => _errorMessage =
+              'Datei konnte nicht gelesen werden. Bitte erneut versuchen.');
+          return;
+        }
+        bytes = raw.toList();
+      } else {
+        final path = picked.path;
+        if (path == null) {
+          setState(() => _errorMessage =
+              'Datei konnte nicht gelesen werden. Bitte erneut versuchen.');
+          return;
+        }
+        try {
+          bytes = await dartio.File(path).readAsBytes();
+        } catch (_) {
+          bytes = null;
+        }
+        if (bytes == null || bytes.isEmpty) {
+          setState(() => _errorMessage =
+              'Datei konnte nicht gelesen werden. Bitte erneut versuchen.');
+          return;
+        }
+        setState(() => _selectedFilePath = path);
+      }
+
+      setState(() {
+        _selectedFileName = picked.name;
+        _selectedFileBytes = bytes;
+        _errorMessage = null;
+      });
     } on Exception catch (e) {
       setState(() => _errorMessage =
           'Dateiauswahl konnte nicht geöffnet werden.\n'
-          'Bitte Dateizugriff in den iOS-Einstellungen erlauben.\n\nDetail: $e');
+          'Bitte Dateizugriff in den Einstellungen erlauben.\n\nDetail: $e');
     }
   }
 
@@ -2568,7 +3440,11 @@ setState(() {
 
   Future<void> _importPdf() async {
     if (!_hasFile) return;
-    setState(() { _isLoading = true; _errorMessage = null; _errorCopied = false; });
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+      _errorCopied = false;
+    });
     try {
       final settingsBox = Hive.box('einstellungen');
       final scheduleName =
@@ -2581,7 +3457,9 @@ setState(() {
       if ((bytes == null || bytes.isEmpty) && _selectedFilePath != null) {
         try {
           bytes = await dartio.File(_selectedFilePath!).readAsBytes();
-        } catch (_) { bytes = null; }
+        } catch (_) {
+          bytes = null;
+        }
       }
 
       final result = await DienstplanParser.parse(
@@ -2594,7 +3472,10 @@ setState(() {
 
       final String? error = result['error'] as String?;
       if (error != null && error.isNotEmpty) {
-        setState(() { _errorMessage = error; _isLoading = false; });
+        setState(() {
+          _errorMessage = error;
+          _isLoading = false;
+        });
         return;
       }
 
@@ -2603,18 +3484,23 @@ setState(() {
           Map<String, String>.from(result['data'] as Map? ?? {});
 
       if (newData.isEmpty) {
-        setState(() { _errorMessage = 'Keine Dienste gefunden.'; _isLoading = false; });
+        setState(() {
+          _errorMessage = 'Keine Dienste gefunden.';
+          _isLoading = false;
+        });
         return;
       }
 
       if (month == null) {
         month = await _askForMonth();
-        if (month == null) { setState(() => _isLoading = false); return; }
+        if (month == null) {
+          setState(() => _isLoading = false);
+          return;
+        }
       }
 
       final monthKey = DateFormat('yyyy-MM').format(month);
 
-      // ── Diff gegen vorhandenen Dienstplan ──────────────────────────────────
       final existingRaw = settingsBox.get('schedule_$monthKey');
       final Map<String, String> oldData = {};
       if (existingRaw is Map) {
@@ -2624,16 +3510,63 @@ setState(() {
       }
 
       if (oldData.isNotEmpty) {
-        // Es gab schon einen Dienstplan — Diff berechnen & speichern
         final changed = _ChangedDays.diff(oldData, newData);
         if (changed.isNotEmpty) {
-          // Bereits vorhandene Änderungsmarkierungen zusammenführen
           final existing = _ChangedDays.load(monthKey);
           _ChangedDays.save(monthKey, {...existing, ...changed});
         }
       }
-      // Immer überschreiben
+
       settingsBox.put('schedule_$monthKey', newData);
+
+      // ── Kollegen-Daten extrahieren und speichern ────────────────────────
+      try {
+        final List<int> bytesForColleagues = _selectedFileBytes ?? [];
+        if (bytesForColleagues.isNotEmpty) {
+          final sName =
+              settingsBox.get('dienstplan_name', defaultValue: '') as String;
+          final mName =
+              settingsBox.get('name', defaultValue: '') as String;
+          final uName = sName.isNotEmpty ? sName : mName;
+
+          final colleaguesLog = StringBuffer();
+          final colleagues = DienstplanParser.parseAllColleagues(
+            bytes: bytesForColleagues,
+            fileName: _selectedFileName ?? '',
+            ownUserName: uName,
+            devMode: _isDevMode,
+            debugLog: colleaguesLog,
+          );
+
+          // Log IMMER speichern (unabhängig von Dev-Mode)
+          settingsBox.put(
+              'colleagues_debug_$monthKey', colleaguesLog.toString());
+
+          if (colleagues.isNotEmpty) {
+            final encoded =
+                jsonEncode(colleagues.map((k, v) => MapEntry(k, v)));
+            settingsBox.put('colleagues_$monthKey', encoded);
+            if (_isDevMode) {
+              final dayCount = colleagues.length;
+              final personCount = colleagues.values
+                  .expand((m) => m.keys)
+                  .toSet()
+                  .length;
+              debugPrint(
+                  '[DEV] Kollegen gespeichert: $personCount Personen, $dayCount Tage');
+            }
+          }
+        }
+      } catch (e, stack) {
+        if (_isDevMode) {
+          setState(() {
+            _errorMessage =
+                '⚠️ Fehler beim Kollegen-Import:\n$e\n\nStack:\n$stack';
+          });
+        }
+        debugPrint('[DEV] Kollegen-Import Fehler: $e');
+      }
+
       await ScheduleScreenState.pushScheduleToWidget();
 
       if (!mounted) return;
@@ -2644,7 +3577,8 @@ setState(() {
             'importiert (${newData.length} Tage)'),
         backgroundColor: skin.statComplete,
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         margin: const EdgeInsets.fromLTRB(16, 0, 16, 100),
         duration: const Duration(seconds: 3),
       ));
@@ -2672,25 +3606,33 @@ setState(() {
         builder: (ctx, setSheet) => Container(
           decoration: BoxDecoration(
             color: skin.bgSheet,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            borderRadius:
+                const BorderRadius.vertical(top: Radius.circular(24)),
             border: Border.all(color: skin.borderMedium),
           ),
-          padding: EdgeInsets.fromLTRB(24, 24, 24, 24 + MediaQuery.of(ctx).padding.bottom),
+          padding: EdgeInsets.fromLTRB(
+              24, 24, 24, 24 + MediaQuery.of(ctx).padding.bottom),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Container(
-                  width: 40, height: 4,
+                  width: 40,
+                  height: 4,
                   decoration: BoxDecoration(
                       color: skin.surface(0.2),
                       borderRadius: BorderRadius.circular(2))),
               const SizedBox(height: 20),
               Text('Für welchen Monat gilt diese PDF?',
-                  style: TextStyle(color: skin.textPrimary, fontSize: 17, fontWeight: FontWeight.w600),
+                  style: TextStyle(
+                      color: skin.textPrimary,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w600),
                   textAlign: TextAlign.center),
               const SizedBox(height: 8),
-              Text('Der Monat konnte nicht automatisch erkannt werden.',
-                  style: TextStyle(fontSize: 13, color: skin.textMuted),
+              Text(
+                  'Der Monat konnte nicht automatisch erkannt werden.',
+                  style:
+                      TextStyle(fontSize: 13, color: skin.textMuted),
                   textAlign: TextAlign.center),
               const SizedBox(height: 16),
               SizedBox(
@@ -2700,42 +3642,71 @@ setState(() {
                       flex: 2,
                       child: CupertinoPicker(
                         scrollController: monthCtrl,
-                        itemExtent: 44, looping: true,
+                        itemExtent: 44,
+                        looping: true,
                         backgroundColor: Colors.transparent,
-                        onSelectedItemChanged: (i) => setSheet(() => pickedMonth = i % 12),
-                        children: List.generate(12, (i) => Center(
-                            child: Text(DateFormat('MMMM', 'de').format(DateTime(2024, i + 1)),
-                                style: TextStyle(fontSize: 16, color: skin.textPrimary)))),
+                        onSelectedItemChanged: (i) =>
+                            setSheet(() => pickedMonth = i % 12),
+                        children: List.generate(
+                            12,
+                            (i) => Center(
+                                child: Text(
+                                    DateFormat('MMMM', 'de')
+                                        .format(DateTime(2024, i + 1)),
+                                    style: TextStyle(
+                                        fontSize: 16,
+                                        color: skin.textPrimary)))),
                       )),
                   Expanded(
                       child: CupertinoPicker(
                     scrollController: yearCtrl,
-                    itemExtent: 44, looping: false,
+                    itemExtent: 44,
+                    looping: false,
                     backgroundColor: Colors.transparent,
-                    onSelectedItemChanged: (i) => setSheet(() => pickedYear = 2020 + i.clamp(0, yearCount - 1)),
-                    children: List.generate(yearCount, (i) => Center(
-                        child: Text('${2020 + i}',
-                            style: TextStyle(fontSize: 16, color: skin.textPrimary)))),
+                    onSelectedItemChanged: (i) => setSheet(() =>
+                        pickedYear = 2020 + i.clamp(0, yearCount - 1)),
+                    children: List.generate(
+                        yearCount,
+                        (i) => Center(
+                            child: Text('${2020 + i}',
+                                style: TextStyle(
+                                    fontSize: 16,
+                                    color: skin.textPrimary)))),
                   )),
                 ]),
               ),
               const SizedBox(height: 16),
               Row(children: [
-                Expanded(child: GestureDetector(
+                Expanded(
+                    child: GestureDetector(
                   onTap: () => Navigator.pop(ctx, null),
                   child: Container(
                     padding: const EdgeInsets.symmetric(vertical: 15),
-                    decoration: BoxDecoration(color: skin.surface(0.06), borderRadius: BorderRadius.circular(14)),
-                    child: Center(child: Text('Abbrechen', style: TextStyle(color: skin.textPrimary, fontWeight: FontWeight.w600))),
+                    decoration: BoxDecoration(
+                        color: skin.surface(0.06),
+                        borderRadius: BorderRadius.circular(14)),
+                    child: Center(
+                        child: Text('Abbrechen',
+                            style: TextStyle(
+                                color: skin.textPrimary,
+                                fontWeight: FontWeight.w600))),
                   ),
                 )),
                 const SizedBox(width: 12),
-                Expanded(child: GestureDetector(
-                  onTap: () => Navigator.pop(ctx, DateTime(pickedYear, pickedMonth + 1)),
+                Expanded(
+                    child: GestureDetector(
+                  onTap: () => Navigator.pop(
+                      ctx, DateTime(pickedYear, pickedMonth + 1)),
                   child: Container(
                     padding: const EdgeInsets.symmetric(vertical: 15),
-                    decoration: BoxDecoration(gradient: skin.gradient, borderRadius: BorderRadius.circular(14)),
-                    child: Center(child: Text('Übernehmen', style: TextStyle(color: skin.onGradient, fontWeight: FontWeight.w700))),
+                    decoration: BoxDecoration(
+                        gradient: skin.gradient,
+                        borderRadius: BorderRadius.circular(14)),
+                    child: Center(
+                        child: Text('Übernehmen',
+                            style: TextStyle(
+                                color: skin.onGradient,
+                                fontWeight: FontWeight.w700))),
                   ),
                 )),
               ]),
@@ -2747,154 +3718,161 @@ setState(() {
   }
 
   void _deleteSelectedMonth() async {
-    final displayMonth = DateFormat('MMMM yyyy', 'de').format(widget.selectedMonth);
+    final displayMonth =
+        DateFormat('MMMM yyyy', 'de').format(widget.selectedMonth);
     final confirmed = await showGeneralDialog<bool>(
-  context: context,
-  barrierDismissible: true,
-  barrierLabel: 'Schließen',
-  barrierColor: Colors.black.withValues(alpha: 0.55),
-  transitionDuration: const Duration(milliseconds: 280),
-  transitionBuilder: (ctx, anim, _, child) {
-    final curved = CurvedAnimation(
-      parent: anim,
-      curve: Curves.easeOutBack,
-      reverseCurve: Curves.easeInBack,
-    );
-    return ScaleTransition(
-      scale: Tween<double>(begin: 0.82, end: 1.0).animate(curved),
-      child: FadeTransition(opacity: anim, child: child),
-    );
-  },
-  pageBuilder: (ctx, _, __) => Center(
-    child: Material(
-      color: Colors.transparent,
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 32),
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          color: skin.bgCard,
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: skin.borderMedium),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.35),
-              blurRadius: 32,
-              offset: const Offset(0, 8),
-            ),
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(children: [
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: skin.deleteColor.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(12),
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Schließen',
+      barrierColor: Colors.black.withValues(alpha: 0.55),
+      transitionDuration: const Duration(milliseconds: 280),
+      transitionBuilder: (ctx, anim, _, child) {
+        final curved = CurvedAnimation(
+          parent: anim,
+          curve: Curves.easeOutBack,
+          reverseCurve: Curves.easeInBack,
+        );
+        return ScaleTransition(
+          scale: Tween<double>(begin: 0.82, end: 1.0).animate(curved),
+          child: FadeTransition(opacity: anim, child: child),
+        );
+      },
+      pageBuilder: (ctx, _, __) => Center(
+        child: Material(
+          color: Colors.transparent,
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 32),
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: skin.bgCard,
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(color: skin.borderMedium),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.35),
+                  blurRadius: 32,
+                  offset: const Offset(0, 8),
                 ),
-                child: Icon(Icons.delete_outline,
-                    color: skin.deleteColor, size: 22),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  'Monat löschen',
-                  style: TextStyle(
-                    color: skin.textPrimary,
-                    fontSize: 17,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ]),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              decoration: BoxDecoration(
-                color: skin.surface(0.05),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: skin.borderSubtle),
-              ),
-              child: Row(children: [
-                Icon(Icons.calendar_month_outlined,
-                    color: skin.deleteColor, size: 18),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    displayMonth,
-                    style: TextStyle(
-                      color: skin.textPrimary,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ),
-              ]),
+              ],
             ),
-            const SizedBox(height: 12),
-            Text(
-              'Alle Dienstplan-Daten für diesen Monat werden unwiderruflich gelöscht.',
-              style: TextStyle(color: skin.textMuted, fontSize: 13, height: 1.45),
-            ),
-            const SizedBox(height: 20),
-            Row(children: [
-              Expanded(
-                child: GestureDetector(
-                  onTap: () => Navigator.pop(ctx, false),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 13),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
+                  Container(
+                    width: 42,
+                    height: 42,
                     decoration: BoxDecoration(
-                      color: skin.surface(0.06),
+                      color: skin.deleteColor.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: skin.borderSubtle),
                     ),
-                    child: Center(
-                      child: Text('Abbrechen',
-                          style: TextStyle(
-                              color: skin.textMuted,
-                              fontSize: 15,
-                              fontWeight: FontWeight.w600)),
+                    child: Icon(Icons.delete_outline,
+                        color: skin.deleteColor, size: 22),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Monat löschen',
+                      style: TextStyle(
+                        color: skin.textPrimary,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: GestureDetector(
-                  onTap: () => Navigator.pop(ctx, true),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 13),
-                    decoration: BoxDecoration(
-                      color: skin.deleteColor,
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: [
-                        BoxShadow(
-                          color: skin.deleteColor.withValues(alpha: 0.45),
-                          blurRadius: 12,
-                          offset: const Offset(0, 4),
+                ]),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: skin.surface(0.05),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: skin.borderSubtle),
+                  ),
+                  child: Row(children: [
+                    Icon(Icons.calendar_month_outlined,
+                        color: skin.deleteColor, size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        displayMonth,
+                        style: TextStyle(
+                          color: skin.textPrimary,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
                         ),
-                      ],
+                      ),
                     ),
-                    child: Center(
-                      child: Text('Löschen',
-                          style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700)),
+                  ]),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Alle Dienstplan-Daten für diesen Monat werden unwiderruflich gelöscht.',
+                  style: TextStyle(
+                      color: skin.textMuted, fontSize: 13, height: 1.45),
+                ),
+                const SizedBox(height: 20),
+                Row(children: [
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => Navigator.pop(ctx, false),
+                      child: Container(
+                        padding:
+                            const EdgeInsets.symmetric(vertical: 13),
+                        decoration: BoxDecoration(
+                          color: skin.surface(0.06),
+                          borderRadius: BorderRadius.circular(12),
+                          border:
+                              Border.all(color: skin.borderSubtle),
+                        ),
+                        child: Center(
+                          child: Text('Abbrechen',
+                              style: TextStyle(
+                                  color: skin.textMuted,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600)),
+                        ),
+                      ),
                     ),
                   ),
-                ),
-              ),
-            ]),
-          ],
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => Navigator.pop(ctx, true),
+                      child: Container(
+                        padding:
+                            const EdgeInsets.symmetric(vertical: 13),
+                        decoration: BoxDecoration(
+                          color: skin.deleteColor,
+                          borderRadius: BorderRadius.circular(12),
+                          boxShadow: [
+                            BoxShadow(
+                              color: skin.deleteColor
+                                  .withValues(alpha: 0.45),
+                              blurRadius: 12,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: Center(
+                          child: Text('Löschen',
+                              style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w700)),
+                        ),
+                      ),
+                    ),
+                  ),
+                ]),
+              ],
+            ),
+          ),
         ),
       ),
-    ),
-  ),
-);
+    );
     if (confirmed != true || !mounted) return;
     final box = Hive.box('einstellungen');
     final monthKey = DateFormat('yyyy-MM').format(widget.selectedMonth);
@@ -2919,68 +3897,103 @@ setState(() {
     final isChrome = skin.key == 'chrome';
     final gradientDeco = BoxDecoration(
       gradient: isChrome
-          ? const LinearGradient(colors: [Color(0xFF333333), Color(0xFF555555)])
+          ? const LinearGradient(
+              colors: [Color(0xFF333333), Color(0xFF555555)])
           : skin.gradient,
       borderRadius: BorderRadius.circular(16),
-      boxShadow: [BoxShadow(color: skin.primaryWithAlpha(0.25), blurRadius: 12, offset: const Offset(0, 4))],
+      boxShadow: [
+        BoxShadow(
+            color: skin.primaryWithAlpha(0.25),
+            blurRadius: 12,
+            offset: const Offset(0, 4))
+      ],
     );
 
     return Container(
       decoration: BoxDecoration(
         color: skin.bgSheet,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        borderRadius:
+            const BorderRadius.vertical(top: Radius.circular(24)),
         border: Border.all(color: skin.borderMedium),
       ),
-      padding: EdgeInsets.fromLTRB(24, 24, 24, 24 + MediaQuery.of(context).padding.bottom),
+      padding: EdgeInsets.fromLTRB(
+          24, 24, 24, 24 + MediaQuery.of(context).padding.bottom),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(width: 40, height: 4,
-              decoration: BoxDecoration(color: skin.surface(0.2), borderRadius: BorderRadius.circular(2))),
+          Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                  color: skin.surface(0.2),
+                  borderRadius: BorderRadius.circular(2))),
           const SizedBox(height: 20),
           Row(children: [
             Container(
-              width: 44, height: 44,
-              decoration: BoxDecoration(color: skin.primaryWithAlpha(0.12), borderRadius: BorderRadius.circular(14)),
-              child: Icon(Icons.upload_file_outlined, color: skin.primary, size: 22),
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                  color: skin.primaryWithAlpha(0.12),
+                  borderRadius: BorderRadius.circular(14)),
+              child: Icon(Icons.upload_file_outlined,
+                  color: skin.primary, size: 22),
             ),
             const SizedBox(width: 14),
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Dienstplan importieren', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: skin.textPrimary)),
-              const SizedBox(height: 3),
-              Text('PDF-Datei auswählen & importieren', style: TextStyle(fontSize: 12, color: skin.textMuted)),
-            ])),
+            Expanded(
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                  Text('Dienstplan importieren',
+                      style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                          color: skin.textPrimary)),
+                  const SizedBox(height: 3),
+                  Text('PDF-Datei auswählen & importieren',
+                      style:
+                          TextStyle(fontSize: 12, color: skin.textMuted)),
+                ])),
           ]),
           const SizedBox(height: 20),
-
           if (_hasFile) ...[
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 14, vertical: 12),
               decoration: BoxDecoration(
                 color: skin.statComplete.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: skin.statComplete.withValues(alpha: 0.3)),
+                border: Border.all(
+                    color: skin.statComplete.withValues(alpha: 0.3)),
               ),
               child: Row(children: [
-                Icon(Icons.picture_as_pdf_outlined, color: skin.statComplete, size: 20),
+                Icon(Icons.picture_as_pdf_outlined,
+                    color: skin.statComplete, size: 20),
                 const SizedBox(width: 10),
-                Expanded(child: Text(
+                Expanded(
+                    child: Text(
                   _selectedFileName ?? 'Datei ausgewählt',
-                  style: TextStyle(color: skin.textPrimary, fontSize: 13, fontWeight: FontWeight.w500),
-                  maxLines: 1, overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      color: skin.textPrimary,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 )),
                 GestureDetector(
                   onTap: _clearFile,
                   child: Container(
                       padding: const EdgeInsets.all(6),
-                      decoration: BoxDecoration(color: skin.deleteColor.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
-                      child: Icon(Icons.close, color: skin.deleteColor, size: 16)),
+                      decoration: BoxDecoration(
+                          color:
+                              skin.deleteColor.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(8)),
+                      child: Icon(Icons.close,
+                          color: skin.deleteColor, size: 16)),
                 ),
               ]),
             ),
             const SizedBox(height: 12),
           ],
-
           if (_errorMessage != null) ...[
             if (_isDevMode) ...[
               Container(
@@ -2988,7 +4001,8 @@ setState(() {
                 decoration: BoxDecoration(
                   color: skin.deleteColor.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: skin.deleteColor.withValues(alpha: 0.3)),
+                  border: Border.all(
+                      color: skin.deleteColor.withValues(alpha: 0.3)),
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -2997,35 +4011,73 @@ setState(() {
                     Padding(
                       padding: const EdgeInsets.fromLTRB(12, 10, 10, 6),
                       child: Row(children: [
-                        Icon(Icons.error_outline, color: skin.deleteColor, size: 18),
+                        Icon(Icons.error_outline,
+                            color: skin.deleteColor, size: 18),
                         const SizedBox(width: 6),
-                        Expanded(child: Text('Fehler', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: skin.deleteColor))),
+                        Expanded(
+                            child: Text('Fehler',
+                                style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                    color: skin.deleteColor))),
                         GestureDetector(
                           onTap: _copyError,
                           child: AnimatedContainer(
                             duration: const Duration(milliseconds: 200),
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 5),
                             decoration: BoxDecoration(
-                              color: _errorCopied ? skin.statComplete.withValues(alpha: 0.15) : skin.deleteColor.withValues(alpha: 0.12),
+                              color: _errorCopied
+                                  ? skin.statComplete
+                                      .withValues(alpha: 0.15)
+                                  : skin.deleteColor
+                                      .withValues(alpha: 0.12),
                               borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: _errorCopied ? skin.statComplete.withValues(alpha: 0.4) : skin.deleteColor.withValues(alpha: 0.3)),
+                              border: Border.all(
+                                  color: _errorCopied
+                                      ? skin.statComplete
+                                          .withValues(alpha: 0.4)
+                                      : skin.deleteColor
+                                          .withValues(alpha: 0.3)),
                             ),
-                            child: Row(mainAxisSize: MainAxisSize.min, children: [
-                              Icon(_errorCopied ? Icons.check_rounded : Icons.copy_outlined, size: 13,
-                                  color: _errorCopied ? skin.statComplete : skin.deleteColor),
-                              const SizedBox(width: 4),
-                              Text(_errorCopied ? 'Kopiert' : 'Kopieren',
-                                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600,
-                                      color: _errorCopied ? skin.statComplete : skin.deleteColor)),
-                            ]),
+                            child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                      _errorCopied
+                                          ? Icons.check_rounded
+                                          : Icons.copy_outlined,
+                                      size: 13,
+                                      color: _errorCopied
+                                          ? skin.statComplete
+                                          : skin.deleteColor),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                      _errorCopied
+                                          ? 'Kopiert'
+                                          : 'Kopieren',
+                                      style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600,
+                                          color: _errorCopied
+                                              ? skin.statComplete
+                                              : skin.deleteColor)),
+                                ]),
                           ),
                         ),
                       ]),
                     ),
-                    Divider(height: 1, color: skin.deleteColor.withValues(alpha: 0.15)),
-                    Flexible(child: SingleChildScrollView(
+                    Divider(
+                        height: 1,
+                        color: skin.deleteColor.withValues(alpha: 0.15)),
+                    Flexible(
+                        child: SingleChildScrollView(
                       padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-                      child: Text(_errorMessage!, style: TextStyle(fontSize: 11, color: skin.deleteColor, height: 1.4)),
+                      child: Text(_errorMessage!,
+                          style: TextStyle(
+                              fontSize: 11,
+                              color: skin.deleteColor,
+                              height: 1.4)),
                     )),
                   ],
                 ),
@@ -3034,16 +4086,20 @@ setState(() {
               Padding(
                 padding: const EdgeInsets.only(bottom: 4),
                 child: Row(children: [
-                  Icon(Icons.error_outline, color: skin.deleteColor, size: 15),
+                  Icon(Icons.error_outline,
+                      color: skin.deleteColor, size: 15),
                   const SizedBox(width: 6),
-                  Expanded(child: Text(_errorMessage!,
-                      style: TextStyle(fontSize: 13, color: skin.deleteColor, fontWeight: FontWeight.w500))),
+                  Expanded(
+                      child: Text(_errorMessage!,
+                          style: TextStyle(
+                              fontSize: 13,
+                              color: skin.deleteColor,
+                              fontWeight: FontWeight.w500))),
                 ]),
               ),
             ],
             const SizedBox(height: 10),
           ],
-
           if (!_hasFile)
             GestureDetector(
               onTap: _isLoading ? null : _pickFile,
@@ -3051,14 +4107,21 @@ setState(() {
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 decoration: gradientDeco,
-                child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  Icon(Icons.folder_open_outlined, color: skin.onGradient, size: 20),
-                  const SizedBox(width: 10),
-                  Text('Dokument auswählen', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: skin.onGradient, letterSpacing: 0.3)),
-                ]),
+                child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.folder_open_outlined,
+                          color: skin.onGradient, size: 20),
+                      const SizedBox(width: 10),
+                      Text('Dokument auswählen',
+                          style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: skin.onGradient,
+                              letterSpacing: 0.3)),
+                    ]),
               ),
             ),
-
           if (_hasFile) ...[
             GestureDetector(
               onTap: _isLoading ? null : _importPdf,
@@ -3067,13 +4130,26 @@ setState(() {
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 decoration: gradientDeco,
                 child: _isLoading
-                    ? Center(child: SizedBox(width: 20, height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: skin.onGradient)))
-                    : Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                        Icon(Icons.check_circle_outline, color: skin.onGradient, size: 20),
-                        const SizedBox(width: 10),
-                        Text('Dokument importieren', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: skin.onGradient, letterSpacing: 0.3)),
-                      ]),
+                    ? Center(
+                        child: SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: skin.onGradient)))
+                    : Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                            Icon(Icons.check_circle_outline,
+                                color: skin.onGradient, size: 20),
+                            const SizedBox(width: 10),
+                            Text('Dokument importieren',
+                                style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700,
+                                    color: skin.onGradient,
+                                    letterSpacing: 0.3)),
+                          ]),
               ),
             ),
             const SizedBox(height: 10),
@@ -3086,12 +4162,15 @@ setState(() {
                     color: skin.surface(0.05),
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(color: skin.borderSubtle)),
-                child: Center(child: Text('Andere Datei wählen',
-                    style: TextStyle(color: skin.textMuted, fontSize: 14, fontWeight: FontWeight.w500))),
+                child: Center(
+                    child: Text('Andere Datei wählen',
+                        style: TextStyle(
+                            color: skin.textMuted,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500))),
               ),
             ),
           ],
-
           if (_hasScheduleForSelectedMonth) ...[
             const SizedBox(height: 16),
             Divider(color: skin.borderSubtle),
@@ -3104,19 +4183,27 @@ setState(() {
                 decoration: BoxDecoration(
                     color: skin.deleteColor.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: skin.deleteColor.withValues(alpha: 0.25))),
-                child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  Icon(Icons.delete_outline, color: skin.deleteColor, size: 18),
-                  const SizedBox(width: 8),
-                  Text('Aktuellen Monat löschen',
-                      style: TextStyle(color: skin.deleteColor, fontSize: 14, fontWeight: FontWeight.w600)),
-                ]),
+                    border: Border.all(
+                        color:
+                            skin.deleteColor.withValues(alpha: 0.25))),
+                child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.delete_outline,
+                          color: skin.deleteColor, size: 18),
+                      const SizedBox(width: 8),
+                      Text('Aktuellen Monat löschen',
+                          style: TextStyle(
+                              color: skin.deleteColor,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600)),
+                    ]),
               ),
             ),
           ],
-
           const SizedBox(height: 8),
-          Text('Unterstützt: PDF-Dateien mit maschinenlesbarem Text',
+          Text(
+              'Unterstützt: PDF-Dateien mit maschinenlesbarem Text',
               style: TextStyle(fontSize: 11, color: skin.textHint),
               textAlign: TextAlign.center),
         ],
@@ -3140,7 +4227,8 @@ class _MonthNavBtn extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-          width: 40, height: 40,
+          width: 40,
+          height: 40,
           decoration: BoxDecoration(
               color: skin.surface(0.06),
               borderRadius: BorderRadius.circular(12),
@@ -3154,7 +4242,8 @@ class _StatCard extends StatelessWidget {
   final String label;
   final String value;
   final Color color;
-  const _StatCard({required this.label, required this.value, required this.color});
+  const _StatCard(
+      {required this.label, required this.value, required this.color});
 
   @override
   Widget build(BuildContext context) {
@@ -3167,9 +4256,14 @@ class _StatCard extends StatelessWidget {
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: color.withValues(alpha: 0.2))),
         child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-          Text(value, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: color)),
+          Text(value,
+              style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: color)),
           const SizedBox(width: 5),
-          Text(label, style: TextStyle(fontSize: 11, color: skin.textMuted)),
+          Text(label,
+              style: TextStyle(fontSize: 11, color: skin.textMuted)),
         ]),
       ),
     );
@@ -3179,20 +4273,35 @@ class _StatCard extends StatelessWidget {
 class _FadingListView extends StatelessWidget {
   final Widget child;
   final double fadeFromBottom;
-  const _FadingListView({required this.child, required this.fadeFromBottom});
+  const _FadingListView(
+      {required this.child, required this.fadeFromBottom});
 
   @override
   Widget build(BuildContext context) {
     return ShaderMask(
       shaderCallback: (bounds) {
         final h = bounds.height;
-        final startStop = ((h - (fadeFromBottom - 30)) / h).clamp(0.0, 1.0);
-        final endStop = ((h - (fadeFromBottom - 70)) / h).clamp(0.0, 1.0);
+        final startStop =
+            ((h - (fadeFromBottom - 30)) / h).clamp(0.0, 1.0);
+        final endStop =
+            ((h - (fadeFromBottom - 70)) / h).clamp(0.0, 1.0);
         return LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: const [Colors.white, Colors.white, Colors.black26, Colors.transparent, Colors.transparent],
-          stops: [0.0, startStop, (startStop + endStop) / 2, endStop, 1.0],
+          colors: const [
+            Colors.white,
+            Colors.white,
+            Colors.black26,
+            Colors.transparent,
+            Colors.transparent
+          ],
+          stops: [
+            0.0,
+            startStop,
+            (startStop + endStop) / 2,
+            endStop,
+            1.0
+          ],
         ).createShader(bounds);
       },
       blendMode: BlendMode.dstIn,
