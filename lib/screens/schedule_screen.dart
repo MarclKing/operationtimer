@@ -1291,13 +1291,13 @@ Future<void> _deleteCurrentMonth(AppSkin skin) async {
                                 const SizedBox(height: 8),
                                 Row(children: [
                                   Icon(Icons.info_outline,
-                                      size: 11, color: skin.white(0.28)),
+                                      size: 11, color: skin.surface(0.28)),
                                   const SizedBox(width: 5),
                                   Text(
                                     'Gedrückt halten oder ← wischen für Notizen',
                                     style: TextStyle(
                                         fontSize: 11,
-                                        color: skin.white(0.28)),
+                                        color: skin.surface(0.28)),
                                   ),
                                 ]),
                               ],
@@ -1317,13 +1317,13 @@ Future<void> _deleteCurrentMonth(AppSkin skin) async {
                                       const SizedBox(height: 12),
                                       Text('Kein Dienstplan hinterlegt',
                                           style: TextStyle(
-                                              color: skin.white(0.3),
+                                              color: skin.surface(0.3),
                                               fontSize: 15)),
                                       const SizedBox(height: 8),
                                       Text(
                                           'Tippe oben auf ☰ → Dienstplan importieren',
                                           style: TextStyle(
-                                              color: skin.white(0.2),
+                                              color: skin.surface(0.2),
                                               fontSize: 12),
                                           textAlign: TextAlign.center),
                                     ],
@@ -1674,7 +1674,7 @@ class _NoteOverlayState extends State<_NoteOverlay>
                                   decoration: InputDecoration(
                                     hintText: '+49 123 456789',
                                     hintStyle: TextStyle(
-                                        color: skin.white(0.25),
+                                        color: skin.surface(0.25),
                                         fontSize: 14),
                                     border: InputBorder.none,
                                     isDense: true,
@@ -1778,7 +1778,7 @@ class _NoteOverlayState extends State<_NoteOverlay>
                               decoration: InputDecoration(
                                 hintText: 'Notiz eingeben...',
                                 hintStyle: TextStyle(
-                                    color: skin.white(0.25),
+                                    color: skin.surface(0.25),
                                     fontSize: 13),
                                 border: InputBorder.none,
                                 isDense: true,
@@ -2048,7 +2048,7 @@ Color get _cardBgColor {
     Widget shiftContent;
     if (widget.entry == null || widget.entry!.shift.isEmpty) {
       shiftContent = Text('—',
-          style: TextStyle(fontSize: 16, color: skin.white(0.18)));
+          style: TextStyle(fontSize: 16, color: skin.surface(0.18)));
     } else {
       final chips = widget.entry!.parts.map((part) {
         final isGeb = part.trim().toUpperCase() == 'GEB';
@@ -2142,7 +2142,7 @@ Color get _cardBgColor {
                         ? const Color(0xFFFF6B9D).withValues(alpha: 0.8)
                         : isWeekend
                             ? weekendAccent
-                            : skin.white(0.38),
+                            : skin.surface(0.38),
                     letterSpacing: 0.8,
                   )),
               const SizedBox(height: 2),
@@ -2161,7 +2161,7 @@ Color get _cardBgColor {
                       style: TextStyle(
                           fontSize: 10,
                           fontWeight: FontWeight.w500,
-                          color: skin.white(0.3))),
+                          color: skin.surface(0.3))),
                 ],
               ),
             ],
@@ -2171,7 +2171,7 @@ Color get _cardBgColor {
           width: 1,
           height: 36,
           margin: const EdgeInsets.symmetric(horizontal: 12),
-          color: skin.white(0.07),
+          color: skin.surface(0.07),
         ),
         Expanded(child: shiftContent),
         if (widget.entry != null && widget.entry!.shift.isNotEmpty)
