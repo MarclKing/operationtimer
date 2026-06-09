@@ -736,9 +736,6 @@ class ScheduleScreenState extends State<ScheduleScreen> {
     final now = DateTime.now();
     _selectedMonth = DateTime(now.year, now.month);
     _loadScheduleData();
-    Future.delayed(const Duration(milliseconds: 300), () {
-      if (mounted) ScheduleScreenState.pushScheduleToWidget();
-    });
   }
 
   bool get _isDevMode {
@@ -764,9 +761,6 @@ class ScheduleScreenState extends State<ScheduleScreen> {
     setState(() => _selectedMonth = month);
     widget.onMonthChanged?.call(month);
     _loadScheduleData();
-    Future.delayed(const Duration(milliseconds: 100), () {
-      if (mounted) ScheduleScreenState.pushScheduleToWidget();
-    });
   }
 
   void _changeMonth(int delta) {
