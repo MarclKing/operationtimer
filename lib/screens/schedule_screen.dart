@@ -717,13 +717,12 @@ class ScheduleScreenState extends State<ScheduleScreen> {
       ..sort((a, b) => (a['date'] ?? '').compareTo(b['date'] ?? ''));
 
     final json = jsonEncode(filtered);
+    debugPrint('🔄 pushScheduleToWidget: ${filtered.length} Einträge');
 
-    // Diese Aufrufe nur auf mobilen Plattformen ausführen
-    debugPrint('🔄 pushScheduleToWidget: ${filtered.length} Einträge, JSON-Länge: ${json.length}');
-    await HomeWidget.setAppGroupId('group.de.marcel.optimes');
-    await HomeWidget.saveWidgetData<String>('schedule_entries', json);
-    final result = await HomeWidget.updateWidget(iOSName: 'DienstplanWidgetExtension');
-    debugPrint('✅ pushScheduleToWidget: updateWidget result = $result');
+    // Direkt über nativen Channel schreiben + Widget neu laden
+    const _widgetChannel = MethodChannel('de.marcel.optimes/widget');
+    await _widgetChannel.invokeMethod('updateSchedule', {'json': json});
+    
   } catch (e) {
     debugPrint('❌ Widget push ERROR: $e');
   }

@@ -262,57 +262,24 @@ var body: some View {
                     let isPast = date < today
                     let isFirstOfMonth = Calendar.current.component(.day, from: date) == 1
 
-                    if shift != nil || isToday {
-                        DayTile(
-                            entry: ShiftEntry(date: dateStr, shift: shift ?? "", hasNote: false),
-                            isToday: isToday
-                        )
-                        .overlay(
-                            isFirstOfMonth && !isToday ?
-                            RoundedRectangle(cornerRadius: 10)
-                                .stroke(
-                                    LinearGradient(
-                                        colors: [Color.accentColor.opacity(0.8), Color.accentColor.opacity(0.3)],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    ),
-                                    lineWidth: 2
-                                )
-                            : nil
-                        )
-                    } else if isPast {
-                        RoundedRectangle(cornerRadius: 10)
-                            .fill(Color(.systemGray6).opacity(0.15))
-                            .overlay(
-                                isFirstOfMonth ?
-                                RoundedRectangle(cornerRadius: 10)
-                                    .stroke(
-                                        LinearGradient(
-                                            colors: [Color.accentColor.opacity(0.5), Color.accentColor.opacity(0.2)],
-                                            startPoint: .topLeading,
-                                            endPoint: .bottomTrailing
-                                        ),
-                                        lineWidth: 2
-                                    )
-                                : nil
-                            )
-                    } else {
-                        RoundedRectangle(cornerRadius: 10)
-                            .fill(Color(.systemGray6).opacity(0.25))
-                            .overlay(
-                                isFirstOfMonth ?
-                                RoundedRectangle(cornerRadius: 10)
-                                    .stroke(
-                                        LinearGradient(
-                                            colors: [Color.accentColor.opacity(0.8), Color.accentColor.opacity(0.3)],
-                                            startPoint: .topLeading,
-                                            endPoint: .bottomTrailing
-                                        ),
-                                        lineWidth: 2
-                                    )
-                                : nil
-                            )
-                    }
+                    DayTile(
+    entry: ShiftEntry(date: dateStr, shift: shift ?? "", hasNote: false),
+    isToday: isToday
+)
+.opacity(isPast && shift == nil ? 0.3 : 1.0)
+.overlay(
+    isFirstOfMonth && !isToday ?
+    RoundedRectangle(cornerRadius: 10)
+        .stroke(
+            LinearGradient(
+                colors: [Color.accentColor.opacity(0.8), Color.accentColor.opacity(0.3)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            ),
+            lineWidth: 2
+        )
+    : nil
+)
                 }
             }
         }
