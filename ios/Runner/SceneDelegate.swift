@@ -59,10 +59,19 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                 name: "de.marcel.optimes/navigation",
                 binaryMessenger: controller.binaryMessenger
             )
-            channel.invokeMethod("openFromWidget", arguments: [
-                "path": url.host ?? url.path,
-                "url": urlString
-            ])
+            if urlString.contains("/note/") {
+                let dateKey = url.pathComponents.last ?? ""
+                channel.invokeMethod("openFromWidget", arguments: [
+                    "path": "dienstplan",
+                    "url": urlString,
+                    "noteDate": dateKey
+                ])
+            } else {
+                channel.invokeMethod("openFromWidget", arguments: [
+                    "path": url.host ?? url.path,
+                    "url": urlString
+                ])
+            }
         }
     }
 
