@@ -2490,20 +2490,153 @@ setState(() {
 
   void _deleteSelectedMonth() async {
     final displayMonth = DateFormat('MMMM yyyy', 'de').format(widget.selectedMonth);
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: skin.bgCard,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text('Monat löschen', style: TextStyle(color: skin.textPrimary, fontWeight: FontWeight.w700)),
-        content: Text('Alle Dienstplan-Daten für $displayMonth werden gelöscht.',
-            style: TextStyle(color: skin.textMuted, height: 1.5)),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: Text('Abbrechen', style: TextStyle(color: skin.textMuted))),
-          TextButton(onPressed: () => Navigator.pop(context, true), child: Text('Löschen', style: TextStyle(color: skin.deleteColor, fontWeight: FontWeight.w700))),
-        ],
-      ),
+    final confirmed = await showGeneralDialog<bool>(
+  context: context,
+  barrierDismissible: true,
+  barrierLabel: 'Schließen',
+  barrierColor: Colors.black.withValues(alpha: 0.55),
+  transitionDuration: const Duration(milliseconds: 280),
+  transitionBuilder: (ctx, anim, _, child) {
+    final curved = CurvedAnimation(
+      parent: anim,
+      curve: Curves.easeOutBack,
+      reverseCurve: Curves.easeInBack,
     );
+    return ScaleTransition(
+      scale: Tween<double>(begin: 0.82, end: 1.0).animate(curved),
+      child: FadeTransition(opacity: anim, child: child),
+    );
+  },
+  pageBuilder: (ctx, _, __) => Center(
+    child: Material(
+      color: Colors.transparent,
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 32),
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: skin.bgCard,
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: skin.borderMedium),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.35),
+              blurRadius: 32,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: skin.deleteColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(Icons.delete_outline,
+                    color: skin.deleteColor, size: 22),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Monat löschen',
+                  style: TextStyle(
+                    color: skin.textPrimary,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ]),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: skin.surface(0.05),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: skin.borderSubtle),
+              ),
+              child: Row(children: [
+                Icon(Icons.calendar_month_outlined,
+                    color: skin.deleteColor, size: 18),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    displayMonth,
+                    style: TextStyle(
+                      color: skin.textPrimary,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ]),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Alle Dienstplan-Daten für diesen Monat werden unwiderruflich gelöscht.',
+              style: TextStyle(color: skin.textMuted, fontSize: 13, height: 1.45),
+            ),
+            const SizedBox(height: 20),
+            Row(children: [
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => Navigator.pop(ctx, false),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    decoration: BoxDecoration(
+                      color: skin.surface(0.06),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: skin.borderSubtle),
+                    ),
+                    child: Center(
+                      child: Text('Abbrechen',
+                          style: TextStyle(
+                              color: skin.textMuted,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600)),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => Navigator.pop(ctx, true),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    decoration: BoxDecoration(
+                      color: skin.deleteColor,
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: skin.deleteColor.withValues(alpha: 0.45),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Center(
+                      child: Text('Löschen',
+                          style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700)),
+                    ),
+                  ),
+                ),
+              ),
+            ]),
+          ],
+        ),
+      ),
+    ),
+  ),
+);
     if (confirmed != true || !mounted) return;
     final box = Hive.box('einstellungen');
     final monthKey = DateFormat('yyyy-MM').format(widget.selectedMonth);
