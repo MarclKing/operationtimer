@@ -758,7 +758,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
                         const SizedBox(height: 32),
                         Center(
-                          child: Text('OpTimes v1.0',
+                          child: Text('OpTimes v1.1.',
                               style: TextStyle(
                                   fontSize: 12, color: skin.textHint)),
                         ),
