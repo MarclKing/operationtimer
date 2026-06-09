@@ -2528,6 +2528,7 @@ setState(() {
     final monthKey = DateFormat('yyyy-MM').format(widget.selectedMonth);
     box.delete('schedule_$monthKey');
     _ChangedDays.clear(monthKey);
+    await ScheduleScreenState.pushScheduleToWidget();
     Navigator.pop(context);
     widget.onImported();
   }
