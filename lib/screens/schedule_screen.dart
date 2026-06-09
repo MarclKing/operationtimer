@@ -2396,6 +2396,7 @@ setState(() {
       }
       // Immer überschreiben
       settingsBox.put('schedule_$monthKey', newData);
+      await ScheduleScreenState.pushScheduleToWidget();
 
       if (!mounted) return;
       Navigator.pop(context);
