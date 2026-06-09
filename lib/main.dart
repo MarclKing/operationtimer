@@ -303,6 +303,12 @@ Future<void> _navigateToScheduleNote(String dateKey) async {
   // ── Share Intent ───────────────────────────────────────────────────────────
   void _handleSharedPdfWithBytesAndName(String path, List<int> bytes, String fileName) async {
   if (!mounted) return;
+  // Alle offenen Overlays schließen
+  _closeMenu();
+  _homeKey.currentState?.closeOverlays();
+  _scheduleKey.currentState?.closeOverlays();
+  await Future.delayed(const Duration(milliseconds: 250));
+  if (!mounted) return;
   final skin = AppTheme.of(context);
 
   String displayName = fileName;
@@ -487,6 +493,11 @@ Future<void> _navigateToScheduleNote(String dateKey) async {
 
 void _handleSharedPdf(String path) async {
   if (!mounted) return;
+  _closeMenu();
+  _homeKey.currentState?.closeOverlays();
+  _scheduleKey.currentState?.closeOverlays();
+  await Future.delayed(const Duration(milliseconds: 250));
+  if (!mounted) return;
   final skin = AppTheme.of(context);
   final fileName = path.split('/').last;
 
@@ -507,6 +518,11 @@ void _handleSharedPdf(String path) async {
 }
 
   void _handleSharedPdfWithBytes(String path, List<int> bytes) async {
+  if (!mounted) return;
+  _closeMenu();
+  _homeKey.currentState?.closeOverlays();
+  _scheduleKey.currentState?.closeOverlays();
+  await Future.delayed(const Duration(milliseconds: 250));
   if (!mounted) return;
   final skin = AppTheme.of(context);
   final fileName = path.split('/').last;
@@ -616,9 +632,22 @@ void _handleSharedPdf(String path) async {
     settingsBox.put('schedule_$monthKey', data);
     setState(() => _scheduleViewMonth = month);
 
+    final wasOverwritten = oldData.isNotEmpty;
+    final changedCount = wasOverwritten
+        ? (() {
+            final allKeys = {...oldData.keys, ...data.keys};
+            return allKeys.where((k) =>
+                (oldData[k] ?? '').trim().toUpperCase() !=
+                (data[k] ?? '').trim().toUpperCase()).length;
+          })()
+        : 0;
+
+    final snackText = wasOverwritten
+        ? '⚠️ Dienstplan ${_monthName(month.month)} ${month.year} überschrieben ($changedCount Änderungen)'
+        : '✓ Dienstplan ${_monthName(month.month)} ${month.year} importiert (${data.length} Tage)';
+
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(
-          '✓ Dienstplan ${_monthName(month.month)} ${month.year} importiert (${data.length} Tage)'),
+      content: Text(snackText),
       backgroundColor: skin.statComplete,
       behavior: SnackBarBehavior.floating,
       shape:
