@@ -652,6 +652,7 @@ void _handleSharedPdf(String path) async {
         ? '⚠️ Dienstplan ${_monthName(month.month)} ${month.year} überschrieben ($changedCount Änderungen)'
         : '✓ Dienstplan ${_monthName(month.month)} ${month.year} importiert (${data.length} Tage)';
 
+    _scheduleKey.currentState?.loadScheduleData();
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(snackText),
       backgroundColor: skin.statComplete,
@@ -701,7 +702,10 @@ void _handleSharedPdf(String path) async {
         preloadedFileName: fileName,
         preloadedBytes: preloadedBytes,
         autoImportError: autoImportError,
-        onImported: () => setState(() {}),
+        onImported: () {
+          setState(() {});
+          _scheduleKey.currentState?.loadScheduleData();
+        },
       ),
     );
   }
@@ -1072,7 +1076,10 @@ void _handleSharedPdf(String path) async {
         skin: skin,
         initialMonth: _scheduleViewMonth,
         selectedMonth: _scheduleViewMonth,
-        onImported: () => setState(() {}),
+        onImported: () {
+          setState(() {});
+          _scheduleKey.currentState?.loadScheduleData();
+        },
       ),
     );
   }

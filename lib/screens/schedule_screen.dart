@@ -735,7 +735,7 @@ class ScheduleScreenState extends State<ScheduleScreen> {
     super.initState();
     final now = DateTime.now();
     _selectedMonth = DateTime(now.year, now.month);
-    _loadScheduleData();
+    loadScheduleData();
   }
 
   bool get _isDevMode {
@@ -743,7 +743,7 @@ class ScheduleScreenState extends State<ScheduleScreen> {
     return box.get('dienstplan_dev_placeholder', defaultValue: false) as bool;
   }
 
-  void _loadScheduleData() {
+  void loadScheduleData() {
   final box = Hive.box('einstellungen');
   final monthKey = DateFormat('yyyy-MM').format(_selectedMonth);
   final raw = box.get('schedule_$monthKey');
@@ -760,7 +760,7 @@ class ScheduleScreenState extends State<ScheduleScreen> {
   void _setMonth(DateTime month) {
     setState(() => _selectedMonth = month);
     widget.onMonthChanged?.call(month);
-    _loadScheduleData();
+    loadScheduleData();
   }
 
   void _changeMonth(int delta) {
