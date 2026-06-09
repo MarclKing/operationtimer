@@ -758,9 +758,6 @@ class ScheduleScreenState extends State<ScheduleScreen> {
       }
     }
   });
-  Future.delayed(const Duration(milliseconds: 100), () {
-    if (mounted) ScheduleScreenState.pushScheduleToWidget();
-  });
 }
 
   void _setMonth(DateTime month) {
@@ -979,7 +976,6 @@ class ScheduleScreenState extends State<ScheduleScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         _loadScheduleData();
-        ScheduleScreenState.pushScheduleToWidget();
       }
     });
 
