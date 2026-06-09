@@ -964,15 +964,6 @@ class ScheduleScreenState extends State<ScheduleScreen> {
     final monthKey = DateFormat('yyyy-MM').format(_selectedMonth);
     final changedDays = _ChangedDays.load(monthKey);
 
-    return ValueListenableBuilder(
-  valueListenable: Hive.box('einstellungen').listenable(),
-  builder: (context, box, _) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        _loadScheduleData();
-      }
-    });
-
     return Scaffold(
           backgroundColor: skin.bgBase,
           body: GestureDetector(
@@ -1213,8 +1204,6 @@ class ScheduleScreenState extends State<ScheduleScreen> {
             ),
           ),
         );
-      },
-    );
   }
 }
 
