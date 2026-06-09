@@ -354,9 +354,9 @@ class PdfService {
 
     final safeName = fullName.replaceAll(' ', '_');
     await Printing.sharePdf(
-      bytes: await pdf.save(),
-      filename: 'OpTimes_${safeName}_$fileKey.pdf',
-    );
+  bytes: await pdf.save(),
+  filename: 'Zeiterfassung_${title.replaceAll(' ', '_')}_${safeName}.pdf',
+);
   }
 
   // ── Month picker dialog  (change #4 + #5) ─────────────────────────────────

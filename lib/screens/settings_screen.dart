@@ -608,33 +608,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                     height: 1.5),
                               ),
                               const SizedBox(height: 16),
-                              SizedBox(
-  height: 80,
-  child: ListView(
-    scrollDirection: Axis.horizontal,
-    children: [
-      _SkinOption(
-        label: 'Chrome',
-        skinKey: 'chrome',
-        isSelected: _activeSkin == 'chrome',
-        onTap: () => _setSkin('chrome'),
-      ),
-      const SizedBox(width: 10),
-      _SkinOption(
-        label: 'Space',
-        skinKey: 'space',
-        isSelected: _activeSkin == 'space',
-        onTap: () => _setSkin('space'),
-      ),
-      const SizedBox(width: 10),
-      _SkinOption(                          // ← neu
-        label: 'Paper',
-        skinKey: 'paper',
-        isSelected: _activeSkin == 'paper',
-        onTap: () => _setSkin('paper'),
-      ),
-    ],
-  ),
+                              _SkinPicker(
+  activeSkin: _activeSkin,
+  onSelect: _setSkin,
 ),
                             ],
                           ),
@@ -1009,6 +985,106 @@ class _SkinOption extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _SkinPicker extends StatefulWidget {
+  final String activeSkin;
+  final void Function(String) onSelect;
+  const _SkinPicker({required this.activeSkin, required this.onSelect});
+
+  @override
+  State<_SkinPicker> createState() => _SkinPickerState();
+}
+
+class _SkinPickerState extends State<_SkinPicker> {
+  final _scrollCtrl = ScrollController();
+  double _scrollFraction = 0.0;
+
+  static const _skins = ['chrome', 'space', 'paper'];
+  static const _labels = ['Chrome', 'Space', 'Paper'];
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollCtrl.addListener(_onScroll);
+  }
+
+  void _onScroll() {
+    final max = _scrollCtrl.position.maxScrollExtent;
+    if (max <= 0) return;
+    setState(() => _scrollFraction = _scrollCtrl.offset / max);
+  }
+
+  @override
+  void dispose() {
+    _scrollCtrl.removeListener(_onScroll);
+    _scrollCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final skin = AppTheme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          height: 80,
+          child: ListView.builder(
+            controller: _scrollCtrl,
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.only(left: 0, right: 4),
+            itemCount: _skins.length,
+            itemBuilder: (context, index) {
+              return Padding(
+                padding: EdgeInsets.only(right: index < _skins.length - 1 ? 10 : 0),
+                child: _SkinOption(
+                  label: _labels[index],
+                  skinKey: _skins[index],
+                  isSelected: widget.activeSkin == _skins[index],
+                  onTap: () => widget.onSelect(_skins[index]),
+                ),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 10),
+        // Scroll-Indikator
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final trackW = constraints.maxWidth;
+            const indicatorW = 40.0;
+            final maxOffset = trackW - indicatorW;
+            final offset = (_scrollFraction * maxOffset).clamp(0.0, maxOffset);
+            return Container(
+              height: 3,
+              decoration: BoxDecoration(
+                color: skin.surface(0.08),
+                borderRadius: BorderRadius.circular(2),
+              ),
+              child: Stack(
+                children: [
+                  AnimatedPositioned(
+                    duration: const Duration(milliseconds: 80),
+                    curve: Curves.easeOut,
+                    left: offset,
+                    child: Container(
+                      width: indicatorW,
+                      height: 3,
+                      decoration: BoxDecoration(
+                        gradient: skin.gradient,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ],
     );
   }
 }

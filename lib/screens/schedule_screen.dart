@@ -949,6 +949,182 @@ class ScheduleScreenState extends State<ScheduleScreen> {
   }
 }
 
+Future<void> _deleteCurrentMonth(AppSkin skin) async {
+    final monthKey = DateFormat('yyyy-MM').format(_selectedMonth);
+    final displayMonth = DateFormat('MMMM yyyy', 'de').format(_selectedMonth);
+
+    final confirmed = await showGeneralDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Schließen',
+      barrierColor: Colors.black.withValues(alpha: 0.55),
+      transitionDuration: const Duration(milliseconds: 280),
+      transitionBuilder: (ctx, anim, _, child) {
+        final curved = CurvedAnimation(
+          parent: anim,
+          curve: Curves.easeOutBack,
+          reverseCurve: Curves.easeInBack,
+        );
+        return ScaleTransition(
+          scale: Tween<double>(begin: 0.82, end: 1.0).animate(curved),
+          child: FadeTransition(opacity: anim, child: child),
+        );
+      },
+      pageBuilder: (ctx, _, __) => Center(
+        child: Material(
+          color: Colors.transparent,
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 32),
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: skin.bgCard,
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(color: skin.borderMedium),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.35),
+                  blurRadius: 32,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: skin.deleteColor.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(Icons.delete_outline,
+                        color: skin.deleteColor, size: 22),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Monat löschen',
+                      style: TextStyle(
+                        color: skin.textPrimary,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ]),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: skin.surface(0.05),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: skin.borderSubtle),
+                  ),
+                  child: Row(children: [
+                    Icon(Icons.calendar_month_outlined,
+                        color: skin.deleteColor, size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        displayMonth,
+                        style: TextStyle(
+                          color: skin.textPrimary,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ]),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Alle Dienstplan-Daten für diesen Monat werden unwiderruflich gelöscht.',
+                  style: TextStyle(
+                      color: skin.textMuted, fontSize: 13, height: 1.45),
+                ),
+                const SizedBox(height: 20),
+                Row(children: [
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => Navigator.pop(ctx, false),
+                      child: Container(
+                        padding:
+                            const EdgeInsets.symmetric(vertical: 13),
+                        decoration: BoxDecoration(
+                          color: skin.surface(0.06),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: skin.borderSubtle),
+                        ),
+                        child: Center(
+                          child: Text('Abbrechen',
+                              style: TextStyle(
+                                  color: skin.textMuted,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600)),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => Navigator.pop(ctx, true),
+                      child: Container(
+                        padding:
+                            const EdgeInsets.symmetric(vertical: 13),
+                        decoration: BoxDecoration(
+                          color: skin.deleteColor,
+                          borderRadius: BorderRadius.circular(12),
+                          boxShadow: [
+                            BoxShadow(
+                              color: skin.deleteColor
+                                  .withValues(alpha: 0.45),
+                              blurRadius: 12,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: Center(
+                          child: Text('Löschen',
+                              style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w700)),
+                        ),
+                      ),
+                    ),
+                  ),
+                ]),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+    final box = Hive.box('einstellungen');
+    box.delete('schedule_$monthKey');
+    _ChangedDays.clear(monthKey);
+    await ScheduleScreenState.pushScheduleToWidget();
+    if (mounted) {
+      loadScheduleData();
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('🗑 Dienstplan $displayMonth gelöscht'),
+        backgroundColor: skin.deleteColor,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12)),
+        margin: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+        duration: const Duration(seconds: 3),
+      ));
+    }
+  }
+
   void _onCardSwiped(String? dateKey) {
     setState(() => _openSwipedCardKey = dateKey);
   }
@@ -1156,22 +1332,56 @@ class ScheduleScreenState extends State<ScheduleScreen> {
                               : _FadingListView(
                                   fadeFromBottom: bottomNavHeight + 20,
                                   child: ListView.builder(
-                                    padding: EdgeInsets.fromLTRB(
-                                        24, 4, 24, bottomNavHeight + 40),
-                                    itemCount: days.length,
-                                    itemBuilder: (context, index) {
-                                      final day = days[index];
-                                      final key =
-                                          DateFormat('yyyy-MM-dd').format(day);
-                                      final shift =
-                                          _scheduleData[key] ?? '';
-                                      final entry = shift.isEmpty
-                                          ? null
-                                          : ScheduleEntry(shift);
-                                      return Padding(
-                                        padding:
-                                            const EdgeInsets.only(bottom: 8),
-                                        child: _DayCard(
+                                    padding: const EdgeInsets.fromLTRB(24, 4, 24, 0),
+itemCount: days.length + 1,
+itemBuilder: (context, index) {
+  if (index == days.length) {
+    return Padding(
+      padding: EdgeInsets.only(
+          top: 8,
+          bottom: bottomNavHeight + 40),
+      child: GestureDetector(
+        onTap: () => _deleteCurrentMonth(skin),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 11),
+          decoration: BoxDecoration(
+            color: skin.deleteColor.withValues(alpha: 0.07),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+                color: skin.deleteColor.withValues(alpha: 0.22)),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.delete_outline,
+                  color: skin.deleteColor, size: 16),
+              const SizedBox(width: 7),
+              Text(
+                'Aktuellen Monat löschen',
+                style: TextStyle(
+                    color: skin.deleteColor,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  final day = days[index];
+  final key =
+      DateFormat('yyyy-MM-dd').format(day);
+  final shift =
+      _scheduleData[key] ?? '';
+  final entry = shift.isEmpty
+      ? null
+      : ScheduleEntry(shift);
+  return Padding(
+    padding:
+        const EdgeInsets.only(bottom: 8),
+    child: _DayCard(
   day: day,
   entry: entry,
   skin: skin,
@@ -1764,6 +1974,7 @@ void _onPanEnd(DragEndDetails d) {
 
   Color get _cardBorderColor {
     if (_isBirthdayDay) return Colors.transparent;
+    if (_isVkDay) return _vkAccent.withValues(alpha: 0.28);
     if (widget.entry == null) return widget.skin.white(0.06);
     switch (widget.entry!.category) {
       case ShiftCategory.work:
@@ -1780,10 +1991,21 @@ void _onPanEnd(DragEndDetails d) {
     }
   }
 
-  Color get _cardBgColor {
+  bool get _isVkDay =>
+    widget.entry != null &&
+    widget.entry!.parts.any((p) => p.trim().toUpperCase() == 'VK');
+
+Color get _vkAccent => const Color(0xFFEF5B5B);
+
+Color get _cardBgColor {
     if (_isBirthdayDay)
       return Color.alphaBlend(
         const Color(0xFFFF6B9D).withValues(alpha: 0.06),
+        widget.skin.bgCard,
+      );
+    if (_isVkDay)
+      return Color.alphaBlend(
+        _vkAccent.withValues(alpha: 0.07),
         widget.skin.bgCard,
       );
     if (widget.entry == null) return widget.skin.bgCard;
@@ -1863,16 +2085,23 @@ void _onPanEnd(DragEndDetails d) {
           );
         }
         final color = _color(part);
+        final isVkPart = part.trim().toUpperCase() == 'VK';
         return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
+          padding: EdgeInsets.symmetric(
+            horizontal: isVkPart ? 13 : 11,
+            vertical: isVkPart ? 6 : 5,
+          ),
           decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.13),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: color.withValues(alpha: 0.4)),
+            color: color.withValues(alpha: isVkPart ? 0.14 : 0.13),
+            borderRadius: BorderRadius.circular(isVkPart ? 9 : 8),
+            border: Border.all(
+              color: color.withValues(alpha: isVkPart ? 0.5 : 0.4),
+              width: isVkPart ? 1.5 : 1.0,
+            ),
           ),
           child: Text(part,
               style: TextStyle(
-                  fontSize: 13,
+                  fontSize: isVkPart ? 14 : 13,
                   fontWeight: FontWeight.w700,
                   color: color)),
         );
@@ -1980,7 +2209,7 @@ void _onPanEnd(DragEndDetails d) {
         ),
       );
     } else {
-      cardWidget = Container(
+      final normalCard = Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
         decoration: BoxDecoration(
           color: isWeekend
@@ -1998,6 +2227,35 @@ void _onPanEnd(DragEndDetails d) {
         ),
         child: cardInner,
       );
+
+      if (_isVkDay) {
+        // Linker roter Akzentbalken (Variante A-Element) über ClipRRect
+        cardWidget = ClipRRect(
+          borderRadius: BorderRadius.circular(14),
+          child: Stack(
+            children: [
+              normalCard,
+              Positioned(
+                left: 0,
+                top: 0,
+                bottom: 0,
+                child: Container(
+                  width: 3,
+                  decoration: BoxDecoration(
+                    color: _vkAccent.withValues(alpha: 0.75),
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(14),
+                      bottomLeft: Radius.circular(14),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      } else {
+        cardWidget = normalCard;
+      }
     }
 
     // ── Long-press highlight overlay ──────────────────────────────────────────
