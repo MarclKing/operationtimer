@@ -677,10 +677,10 @@ class ScheduleScreenState extends State<ScheduleScreen> {
   String? _openSwipedCardKey;
 
   static Future<void> pushScheduleToWidget() async {
-  // Nur auf iOS/Android ausführen, nicht im Web
   if (kIsWeb) return;
   
   try {
+    debugPrint('🔄 pushScheduleToWidget: START');
     final box = Hive.box('einstellungen');
     final now = DateTime.now();
     final today = DateTime(now.year, now.month);
@@ -719,11 +719,13 @@ class ScheduleScreenState extends State<ScheduleScreen> {
     final json = jsonEncode(filtered);
 
     // Diese Aufrufe nur auf mobilen Plattformen ausführen
+    debugPrint('🔄 pushScheduleToWidget: ${filtered.length} Einträge, JSON-Länge: ${json.length}');
     await HomeWidget.setAppGroupId('group.de.marcel.optimes');
     await HomeWidget.saveWidgetData<String>('schedule_entries', json);
-    await HomeWidget.updateWidget(iOSName: 'DienstplanWidgetExtension');
+    final result = await HomeWidget.updateWidget(iOSName: 'DienstplanWidgetExtension');
+    debugPrint('✅ pushScheduleToWidget: updateWidget result = $result');
   } catch (e) {
-    debugPrint('Widget push ERROR: $e');
+    debugPrint('❌ Widget push ERROR: $e');
   }
 }
 
