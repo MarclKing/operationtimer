@@ -9,44 +9,99 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                willConnectTo session: UISceneSession,
                options connectionOptions: UIScene.ConnectionOptions) {
 
-        // URL beim Kaltstart (App war komplett geschlossen)
+        // Kaltstart: PDF oder URL
         if let urlContext = connectionOptions.urlContexts.first {
-            handleURL(urlContext.url)
+            let url = urlContext.url
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                self.handleAnyURL(url)
+            }
+        }
+
+        // Kaltstart: Pending PDF aus Share Extension
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            self.checkPendingPdf()
         }
     }
 
     func scene(_ scene: UIScene,
                openURLContexts URLContexts: Set<UIOpenURLContext>) {
-        // URL wenn App bereits läuft (Hintergrund oder Vordergrund)
-        if let urlContext = URLContexts.first {
-            handleURL(urlContext.url)
+        guard let url = URLContexts.first?.url else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            self.handleAnyURL(url)
         }
     }
 
-    private func handleURL(_ url: URL) {
-        guard url.scheme == "optimes" else { return }
+    // Wird aufgerufen wenn App in den Vordergrund kommt
+    func sceneWillEnterForeground(_ scene: UIScene) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            self.checkPendingPdf()
+        }
+    }
 
-        guard let controller = window?.rootViewController as? FlutterViewController else {
+    private func handleAnyURL(_ url: URL) {
+        print("🔗 handleAnyURL: \(url.absoluteString)")
+
+        if url.isFileURL && url.pathExtension.lowercased() == "pdf" {
+            sendPdfToFlutter(path: url.path, fileName: url.lastPathComponent)
             return
         }
 
+        if url.scheme == "optimes" {
+            let urlString = url.absoluteString
+
+            if urlString == "optimes://shared-pdf" {
+                checkPendingPdf()
+                return
+            }
+
+            guard let controller = window?.rootViewController as? FlutterViewController else { return }
+            let channel = FlutterMethodChannel(
+                name: "de.marcel.optimes/navigation",
+                binaryMessenger: controller.binaryMessenger
+            )
+            channel.invokeMethod("openFromWidget", arguments: [
+                "path": url.host ?? url.path,
+                "url": urlString
+            ])
+        }
+    }
+
+    private func checkPendingPdf() {
+        guard let containerURL = FileManager.default
+            .containerURL(forSecurityApplicationGroupIdentifier: "group.de.marcel.optimes") else {
+            print("❌ Kein App Group Container")
+            return
+        }
+        let pdfURL = containerURL.appendingPathComponent("pending_dienstplan.pdf")
+        guard FileManager.default.fileExists(atPath: pdfURL.path) else {
+            print("ℹ️ Keine pending PDF")
+            return
+        }
+
+        let defaults = UserDefaults(suiteName: "group.de.marcel.optimes")
+        let fileName = defaults?.string(forKey: "PendingPdfName") ?? "dienstplan.pdf"
+
+        print("✅ Pending PDF gefunden: \(pdfURL.path)")
+        sendPdfToFlutter(path: pdfURL.path, fileName: fileName)
+
+        try? FileManager.default.removeItem(at: pdfURL)
+        defaults?.removeObject(forKey: "PendingPdfName")
+        defaults?.synchronize()
+    }
+
+    private func sendPdfToFlutter(path: String, fileName: String) {
+        print("📤 Sende PDF an Flutter: \(fileName)")
+        guard let controller = window?.rootViewController as? FlutterViewController else {
+            print("❌ Kein FlutterViewController")
+            return
+        }
         let channel = FlutterMethodChannel(
             name: "de.marcel.optimes/navigation",
             binaryMessenger: controller.binaryMessenger
         )
-
-        let urlString = url.absoluteString
-        let host = url.host ?? ""
-
-        // Kaltstart braucht mehr Zeit
-        let isBackground = UIApplication.shared.applicationState == .background
-        let delay: Double = isBackground ? 1.5 : 0.4
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-            channel.invokeMethod("openFromWidget", arguments: [
-                "path": host,
-                "url": urlString
-            ])
-        }
+        channel.invokeMethod("openSharedPdf", arguments: [
+            "path": path,
+            "fileName": fileName
+        ])
     }
 }
