@@ -290,6 +290,11 @@ void dispose() {
 }  // ← diese Klammer einfügen
 
 Future<void> _navigateToScheduleNote(String dateKey) async {
+    _closeMenu();
+    _homeKey.currentState?.closeOverlays();
+    _scheduleKey.currentState?.closeOverlays();
+    await Future.delayed(const Duration(milliseconds: 250));
+    if (!mounted) return;
     await _animateToPage(2);
     if (!mounted) return;
     await Future.delayed(const Duration(milliseconds: 500));
