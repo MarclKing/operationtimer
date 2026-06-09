@@ -341,11 +341,12 @@ var dayCount: Int {
     }
 
     var body: some View {
-        Group {
-            if family == .systemSmall {
-                SmallWidgetView(shifts: entry.shifts)
-            } else {
-                let visible = Array(entry.shifts.prefix(dayCount))
+        if family == .systemSmall {
+            SmallWidgetView(shifts: entry.shifts)
+                .modifier(WidgetBackgroundModifier())
+        } else {
+            let visible = Array(entry.shifts.prefix(dayCount))
+            Group {
                 if visible.isEmpty {
                     VStack {
                         Image(systemName: "calendar.badge.exclamationmark")
@@ -367,11 +368,10 @@ var dayCount: Int {
                     .padding(10)
                 }
             }
+            .modifier(WidgetBackgroundModifier())
+            .widgetURL(URL(string: "optimes://dienstplan"))
         }
-        .modifier(WidgetBackgroundModifier())
-        .widgetURL(URL(string: "optimes://dienstplan"))
     }
-}
 
 struct WidgetBackgroundModifier: ViewModifier {
     func body(content: Content) -> some View {
