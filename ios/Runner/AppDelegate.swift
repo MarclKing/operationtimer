@@ -66,25 +66,27 @@ import WidgetKit
 
         // PDF aus Share Extension
         if urlString == "optimes://shared-pdf" {
-            let defaults = UserDefaults(suiteName: "group.de.marcel.optimes")
-            let pdfPath = defaults?.string(forKey: "SharedPdfPath") ?? ""
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                navChannel.invokeMethod("openSharedPdf", arguments: ["path": pdfPath])
-                defaults?.removeObject(forKey: "SharedPdfPath")
-                defaults?.synchronize()
-            }
-            return true
+    let defaults = UserDefaults(suiteName: "group.de.marcel.optimes")
+    let pdfBytes = defaults?.data(forKey: "SharedPdfBytes")
+    let pdfName = defaults?.string(forKey: "SharedPdfName") ?? "dienstplan.pdf"
+    
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+        if let bytes = pdfBytes, !bytes.isEmpty {
+            // Bytes als Array übergeben ist zu groß für MethodChannel
+            // → erst in shared container als Datei schreiben
+            let containerURL = FileManager.default
+                .containerURL(forSecurityApplicationGroupIdentifier: "group.de.marcel.optimes")!
+                .appendingPathComponent("shared_dienstplan.pdf")
+            try? bytes.write(to: containerURL)
+            
+            navChannel.invokeMethod("openSharedPdf", arguments: [
+                "path": containerURL.path,
+                "fileName": pdfName
+            ])
         }
-
-        // Widget-Navigation
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                navChannel.invokeMethod("openFromWidget", arguments: [
-                    "url": urlString,
-                    "path": path
-                ])
-            }
-        }
+        defaults?.removeObject(forKey: "SharedPdfBytes")
+        defaults?.removeObject(forKey: "SharedPdfName")
+        defaults?.synchronize()
     }
     return true
 }

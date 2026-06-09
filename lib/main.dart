@@ -260,6 +260,7 @@ void initState() {
   } else if (call.method == 'openSharedPdf') {
     final args = Map<String, dynamic>.from(call.arguments as Map);
     final path = args['path'] as String;
+    final fileName = (args['fileName'] as String?) ?? 'dienstplan.pdf'; // NEU
     if (path.isEmpty) return;
 
     await Future.delayed(const Duration(milliseconds: 150));
@@ -268,12 +269,12 @@ void initState() {
     try {
       final bytes = await dartio.File(path).readAsBytes();
       if (bytes.isNotEmpty && mounted) {
-        _handleSharedPdfWithBytes(path, bytes);
+        _handleSharedPdfWithBytesAndName(path, bytes, fileName); // NEU
       }
     } catch (e) {
       debugPrint('❌ openSharedPdf Fehler: $e');
     }
-  }
+}
 });
 }
 
@@ -300,28 +301,25 @@ Future<void> _navigateToScheduleNote(String dateKey) async {
   }
 
   // ── Share Intent ───────────────────────────────────────────────────────────
-  void _handleSharedPdf(String path) async {
-    if (!mounted) return;
-    final skin = AppTheme.of(context);
-    final fileName = path.split('/').last;
+  void _handleSharedPdfWithBytesAndName(String path, List<int> bytes, String fileName) async {
+  if (!mounted) return;
+  final skin = AppTheme.of(context);
 
-    // Kürze Dateinamen für Anzeige
-    String displayName = fileName;
-    if (displayName.length > 40) {
-      displayName = '${displayName.substring(0, 37)}...';
-    }
-
-    // ── Bestätigungs-Alert ─────────────────────────────────────────────────
-    final confirmed = await _showImportConfirmDialog(displayName, skin);
-    if (!mounted) return;
-    if (confirmed != true) return;
-
-    if (_dienstplanEnabled) {
-      await _animateToPage(2);
-    }
-    if (!mounted) return;
-    _autoImportPdf(path, fileName, skin);
+  String displayName = fileName;
+  if (displayName.length > 40) {
+    displayName = '${displayName.substring(0, 37)}...';
   }
+
+  final confirmed = await _showImportConfirmDialog(displayName, skin);
+  if (!mounted) return;
+  if (confirmed != true) return;
+
+  if (_dienstplanEnabled) {
+    await _animateToPage(2);
+  }
+  if (!mounted) return;
+  _autoImportPdf(path, fileName, skin, preloadedBytes: bytes);
+}
 
   Future<bool?> _showImportConfirmDialog(
       String displayName, AppSkin skin) async {

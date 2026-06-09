@@ -20,25 +20,25 @@ class ShareViewController: UIViewController {
         for attachment in attachments {
             if attachment.hasItemConformingToTypeIdentifier(pdfType) {
                 attachment.loadItem(forTypeIdentifier: pdfType, options: nil) { data, error in
-                    var fileURL: URL?
+                    var pdfData: Data?
+                    var fileName: String = "dienstplan.pdf"
 
                     if let url = data as? URL {
-                        fileURL = url
+                        fileName = url.lastPathComponent
+                        pdfData = try? Data(contentsOf: url)
                     } else if let rawData = data as? Data {
-                        let tmp = FileManager.default.temporaryDirectory
-                            .appendingPathComponent("shared_dienstplan.pdf")
-                        try? rawData.write(to: tmp)
-                        fileURL = tmp
+                        pdfData = rawData
                     }
 
-                    if let url = fileURL {
+                    if let bytes = pdfData, !bytes.isEmpty {
                         let defaults = UserDefaults(suiteName: "group.de.marcel.optimes")
-                        defaults?.set(url.path, forKey: "SharedPdfPath")
+                        // Bytes direkt speichern, kein Pfad
+                        defaults?.set(bytes, forKey: "SharedPdfBytes")
+                        defaults?.set(fileName, forKey: "SharedPdfName")
                         defaults?.synchronize()
 
                         if let appURL = URL(string: "optimes://shared-pdf") {
-                            print("📤 Öffne URL: \(appURL)")
-                            _ = self.openURL(appURL)
+                            self.openURL(appURL)
                         }
                     }
 
