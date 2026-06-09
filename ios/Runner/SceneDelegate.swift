@@ -1,13 +1,42 @@
 import UIKit
 import Flutter
+import WidgetKit  // ← NEU
 
 class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     var window: UIWindow?
+    
+    // ← NEU: Channel als Property speichern damit er nicht deallocated wird
+    private var widgetChannel: FlutterMethodChannel?
 
     func scene(_ scene: UIScene,
                willConnectTo session: UISceneSession,
                options connectionOptions: UIScene.ConnectionOptions) {
+
+        // ── NEU: Widget-Channel registrieren ─────────────────────────────
+        if let controller = window?.rootViewController as? FlutterViewController {
+            widgetChannel = FlutterMethodChannel(
+                name: "de.marcel.optimes/widget",
+                binaryMessenger: controller.binaryMessenger
+            )
+            widgetChannel?.setMethodCallHandler { call, result in
+                if call.method == "updateSchedule" {
+                    if let args = call.arguments as? [String: Any],
+                       let json = args["json"] as? String {
+                        let defaults = UserDefaults(suiteName: "group.de.marcel.optimes")
+                        defaults?.set(json, forKey: "schedule_entries")
+                        defaults?.synchronize()
+                    }
+                    if #available(iOS 14.0, *) {
+                        WidgetCenter.shared.reloadAllTimelines()
+                    }
+                    result(nil)
+                } else {
+                    result(FlutterMethodNotImplemented)
+                }
+            }
+        }
+        // ─────────────────────────────────────────────────────────────────
 
         // Kaltstart: PDF oder URL
         if let urlContext = connectionOptions.urlContexts.first {
@@ -31,7 +60,6 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         }
     }
 
-    // Wird aufgerufen wenn App in den Vordergrund kommt
     func sceneWillEnterForeground(_ scene: UIScene) {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             self.checkPendingPdf()
