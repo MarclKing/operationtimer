@@ -27,12 +27,14 @@ struct Provider: TimelineProvider {
 }
 
     func getSnapshot(in context: Context, completion: @escaping (DienstplanTimelineEntry) -> Void) {
+        UserDefaults(suiteName: "group.de.marcel.optimes")?.synchronize()
         completion(loadEntry())
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<DienstplanTimelineEntry>) -> Void) {
+        UserDefaults(suiteName: "group.de.marcel.optimes")?.synchronize()
         let entry = loadEntry()
-        let next = Calendar.current.date(byAdding: .hour, value: 1, to: Date())!
+        let next = Calendar.current.date(byAdding: .minute, value: 15, to: Date())!
         completion(Timeline(entries: [entry], policy: .after(next)))
     }
 
