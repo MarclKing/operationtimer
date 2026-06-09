@@ -636,6 +636,7 @@ void _handleSharedPdf(String path) async {
 
     settingsBox.put('schedule_$monthKey', data);
     setState(() => _scheduleViewMonth = month);
+    await ScheduleScreenState.pushScheduleToWidget();
 
     final wasOverwritten = oldData.isNotEmpty;
     final changedCount = wasOverwritten
