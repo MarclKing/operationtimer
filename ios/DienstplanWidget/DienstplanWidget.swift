@@ -372,6 +372,7 @@ var dayCount: Int {
             .widgetURL(URL(string: "optimes://dienstplan"))
         }
     }
+    }
 
 struct WidgetBackgroundModifier: ViewModifier {
     func body(content: Content) -> some View {
