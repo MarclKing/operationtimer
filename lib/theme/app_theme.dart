@@ -189,6 +189,40 @@ const AppSkin skinPaper = AppSkin(
   editColor:      Color(0xFFB45309),
 );
 
+// ─── SKIN: Arctic Titanium → Neutral · Präzise · Modern ──────────────────────
+const AppSkin skinTitanium = AppSkin(
+  key: 'titanium',
+  displayName: 'Arctic Titanium',
+  isLight: true,
+
+  bgBase:  Color(0xFFEBEAED),
+  bgCard:  Color(0xFFFFFFFF),
+  bgSheet: Color(0xFFFFFFFF),
+  bgInput: Color(0xFFF4F3F5),
+
+  primary:   Color(0xFF4A5563),
+  secondary: Color(0xFF6D7ADF),
+
+  kommenColor: Color(0xFF4A5563),
+  gehenColor:  Color(0xFF6D7ADF),
+
+  textPrimary:   Color(0xFF1A1A2E),
+  textMuted:     Color(0xFF6B7080),
+  textHint:      Color(0xFFAAADB8),
+  textOnSurface: Color(0xFF1A1A2E),
+
+  borderSubtle: Color(0x18000000),
+  borderMedium: Color(0x28000000),
+
+  gradientColors: [Color(0xFF4A5563), Color(0xFF6D7ADF)],
+
+  navActiveColor: Color(0xFF4A5563),
+  statEntries:    Color(0xFF4A5563),
+  statComplete:   Color(0xFF2E7D32),
+  statOpen:       Color(0xFF6B7080),
+  deleteColor:    Color(0xFFD32F2F),
+  editColor:      Color(0xFF4A5563),
+);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // AppTheme
@@ -200,7 +234,8 @@ class AppTheme {
   static AppSkin fromKey(String key) {
   switch (key) {
     case 'space': return skinSpace;
-    case 'paper': return skinPaper;   // ← neu
+    case 'paper': return skinPaper; 
+    case 'titanium': return skinTitanium; 
     default:      return skinChrome;
   }
 }

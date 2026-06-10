@@ -1,7 +1,23 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../theme/app_theme.dart';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LIQUID GLASS EXTENSION
+// ─────────────────────────────────────────────────────────────────────────────
+
+extension _AppSkinGlass on AppSkin {
+  double get glassBlur => isLight ? 18.0 : 22.0;
+  double get glassOpacity => isLight ? 0.62 : 0.55;
+  Color get glassHighlight =>
+      isLight ? Colors.white.withValues(alpha: 0.70) : Colors.white.withValues(alpha: 0.12);
+  Color get glassBorder =>
+      isLight ? Colors.white.withValues(alpha: 0.55) : Colors.white.withValues(alpha: 0.16);
+  Color get glassShadow =>
+      Colors.black.withValues(alpha: isLight ? 0.08 : 0.35);
+}
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -53,7 +69,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     Hive.box('einstellungen').put('nachtschicht_modus', value);
   }
 
-  // ── Dev-Modus hinter PIN-Code ─────────────────────────────────────────────
   Future<void> _toggleDevMode(bool desiredValue) async {
     if (!desiredValue) {
       setState(() => _dienstplanDevMode = false);
@@ -67,7 +82,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  // ── PIN Dialog ────────────────────────────────────────────────────────────
   static int _pinFailCount = 0;
   static DateTime? _pinCooldownUntil;
 
@@ -120,17 +134,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: AlertDialog(
               backgroundColor: skin.bgCard,
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20)),
+                  borderRadius: BorderRadius.circular(24)),
               title: Row(children: [
                 Container(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFEF5B5B).withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(5),
+                    color: const Color(0xFFEF5B5B).withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(6),
                     border: Border.all(
-                        color:
-                            const Color(0xFFEF5B5B).withValues(alpha: 0.35)),
+                        color: const Color(0xFFEF5B5B).withValues(alpha: 0.3)),
                   ),
                   child: const Text('DEV',
                       style: TextStyle(
@@ -160,7 +173,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         horizontal: 14, vertical: 4),
                     decoration: BoxDecoration(
                       color: skin.surface(0.05),
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(14),
                       border: Border.all(color: skin.borderSubtle),
                     ),
                     child: TextField(
@@ -217,7 +230,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       builder: (_) => AlertDialog(
         backgroundColor: skin.bgCard,
         shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         title: Row(children: [
           const Icon(Icons.lock_outline, color: Color(0xFFEF5B5B), size: 20),
           const SizedBox(width: 8),
@@ -228,7 +241,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   fontWeight: FontWeight.w700)),
         ]),
         content: Text(
-          'PIN zu oft falsch eingegeben, nicht zugelassen.',
+          'PIN zu oft falsch eingegeben.',
           style: TextStyle(color: skin.textMuted, height: 1.5),
         ),
         actions: [
@@ -242,8 +255,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
   }
-
-  // ─────────────────────────────────────────────────────────────────────────
 
   String _capitalizeEachWord(String text) {
     if (text.isEmpty) return text;
@@ -281,27 +292,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
       content: const Text('Einstellungen gespeichert ✓'),
       backgroundColor: skin.primary,
       behavior: SnackBarBehavior.floating,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
     ));
   }
 
-  /// Löscht alle Einträge (Zeiterfassung + Dienstplan), deren Monat
-  /// kalendarisch älter als [_deleteAfterMonths] Monate ist.
-  ///
-  /// Beispiel: Heute = Juni, Einstellung = 3 Monate
-  /// → Cutoff-Monat = März  → alles vor April wird gelöscht.
   void _autoDeleteOldEntries() {
     final now = DateTime.now();
-    // Cutoff ist der erste Tag des Monats, der genau X Monate zurückliegt.
-    // Alles DAVOR (also älter) wird gelöscht.
     final cutoffMonth = DateTime(now.year, now.month - _deleteAfterMonths);
 
-    // ── Zeiterfassung (Box 'arbeitszeiten', Keys: 'yyyy-MM-dd') ──────────
     final zeitBox = Hive.box('arbeitszeiten');
     final zeitKeysToDelete = zeitBox.keys.where((key) {
       try {
         final date = DateTime.parse(key.toString());
-        // Monatsbeginn des Eintrags
         final entryMonth = DateTime(date.year, date.month);
         return entryMonth.isBefore(cutoffMonth);
       } catch (_) {
@@ -312,14 +314,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
       zeitBox.delete(key);
     }
 
-    // ── Dienstplan (Box 'einstellungen', Keys: 'schedule_yyyy-MM') ───────
     final settingsBox = Hive.box('einstellungen');
     final scheduleKeysToDelete = settingsBox.keys.where((key) {
       final k = key.toString();
       if (!k.startsWith('schedule_')) return false;
       try {
-        // Key-Format: 'schedule_yyyy-MM'
-        final monthStr = k.substring('schedule_'.length); // → 'yyyy-MM'
+        final monthStr = k.substring('schedule_'.length);
         final parts = monthStr.split('-');
         if (parts.length < 2) return false;
         final entryMonth =
@@ -333,7 +333,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       settingsBox.delete(key);
     }
 
-    // ── Dienstplan-Notizen (Keys: 'schedule_note_yyyy-MM-dd') ────────────
     final noteKeysToDelete = settingsBox.keys.where((key) {
       final k = key.toString();
       if (!k.startsWith('schedule_note_')) return false;
@@ -366,32 +365,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
             children: [
               // ── Header ─────────────────────────────────────────────────────
               Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
                 child: Row(
                   children: [
+                    // Zurück-Button — nur Hitbox, kein Container
                     GestureDetector(
                       onTap: () => Navigator.pop(context),
-                      child: Container(
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          color: skin.surface(0.06),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: skin.borderSubtle),
+                      child: const SizedBox(
+                        width: 42,
+                        height: 42,
+                        child: Center(
+                          child: Icon(Icons.arrow_back_ios_new, size: 18),
                         ),
-                        child: Icon(Icons.arrow_back_ios_new,
-                            color: skin.textPrimary, size: 16),
                       ),
                     ),
                     const SizedBox(width: 16),
                     Text('Einstellungen',
                         style: TextStyle(
-                            fontSize: 22,
+                            fontSize: 24,
                             fontWeight: FontWeight.w700,
-                            color: skin.textPrimary)),
+                            color: skin.textPrimary,
+                            letterSpacing: -0.5)),
                   ],
                 ),
               ),
+
+              // ── Scrollbereich ───────────────────────────────────────────────
               Expanded(
                 child: NotificationListener<ScrollNotification>(
                   onNotification: (_) {
@@ -399,192 +398,198 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     return false;
                   },
                   child: SingleChildScrollView(
-                    padding: const EdgeInsets.all(20),
+                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const SizedBox(height: 8),
 
-                        // ── Benutzername ────────────────────────────────────
-                        _SettingsCard(
-                          emoji: '👤',
-                          title: 'Benutzername',
+                        // ── Benutzername ──────────────────────────────────────
+                        _TiCard(
+                          skin: skin,
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
+                              _TiCardHeader(
+                                  skin: skin, icon: Icons.person_outline_rounded, label: 'Benutzername'),
+                              const SizedBox(height: 12),
                               Text(
-                                'Vor- und Nachname. Der Vorname erscheint in der Begrüßung, der vollständige Name im PDF und wird für die Dienstplan-Erkennung verwendet.',
+                                'Vor- und Nachname — erscheint in der Begrüßung, im PDF und für die Dienstplan-Erkennung.',
                                 style: TextStyle(
                                     fontSize: 13,
                                     color: skin.textMuted,
                                     height: 1.5),
                               ),
-                              const SizedBox(height: 12),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 14, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: skin.surface(0.05),
-                                  borderRadius: BorderRadius.circular(12),
-                                  border:
-                                      Border.all(color: skin.borderSubtle),
-                                ),
-                                child: TextField(
-                                  controller: _nameController,
-                                  style: TextStyle(
-                                      color: skin.textPrimary, fontSize: 15),
-                                  decoration: InputDecoration(
-                                    hintText: 'z.B. Max Mustermann',
-                                    hintStyle:
-                                        TextStyle(color: skin.textHint),
-                                    border: InputBorder.none,
-                                    isDense: true,
-                                  ),
-                                  onChanged: _onNameChanged,
-                                  onSubmitted: (_) => _dismissKeyboard(),
-                                ),
+                              const SizedBox(height: 14),
+                              _TiTextField(
+                                skin: skin,
+                                controller: _nameController,
+                                hint: 'z.B. Max Mustermann',
+                                onChanged: _onNameChanged,
+                                onSubmitted: (_) => _dismissKeyboard(),
                               ),
                               const SizedBox(height: 12),
-                              _GradientButton(
-                                  label: 'Speichern', onTap: _saveSettings),
+                              _TiButton(
+                                  skin: skin,
+                                  label: 'Speichern',
+                                  onTap: _saveSettings),
                             ],
                           ),
                         ),
 
                         const SizedBox(height: 16),
 
-                        // ── Nachtschicht ────────────────────────────────────
-                        _SettingsCard(
-                          emoji: '🌙',
-                          title: 'Nachtschicht-Modus',
+                        // ── Nachtschicht ──────────────────────────────────────
+                        _TiCard(
+                          skin: skin,
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
+                              _TiCardHeader(
+                                  skin: skin,
+                                  icon: Icons.dark_mode_outlined,
+                                  label: 'Nachtschicht-Modus'),
+                              const SizedBox(height: 12),
                               Text(
-                                'Wenn aktiviert, erkennt die App automatisch Nachtschichten (z.B. Kommen 22:00 → Gehen 02:00) und legt zwei Einträge an:\n\n'
-                                '• Eintrag 1: Kommen bis 23:59 (selber Tag)\n'
-                                '• Eintrag 2: 00:00 bis Gehen (nächster Tag)',
+                                'Erkennt automatisch Nachtschichten und legt zwei Einträge an:\n• Kommen bis 23:59 (selber Tag)\n• 00:00 bis Gehen (nächster Tag)',
                                 style: TextStyle(
                                     fontSize: 13,
                                     color: skin.textMuted,
-                                    height: 1.5),
+                                    height: 1.55),
                               ),
                               const SizedBox(height: 16),
-                              Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text(
-                                    _nachtschichtModus
-                                        ? '✅ Aktiviert'
-                                        : '⬜ Deaktiviert',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w600,
-                                      color: _nachtschichtModus
-                                          ? skin.statComplete
-                                          : skin.textMuted,
-                                    ),
-                                  ),
-                                  Switch(
-                                    value: _nachtschichtModus,
-                                    onChanged: _setNachtschichtModus,
-                                    activeThumbColor: skin.statComplete,
-                                    activeTrackColor: skin.statComplete
-                                        .withValues(alpha: 0.3),
-                                    inactiveThumbColor: skin.textMuted,
-                                    inactiveTrackColor: skin.surface(0.1),
-                                  ),
-                                ],
+                              _TiToggleRow(
+                                skin: skin,
+                                label: _nachtschichtModus
+                                    ? 'Aktiviert'
+                                    : 'Deaktiviert',
+                                value: _nachtschichtModus,
+                                activeColor: const Color(0xFF2E7D32),
+                                onChanged: _setNachtschichtModus,
                               ),
-                              
                             ],
                           ),
                         ),
 
                         const SizedBox(height: 16),
 
-                        // ── Datenverwaltung ─────────────────────────────────
-                        _SettingsCard(
-                          emoji: '🗑',
-                          title: 'Datenverwaltung',
+                        // ── Datenverwaltung ───────────────────────────────────
+                        _TiCard(
+                          skin: skin,
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
+                              _TiCardHeader(
+                                  skin: skin,
+                                  icon: Icons.delete_outline_rounded,
+                                  label: 'Datenverwaltung'),
+                              const SizedBox(height: 12),
                               Text(
-                                'Wähle, nach wie vielen Monaten alte Daten automatisch gelöscht werden sollen:',
+                                'Alte Daten nach diesem Zeitraum automatisch löschen:',
                                 style: TextStyle(
                                     fontSize: 13, color: skin.textMuted),
                               ),
-                              const SizedBox(height: 12),
-                              Wrap(
-                                spacing: 8,
-                                runSpacing: 8,
-                                children: [1, 3, 6, 12].map((months) {
-                                  final isSelected =
-                                      _deleteAfterMonths == months;
-                                  return GestureDetector(
-                                    onTap: () => setState(
-                                        () => _deleteAfterMonths = months),
-                                    child: AnimatedContainer(
-                                      duration:
-                                          const Duration(milliseconds: 200),
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 16, vertical: 10),
-                                      decoration: BoxDecoration(
-                                        gradient:
-                                            isSelected ? skin.gradient : null,
-                                        color: isSelected
-                                            ? null
-                                            : skin.surface(0.05),
-                                        borderRadius:
-                                            BorderRadius.circular(10),
-                                        border: Border.all(
-                                          color: isSelected
-                                              ? Colors.transparent
-                                              : skin.borderSubtle,
-                                        ),
-                                      ),
-                                      child: Text(
-                                        '$months Monat${months > 1 ? 'e' : ''}',
-                                        style: TextStyle(
-                                          color: isSelected
-                                              ? skin.onGradient
-                                              : skin.textMuted,
-                                          fontWeight: FontWeight.w600,
-                                          fontSize: 13,
-                                        ),
-                                      ),
+                              const SizedBox(height: 14),
+                              // Segmented-style Auswahl mit Glas
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(14),
+                                child: BackdropFilter(
+                                  filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                                  child: Container(
+                                    padding: const EdgeInsets.all(4),
+                                    decoration: BoxDecoration(
+                                      color: skin.isLight
+                                          ? Colors.white.withValues(alpha: 0.45)
+                                          : Colors.white.withValues(alpha: 0.06),
+                                      borderRadius: BorderRadius.circular(14),
+                                      border: Border.all(color: skin.glassBorder),
                                     ),
-                                  );
-                                }).toList(),
-                              ),
-                              const SizedBox(height: 12),
-                              Container(
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: skin.surface(0.03),
-                                  borderRadius: BorderRadius.circular(10),
-                                  border: Border.all(
-                                      color: skin.borderSubtle),
+                                    child: Row(
+                                      children: [1, 3, 6, 12].map((months) {
+                                        final isSelected =
+                                            _deleteAfterMonths == months;
+                                        return Expanded(
+                                          child: GestureDetector(
+                                            onTap: () => setState(
+                                                () => _deleteAfterMonths = months),
+                                            child: AnimatedContainer(
+                                              duration: const Duration(
+                                                  milliseconds: 200),
+                                              padding: const EdgeInsets.symmetric(
+                                                  vertical: 10),
+                                              decoration: BoxDecoration(
+                                                color: isSelected
+                                                    ? (skin.isLight
+                                                        ? Colors.white.withValues(alpha: 0.80)
+                                                        : Colors.white.withValues(alpha: 0.14))
+                                                    : Colors.transparent,
+                                                borderRadius:
+                                                    BorderRadius.circular(10),
+                                                border: isSelected
+                                                    ? Border.all(color: skin.glassBorder, width: 1.0)
+                                                    : null,
+                                                boxShadow: isSelected
+                                                    ? [BoxShadow(color: skin.glassShadow,
+                                                          blurRadius: 8, offset: const Offset(0, 2))]
+                                                    : null,
+                                              ),
+                                              child: Center(
+                                                child: Text(
+                                                  '$months M',
+                                                  style: TextStyle(
+                                                    fontSize: 13,
+                                                    fontWeight: isSelected
+                                                        ? FontWeight.w700
+                                                        : FontWeight.w400,
+                                                    color: isSelected
+                                                        ? skin.primary
+                                                        : skin.surface(0.45),
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        );
+                                      }).toList(),
+                                    ),
+                                  ),
                                 ),
-                                child: Row(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.start,
-                                  children: [
-                                    Icon(Icons.info_outline,
-                                        color: skin.textMuted, size: 18),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: Text(
-                                        'Zeiterfassungs-Einträge und Dienstplan-Daten werden automatisch gelöscht, sobald ihr Monat kalendarisch mehr als $monthLabel zurückliegt – unabhängig davon, wann sie eingetragen wurden.',
-                                        style: TextStyle(
-                                            fontSize: 11,
-                                            color: skin.textMuted,
-                                            height: 1.5),
-                                      ),
+                              ),
+                              const SizedBox(height: 14),
+                              // Info-Box mit Glas
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(12),
+                                child: BackdropFilter(
+                                  filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                                  child: Container(
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: skin.isLight
+                                          ? Colors.white.withValues(alpha: 0.50)
+                                          : skin.primary.withValues(alpha: 0.06),
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(color: skin.glassBorder),
                                     ),
-                                  ],
+                                    child: Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Icon(Icons.info_outline_rounded,
+                                            color: skin.primary
+                                                .withValues(alpha: 0.6),
+                                            size: 16),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            'Zeiterfassungs-Einträge und Dienstplan-Daten werden gelöscht, sobald ihr Monat mehr als $monthLabel zurückliegt.',
+                                            style: TextStyle(
+                                                fontSize: 12,
+                                                color: skin.textMuted,
+                                                height: 1.5),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
                                 ),
                               ),
                             ],
@@ -593,66 +598,76 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
                         const SizedBox(height: 16),
 
-                        // ── Design ──────────────────────────────────────────
-                        _SettingsCard(
-                          emoji: '🎨',
-                          title: 'Design',
+                        // ── Design ────────────────────────────────────────────
+                        _TiCard(
+                          skin: skin,
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
+                              _TiCardHeader(
+                                  skin: skin,
+                                  icon: Icons.palette_outlined,
+                                  label: 'Design'),
+                              const SizedBox(height: 12),
                               Text(
-                                'Wähle das Aussehen der App. Die Änderung wird sofort übernommen.',
+                                'Aussehen der App. Änderung wird sofort übernommen.',
                                 style: TextStyle(
                                     fontSize: 13,
                                     color: skin.textMuted,
                                     height: 1.5),
                               ),
                               const SizedBox(height: 16),
-                              _SkinPicker(
-  activeSkin: _activeSkin,
-  onSelect: _setSkin,
-),
+                              _TiSkinPicker(
+                                activeSkin: _activeSkin,
+                                onSelect: _setSkin,
+                              ),
                             ],
                           ),
                         ),
 
                         const SizedBox(height: 16),
 
-                        // ── Dienstplan ──────────────────────────────────────
-                        _SettingsCardWithBadge(
-                          emoji: '📅',
-                          title: 'Dienstplan',
-                          badge: Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 3),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFFFB347)
-                                  .withValues(alpha: 0.15),
-                              borderRadius: BorderRadius.circular(6),
-                              border: Border.all(
-                                  color: const Color(0xFFFFB347)
-                                      .withValues(alpha: 0.4)),
-                            ),
-                            child: const Text('BETA',
-                                style: TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w700,
-                                    color: Color(0xFFFFB347),
-                                    letterSpacing: 0.8)),
-                          ),
+                        // ── Dienstplan ────────────────────────────────────────
+                        _TiCard(
+                          skin: skin,
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              // Beta warning
+                              Row(children: [
+                                _TiCardHeader(
+                                    skin: skin,
+                                    icon: Icons.calendar_month_outlined,
+                                    label: 'Dienstplan'),
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 8, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFFFB347)
+                                        .withValues(alpha: 0.12),
+                                    borderRadius: BorderRadius.circular(6),
+                                    border: Border.all(
+                                        color: const Color(0xFFFFB347)
+                                            .withValues(alpha: 0.35)),
+                                  ),
+                                  child: const Text('BETA',
+                                      style: TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w700,
+                                          color: Color(0xFFFFB347),
+                                          letterSpacing: 0.8)),
+                                ),
+                              ]),
+                              const SizedBox(height: 14),
                               Container(
                                 padding: const EdgeInsets.all(12),
                                 decoration: BoxDecoration(
                                   color: const Color(0xFFFFB347)
-                                      .withValues(alpha: 0.08),
-                                  borderRadius: BorderRadius.circular(10),
+                                      .withValues(alpha: 0.07),
+                                  borderRadius: BorderRadius.circular(12),
                                   border: Border.all(
                                     color: const Color(0xFFFFB347)
-                                        .withValues(alpha: 0.25),
+                                        .withValues(alpha: 0.2),
                                   ),
                                 ),
                                 child: Row(
@@ -660,15 +675,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                       CrossAxisAlignment.start,
                                   children: [
                                     const Text('⚠️',
-                                        style: TextStyle(fontSize: 15)),
+                                        style: TextStyle(fontSize: 14)),
                                     const SizedBox(width: 8),
                                     Expanded(
                                       child: Text(
-                                        'Diese Funktion befindet sich noch in der Beta-Phase. Es kann zu Fehlern bei der Erkennung und Darstellung des Dienstplans kommen.',
+                                        'Diese Funktion befindet sich noch in der Beta-Phase.',
                                         style: TextStyle(
-                                          fontSize: 11,
+                                          fontSize: 12,
                                           color: const Color(0xFFFFB347)
-                                              .withValues(alpha: 0.9),
+                                              .withValues(alpha: 0.85),
                                           height: 1.45,
                                         ),
                                       ),
@@ -676,93 +691,95 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   ],
                                 ),
                               ),
-
-                              const SizedBox(height: 16),
-
-                              // ── Entwickler-Modus ──────────────────────────
-                              Container(
-                                padding: const EdgeInsets.all(14),
-                                decoration: BoxDecoration(
-                                  color: skin.surface(0.03),
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(
-                                      color: skin.borderSubtle),
-                                ),
-                                child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
+                              const SizedBox(height: 14),
+                              // Dev-Modus mit Glas
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(14),
+                                child: BackdropFilter(
+                                  filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                                  child: Container(
+                                    padding: const EdgeInsets.all(14),
+                                    decoration: BoxDecoration(
+                                      color: skin.isLight
+                                          ? Colors.white.withValues(alpha: 0.45)
+                                          : Colors.white.withValues(alpha: 0.05),
+                                      borderRadius: BorderRadius.circular(14),
+                                      border: Border.all(color: skin.glassBorder),
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                              horizontal: 6, vertical: 2),
-                                          decoration: BoxDecoration(
-                                            color: const Color(0xFFEF5B5B)
-                                                .withValues(alpha: 0.15),
-                                            borderRadius:
-                                                BorderRadius.circular(5),
-                                            border: Border.all(
-                                                color:
-                                                    const Color(0xFFEF5B5B)
-                                                        .withValues(
-                                                            alpha: 0.35)),
-                                          ),
-                                          child: const Text('DEV',
-                                              style: TextStyle(
-                                                  fontSize: 10,
-                                                  fontWeight: FontWeight.w700,
-                                                  color: Color(0xFFEF5B5B),
-                                                  letterSpacing: 0.8)),
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Expanded(
-                                          child: Text(
-                                            'Entwickler-Modus',
-                                            style: TextStyle(
-                                              fontSize: 14,
-                                              fontWeight: FontWeight.w600,
-                                              color: skin.textPrimary,
+                                        Row(
+                                          children: [
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(
+                                                  horizontal: 6, vertical: 2),
+                                              decoration: BoxDecoration(
+                                                color: const Color(0xFFEF5B5B)
+                                                    .withValues(alpha: 0.12),
+                                                borderRadius:
+                                                    BorderRadius.circular(6),
+                                                border: Border.all(
+                                                    color: const Color(0xFFEF5B5B)
+                                                        .withValues(alpha: 0.3)),
+                                              ),
+                                              child: const Text('DEV',
+                                                  style: TextStyle(
+                                                      fontSize: 10,
+                                                      fontWeight: FontWeight.w700,
+                                                      color: Color(0xFFEF5B5B),
+                                                      letterSpacing: 0.8)),
                                             ),
-                                          ),
+                                            const SizedBox(width: 8),
+                                            Expanded(
+                                              child: Text(
+                                                'Entwickler-Modus',
+                                                style: TextStyle(
+                                                  fontSize: 14,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: skin.textPrimary,
+                                                ),
+                                              ),
+                                            ),
+                                            Switch(
+                                              value: _dienstplanDevMode,
+                                              onChanged: _toggleDevMode,
+                                              activeThumbColor:
+                                                  const Color(0xFFEF5B5B),
+                                              activeTrackColor:
+                                                  const Color(0xFFEF5B5B)
+                                                      .withValues(alpha: 0.25),
+                                              inactiveThumbColor:
+                                                  skin.textMuted,
+                                              inactiveTrackColor:
+                                                  skin.surface(0.08),
+                                            ),
+                                          ],
                                         ),
-                                        Switch(
-                                          value: _dienstplanDevMode,
-                                          onChanged: _toggleDevMode,
-                                          activeThumbColor:
-                                              const Color(0xFFEF5B5B),
-                                          activeTrackColor:
-                                              const Color(0xFFEF5B5B)
-                                                  .withValues(alpha: 0.3),
-                                          inactiveThumbColor:
-                                              skin.textMuted,
-                                          inactiveTrackColor:
-                                              skin.surface(0.1),
+                                        const SizedBox(height: 8),
+                                        Text(
+                                          'Erweiterte Fehlermeldungen beim PDF-Import.',
+                                          style: TextStyle(
+                                              fontSize: 12,
+                                              color: skin.textMuted,
+                                              height: 1.45),
                                         ),
                                       ],
                                     ),
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      'Aktiviert erweiterte Fehlermeldungen beim PDF-Import mit technischen Details. Erleichtert die Fehleranalyse bei Problemen mit dem Dienstplan-Import.',
-                                      style: TextStyle(
-                                          fontSize: 11,
-                                          color: skin.textMuted,
-                                          height: 1.45),
-                                    ),
-                                  ],
+                                  ),
                                 ),
                               ),
                             ],
                           ),
                         ),
 
-                        const SizedBox(height: 32),
+                        const SizedBox(height: 40),
                         Center(
                           child: Text('OpTimes v1.1.',
                               style: TextStyle(
                                   fontSize: 12, color: skin.textHint)),
                         ),
-                        const SizedBox(height: 8),
                       ],
                     ),
                   ),
@@ -777,314 +794,392 @@ class _SettingsScreenState extends State<SettingsScreen> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Helper widgets
+// LIQUID GLASS TI CARD
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _SimpleSkinOption extends StatelessWidget {
-  final String label;
-  final bool isSelected;
-  final VoidCallback onTap;
-  const _SimpleSkinOption(
-      {required this.label, required this.isSelected, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final skin = AppTheme.of(context);
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-        decoration: BoxDecoration(
-          gradient: isSelected ? skin.gradient : null,
-          color: isSelected ? null : skin.surface(0.05),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-              color: isSelected ? Colors.transparent : skin.borderSubtle),
-        ),
-        child: Center(
-          child: Text(label,
-              style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: isSelected ? skin.onGradient : skin.textMuted)),
-        ),
-      ),
-    );
-  }
-}
-
-class _SettingsCard extends StatelessWidget {
-  final String emoji;
-  final String title;
+class _TiCard extends StatelessWidget {
+  final AppSkin skin;
   final Widget child;
-  const _SettingsCard(
-      {required this.emoji, required this.title, required this.child});
+  final EdgeInsetsGeometry? padding;
+
+  const _TiCard({
+    required this.skin,
+    required this.child,
+    this.padding,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final skin = AppTheme.of(context);
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: skin.bgCard,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: skin.borderSubtle),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Text(emoji, style: const TextStyle(fontSize: 20)),
-              const SizedBox(width: 10),
-              Text(title,
-                  style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: skin.textPrimary)),
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
+        child: Container(
+          width: double.infinity,
+          padding: padding ?? const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: skin.isLight
+                ? Colors.white.withValues(alpha: skin.glassOpacity)
+                : skin.bgCard.withValues(alpha: skin.glassOpacity),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: skin.glassBorder, width: 1.0),
+            boxShadow: [
+              BoxShadow(color: skin.glassShadow, blurRadius: 24,
+                  spreadRadius: 0, offset: const Offset(0, 6)),
+              BoxShadow(color: skin.glassHighlight, blurRadius: 0,
+                  spreadRadius: -1, offset: const Offset(0, 1)),
             ],
           ),
-          const SizedBox(height: 14),
-          child,
-        ],
+          child: child,
+        ),
       ),
     );
   }
 }
 
-class _SettingsCardWithBadge extends StatelessWidget {
-  final String emoji;
-  final String title;
-  final Widget badge;
-  final Widget child;
-  const _SettingsCardWithBadge(
-      {required this.emoji,
-      required this.title,
-      required this.badge,
-      required this.child});
+/// Card-Header mit Icon ohne Container
+class _TiCardHeader extends StatelessWidget {
+  final AppSkin skin;
+  final IconData icon;
+  final String label;
+
+  const _TiCardHeader({
+    required this.skin,
+    required this.icon,
+    required this.label,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final skin = AppTheme.of(context);
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: skin.bgCard,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: skin.borderSubtle),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Text(emoji, style: const TextStyle(fontSize: 20)),
-              const SizedBox(width: 10),
-              Text(title,
-                  style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: skin.textPrimary)),
-              const SizedBox(width: 8),
-              badge,
-            ],
+    return Row(
+      children: [
+        Icon(icon, size: 20, color: skin.primary),
+        const SizedBox(width: 10),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+            color: skin.textPrimary,
           ),
-          const SizedBox(height: 14),
-          child,
-        ],
+        ),
+      ],
+    );
+  }
+}
+
+/// Textfeld im Glass-Stil
+class _TiTextField extends StatelessWidget {
+  final AppSkin skin;
+  final TextEditingController controller;
+  final String hint;
+  final ValueChanged<String>? onChanged;
+  final ValueChanged<String>? onSubmitted;
+
+  const _TiTextField({
+    required this.skin,
+    required this.controller,
+    required this.hint,
+    this.onChanged,
+    this.onSubmitted,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(14),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          decoration: BoxDecoration(
+            color: skin.isLight
+                ? Colors.white.withValues(alpha: 0.45)
+                : Colors.white.withValues(alpha: 0.06),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: skin.glassBorder),
+          ),
+          child: TextField(
+            controller: controller,
+            style: TextStyle(color: skin.textPrimary, fontSize: 15),
+            decoration: InputDecoration(
+              hintText: hint,
+              hintStyle: TextStyle(color: skin.textHint),
+              border: InputBorder.none,
+              isDense: true,
+            ),
+            onChanged: onChanged,
+            onSubmitted: onSubmitted,
+          ),
+        ),
       ),
     );
   }
 }
 
-class _GradientButton extends StatelessWidget {
+/// Glass Primary Button (kein Gradient mehr)
+class _TiButton extends StatelessWidget {
+  final AppSkin skin;
   final String label;
   final VoidCallback onTap;
-  const _GradientButton({required this.label, required this.onTap});
+
+  const _TiButton({
+    required this.skin,
+    required this.label,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final skin = AppTheme.of(context);
+    final bgColor = skin.isLight
+        ? skin.primary.withValues(alpha: 0.13)
+        : skin.primary.withValues(alpha: 0.22);
+    final borderColor = skin.isLight
+        ? skin.primary.withValues(alpha: 0.28)
+        : skin.primary.withValues(alpha: 0.45);
+    final textColor = skin.isLight
+        ? skin.primary.withValues(alpha: 0.90)
+        : skin.primary.withValues(alpha: 0.85);
+
     return GestureDetector(
       onTap: onTap,
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.symmetric(vertical: 14),
         decoration: BoxDecoration(
-          gradient: skin.gradient,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Center(
-          child: Text(label,
-              style: TextStyle(
-                  color: skin.onGradient,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 15)),
-        ),
-      ),
-    );
-  }
-}
-
-class _SkinOption extends StatelessWidget {
-  final String label;
-  final String skinKey;
-  final bool isSelected;
-  final VoidCallback onTap;
-  const _SkinOption({required this.label, required this.skinKey, required this.isSelected, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final skin = AppTheme.of(context);
-    final theme = AppTheme.fromKey(skinKey);
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        width: 100,
-        decoration: BoxDecoration(
-          gradient: isSelected ? theme.gradient : null,
-          color: isSelected ? null : skin.surface(0.05),
+          color: bgColor,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: isSelected ? Colors.transparent : skin.borderSubtle,
-            width: isSelected ? 0 : 1,
-          ),
-          boxShadow: isSelected ? [
-            BoxShadow(color: theme.primary.withValues(alpha: 0.3), blurRadius: 8, offset: const Offset(0, 3))
-          ] : null,
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 28,
-              height: 28,
-              decoration: BoxDecoration(
-                color: theme.primary.withValues(alpha: 0.2),
-                shape: BoxShape.circle,
-              ),
-              child: Center(
-                child: Container(
-                  width: 14,
-                  height: 14,
-                  decoration: BoxDecoration(
-                    color: theme.primary,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(label,
-                style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: isSelected ? theme.onGradient : skin.textMuted)),
+          border: Border.all(color: borderColor, width: 1.5),
+          boxShadow: [
+            BoxShadow(color: skin.glassShadow, blurRadius: 24,
+                spreadRadius: 0, offset: const Offset(0, 6)),
+            BoxShadow(color: skin.glassHighlight, blurRadius: 0,
+                spreadRadius: -1, offset: const Offset(0, 1)),
           ],
         ),
+        child: Center(
+          child: Text(
+            label,
+            style: TextStyle(
+              color: textColor,
+              fontWeight: FontWeight.w700,
+              fontSize: 15,
+            ),
+          ),
+        ),
       ),
     );
   }
 }
 
-class _SkinPicker extends StatefulWidget {
-  final String activeSkin;
-  final void Function(String) onSelect;
-  const _SkinPicker({required this.activeSkin, required this.onSelect});
+/// Toggle-Zeile mit Beschriftung
+class _TiToggleRow extends StatelessWidget {
+  final AppSkin skin;
+  final String label;
+  final bool value;
+  final Color activeColor;
+  final ValueChanged<bool> onChanged;
+
+  const _TiToggleRow({
+    required this.skin,
+    required this.label,
+    required this.value,
+    required this.activeColor,
+    required this.onChanged,
+  });
 
   @override
-  State<_SkinPicker> createState() => _SkinPickerState();
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: value ? activeColor : skin.textMuted,
+          ),
+        ),
+        Switch(
+          value: value,
+          onChanged: onChanged,
+          activeThumbColor: activeColor,
+          activeTrackColor: activeColor.withValues(alpha: 0.25),
+          inactiveThumbColor: skin.textMuted,
+          inactiveTrackColor: skin.surface(0.08),
+        ),
+      ],
+    );
+  }
 }
 
-class _SkinPickerState extends State<_SkinPicker> {
-  final _scrollCtrl = ScrollController();
-  double _scrollFraction = 0.0;
+// ─────────────────────────────────────────────────────────────────────────────
+// Skin-Picker — mit Glas und kleineren Abmessungen
+// ─────────────────────────────────────────────────────────────────────────────
 
-  static const _skins = ['chrome', 'space', 'paper'];
-  static const _labels = ['Chrome', 'Space', 'Paper'];
-
-  @override
-  void initState() {
-    super.initState();
-    _scrollCtrl.addListener(_onScroll);
-  }
-
-  void _onScroll() {
-    final max = _scrollCtrl.position.maxScrollExtent;
-    if (max <= 0) return;
-    setState(() => _scrollFraction = _scrollCtrl.offset / max);
-  }
+class _TiSkinPicker extends StatefulWidget {
+  final String activeSkin;
+  final void Function(String) onSelect;
+  const _TiSkinPicker({required this.activeSkin, required this.onSelect});
 
   @override
-  void dispose() {
-    _scrollCtrl.removeListener(_onScroll);
-    _scrollCtrl.dispose();
-    super.dispose();
+  State<_TiSkinPicker> createState() => _TiSkinPickerState();
+}
+
+class _TiSkinPickerState extends State<_TiSkinPicker> {
+  static const _skins = ['chrome', 'space', 'paper', 'titanium'];
+  static const _labels = ['Chrome', 'Space', 'Paper', 'Titanium'];
+
+  List<BoxShadow> _cardShadow(AppSkin skin) {
+    if (skin.isLight) {
+      return [
+        BoxShadow(
+          color: Colors.black.withValues(alpha: 0.07),
+          blurRadius: 20,
+          spreadRadius: 0,
+          offset: const Offset(0, 4),
+        ),
+        BoxShadow(
+          color: Colors.black.withValues(alpha: 0.04),
+          blurRadius: 6,
+          spreadRadius: 0,
+          offset: const Offset(0, 1),
+        ),
+      ];
+    } else {
+      return [
+        BoxShadow(
+          color: Colors.black.withValues(alpha: 0.35),
+          blurRadius: 20,
+          spreadRadius: 0,
+          offset: const Offset(0, 4),
+        ),
+      ];
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final skin = AppTheme.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-  height: 88,
-  child: ListView.builder(
-    controller: _scrollCtrl,
-    scrollDirection: Axis.horizontal,
-    padding: const EdgeInsets.only(left: 4, right: 4, top: 4, bottom: 4),
-    itemCount: _skins.length,
-    itemBuilder: (context, index) {
-      return Padding(
-        padding: EdgeInsets.only(right: index < _skins.length - 1 ? 10 : 0),
-        child: _SkinOption(
-                  label: _labels[index],
-                  skinKey: _skins[index],
-                  isSelected: widget.activeSkin == _skins[index],
-                  onTap: () => widget.onSelect(_skins[index]),
-                ),
-              );
-            },
-          ),
-        ),
-        const SizedBox(height: 10),
-        // Scroll-Indikator
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final trackW = constraints.maxWidth;
-            const indicatorW = 40.0;
-            final maxOffset = trackW - indicatorW;
-            final offset = (_scrollFraction * maxOffset).clamp(0.0, maxOffset);
-            return Container(
-              height: 3,
-              decoration: BoxDecoration(
-                color: skin.surface(0.08),
-                borderRadius: BorderRadius.circular(2),
+    final currentSkin = AppTheme.of(context);
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        crossAxisSpacing: 10,
+        mainAxisSpacing: 10,
+        childAspectRatio: 2.8,
+      ),
+      itemCount: _skins.length,
+      itemBuilder: (context, index) {
+        final key = _skins[index];
+        final label = _labels[index];
+        final isSelected = widget.activeSkin == key;
+        final theme = AppTheme.fromKey(key);
+
+        return GestureDetector(
+          onTap: () => widget.onSelect(key),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            decoration: BoxDecoration(
+              color: isSelected ? theme.primary.withValues(alpha: 0.08) : currentSkin.surface(0.04),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: isSelected
+                    ? theme.primary.withValues(alpha: 0.5)
+                    : currentSkin.borderSubtle,
+                width: isSelected ? 1.5 : 0.5,
               ),
-              child: Stack(
+              boxShadow: isSelected ? _cardShadow(currentSkin) : null,
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Row(
                 children: [
-                  AnimatedPositioned(
-                    duration: const Duration(milliseconds: 80),
-                    curve: Curves.easeOut,
-                    left: offset,
-                    child: Container(
-                      width: indicatorW,
-                      height: 3,
-                      decoration: BoxDecoration(
-                        gradient: skin.gradient,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
+                  // Farbvorschau — 3 gestapelte Kreise (kleiner)
+                  SizedBox(
+                    width: 32,
+                    height: 32,
+                    child: Stack(
+                      children: [
+                        Positioned(
+                          left: 0,
+                          top: 0,
+                          child: Container(
+                            width: 18,
+                            height: 18,
+                            decoration: BoxDecoration(
+                              color: theme.bgCard,
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                  color: Colors.black.withValues(alpha: 0.08)),
+                            ),
+                          ),
+                        ),
+                        Positioned(
+                          left: 6,
+                          top: 5,
+                          child: Container(
+                            width: 14,
+                            height: 14,
+                            decoration: BoxDecoration(
+                              color: theme.primary,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        ),
+                        if (theme.gradientColors.length >= 2)
+                          Positioned(
+                            left: 12,
+                            top: 11,
+                            child: Container(
+                              width: 11,
+                              height: 11,
+                              decoration: BoxDecoration(
+                                color: theme.secondary,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                   ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          label,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: isSelected
+                                ? theme.primary
+                                : currentSkin.textPrimary,
+                          ),
+                        ),
+                        Text(
+                          theme.isLight ? 'Hell' : 'Dunkel',
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: currentSkin.textMuted,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (isSelected)
+                    Icon(Icons.check_circle_rounded,
+                        color: theme.primary, size: 16),
                 ],
               ),
-            );
-          },
-        ),
-      ],
+            ),
+          ),
+        );
+      },
     );
   }
 }

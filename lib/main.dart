@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -15,7 +16,7 @@ import 'theme/app_theme.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart';
-import 'dart:convert';
+import 'dart:convert';  // ← RICHTIG: dart:convert statt dart:json
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -163,10 +164,10 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   final _scheduleKey = GlobalKey<ScheduleScreenState>();
   final _monthKey = GlobalKey<MonthScreenState>();
   final ValueNotifier<bool> _dayCardDragging = ValueNotifier(false);
+  final ValueNotifier<bool> _homeOverlayActive = ValueNotifier(false);
   static const _navChannel = MethodChannel('de.marcel.optimes/navigation');
 
   bool get _dienstplanEnabled => true;
-
   int get _pageCount => _dienstplanEnabled ? 3 : 2;
 
   @override
@@ -189,55 +190,38 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
 
     if (!kIsWeb) {
       ReceiveSharingIntent.instance.getInitialMedia().then((files) {
-        debugPrint('📥 getInitialMedia: ${files.length} Dateien');
-        for (final f in files) {
-          debugPrint('📄 Datei: ${f.path}');
-        }
         if (files.isNotEmpty) {
           final path = files.first.path;
           if (path != null && path.toLowerCase().endsWith('.pdf')) {
-            debugPrint('✅ PDF erkannt, lese Bytes...');
             dartio.File(path).readAsBytes().then((bytes) {
-              debugPrint('📦 Bytes gelesen: ${bytes.length}');
               WidgetsBinding.instance.addPostFrameCallback((_) {
                 if (bytes.isNotEmpty) {
                   _handleSharedPdfWithBytes(path, bytes);
                 } else {
-                  debugPrint('⚠️ Bytes leer!');
                   _handleSharedPdf(path);
                 }
               });
             }).catchError((e) {
-              debugPrint('❌ Fehler beim Lesen: $e');
               WidgetsBinding.instance.addPostFrameCallback((_) {
                 _handleSharedPdf(path);
               });
             });
-          } else {
-            debugPrint('⚠️ Keine PDF oder kein Pfad: $path');
           }
         }
       });
 
       _intentSub =
           ReceiveSharingIntent.instance.getMediaStream().listen((files) {
-        debugPrint('📡 getMediaStream: ${files.length} Dateien');
-        for (final f in files) {
-          debugPrint('📄 Stream-Datei: ${f.path}');
-        }
         if (files.isNotEmpty) {
           final path = files.first.path;
           if (path != null && path.toLowerCase().endsWith('.pdf')) {
-            debugPrint('✅ Stream PDF erkannt, lese Bytes...');
             dartio.File(path).readAsBytes().then((bytes) {
-              debugPrint('📦 Stream Bytes: ${bytes.length}');
               if (bytes.isNotEmpty) {
                 _handleSharedPdfWithBytes(path, bytes);
               } else {
                 _handleSharedPdf(path);
               }
             }).catchError((e) {
-              debugPrint('❌ Stream Fehler: $e');
               _handleSharedPdf(path);
             });
           }
@@ -252,10 +236,8 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
         final args = Map<String, dynamic>.from(call.arguments as Map);
         final url = args['url'] as String;
         final path = args['path'] as String;
-
         await Future.delayed(const Duration(milliseconds: 150));
         if (!mounted) return;
-
         if (url.contains('/note/')) {
           final dateKey = url.split('/').last;
           await _navigateToScheduleNote(dateKey);
@@ -265,13 +247,10 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       } else if (call.method == 'openSharedPdf') {
         final args = Map<String, dynamic>.from(call.arguments as Map);
         final path = args['path'] as String;
-        final fileName =
-            (args['fileName'] as String?) ?? 'dienstplan.pdf';
+        final fileName = (args['fileName'] as String?) ?? 'dienstplan.pdf';
         if (path.isEmpty) return;
-
         await Future.delayed(const Duration(milliseconds: 150));
         if (!mounted) return;
-
         try {
           final bytes = await dartio.File(path).readAsBytes();
           if (bytes.isNotEmpty && mounted) {
@@ -281,6 +260,13 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
           debugPrint('❌ openSharedPdf Fehler: $e');
         }
       }
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _homeKey.currentState?.onOverlayStateChanged = () {
+        _homeOverlayActive.value =
+            _homeKey.currentState?.isOverlayOpen ?? false;
+      };
     });
   }
 
@@ -303,10 +289,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     if (!mounted) return;
     await Future.delayed(const Duration(milliseconds: 500));
     if (!mounted) return;
-    final scheduleState = _scheduleKey.currentState;
-    if (scheduleState != null) {
-      scheduleState.openNoteOverlay(dateKey);
-    }
+    _scheduleKey.currentState?.openNoteOverlay(dateKey);
   }
 
   // ── Share Intent ───────────────────────────────────────────────────────────
@@ -320,25 +303,16 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     await Future.delayed(const Duration(milliseconds: 250));
     if (!mounted) return;
     final skin = AppTheme.of(context);
-
     String displayName = fileName;
-    if (displayName.length > 40) {
-      displayName = '${displayName.substring(0, 37)}...';
-    }
-
+    if (displayName.length > 40) displayName = '${displayName.substring(0, 37)}...';
     final confirmed = await _showImportConfirmDialog(displayName, skin);
-    if (!mounted) return;
-    if (confirmed != true) return;
-
-    if (_dienstplanEnabled) {
-      await _animateToPage(2);
-    }
+    if (!mounted || confirmed != true) return;
+    if (_dienstplanEnabled) await _animateToPage(2);
     if (!mounted) return;
     _autoImportPdf(path, fileName, skin, preloadedBytes: bytes);
   }
 
-  Future<bool?> _showImportConfirmDialog(
-      String displayName, AppSkin skin) async {
+  Future<bool?> _showImportConfirmDialog(String displayName, AppSkin skin) async {
     return showGeneralDialog<bool>(
       context: context,
       barrierDismissible: true,
@@ -353,10 +327,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
         );
         return ScaleTransition(
           scale: Tween<double>(begin: 0.82, end: 1.0).animate(curved),
-          child: FadeTransition(
-            opacity: anim,
-            child: child,
-          ),
+          child: FadeTransition(opacity: anim, child: child),
         );
       },
       pageBuilder: (ctx, _, __) => Center(
@@ -383,68 +354,47 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
               children: [
                 Row(children: [
                   Container(
-                    width: 42,
-                    height: 42,
+                    width: 42, height: 42,
                     decoration: BoxDecoration(
                       color: skin.primaryWithAlpha(0.12),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: Icon(Icons.upload_file_outlined,
-                        color: skin.primary, size: 22),
+                    child: Icon(Icons.upload_file_outlined, color: skin.primary, size: 22),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: Text(
-                      'Dienstplan importieren',
-                      style: TextStyle(
-                        color: skin.textPrimary,
-                        fontSize: 17,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
+                    child: Text('Dienstplan importieren',
+                        style: TextStyle(color: skin.textPrimary, fontSize: 17, fontWeight: FontWeight.w700)),
                   ),
                 ]),
                 const SizedBox(height: 16),
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 10),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                   decoration: BoxDecoration(
                     color: skin.surface(0.05),
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(color: skin.borderSubtle),
                   ),
                   child: Row(children: [
-                    Icon(Icons.picture_as_pdf_outlined,
-                        color: skin.primary, size: 18),
+                    Icon(Icons.picture_as_pdf_outlined, color: skin.primary, size: 18),
                     const SizedBox(width: 8),
                     Expanded(
-                      child: Text(
-                        displayName,
-                        style: TextStyle(
-                          color: skin.textPrimary,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
+                      child: Text(displayName,
+                          style: TextStyle(color: skin.textPrimary, fontSize: 13, fontWeight: FontWeight.w500),
+                          maxLines: 1, overflow: TextOverflow.ellipsis),
                     ),
                   ]),
                 ),
                 const SizedBox(height: 12),
-                Text(
-                  'Soll diese PDF als Dienstplan importiert werden?',
-                  style: TextStyle(
-                      color: skin.textMuted, fontSize: 13, height: 1.45),
-                ),
+                Text('Soll diese PDF als Dienstplan importiert werden?',
+                    style: TextStyle(color: skin.textMuted, fontSize: 13, height: 1.45)),
                 const SizedBox(height: 20),
                 Row(children: [
                   Expanded(
                     child: GestureDetector(
                       onTap: () => Navigator.pop(ctx, false),
                       child: Container(
-                        padding:
-                            const EdgeInsets.symmetric(vertical: 13),
+                        padding: const EdgeInsets.symmetric(vertical: 13),
                         decoration: BoxDecoration(
                           color: skin.surface(0.06),
                           borderRadius: BorderRadius.circular(12),
@@ -452,10 +402,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                         ),
                         child: Center(
                           child: Text('Abbrechen',
-                              style: TextStyle(
-                                  color: skin.textMuted,
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w600)),
+                              style: TextStyle(color: skin.textMuted, fontSize: 15, fontWeight: FontWeight.w600)),
                         ),
                       ),
                     ),
@@ -465,25 +412,17 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                     child: GestureDetector(
                       onTap: () => Navigator.pop(ctx, true),
                       child: Container(
-                        padding:
-                            const EdgeInsets.symmetric(vertical: 13),
+                        padding: const EdgeInsets.symmetric(vertical: 13),
                         decoration: BoxDecoration(
                           gradient: skin.gradient,
                           borderRadius: BorderRadius.circular(12),
                           boxShadow: [
-                            BoxShadow(
-                              color: skin.primaryWithAlpha(0.3),
-                              blurRadius: 8,
-                              offset: const Offset(0, 3),
-                            ),
+                            BoxShadow(color: skin.primaryWithAlpha(0.3), blurRadius: 8, offset: const Offset(0, 3)),
                           ],
                         ),
                         child: Center(
                           child: Text('Importieren',
-                              style: TextStyle(
-                                  color: skin.onGradient,
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w700)),
+                              style: TextStyle(color: skin.onGradient, fontSize: 15, fontWeight: FontWeight.w700)),
                         ),
                       ),
                     ),
@@ -508,19 +447,11 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     if (!mounted) return;
     final skin = AppTheme.of(context);
     final fileName = path.split('/').last;
-
     String displayName = fileName;
-    if (displayName.length > 40) {
-      displayName = '${displayName.substring(0, 37)}...';
-    }
-
+    if (displayName.length > 40) displayName = '${displayName.substring(0, 37)}...';
     final confirmed = await _showImportConfirmDialog(displayName, skin);
-    if (!mounted) return;
-    if (confirmed != true) return;
-
-    if (_dienstplanEnabled) {
-      await _animateToPage(2);
-    }
+    if (!mounted || confirmed != true) return;
+    if (_dienstplanEnabled) await _animateToPage(2);
     if (!mounted) return;
     _autoImportPdf(path, fileName, skin);
   }
@@ -534,19 +465,11 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     if (!mounted) return;
     final skin = AppTheme.of(context);
     final fileName = path.split('/').last;
-
     String displayName = fileName;
-    if (displayName.length > 40) {
-      displayName = '${displayName.substring(0, 37)}...';
-    }
-
+    if (displayName.length > 40) displayName = '${displayName.substring(0, 37)}...';
     final confirmed = await _showImportConfirmDialog(displayName, skin);
-    if (!mounted) return;
-    if (confirmed != true) return;
-
-    if (_dienstplanEnabled) {
-      await _animateToPage(2);
-    }
+    if (!mounted || confirmed != true) return;
+    if (_dienstplanEnabled) await _animateToPage(2);
     if (!mounted) return;
     _autoImportPdf(path, fileName, skin, preloadedBytes: bytes);
   }
@@ -554,12 +477,10 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   void _autoImportPdf(String path, String fileName, AppSkin skin,
       {List<int>? preloadedBytes}) async {
     final settingsBox = Hive.box('einstellungen');
-    final scheduleName =
-        settingsBox.get('dienstplan_name', defaultValue: '') as String;
+    final scheduleName = settingsBox.get('dienstplan_name', defaultValue: '') as String;
     final mainName = settingsBox.get('name', defaultValue: '') as String;
     final userName = scheduleName.isNotEmpty ? scheduleName : mainName;
-    final devMode = settingsBox
-        .get('dienstplan_dev_placeholder', defaultValue: false) as bool;
+    final devMode = settingsBox.get('dienstplan_dev_placeholder', defaultValue: false) as bool;
 
     List<int>? bytes = preloadedBytes;
     if (bytes == null || bytes.isEmpty) {
@@ -569,9 +490,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
         bytes = null;
       }
     }
-
     if (!mounted) return;
-
     if (bytes == null || bytes.isEmpty) {
       _openUploadSheet(path, fileName, skin);
       return;
@@ -583,30 +502,21 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       fileName: fileName,
       devMode: devMode,
     );
-
     if (!mounted) return;
 
     final error = result['error'] as String?;
     final data = Map<String, String>.from(result['data'] as Map? ?? {});
     final DateTime? month = result['month'] as DateTime?;
 
-    if ((error != null && error.isNotEmpty) ||
-        data.isEmpty ||
-        month == null) {
-      _openUploadSheet(
-        path,
-        fileName,
-        skin,
-        preloadedBytes: bytes,
-        autoImportError: devMode ? (error ?? 'Unbekannter Fehler') : null,
-      );
+    if ((error != null && error.isNotEmpty) || data.isEmpty || month == null) {
+      _openUploadSheet(path, fileName, skin,
+          preloadedBytes: bytes,
+          autoImportError: devMode ? (error ?? 'Unbekannter Fehler') : null);
       return;
     }
 
     final monthKey =
         '${month.year.toString().padLeft(4, '0')}-${month.month.toString().padLeft(2, '0')}';
-
-    // ── Diff gegen vorhandenen Dienstplan ──────────────────────────────────
     final existingRaw = settingsBox.get('schedule_$monthKey');
     final Map<String, String> oldData = {};
     if (existingRaw is Map) {
@@ -614,7 +524,6 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
         oldData[e.key.toString()] = e.value.toString();
       }
     }
-
     if (oldData.isNotEmpty) {
       final allKeys = {...oldData.keys, ...data.keys};
       final changed = <String>{};
@@ -636,17 +545,15 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
 
     settingsBox.put('schedule_$monthKey', data);
 
-    // ── Kollegen speichern ─────────────────────────────────────────────────
     try {
-      if (bytes != null && bytes.isNotEmpty) {
+      if (bytes.isNotEmpty) {
         final colleagues = DienstplanParser.parseAllColleagues(
           bytes: bytes,
           fileName: fileName,
           ownUserName: userName,
         );
         if (colleagues.isNotEmpty) {
-          final encoded =
-              jsonEncode(colleagues.map((k, v) => MapEntry(k, v)));
+          final encoded = jsonEncode(colleagues.map((k, v) => MapEntry(k, v)));
           settingsBox.put('colleagues_$monthKey', encoded);
         }
       }
@@ -676,39 +583,20 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       content: Text(snackText),
       backgroundColor: skin.statComplete,
       behavior: SnackBarBehavior.floating,
-      shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 100),
       duration: const Duration(seconds: 3),
     ));
   }
 
   String _monthName(int m) {
-    const names = [
-      '',
-      'Januar',
-      'Februar',
-      'März',
-      'April',
-      'Mai',
-      'Juni',
-      'Juli',
-      'August',
-      'September',
-      'Oktober',
-      'November',
-      'Dezember',
-    ];
+    const names = ['', 'Januar', 'Februar', 'März', 'April', 'Mai', 'Juni',
+        'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
     return names[m.clamp(1, 12)];
   }
 
-  void _openUploadSheet(
-    String path,
-    String fileName,
-    AppSkin skin, {
-    List<int>? preloadedBytes,
-    String? autoImportError,
-  }) {
+  void _openUploadSheet(String path, String fileName, AppSkin skin,
+      {List<int>? preloadedBytes, String? autoImportError}) {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -766,8 +654,8 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     if (_currentPage == 2 && d.delta.dx < 0) return;
     final screenW = MediaQuery.of(context).size.width;
     final delta = -d.delta.dx / screenW;
-    final newVal = (_slideCtrl.value + delta)
-        .clamp(0.0, (_pageCount - 1).toDouble());
+    final newVal =
+        (_slideCtrl.value + delta).clamp(0.0, (_pageCount - 1).toDouble());
     _slideCtrl.value = newVal;
   }
 
@@ -822,14 +710,12 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
             key: _scheduleKey,
             onNavigateToHome: () => _goToPage(0),
             onNavigateToMonth: () => _goToPage(1),
-            onMonthChanged: (m) =>
-                setState(() => _scheduleViewMonth = m),
+            onMonthChanged: (m) => setState(() => _scheduleViewMonth = m),
             dayCardDragging: _dayCardDragging,
           ),
       ];
 
-  bool get _isOnSchedulePage =>
-      _dienstplanEnabled && _currentPage == 2;
+  bool get _isOnSchedulePage => _dienstplanEnabled && _currentPage == 2;
 
   void _toggleMenu() {
     setState(() {
@@ -852,6 +738,8 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   Widget build(BuildContext context) {
     final skin = AppTheme.of(context);
     final screenWidth = MediaQuery.of(context).size.width;
+    final topPad = MediaQuery.of(context).padding.top;
+    final bottomPad = MediaQuery.of(context).padding.bottom;
 
     return ValueListenableBuilder(
       valueListenable: Hive.box('einstellungen').listenable(),
@@ -861,9 +749,10 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
 
         return Scaffold(
           backgroundColor: skin.bgBase,
+          resizeToAvoidBottomInset: false,
           body: Stack(
             children: [
-              // ── Slides ────────────────────────────────────────────────────
+              // 1. Content-Slides
               RawGestureDetector(
                 gestures: <Type, GestureRecognizerFactory>{
                   HorizontalDragGestureRecognizer:
@@ -895,19 +784,18 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                 ),
               ),
 
-              // ── Menu Overlay ──────────────────────────────────────────────
+              // 2. Menu Overlay
               if (_menuOpen)
                 GestureDetector(
                   onTap: _closeMenu,
-                  child: Container(
-                      color: Colors.black.withValues(alpha: 0.5)),
+                  child: Container(color: Colors.black.withValues(alpha: 0.5)),
                 ),
 
-              // ── Dropdown ──────────────────────────────────────────────────
+              // 3. Dropdown (Glass)
               AnimatedBuilder(
                 animation: _menuAnimController,
                 builder: (context, _) => Positioned(
-                  top: MediaQuery.of(context).padding.top + 60,
+                  top: topPad + 60,
                   right: 16,
                   child: Transform.scale(
                     scale: _menuAnimController.value,
@@ -916,76 +804,82 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                       opacity: _menuAnimController.value,
                       child: Material(
                         color: Colors.transparent,
-                        child: Container(
-                          width: 220,
-                          decoration: BoxDecoration(
-                            color: skin.bgCard,
-                            borderRadius: BorderRadius.circular(18),
-                            border:
-                                Border.all(color: skin.borderMedium),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black
-                                    .withValues(alpha: 0.3),
-                                blurRadius: 20,
-                                offset: const Offset(0, 8),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(18),
+                          child: BackdropFilter(
+                            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                            child: Container(
+                              width: 220,
+                              decoration: BoxDecoration(
+                                color: skin.isLight
+                                    ? Colors.white.withValues(alpha: 0.82)
+                                    : skin.bgCard.withValues(alpha: 0.88),
+                                borderRadius: BorderRadius.circular(18),
+                                border: Border.all(
+                                    color: skin.isLight
+                                        ? Colors.white.withValues(alpha: 0.55)
+                                        : Colors.white.withValues(alpha: 0.16)),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.25),
+                                    blurRadius: 24,
+                                    offset: const Offset(0, 8),
+                                  ),
+                                ],
                               ),
-                            ],
-                          ),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (_isOnSchedulePage) ...[
-                                _DropdownItem(
-                                  icon: Icons.upload_file_outlined,
-                                  label: 'Dienstplan importieren',
-                                  onTap: () {
-                                    _closeMenu();
-                                    _showUploadSheet(context, skin);
-                                  },
-                                ),
-                                _Divider(),
-                              ],
-                              if (!_isOnSchedulePage) ...[
-                                _DropdownItem(
-                                  icon: Icons.picture_as_pdf_outlined,
-                                  label: 'Zeiten exportieren',
-                                  onTap: () {
-                                    _closeMenu();
-                                    PdfService.showMonthPickerAndExport(
-                                        context);
-                                  },
-                                ),
-                                _Divider(),
-                              ],
-                              _DropdownItem(
-                                icon: Icons.settings_outlined,
-                                label: 'Einstellungen',
-                                onTap: () {
-                                  _closeMenu();
-                                  Navigator.push(
-                                    context,
-                                    CupertinoPageRoute(
-                                        builder: (_) =>
-                                            const SettingsScreen()),
-                                  );
-                                },
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (_isOnSchedulePage) ...[
+                                    _DropdownItem(
+                                      icon: Icons.upload_file_outlined,
+                                      label: 'Dienstplan importieren',
+                                      onTap: () {
+                                        _closeMenu();
+                                        _showUploadSheet(context, skin);
+                                      },
+                                    ),
+                                    _Divider(),
+                                  ],
+                                  if (!_isOnSchedulePage) ...[
+                                    _DropdownItem(
+                                      icon: Icons.picture_as_pdf_outlined,
+                                      label: 'Zeiten exportieren',
+                                      onTap: () {
+                                        _closeMenu();
+                                        PdfService.showMonthPickerAndExport(context);
+                                      },
+                                    ),
+                                    _Divider(),
+                                  ],
+                                  _DropdownItem(
+                                    icon: Icons.settings_outlined,
+                                    label: 'Einstellungen',
+                                    onTap: () {
+                                      _closeMenu();
+                                      Navigator.push(
+                                        context,
+                                        CupertinoPageRoute(
+                                            builder: (_) => const SettingsScreen()),
+                                      );
+                                    },
+                                  ),
+                                  _Divider(),
+                                  _DropdownItem(
+                                    icon: Icons.support_agent_outlined,
+                                    label: 'Support',
+                                    onTap: () {
+                                      _closeMenu();
+                                      Navigator.push(
+                                        context,
+                                        CupertinoPageRoute(
+                                            builder: (_) => const SupportScreen()),
+                                      );
+                                    },
+                                  ),
+                                ],
                               ),
-                              _Divider(),
-                              _DropdownItem(
-                                icon: Icons.support_agent_outlined,
-                                label: 'Support',
-                                onTap: () {
-                                  _closeMenu();
-                                  Navigator.push(
-                                    context,
-                                    CupertinoPageRoute(
-                                        builder: (_) =>
-                                            const SupportScreen()),
-                                  );
-                                },
-                              ),
-                            ],
+                            ),
                           ),
                         ),
                       ),
@@ -994,43 +888,23 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                 ),
               ),
 
-              // ── Top Bar ───────────────────────────────────────────────────
+              // 4. Top Bar (immer sichtbar, kein Dimming)
               Positioned(
                 top: 0,
                 left: 0,
                 right: 0,
                 child: Container(
-                  color: skin.bgBase,
                   padding: EdgeInsets.only(
-                    top: MediaQuery.of(context).padding.top + 8,
+                    top: topPad + 8,
                     left: 20,
                     right: 16,
                     bottom: 8,
                   ),
+                  color: Colors.transparent,
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Row(children: [
-                        Container(
-                          width: 36,
-                          height: 36,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(10),
-                            color: skin.primary.withAlpha(26),
-                            border: Border.all(
-                                color: skin.primary.withAlpha(51)),
-                          ),
-                          child: Icon(Icons.access_time_filled,
-                              size: 20, color: skin.primary),
-                        ),
-                        const SizedBox(width: 10),
-                        Text('OpTimes',
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700,
-                              color: skin.textPrimary,
-                            )),
-                      ]),
+                      const SizedBox(width: 8),
                       GestureDetector(
                         onTap: _toggleMenu,
                         child: AnimatedContainer(
@@ -1039,22 +913,13 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                           height: 40,
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(12),
-                            color: _menuOpen
-                                ? skin.primary.withAlpha(77)
-                                : skin.surface(0.08),
-                            border: Border.all(
-                              color: _menuOpen
-                                  ? skin.primary.withAlpha(128)
-                                  : skin.surface(0.1),
-                            ),
+                            color: Colors.transparent,
                           ),
                           child: AnimatedRotation(
                             turns: _menuOpen ? 0.125 : 0,
                             duration: const Duration(milliseconds: 250),
                             child: Icon(
-                              _menuOpen
-                                  ? Icons.close
-                                  : Icons.menu_rounded,
+                              _menuOpen ? Icons.close : Icons.menu_rounded,
                               color: skin.textPrimary,
                               size: 20,
                             ),
@@ -1066,13 +931,12 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                 ),
               ),
 
-              // ── Bottom Nav ────────────────────────────────────────────────
+              // 5. Floating NavBar (immer sichtbar, kein Dimming)
               Positioned(
-                bottom: 0,
-                left: 0,
-                right: 0,
-                child: _BottomNav(
-                  pageValue: _slideCtrl.value,
+                bottom: bottomPad > 0 ? bottomPad + 8 : 16,
+                left: 40,
+                right: 40,
+                child: _GlassBottomNav(
                   selectedIndex: _currentPage,
                   dienstplanEnabled: true,
                   onTap: _selectTab,
@@ -1111,8 +975,7 @@ class _DropdownItem extends StatelessWidget {
   final IconData icon;
   final String label;
   final VoidCallback onTap;
-  const _DropdownItem(
-      {required this.icon, required this.label, required this.onTap});
+  const _DropdownItem({required this.icon, required this.label, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -1122,8 +985,7 @@ class _DropdownItem extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       child: Container(
         width: double.infinity,
-        padding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         child: Row(children: [
           Icon(icon, size: 20, color: skin.textMuted),
           const SizedBox(width: 12),
@@ -1148,17 +1010,15 @@ class _Divider extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Bottom Navigation
+// FLOATING GLASS BOTTOM NAVIGATION (zentriert, kompakt)
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _BottomNav extends StatelessWidget {
-  final double pageValue;
+class _GlassBottomNav extends StatelessWidget {
   final int selectedIndex;
   final bool dienstplanEnabled;
   final Function(int) onTap;
 
-  const _BottomNav({
-    required this.pageValue,
+  const _GlassBottomNav({
     required this.selectedIndex,
     required this.dienstplanEnabled,
     required this.onTap,
@@ -1167,133 +1027,131 @@ class _BottomNav extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final skin = AppTheme.of(context);
-    final count = dienstplanEnabled ? 3 : 2;
-    final bottomPad = MediaQuery.of(context).padding.bottom;
-
-    const double iconSize = 24.0;
-    const double labelFontSize = 10.5;
-    const double iconLabelGap = 4.0;
-    const double labelH = 14.0;
-    const double contentH = iconSize + iconLabelGap + labelH;
-    const double pillVPad = 7.0;
-    const double pillH = contentH + pillVPad * 2;
-
-    const double navTopPad = 12.0;
-    final double navH =
-        navTopPad + pillH + (bottomPad > 0 ? bottomPad + 4.0 : 10.0);
 
     final items = [
-      _NavItem(Icons.access_time_outlined, Icons.access_time_filled,
-          'Zeiterfassung', 0),
-      _NavItem(Icons.calendar_month_outlined, Icons.calendar_month,
-          'Monatsübersicht', 1),
+      _NavItem(Icons.access_time_outlined, Icons.access_time_filled, 'Zeiterfassung', 0),
+      _NavItem(Icons.calendar_month_outlined, Icons.calendar_month, 'Monatsübersicht', 1),
       if (dienstplanEnabled)
-        _NavItem(Icons.event_note_outlined, Icons.event_note,
-            'Dienstplan', 2),
+        _NavItem(Icons.event_note_outlined, Icons.event_note, 'Dienstplan', 2),
     ];
 
-    return Container(
-      height: navH,
-      decoration: BoxDecoration(
-        color: skin.bgBase,
-        border: Border(
-            top: BorderSide(color: skin.borderSubtle, width: 0.5)),
-      ),
-      child: LayoutBuilder(builder: (context, constraints) {
-        final totalW = constraints.maxWidth;
-        final itemW = totalW / count;
-
-        final pillW = (itemW - 16.0).clamp(64.0, itemW - 8.0);
-
-        final maxPages = (count - 1).toDouble().clamp(1.0, 99.0);
-        final normPos = pageValue.clamp(0.0, maxPages) / maxPages;
-        final pillCenterX = normPos * (totalW - itemW) + itemW / 2;
-
-        final frac =
-            (pageValue - pageValue.truncateToDouble()).abs();
-        final stretch =
-            frac < 0.5 ? frac * 2.0 : (1.0 - frac) * 2.0;
-        final stretchExtra =
-            (itemW * 0.07 * stretch).clamp(0.0, 10.0);
-        final finalPillW =
-            (pillW + stretchExtra).clamp(64.0, itemW - 4.0);
-
-        final pillTop = navTopPad;
-        final iconTop = pillTop + pillVPad;
-
-        return Stack(
-          clipBehavior: Clip.none,
-          children: [
-            // ── Pill ──────────────────────────────────────────────────
-            Positioned(
-              top: pillTop,
-              left: pillCenterX - finalPillW / 2,
-              child: Container(
-                width: finalPillW,
-                height: pillH,
-                decoration: BoxDecoration(
-                  color: skin.primaryWithAlpha(0.14),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
-                      color: skin.primaryWithAlpha(0.28), width: 1),
-                ),
-              ),
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(24),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+        child: Container(
+          decoration: BoxDecoration(
+            color: skin.isLight
+                ? Colors.white.withValues(alpha: 0.72)
+                : Colors.black.withValues(alpha: 0.55),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: skin.isLight
+                  ? Colors.white.withValues(alpha: 0.55)
+                  : Colors.white.withValues(alpha: 0.12),
+              width: 0.8,
             ),
-
-            // ── Items ─────────────────────────────────────────────────
-            SizedBox(
-              height: navH,
-              child: Row(
-                children: items.map((item) {
-                  final isSelected = selectedIndex == item.index;
-                  return GestureDetector(
-                    onTap: () => onTap(item.index),
-                    behavior: HitTestBehavior.opaque,
-                    child: SizedBox(
-                      width: itemW,
-                      height: navH,
-                      child: Padding(
-                        padding: EdgeInsets.only(top: iconTop),
-                        child: Column(
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: skin.isLight ? 0.08 : 0.35),
+                blurRadius: 24,
+                spreadRadius: 0,
+                offset: const Offset(0, 6),
+              ),
+            ],
+          ),
+          padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 12),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: items.map((item) {
+              final isSelected = selectedIndex == item.index;
+              return GestureDetector(
+                onTap: () => onTap(item.index),
+                behavior: HitTestBehavior.opaque,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  curve: Curves.easeInOut,
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: isSelected ? 4 : 2,
+                  ),
+                  child: isSelected
+                      ? ClipRRect(
+                          borderRadius: BorderRadius.circular(16),
+                          child: BackdropFilter(
+                            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 8,
+                              ),
+                              decoration: BoxDecoration(
+                                color: skin.isLight
+                                    ? Colors.white.withValues(alpha: 0.75)
+                                    : Colors.white.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: skin.isLight
+                                      ? Colors.white.withValues(alpha: 0.85)
+                                      : Colors.white.withValues(alpha: 0.18),
+                                  width: 0.8,
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(
+                                        alpha: skin.isLight ? 0.04 : 0.20),
+                                    blurRadius: 6,
+                                    offset: const Offset(0, 1),
+                                  ),
+                                ],
+                              ),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    item.activeIcon,
+                                    color: skin.primary,
+                                    size: 20,
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    item.label,
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w600,
+                                      color: skin.primary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        )
+                      : Column(
                           mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment:
-                              CrossAxisAlignment.center,
                           children: [
                             Icon(
-                              isSelected
-                                  ? item.activeIcon
-                                  : item.icon,
-                              color: isSelected
-                                  ? skin.primary
-                                  : skin.surface(0.38),
-                              size: iconSize,
+                              item.icon,
+                              color: skin.surface(0.35),
+                              size: 20,
                             ),
-                            const SizedBox(height: iconLabelGap),
+                            const SizedBox(height: 2),
                             Text(
                               item.label,
-                              textAlign: TextAlign.center,
-                              maxLines: 1,
                               style: TextStyle(
-                                fontSize: labelFontSize,
-                                fontWeight: isSelected
-                                    ? FontWeight.w600
-                                    : FontWeight.w400,
-                                color: isSelected
-                                    ? skin.primary
-                                    : skin.surface(0.38),
+                                fontSize: 10,
+                                fontWeight: FontWeight.w400,
+                                color: skin.surface(0.35),
                               ),
                             ),
                           ],
-                        ),
-                      ),
                     ),
-                  );
-                }).toList(),
-              ),
-            ),
-          ],
-        );
-      }),
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+      ),
     );
   }
 }
