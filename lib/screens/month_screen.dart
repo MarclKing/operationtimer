@@ -658,9 +658,15 @@ class MonthScreenState extends State<MonthScreen> {
                         const SizedBox(height: 16),
 
                         // ── Monats-Navigation (wie HomeScreen) ─────────────────
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(20),
-                          child: BackdropFilter(
+                        GestureDetector(
+  onHorizontalDragEnd: (d) {
+    final v = d.primaryVelocity ?? 0;
+    if (v < -300) _changeMonth(1);
+    if (v > 300) _changeMonth(-1);
+  },
+  child: ClipRRect(
+    borderRadius: BorderRadius.circular(20),
+    child: BackdropFilter(
                             filter: ImageFilter.blur(
                                 sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
                             child: Container(
@@ -694,19 +700,14 @@ class MonthScreenState extends State<MonthScreen> {
                                     ),
                                   ),
                                   Expanded(
-                                    child: GestureDetector(
-                                      onTap: _showMonthPicker,
-                                      onDoubleTap: () {
-                                        HapticFeedback.selectionClick();
-                                        final now = DateTime.now();
-                                        _setMonth(DateTime(now.year, now.month));
-                                      },
-                                      onHorizontalDragEnd: (d) {
-                                        final v = d.primaryVelocity ?? 0;
-                                        if (v < -300) _changeMonth(1);
-                                        if (v > 300) _changeMonth(-1);
-                                      },
-                                      child: Padding(
+  child: GestureDetector(
+    onTap: _showMonthPicker,
+    onDoubleTap: () {
+      HapticFeedback.selectionClick();
+      final now = DateTime.now();
+      _setMonth(DateTime(now.year, now.month));
+    },
+    child: Padding(
                                         padding: const EdgeInsets.symmetric(vertical: 12),
                                         child: Row(
                                           mainAxisAlignment: MainAxisAlignment.center,
@@ -738,6 +739,7 @@ class MonthScreenState extends State<MonthScreen> {
                               ),
                             ),
                           ),
+                        ),
                         ),
 
                         const SizedBox(height: 12),

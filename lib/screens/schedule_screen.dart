@@ -1460,11 +1460,7 @@ class ScheduleScreenState extends State<ScheduleScreen> {
                                         final now = DateTime.now();
                                         _setMonth(DateTime(now.year, now.month));
                                       },
-                                      onHorizontalDragEnd: (d) {
-                                        final v = d.primaryVelocity ?? 0;
-                                        if (v < -300) _changeMonth(1);
-                                        if (v > 300) _changeMonth(-1);
-                                      },
+                                    
                                       child: Padding(
                                         padding: const EdgeInsets.symmetric(vertical: 12),
                                         child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [

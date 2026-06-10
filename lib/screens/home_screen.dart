@@ -526,11 +526,17 @@ class HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
                     // ── DATUMSKARTE MIT INTEGRIERTEN PFEILEN (unsichtbare Hitbox) ──
                     Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 24),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(20),
-                        child: Container(
-                          decoration: BoxDecoration(
+  padding: const EdgeInsets.symmetric(horizontal: 24),
+  child: GestureDetector(
+    onHorizontalDragEnd: (d) {
+      final v = d.primaryVelocity ?? 0;
+      if (v < -300) _changeDate(1);
+      if (v > 300) _changeDate(-1);
+    },
+    child: ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        decoration: BoxDecoration(
                             color: skin.isLight ? Colors.white.withValues(alpha: skin.glassOpacity) : skin.bgCard.withValues(alpha: skin.glassOpacity),
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(
@@ -557,18 +563,13 @@ class HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                               ),
                               // Datum-Inhalt
                               Expanded(
-                                child: GestureDetector(
-                                  onTap: _selectDateWithPicker,
-                                  onDoubleTap: () {
-                                    HapticFeedback.selectionClick();
-                                    _setDate(DateTime.now());
-                                  },
-                                  onHorizontalDragEnd: (d) {
-                                    final v = d.primaryVelocity ?? 0;
-                                    if (v < -300) _changeDate(1);
-                                    if (v > 300) _changeDate(-1);
-                                  },
-                                  child: Padding(
+  child: GestureDetector(
+    onTap: _selectDateWithPicker,
+    onDoubleTap: () {
+      HapticFeedback.selectionClick();
+      _setDate(DateTime.now());
+    },
+    child: Padding(
                                     padding: const EdgeInsets.symmetric(vertical: 12),
                                     child: Column(
                                       crossAxisAlignment: CrossAxisAlignment.center,
@@ -609,6 +610,7 @@ class HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           ),
                         ),
                       ),
+  ),
                     ),
                     const SizedBox(height: 16),
 

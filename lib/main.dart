@@ -16,7 +16,7 @@ import 'theme/app_theme.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart';
-import 'dart:convert';  // ← RICHTIG: dart:convert statt dart:json
+import 'dart:convert';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -75,8 +75,7 @@ class MyApp extends StatelessWidget {
     return ValueListenableBuilder(
       valueListenable: Hive.box('einstellungen').listenable(),
       builder: (context, box, _) {
-        final skinKey =
-            box.get(AppTheme.hiveKey, defaultValue: 'chrome') as String;
+        final skinKey = box.get(AppTheme.hiveKey, defaultValue: 'chrome') as String;
         final skin = AppTheme.fromKey(skinKey);
         return SkinProvider(
           skin: skin,
@@ -86,14 +85,11 @@ class MyApp extends StatelessWidget {
             onGenerateRoute: (settings) {
               final name = settings.name ?? '';
               if (name.startsWith('optimes://dienstplan/note/')) {
-                final dateKey =
-                    name.replaceFirst('optimes://dienstplan/note/', '');
+                final dateKey = name.replaceFirst('optimes://dienstplan/note/', '');
                 Future.delayed(const Duration(milliseconds: 200), () {
-                  MyApp._mainScreenKey.currentState
-                      ?._navigateToScheduleNote(dateKey);
+                  MyApp._mainScreenKey.currentState?._navigateToScheduleNote(dateKey);
                 });
-              } else if (name == 'optimes://dienstplan' ||
-                  name == '/dienstplan') {
+              } else if (name == 'optimes://dienstplan' || name == '/dienstplan') {
                 Future.delayed(const Duration(milliseconds: 200), () {
                   MyApp._mainScreenKey.currentState?._goToPage(2);
                 });
@@ -107,8 +103,7 @@ class MyApp extends StatelessWidget {
               }
               return null;
             },
-            onUnknownRoute: (settings) =>
-                MaterialPageRoute(builder: (_) => const MainScreen()),
+            onUnknownRoute: (settings) => MaterialPageRoute(builder: (_) => const MainScreen()),
             theme: ThemeData(
               brightness: skin.isLight ? Brightness.light : Brightness.dark,
               scaffoldBackgroundColor: skin.bgBase,
@@ -156,8 +151,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
 
   DateTime _sharedDate = DateTime.now();
   DateTime _sharedMonth = DateTime(DateTime.now().year, DateTime.now().month);
-  DateTime _scheduleViewMonth =
-      DateTime(DateTime.now().year, DateTime.now().month);
+  DateTime _scheduleViewMonth = DateTime(DateTime.now().year, DateTime.now().month);
 
   StreamSubscription? _intentSub;
   final _homeKey = GlobalKey<HomeScreenState>();
@@ -210,8 +204,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
         }
       });
 
-      _intentSub =
-          ReceiveSharingIntent.instance.getMediaStream().listen((files) {
+      _intentSub = ReceiveSharingIntent.instance.getMediaStream().listen((files) {
         if (files.isNotEmpty) {
           final path = files.first.path;
           if (path != null && path.toLowerCase().endsWith('.pdf')) {
@@ -264,8 +257,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _homeKey.currentState?.onOverlayStateChanged = () {
-        _homeOverlayActive.value =
-            _homeKey.currentState?.isOverlayOpen ?? false;
+        _homeOverlayActive.value = _homeKey.currentState?.isOverlayOpen ?? false;
       };
     });
   }
@@ -292,10 +284,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     _scheduleKey.currentState?.openNoteOverlay(dateKey);
   }
 
-  // ── Share Intent ───────────────────────────────────────────────────────────
-
-  void _handleSharedPdfWithBytesAndName(
-      String path, List<int> bytes, String fileName) async {
+  void _handleSharedPdfWithBytesAndName(String path, List<int> bytes, String fileName) async {
     if (!mounted) return;
     _closeMenu();
     _homeKey.currentState?.closeOverlays();
@@ -320,11 +309,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       barrierColor: Colors.black.withValues(alpha: 0.55),
       transitionDuration: const Duration(milliseconds: 280),
       transitionBuilder: (ctx, anim, _, child) {
-        final curved = CurvedAnimation(
-          parent: anim,
-          curve: Curves.easeOutBack,
-          reverseCurve: Curves.easeInBack,
-        );
+        final curved = CurvedAnimation(parent: anim, curve: Curves.easeOutBack, reverseCurve: Curves.easeInBack);
         return ScaleTransition(
           scale: Tween<double>(begin: 0.82, end: 1.0).animate(curved),
           child: FadeTransition(opacity: anim, child: child),
@@ -341,11 +326,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
               borderRadius: BorderRadius.circular(22),
               border: Border.all(color: skin.borderMedium),
               boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.35),
-                  blurRadius: 32,
-                  offset: const Offset(0, 8),
-                ),
+                BoxShadow(color: Colors.black.withValues(alpha: 0.35), blurRadius: 32, offset: const Offset(0, 8)),
               ],
             ),
             child: Column(
@@ -355,10 +336,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                 Row(children: [
                   Container(
                     width: 42, height: 42,
-                    decoration: BoxDecoration(
-                      color: skin.primaryWithAlpha(0.12),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                    decoration: BoxDecoration(color: skin.primaryWithAlpha(0.12), borderRadius: BorderRadius.circular(12)),
                     child: Icon(Icons.upload_file_outlined, color: skin.primary, size: 22),
                   ),
                   const SizedBox(width: 12),
@@ -416,9 +394,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                         decoration: BoxDecoration(
                           gradient: skin.gradient,
                           borderRadius: BorderRadius.circular(12),
-                          boxShadow: [
-                            BoxShadow(color: skin.primaryWithAlpha(0.3), blurRadius: 8, offset: const Offset(0, 3)),
-                          ],
+                          boxShadow: [BoxShadow(color: skin.primaryWithAlpha(0.3), blurRadius: 8, offset: const Offset(0, 3))],
                         ),
                         child: Center(
                           child: Text('Importieren',
@@ -474,8 +450,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     _autoImportPdf(path, fileName, skin, preloadedBytes: bytes);
   }
 
-  void _autoImportPdf(String path, String fileName, AppSkin skin,
-      {List<int>? preloadedBytes}) async {
+  void _autoImportPdf(String path, String fileName, AppSkin skin, {List<int>? preloadedBytes}) async {
     final settingsBox = Hive.box('einstellungen');
     final scheduleName = settingsBox.get('dienstplan_name', defaultValue: '') as String;
     final mainName = settingsBox.get('name', defaultValue: '') as String;
@@ -510,13 +485,11 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
 
     if ((error != null && error.isNotEmpty) || data.isEmpty || month == null) {
       _openUploadSheet(path, fileName, skin,
-          preloadedBytes: bytes,
-          autoImportError: devMode ? (error ?? 'Unbekannter Fehler') : null);
+          preloadedBytes: bytes, autoImportError: devMode ? (error ?? 'Unbekannter Fehler') : null);
       return;
     }
 
-    final monthKey =
-        '${month.year.toString().padLeft(4, '0')}-${month.month.toString().padLeft(2, '0')}';
+    final monthKey = '${month.year.toString().padLeft(4, '0')}-${month.month.toString().padLeft(2, '0')}';
     final existingRaw = settingsBox.get('schedule_$monthKey');
     final Map<String, String> oldData = {};
     if (existingRaw is Map) {
@@ -528,17 +501,14 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       final allKeys = {...oldData.keys, ...data.keys};
       final changed = <String>{};
       for (final k in allKeys) {
-        if ((oldData[k] ?? '').trim().toUpperCase() !=
-            (data[k] ?? '').trim().toUpperCase()) {
+        if ((oldData[k] ?? '').trim().toUpperCase() != (data[k] ?? '').trim().toUpperCase()) {
           changed.add(k);
         }
       }
       if (changed.isNotEmpty) {
         final changedKey = 'schedule_changed_$monthKey';
         final existingList = settingsBox.get(changedKey);
-        final existing = existingList is List
-            ? existingList.map((e) => e.toString()).toSet()
-            : <String>{};
+        final existing = existingList is List ? existingList.map((e) => e.toString()).toSet() : <String>{};
         settingsBox.put(changedKey, {...existing, ...changed}.toList());
       }
     }
@@ -567,9 +537,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
         ? (() {
             final allKeys = {...oldData.keys, ...data.keys};
             return allKeys
-                .where((k) =>
-                    (oldData[k] ?? '').trim().toUpperCase() !=
-                    (data[k] ?? '').trim().toUpperCase())
+                .where((k) => (oldData[k] ?? '').trim().toUpperCase() != (data[k] ?? '').trim().toUpperCase())
                 .length;
           })()
         : 0;
@@ -595,8 +563,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     return names[m.clamp(1, 12)];
   }
 
-  void _openUploadSheet(String path, String fileName, AppSkin skin,
-      {List<int>? preloadedBytes, String? autoImportError}) {
+  void _openUploadSheet(String path, String fileName, AppSkin skin, {List<int>? preloadedBytes, String? autoImportError}) {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -616,8 +583,6 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       ),
     );
   }
-
-  // ── Navigation ─────────────────────────────────────────────────────────────
 
   Future<void> _animateToPage(int target) async {
     final safeTarget = target.clamp(0, _pageCount - 1).toDouble();
@@ -640,8 +605,6 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
 
   void _selectTab(int index) => _goToPage(index);
 
-  // ── Wischgesten ─────────────────────────────────────────────────────────────
-
   void _onDragStart(DragStartDetails d) {
     if (_slideCtrl.isAnimating) _slideCtrl.stop();
     _dragStartValue = _slideCtrl.value;
@@ -654,8 +617,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     if (_currentPage == 2 && d.delta.dx < 0) return;
     final screenW = MediaQuery.of(context).size.width;
     final delta = -d.delta.dx / screenW;
-    final newVal =
-        (_slideCtrl.value + delta).clamp(0.0, (_pageCount - 1).toDouble());
+    final newVal = (_slideCtrl.value + delta).clamp(0.0, (_pageCount - 1).toDouble());
     _slideCtrl.value = newVal;
   }
 
@@ -689,8 +651,6 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       curve: Curves.easeOutCubic,
     );
   }
-
-  // ── Pages ──────────────────────────────────────────────────────────────────
 
   List<Widget> _buildPages() => [
         HomeScreen(
@@ -752,12 +712,9 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
           resizeToAvoidBottomInset: false,
           body: Stack(
             children: [
-              // 1. Content-Slides
               RawGestureDetector(
                 gestures: <Type, GestureRecognizerFactory>{
-                  HorizontalDragGestureRecognizer:
-                      GestureRecognizerFactoryWithHandlers<
-                          HorizontalDragGestureRecognizer>(
+                  HorizontalDragGestureRecognizer: GestureRecognizerFactoryWithHandlers<HorizontalDragGestureRecognizer>(
                     () => HorizontalDragGestureRecognizer(),
                     (instance) {
                       instance
@@ -770,28 +727,21 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                 behavior: HitTestBehavior.translucent,
                 child: Stack(
                   children: List.generate(pageCount, (i) {
-                    final offset =
-                        (i.toDouble() - _slideCtrl.value) * screenWidth;
+                    final offset = (i.toDouble() - _slideCtrl.value) * screenWidth;
                     return Transform.translate(
                       offset: Offset(offset, 0),
-                      child: SizedBox(
-                        width: screenWidth,
-                        height: double.infinity,
-                        child: pages[i],
-                      ),
+                      child: SizedBox(width: screenWidth, height: double.infinity, child: pages[i]),
                     );
                   }),
                 ),
               ),
 
-              // 2. Menu Overlay
               if (_menuOpen)
                 GestureDetector(
                   onTap: _closeMenu,
                   child: Container(color: Colors.black.withValues(alpha: 0.5)),
                 ),
 
-              // 3. Dropdown (Glass)
               AnimatedBuilder(
                 animation: _menuAnimController,
                 builder: (context, _) => Positioned(
@@ -811,21 +761,10 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                             child: Container(
                               width: 220,
                               decoration: BoxDecoration(
-                                color: skin.isLight
-                                    ? Colors.white.withValues(alpha: 0.82)
-                                    : skin.bgCard.withValues(alpha: 0.88),
+                                color: skin.isLight ? Colors.white.withValues(alpha: 0.82) : skin.bgCard.withValues(alpha: 0.88),
                                 borderRadius: BorderRadius.circular(18),
-                                border: Border.all(
-                                    color: skin.isLight
-                                        ? Colors.white.withValues(alpha: 0.55)
-                                        : Colors.white.withValues(alpha: 0.16)),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withValues(alpha: 0.25),
-                                    blurRadius: 24,
-                                    offset: const Offset(0, 8),
-                                  ),
-                                ],
+                                border: Border.all(color: skin.isLight ? Colors.white.withValues(alpha: 0.55) : Colors.white.withValues(alpha: 0.16)),
+                                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.25), blurRadius: 24, offset: const Offset(0, 8))],
                               ),
                               child: Column(
                                 mainAxisSize: MainAxisSize.min,
@@ -857,11 +796,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                                     label: 'Einstellungen',
                                     onTap: () {
                                       _closeMenu();
-                                      Navigator.push(
-                                        context,
-                                        CupertinoPageRoute(
-                                            builder: (_) => const SettingsScreen()),
-                                      );
+                                      Navigator.push(context, CupertinoPageRoute(builder: (_) => const SettingsScreen()));
                                     },
                                   ),
                                   _Divider(),
@@ -870,11 +805,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                                     label: 'Support',
                                     onTap: () {
                                       _closeMenu();
-                                      Navigator.push(
-                                        context,
-                                        CupertinoPageRoute(
-                                            builder: (_) => const SupportScreen()),
-                                      );
+                                      Navigator.push(context, CupertinoPageRoute(builder: (_) => const SupportScreen()));
                                     },
                                   ),
                                 ],
@@ -888,18 +819,12 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                 ),
               ),
 
-              // 4. Top Bar (immer sichtbar, kein Dimming)
               Positioned(
                 top: 0,
                 left: 0,
                 right: 0,
                 child: Container(
-                  padding: EdgeInsets.only(
-                    top: topPad + 8,
-                    left: 20,
-                    right: 16,
-                    bottom: 8,
-                  ),
+                  padding: EdgeInsets.only(top: topPad + 8, left: 20, right: 16, bottom: 8),
                   color: Colors.transparent,
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -911,18 +836,11 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                           duration: const Duration(milliseconds: 250),
                           width: 40,
                           height: 40,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(12),
-                            color: Colors.transparent,
-                          ),
+                          decoration: BoxDecoration(borderRadius: BorderRadius.circular(12), color: Colors.transparent),
                           child: AnimatedRotation(
                             turns: _menuOpen ? 0.125 : 0,
                             duration: const Duration(milliseconds: 250),
-                            child: Icon(
-                              _menuOpen ? Icons.close : Icons.menu_rounded,
-                              color: skin.textPrimary,
-                              size: 20,
-                            ),
+                            child: Icon(_menuOpen ? Icons.close : Icons.menu_rounded, color: skin.textPrimary, size: 20),
                           ),
                         ),
                       ),
@@ -931,7 +849,6 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                 ),
               ),
 
-              // 5. Floating NavBar (immer sichtbar, kein Dimming)
               Positioned(
                 bottom: bottomPad > 0 ? bottomPad + 8 : 16,
                 left: 40,
@@ -989,12 +906,7 @@ class _DropdownItem extends StatelessWidget {
         child: Row(children: [
           Icon(icon, size: 20, color: skin.textMuted),
           const SizedBox(width: 12),
-          Expanded(
-              child: Text(label,
-                  style: TextStyle(
-                      color: skin.textPrimary,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500))),
+          Expanded(child: Text(label, style: TextStyle(color: skin.textPrimary, fontSize: 14, fontWeight: FontWeight.w500))),
         ]),
       ),
     );
@@ -1010,7 +922,7 @@ class _Divider extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// FLOATING GLASS BOTTOM NAVIGATION (zentriert, kompakt)
+// FLOATING GLASS BOTTOM NAVIGATION (Icon-only, größer, besserer Abstand)
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _GlassBottomNav extends StatelessWidget {
@@ -1041,26 +953,17 @@ class _GlassBottomNav extends StatelessWidget {
         filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
         child: Container(
           decoration: BoxDecoration(
-            color: skin.isLight
-                ? Colors.white.withValues(alpha: 0.72)
-                : Colors.black.withValues(alpha: 0.55),
+            color: skin.isLight ? Colors.white.withValues(alpha: 0.72) : Colors.black.withValues(alpha: 0.55),
             borderRadius: BorderRadius.circular(24),
             border: Border.all(
-              color: skin.isLight
-                  ? Colors.white.withValues(alpha: 0.55)
-                  : Colors.white.withValues(alpha: 0.12),
+              color: skin.isLight ? Colors.white.withValues(alpha: 0.55) : Colors.white.withValues(alpha: 0.12),
               width: 0.8,
             ),
             boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: skin.isLight ? 0.08 : 0.35),
-                blurRadius: 24,
-                spreadRadius: 0,
-                offset: const Offset(0, 6),
-              ),
+              BoxShadow(color: Colors.black.withValues(alpha: skin.isLight ? 0.08 : 0.35), blurRadius: 24, spreadRadius: 0, offset: const Offset(0, 6)),
             ],
           ),
-          padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 12),
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: items.map((item) {
@@ -1071,81 +974,41 @@ class _GlassBottomNav extends StatelessWidget {
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 180),
                   curve: Curves.easeInOut,
-                  padding: EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: isSelected ? 4 : 2,
-                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   child: isSelected
                       ? ClipRRect(
                           borderRadius: BorderRadius.circular(16),
                           child: BackdropFilter(
                             filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
                             child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 8,
-                              ),
+                              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                               decoration: BoxDecoration(
-                                color: skin.isLight
-                                    ? Colors.white.withValues(alpha: 0.75)
-                                    : Colors.white.withValues(alpha: 0.12),
+                                color: skin.isLight ? Colors.white.withValues(alpha: 0.75) : Colors.white.withValues(alpha: 0.12),
                                 borderRadius: BorderRadius.circular(16),
                                 border: Border.all(
-                                  color: skin.isLight
-                                      ? Colors.white.withValues(alpha: 0.85)
-                                      : Colors.white.withValues(alpha: 0.18),
+                                  color: skin.isLight ? Colors.white.withValues(alpha: 0.85) : Colors.white.withValues(alpha: 0.18),
                                   width: 0.8,
                                 ),
                                 boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withValues(
-                                        alpha: skin.isLight ? 0.04 : 0.20),
-                                    blurRadius: 6,
-                                    offset: const Offset(0, 1),
-                                  ),
+                                  BoxShadow(color: Colors.black.withValues(alpha: skin.isLight ? 0.04 : 0.20), blurRadius: 6, offset: const Offset(0, 1)),
                                 ],
                               ),
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    item.activeIcon,
-                                    color: skin.primary,
-                                    size: 20,
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    item.label,
-                                    style: TextStyle(
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w600,
-                                      color: skin.primary,
-                                    ),
-                                  ),
-                                ],
+                              child: Icon(
+                                item.activeIcon,
+                                color: skin.primary,
+                                size: 26,
                               ),
                             ),
                           ),
                         )
-                      : Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              item.icon,
-                              color: skin.surface(0.35),
-                              size: 20,
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              item.label,
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w400,
-                                color: skin.surface(0.35),
-                              ),
-                            ),
-                          ],
-                    ),
+                      : Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+                          child: Icon(
+                            item.icon,
+                            color: skin.surface(0.35),
+                            size: 22,
+                          ),
+                        ),
                 ),
               );
             }).toList(),
