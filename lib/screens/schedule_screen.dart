@@ -1,4 +1,4 @@
-import 'dart:ui';
+﻿import 'dart:ui';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
@@ -1756,7 +1756,7 @@ class _NoteOverlay extends StatefulWidget {
   State<_NoteOverlay> createState() => _NoteOverlayState();
 }
 
-class _NoteOverlayState extends State<_NoteOverlay> with SingleTickerProviderStateMixin {
+class _NoteOverlayState extends State<_NoteOverlay> with TickerProviderStateMixin  {
   late AnimationController _ctrl;
   late Animation<double> _scaleAnim;
   late Animation<double> _opacityAnim;
@@ -1999,7 +1999,7 @@ class _ColleaguesOverlay extends StatefulWidget {
 }
 
 class _ColleaguesOverlayState extends State<_ColleaguesOverlay>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin  {
   late AnimationController _ctrl;
   late Animation<double> _scaleAnim;
   late Animation<double> _opacityAnim;
@@ -2928,7 +2928,7 @@ class _DayCard extends StatefulWidget {
   State<_DayCard> createState() => _DayCardState();
 }
 
-class _DayCardState extends State<_DayCard> with SingleTickerProviderStateMixin {
+class _DayCardState extends State<_DayCard> with TickerProviderStateMixin  {
   double _swipeOffset = 0;
   static const double _revealWidth = 180.0;
   static const double _snapThreshold = 65.0;
@@ -3147,25 +3147,25 @@ class _DayCardState extends State<_DayCard> with SingleTickerProviderStateMixin 
         }),
         Expanded(child: shiftContent),
         if (widget.entry != null && widget.entry!.shift.isNotEmpty) ...[
-          _isBirthdayDay
-              ? const SizedBox(width: 7, height: 7)
-              : _DayDot(
-                  day: widget.day,
-                  skin: skin,
-                  isChrome: widget.isChrome,
-                  isChanged: widget.isChanged,
-                ),
-          if (hasEvent) ...[
-            const SizedBox(width: 5),
-            Icon(
-              Icons.flag_rounded,
-              size: 11,
-              color: widget.isChrome
-                  ? const Color(0xFFFFB347).withValues(alpha: 0.75)
-                  : const Color(0xFFFFB347),
-            ),
-          ],
-        ],
+  if (hasEvent) ...[
+    Icon(
+      Icons.flag_rounded,
+      size: 11,
+      color: widget.isChrome
+          ? const Color(0xFFFFB347).withValues(alpha: 0.75)
+          : const Color(0xFFFFB347),
+    ),
+    const SizedBox(width: 5),
+  ],
+  _isBirthdayDay
+      ? const SizedBox(width: 7, height: 7)
+      : _DayDot(
+          day: widget.day,
+          skin: skin,
+          isChrome: widget.isChrome,
+          isChanged: widget.isChanged,
+        ),
+],
       ],
     );
 

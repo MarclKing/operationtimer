@@ -775,7 +775,9 @@ class MonthScreenState extends State<MonthScreen> {
                       ],
                     ),
                   )
-                : NotificationListener<ScrollNotification>(
+                : _FadingListView(
+                    fadeFromBottom: bottomNavHeight + 20,
+                    child: NotificationListener<ScrollNotification>(
                     onNotification: (_) {
                       closeAllRows();
                       return false;
@@ -854,14 +856,15 @@ class MonthScreenState extends State<MonthScreen> {
                       },
                     ),
                   ),
-          ),
+                ),        // ← schließt NotificationListener
+          ),              // ← schließt _FadingListView  NEU!
         ],
       ),
     ),
   ),
 );
   }  // Ende build()
-}    // Ende MonthScreenStatnthScreenState
+}    // Ende MonthScreenStatnthScreenStateMonthScreenStatnthScreenState
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GLASS STAT CARD
@@ -1949,6 +1952,30 @@ class _GlassTextFieldInput extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _FadingListView extends StatelessWidget {
+  final Widget child;
+  final double fadeFromBottom;
+  const _FadingListView({required this.child, required this.fadeFromBottom});
+
+  @override
+  Widget build(BuildContext context) {
+    return ShaderMask(
+      shaderCallback: (bounds) {
+        final h = bounds.height;
+        final startStop = ((h - (fadeFromBottom - 30)) / h).clamp(0.0, 1.0);
+        final endStop = ((h - (fadeFromBottom - 70)) / h).clamp(0.0, 1.0);
+        return LinearGradient(
+          begin: Alignment.topCenter, end: Alignment.bottomCenter,
+          colors: const [Colors.white, Colors.white, Colors.black26, Colors.transparent, Colors.transparent],
+          stops: [0.0, startStop, (startStop + endStop) / 2, endStop, 1.0],
+        ).createShader(bounds);
+      },
+      blendMode: BlendMode.dstIn,
+      child: child,
     );
   }
 }
