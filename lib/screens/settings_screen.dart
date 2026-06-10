@@ -296,6 +296,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
     ));
   }
 
+void _autoSaveName() {
+  final box = Hive.box('einstellungen');
+  final formatted = _capitalizeEachWord(_nameController.text);
+  _nameController.text = formatted;
+  final existingName = box.get('name', defaultValue: '') as String;
+  final isNew = existingName.isEmpty;
+  if (formatted == existingName) return; // nichts geändert
+  box.put('name', formatted);
+  final skin = AppTheme.of(context);
+  final message = isNew ? 'Name gespeichert ✓' : 'Name geändert ✓';
+  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+    content: Text(message),
+    backgroundColor: skin.primary == Colors.white
+        ? const Color(0xFF3DD6C8)
+        : skin.primary,
+    behavior: SnackBarBehavior.floating,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+    margin: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+    duration: const Duration(milliseconds: 1500),
+  ));
+}
+
   void _autoDeleteOldEntries() {
     final now = DateTime.now();
     final cutoffMonth = DateTime(now.year, now.month - _deleteAfterMonths);
@@ -420,18 +442,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                     height: 1.5),
                               ),
                               const SizedBox(height: 14),
-                              _TiTextField(
-                                skin: skin,
-                                controller: _nameController,
-                                hint: 'z.B. Max Mustermann',
-                                onChanged: _onNameChanged,
-                                onSubmitted: (_) => _dismissKeyboard(),
-                              ),
-                              const SizedBox(height: 12),
-                              _TiButton(
-                                  skin: skin,
-                                  label: 'Speichern',
-                                  onTap: _saveSettings),
+                              Focus(
+  onFocusChange: (hasFocus) {
+    if (!hasFocus) {
+      _autoSaveName();
+    }
+  },
+  child: _TiTextField(
+    skin: skin,
+    controller: _nameController,
+    hint: 'z.B. Max Mustermann',
+    onChanged: _onNameChanged,
+    onSubmitted: (_) {
+      _dismissKeyboard();
+      _autoSaveName();
+    },
+  ),
+),
                             ],
                           ),
                         ),

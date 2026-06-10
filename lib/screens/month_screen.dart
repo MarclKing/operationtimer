@@ -633,261 +633,235 @@ class MonthScreenState extends State<MonthScreen> {
     final offeneEntries = entries.where((e) => !_isEntryComplete(e)).length;
 
     return Scaffold(
-      backgroundColor: skin.bgBase,
-      body: Stack(
+  backgroundColor: skin.bgBase,
+  body: GestureDetector(
+    onTap: closeAllRows,
+    behavior: HitTestBehavior.translucent,
+    child: SafeArea(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          GestureDetector(
-            onTap: closeAllRows,
-            behavior: HitTestBehavior.translucent,
-            child: SafeArea(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SizedBox(height: 50),
+          const SizedBox(height: 50),
 
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 24),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Monatsübersicht',
-                            style: TextStyle(
-                                fontSize: 26,
-                                fontWeight: FontWeight.w700,
-                                color: skin.textPrimary)),
-                        const SizedBox(height: 16),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Monatsübersicht',
+                    style: TextStyle(
+                        fontSize: 26,
+                        fontWeight: FontWeight.w700,
+                        color: skin.textPrimary)),
+                const SizedBox(height: 16),
 
-                        // ── Monats-Navigation (wie HomeScreen) ─────────────────
-                        GestureDetector(
-  onHorizontalDragEnd: (d) {
-    final v = d.primaryVelocity ?? 0;
-    if (v < -300) _changeMonth(1);
-    if (v > 300) _changeMonth(-1);
-  },
-  child: ClipRRect(
-    borderRadius: BorderRadius.circular(20),
-    child: BackdropFilter(
-                            filter: ImageFilter.blur(
-                                sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: skin.isLight
-                                    ? Colors.white.withValues(alpha: skin.glassOpacity)
-                                    : skin.bgCard.withValues(alpha: skin.glassOpacity),
-                                borderRadius: BorderRadius.circular(20),
-                                border: Border.all(color: skin.glassBorder, width: 1.0),
-                                boxShadow: [
-                                  BoxShadow(
-                                      color: skin.glassShadow,
-                                      blurRadius: 24,
-                                      offset: const Offset(0, 6)),
-                                  BoxShadow(
-                                      color: skin.glassHighlight,
-                                      blurRadius: 0,
-                                      spreadRadius: -1,
-                                      offset: const Offset(0, 1)),
-                                ],
-                              ),
-                              child: Row(
-                                children: [
-                                  GestureDetector(
-                                    onTap: () => _changeMonth(-1),
-                                    child: const SizedBox(
-                                      width: 44, height: 52,
-                                      child: Center(
-                                        child: Icon(Icons.chevron_left, size: 22),
-                                      ),
-                                    ),
-                                  ),
-                                  Expanded(
-  child: GestureDetector(
-    onTap: _showMonthPicker,
-    onDoubleTap: () {
-      HapticFeedback.selectionClick();
-      final now = DateTime.now();
-      _setMonth(DateTime(now.year, now.month));
-    },
-    child: Padding(
-                                        padding: const EdgeInsets.symmetric(vertical: 12),
-                                        child: Row(
-                                          mainAxisAlignment: MainAxisAlignment.center,
-                                          children: [
-                                            Text(monthName,
-                                                style: TextStyle(
-                                                    fontSize: 16,
-                                                    fontWeight: FontWeight.w600,
-                                                    color: skin.textPrimary)),
-                                            const SizedBox(width: 6),
-                                            Icon(Icons.expand_more,
-                                                color: skin.surface(0.4), size: 18),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  GestureDetector(
-                                    onTap: () => _changeMonth(1),
-                                    child: SizedBox(
-                                      width: 44, height: 52,
-                                      child: Center(
-                                        child: Icon(Icons.chevron_right,
-                                            size: 22, color: skin.surface(0.5)),
-                                      ),
-                                    ),
-                                  ),
-                                ],
+                // ── Monats-Navigation ─────────────────
+                GestureDetector(
+                  onHorizontalDragEnd: (d) {
+                    final v = d.primaryVelocity ?? 0;
+                    if (v < -300) _changeMonth(1);
+                    if (v > 300) _changeMonth(-1);
+                  },
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(20),
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(
+                          sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: skin.isLight
+                              ? Colors.white.withValues(alpha: skin.glassOpacity)
+                              : skin.bgCard.withValues(alpha: skin.glassOpacity),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: skin.glassBorder, width: 1.0),
+                          boxShadow: [
+                            BoxShadow(
+                                color: skin.glassShadow,
+                                blurRadius: 24,
+                                offset: const Offset(0, 6)),
+                            BoxShadow(
+                                color: skin.glassHighlight,
+                                blurRadius: 0,
+                                spreadRadius: -1,
+                                offset: const Offset(0, 1)),
+                          ],
+                        ),
+                        child: Row(
+                          children: [
+                            GestureDetector(
+                              onTap: () => _changeMonth(-1),
+                              child: const SizedBox(
+                                width: 44, height: 52,
+                                child: Center(
+                                  child: Icon(Icons.chevron_left, size: 22),
+                                ),
                               ),
                             ),
-                          ),
+                            Expanded(
+                              child: GestureDetector(
+                                onTap: _showMonthPicker,
+                                onDoubleTap: () {
+                                  HapticFeedback.selectionClick();
+                                  final now = DateTime.now();
+                                  _setMonth(DateTime(now.year, now.month));
+                                },
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Text(monthName,
+                                          style: TextStyle(
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.w600,
+                                              color: skin.textPrimary)),
+                                      const SizedBox(width: 6),
+                                      Icon(Icons.expand_more,
+                                          color: skin.surface(0.4), size: 18),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                            GestureDetector(
+                              onTap: () => _changeMonth(1),
+                              child: SizedBox(
+                                width: 44, height: 52,
+                                child: Center(
+                                  child: Icon(Icons.chevron_right,
+                                      size: 22, color: skin.surface(0.5)),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                        ),
-
-                        const SizedBox(height: 12),
-
-                        // ── Stat Cards ────────────────────────────────────────
-                        Row(children: [
-                          _GlassStatCard(label: 'Arbeit', value: '${entries.length}', color: skin.statEntries),
-                          const SizedBox(width: 10),
-                          _GlassStatCard(label: 'Tage', value: '$daysInMonth', color: skin.statComplete),
-                          const SizedBox(width: 10),
-                          _GlassStatCard(label: 'Offen', value: '$offeneEntries', color: skin.statOpen),
-                        ]),
-
-                        const SizedBox(height: 8),
-                        Text(
-                          '← Löschen  ·  → Bearbeiten / Teilen',
-                          style: TextStyle(fontSize: 11, color: skin.surface(0.3)),
-                        ),
-                      ],
+                      ),
                     ),
                   ),
+                ),
 
-                  const SizedBox(height: 12),
+                const SizedBox(height: 12),
 
-                  Expanded(
-                    child: entries.isEmpty
-                        ? Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                const Text('📭', style: TextStyle(fontSize: 48)),
-                                const SizedBox(height: 12),
-                                Text('Keine Einträge für diesen Monat',
-                                    style: TextStyle(color: skin.surface(0.3), fontSize: 15)),
-                              ],
-                            ),
-                          )
-                        : NotificationListener<ScrollNotification>(
-                            onNotification: (_) {
-                              closeAllRows();
-                              return false;
-                            },
-                            child: _FadingListView(
-                              fadeFromBottom: bottomNavHeight + 88,
-                              child: ListView.builder(
-                                padding: EdgeInsets.fromLTRB(24, 4, 24, bottomNavHeight + 88),
-                                itemCount: entries.length,
-                                itemBuilder: (context, index) {
-                                  final entry = entries[index];
-                                  final datum = entry['datum'] as String;
-                                  final entryId = entry['id'] as String;
-                                  _rowKeys[entryId] ??= GlobalKey<_SlidableRowState>();
-                                  return Padding(
-                                    padding: const EdgeInsets.only(bottom: 10),
-                                    child: _SlidableRow(
-                                      key: _rowKeys[entryId],
-                                      entry: entry,
-                                      entryId: entryId,
-                                      duration: _calcDuration(
-                                          entry['kommen'] ?? '', entry['gehen'] ?? ''),
-                                      isComplete: _isEntryComplete(entry),
-                                      onEdit: () => _editEntry(entry),
-                                      onDelete: () => _deleteEntry(datum, entryId),
-                                      onShare: () => _shareEntry(entry),
-                                      onCloseOthers: () => _closeOtherRows(entryId),
-                                    ),
-                                  );
-                                },
-                              ),
-                            ),
-                          ),
-                  ),
-                ],
-              ),
+                // ── Stat Cards ────────────────────────────────────────
+                Row(children: [
+                  _GlassStatCard(label: 'Arbeit', value: '${entries.length}', color: skin.statEntries),
+                  const SizedBox(width: 10),
+                  _GlassStatCard(label: 'Tage', value: '$daysInMonth', color: skin.statComplete),
+                  const SizedBox(width: 10),
+                  _GlassStatCard(label: 'Offen', value: '$offeneEntries', color: skin.statOpen),
+                ]),
+
+                const SizedBox(height: 8),
+                Text(
+                  '← Löschen  ·  → Bearbeiten / Teilen',
+                  style: TextStyle(fontSize: 11, color: skin.surface(0.3)),
+                ),
+              ],
             ),
           ),
 
-          // ── Export-Button ──────────────────────────────────────────────────
-          Positioned(
-            left: 24,
-            right: 24,
-            bottom: bottomNavHeight + 32,
-            child: GestureDetector(
-              onTap: () {
-                closeAllRows();
-                if (entries.isEmpty) {
-                  final mn = DateFormat('MMMM yyyy', 'de').format(_selectedMonth);
-                  _showSnackbar('Keine Einträge für $mn vorhanden', skin.deleteColor);
-                  return;
-                }
-                PdfService.exportMonth(context, _selectedMonth);
-              },
+          const SizedBox(height: 12),
+
+          Expanded(
+            child: entries.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Text('📭', style: TextStyle(fontSize: 48)),
+                        const SizedBox(height: 12),
+                        Text('Keine Einträge für diesen Monat',
+                            style: TextStyle(color: skin.surface(0.3), fontSize: 15)),
+                      ],
+                    ),
+                  )
+                : NotificationListener<ScrollNotification>(
+                    onNotification: (_) {
+                      closeAllRows();
+                      return false;
+                    },
+                    child: ListView.builder(
+                      padding: EdgeInsets.fromLTRB(24, 4, 24, 0),
+                      itemCount: entries.length + 1,
+                      itemBuilder: (context, index) {
+
+                        // ── Letztes Item: Export-Button ──
+                        if (index == entries.length) {
+  return Padding(
+    padding: EdgeInsets.fromLTRB(0, 8, 0, bottomNavHeight + 32),
+    child: Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        GestureDetector(
+          onTap: () {
+            closeAllRows();
+            PdfService.exportMonth(context, _selectedMonth);
+          },
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
               child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 16),
+                padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 20),
                 decoration: BoxDecoration(
-                  color: skin.isLight
-                      ? skin.primary.withValues(alpha: 0.13)
-                      : skin.primary.withValues(alpha: 0.22),
-                  borderRadius: BorderRadius.circular(18),
+                  color: skin.primary.withValues(alpha: 0.07),
+                  borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: skin.isLight
-                        ? skin.primary.withValues(alpha: 0.28)
-                        : skin.primary.withValues(alpha: 0.45),
-                    width: 1.5,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                        color: skin.glassShadow,
-                        blurRadius: 24,
-                        spreadRadius: 0,
-                        offset: const Offset(0, 6)),
-                    BoxShadow(
-                        color: skin.glassHighlight,
-                        blurRadius: 0,
-                        spreadRadius: -1,
-                        offset: const Offset(0, 1)),
-                  ],
+                      color: skin.primary.withValues(alpha: 0.22)),
                 ),
                 child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(Icons.picture_as_pdf_outlined,
-                        color: skin.isLight
-                            ? skin.primary.withValues(alpha: 0.65)
-                            : skin.primary.withValues(alpha: 0.70),
-                        size: 20),
-                    const SizedBox(width: 10),
-                    Text(
-                      'Diesen Monat exportieren',
-                      style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: skin.isLight
-                              ? skin.primary.withValues(alpha: 0.90)
-                              : skin.primary.withValues(alpha: 0.85),
-                          letterSpacing: 0.2),
-                    ),
+                        color: skin.primary, size: 16),
+                    const SizedBox(width: 7),
+                    Text('Diesen Monat exportieren',
+                        style: TextStyle(
+                            color: skin.primary,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600)),
                   ],
                 ),
               ),
             ),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+                        // ── Normale Einträge ──
+                        final entry = entries[index];
+                        final datum = entry['datum'] as String;
+                        final entryId = entry['id'] as String;
+                        _rowKeys[entryId] ??= GlobalKey<_SlidableRowState>();
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: _SlidableRow(
+                            key: _rowKeys[entryId],
+                            entry: entry,
+                            entryId: entryId,
+                            duration: _calcDuration(
+                                entry['kommen'] ?? '', entry['gehen'] ?? ''),
+                            isComplete: _isEntryComplete(entry),
+                            onEdit: () => _editEntry(entry),
+                            onDelete: () => _deleteEntry(datum, entryId),
+                            onShare: () => _shareEntry(entry),
+                            onCloseOthers: () => _closeOtherRows(entryId),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
           ),
         ],
       ),
-    );
-  }
-}
+    ),
+  ),
+);
+  }  // Ende build()
+}    // Ende MonthScreenStatnthScreenState
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GLASS STAT CARD
@@ -1975,37 +1949,6 @@ class _GlassTextFieldInput extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// FADING LIST VIEW
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _FadingListView extends StatelessWidget {
-  final Widget child;
-  final double fadeFromBottom;
-  const _FadingListView({required this.child, required this.fadeFromBottom});
-
-  @override
-  Widget build(BuildContext context) {
-    return ShaderMask(
-      shaderCallback: (bounds) {
-        final h = bounds.height;
-        final fadeStartPx = fadeFromBottom + 60;
-        final fadeEndPx = fadeFromBottom - 20;
-        final startStop = ((h - fadeStartPx) / h).clamp(0.0, 1.0);
-        final endStop = ((h - fadeEndPx) / h).clamp(0.0, 1.0);
-        return LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: const [Colors.white, Colors.white, Colors.transparent, Colors.transparent, Colors.transparent],
-stops: [0.0, startStop, endStop, endStop + 0.01, 1.0],
-        ).createShader(bounds);
-      },
-      blendMode: BlendMode.dstIn,
-      child: child,
     );
   }
 }

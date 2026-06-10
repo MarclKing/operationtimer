@@ -459,7 +459,7 @@ class _ChangedDays {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PDF Parser (vollständig übernommen)
+// PDF Parser (vollständig übernommen + parseEvents)
 // ─────────────────────────────────────────────────────────────────────────────
 
 class DienstplanParser {
@@ -703,6 +703,105 @@ class DienstplanParser {
       return result;
     } catch (e, stack) {
       if (devMode) { log.writeln('[KOLLEGEN] FEHLER: $e'); log.writeln('Stack: $stack'); }
+      return {};
+    }
+  }
+
+  // ───────── NEU: parseEvents ─────────
+  static Map<String, String> parseEvents({
+    required List<int> bytes,
+    required String fileName,
+    bool devMode = false,
+  }) {
+    try {
+      final log = StringBuffer();
+      final stream = _decompress(bytes, log, devMode);
+      if (stream == null) return {};
+
+      final items = _extractCoordText(stream);
+      final rows = _groupByY(items);
+      final sortedYsDesc = rows.keys.toList()..sort((a, b) => b.compareTo(a));
+
+      // Datum-Zeile finden
+      final dateRow = _findDateRow(rows);
+      if (dateRow == null || dateRow.isEmpty) return {};
+
+      double? dateRowY;
+      final dateRe = RegExp(r'^\d{1,2}\.\d{2}\.$');
+      for (final y in sortedYsDesc) {
+        final matches = rows[y]!.where((e) => dateRe.hasMatch(e.$2)).length;
+        if (matches >= 5) { dateRowY = y; break; }
+      }
+      if (dateRowY == null) return {};
+
+      final calWords = {
+        'MO','DI','MI','DO','FR','SA','SO','MON','DIE','MIT','DON','FRE','SAM','SON',
+        'KW','KALENDERWOCHE','JUNI','JULI','AUGUST','SEPTEMBER','OKTOBER',
+        'NOVEMBER','DEZEMBER','JANUAR','FEBRUAR','MÄRZ','APRIL','MAI', 'NAME',
+        'RESERVE', 'PERSONAL',
+      };
+
+      // Kandidaten-Zeilen oberhalb der Datumzeile
+      final aboveYs = sortedYsDesc
+          .where((y) => y > dateRowY! + 5)
+          .toList();
+
+      // Finde die Ereignis-Zeile
+      List<(double, String)>? eventRow;
+      for (final y in aboveYs) {
+        final rowItems = rows[y]!;
+        final texts = rowItems.map((e) => e.$2.trim()).toList();
+        final meaningful = texts.where((t) =>
+          t.length >= 2 &&
+          !calWords.contains(t.toUpperCase()) &&
+          !RegExp(r'^\d{1,2}\.\d{2}\.$').hasMatch(t) &&
+          !RegExp(r'^\d{4}$').hasMatch(t) &&
+          !RegExp(r'^\d{1,2}$').hasMatch(t)
+        ).toList();
+        if (meaningful.length >= 2) {
+          eventRow = rowItems.toList();
+          break;
+        }
+      }
+      if (eventRow == null) return {};
+
+      // Jeden Event-Text dem nächsten Datum zuordnen
+      final result = <String, String>{};
+      for (final (ex, eText) in eventRow) {
+        final trimmed = eText.trim();
+        if (trimmed.isEmpty) continue;
+        if (calWords.contains(trimmed.toUpperCase())) continue;
+        if (RegExp(r'^\d{1,2}\.\d{2}\.$').hasMatch(trimmed)) continue;
+        if (RegExp(r'^\d{4}$').hasMatch(trimmed)) continue;
+
+        double bestDist = double.infinity;
+        (double, String)? bestDate;
+        for (final dateCell in dateRow) {
+          final dist = (ex - dateCell.$1).abs();
+          if (dist < bestDist) { bestDist = dist; bestDate = dateCell; }
+        }
+        if (bestDate == null || bestDist > 60.0) continue;
+
+        final parts = bestDate.$2.replaceAll(' ', '').split('.');
+        if (parts.length < 2) continue;
+        final day = int.tryParse(parts[0]);
+        final month = int.tryParse(parts[1]);
+        if (day == null || month == null) continue;
+
+        final detectedMonth = _detectMonthFromText(rows, fileName);
+        if (detectedMonth == null) continue;
+
+        final key = DateFormat('yyyy-MM-dd')
+            .format(DateTime(detectedMonth.year, month, day));
+
+        if (result.containsKey(key)) {
+          result[key] = '${result[key]}, $trimmed';
+        } else {
+          result[key] = trimmed;
+        }
+      }
+      return result;
+    } catch (e) {
       return {};
     }
   }
@@ -1006,6 +1105,7 @@ class ScheduleScreen extends StatefulWidget {
 class ScheduleScreenState extends State<ScheduleScreen> {
   late DateTime _selectedMonth;
   Map<String, String> _scheduleData = {};
+  Map<String, String> _eventsData = {};  // NEU: Events
   String? _activeNoteKey;
   bool _noteOverlayVisible = false;
   String? _activeColleaguesKey;
@@ -1072,6 +1172,17 @@ class ScheduleScreenState extends State<ScheduleScreen> {
         for (final entry in raw.entries) {
           _scheduleData[entry.key.toString()] = entry.value.toString();
         }
+      }
+      // Events laden
+      _eventsData = {};
+      final eventsRaw = box.get('events_$monthKey');
+      if (eventsRaw is String) {
+        try {
+          final decoded = jsonDecode(eventsRaw) as Map<String, dynamic>;
+          for (final e in decoded.entries) {
+            _eventsData[e.key] = e.value.toString();
+          }
+        } catch (_) {}
       }
     });
   }
@@ -1418,72 +1529,84 @@ class ScheduleScreenState extends State<ScheduleScreen> {
                           ]),
                           const SizedBox(height: 16),
 
-                          // ── Monats-Navigation (volle Breite mit integrierten Pfeilen) ──
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(20),
-                            child: BackdropFilter(
-                              filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  color: skin.isLight
-                                      ? Colors.white.withValues(alpha: skin.glassOpacity)
-                                      : skin.bgCard.withValues(alpha: skin.glassOpacity),
-                                  borderRadius: BorderRadius.circular(20),
-                                  border: Border.all(color: skin.glassBorder, width: 1.0),
-                                  boxShadow: [
-                                    BoxShadow(
-                                        color: skin.glassShadow,
-                                        blurRadius: 24,
-                                        offset: const Offset(0, 6)),
-                                    BoxShadow(
-                                        color: skin.glassHighlight,
-                                        blurRadius: 0,
-                                        spreadRadius: -1,
-                                        offset: const Offset(0, 1)),
-                                  ],
+                          // ── Monats-Navigation mit Gestenunterstützung ──
+                          GestureDetector(
+                            onHorizontalDragEnd: (d) {
+                              final v = d.primaryVelocity ?? 0;
+                              if (v < -300) _changeMonth(1);
+                              if (v > 300) _changeMonth(-1);
+                            },
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(20),
+                              child: BackdropFilter(
+                                filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: skin.isLight
+                                        ? Colors.white.withValues(alpha: skin.glassOpacity)
+                                        : skin.bgCard.withValues(alpha: skin.glassOpacity),
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(color: skin.glassBorder, width: 1.0),
+                                    boxShadow: [
+                                      BoxShadow(
+                                          color: skin.glassShadow,
+                                          blurRadius: 24,
+                                          offset: const Offset(0, 6)),
+                                      BoxShadow(
+                                          color: skin.glassHighlight,
+                                          blurRadius: 0,
+                                          spreadRadius: -1,
+                                          offset: const Offset(0, 1)),
+                                    ],
+                                  ),
+                                  child: Row(children: [
+                                    GestureDetector(
+                                      onTap: () => _changeMonth(-1),
+                                      child: const SizedBox(
+                                        width: 44, height: 52,
+                                        child: Center(
+                                          child: Icon(Icons.chevron_left, size: 22),
+                                        ),
+                                      ),
+                                    ),
+                                    Expanded(
+                                      child: GestureDetector(
+                                        onTap: _showMonthPicker,
+                                        onDoubleTap: () {
+                                          HapticFeedback.selectionClick();
+                                          final now = DateTime.now();
+                                          _setMonth(DateTime(now.year, now.month));
+                                        },
+                                        child: Padding(
+                                          padding: const EdgeInsets.symmetric(vertical: 12),
+                                          child: Row(
+                                            mainAxisAlignment: MainAxisAlignment.center,
+                                            children: [
+                                              Text(monthName,
+                                                  style: TextStyle(
+                                                      fontSize: 16,
+                                                      fontWeight: FontWeight.w600,
+                                                      color: skin.textPrimary)),
+                                              const SizedBox(width: 6),
+                                              Icon(Icons.expand_more,
+                                                  color: skin.primary, size: 18),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    GestureDetector(
+                                      onTap: () => _changeMonth(1),
+                                      child: SizedBox(
+                                        width: 44, height: 52,
+                                        child: Center(
+                                          child: Icon(Icons.chevron_right,
+                                              size: 22, color: skin.surface(0.5)),
+                                        ),
+                                      ),
+                                    ),
+                                  ]),
                                 ),
-                                child: Row(children: [
-                                  // Pfeil links — nur Hitbox
-                                  GestureDetector(
-                                    onTap: () => _changeMonth(-1),
-                                    child: const SizedBox(
-                                      width: 44, height: 52,
-                                      child: Center(child: Icon(Icons.chevron_left, size: 22)),
-                                    ),
-                                  ),
-                                  // Monatsname
-                                  Expanded(
-                                    child: GestureDetector(
-                                      onTap: _showMonthPicker,
-                                      onDoubleTap: () {
-                                        HapticFeedback.selectionClick();
-                                        final now = DateTime.now();
-                                        _setMonth(DateTime(now.year, now.month));
-                                      },
-                                    
-                                      child: Padding(
-                                        padding: const EdgeInsets.symmetric(vertical: 12),
-                                        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                                          Text(monthName, style: TextStyle(
-                                              fontSize: 16, fontWeight: FontWeight.w600, color: skin.textPrimary)),
-                                          const SizedBox(width: 6),
-                                          Icon(Icons.expand_more, color: skin.primary, size: 18),
-                                        ]),
-                                      ),
-                                    ),
-                                  ),
-                                  // Pfeil rechts — nur Hitbox
-                                  GestureDetector(
-                                    onTap: () => _changeMonth(1),
-                                    child: SizedBox(
-                                      width: 44, height: 52,
-                                      child: Center(
-                                        child: Icon(Icons.chevron_right,
-                                            size: 22, color: skin.surface(0.5)),
-                                      ),
-                                    ),
-                                  ),
-                                ]),
                               ),
                             ),
                           ),
@@ -1595,6 +1718,7 @@ class ScheduleScreenState extends State<ScheduleScreen> {
                                       onNoteChanged: () => setState(() {}),
                                       onOpenColleagues: () => openColleaguesOverlay(key),
                                       dayCardDragging: widget.dayCardDragging,
+                                      eventText: _eventsData[key],  // NEU
                                     ),
                                   );
                                 },
@@ -1857,62 +1981,121 @@ class _NoteOverlayState extends State<_NoteOverlay> with SingleTickerProviderSta
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// KOLLEGEN OVERLAY — Glass (HomeScreen-Stil)
+// KOLLEGEN OVERLAY — Glass (erweiterte Version mit Slide-Bar)
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _ColleaguesOverlay extends StatefulWidget {
   final String dateKey;
   final AppSkin skin;
   final VoidCallback onClose;
-  const _ColleaguesOverlay({required this.dateKey, required this.skin, required this.onClose});
+  const _ColleaguesOverlay({
+    required this.dateKey,
+    required this.skin,
+    required this.onClose,
+  });
 
   @override
   State<_ColleaguesOverlay> createState() => _ColleaguesOverlayState();
 }
 
-class _ColleaguesOverlayState extends State<_ColleaguesOverlay> with SingleTickerProviderStateMixin {
+class _ColleaguesOverlayState extends State<_ColleaguesOverlay>
+    with SingleTickerProviderStateMixin {
   late AnimationController _ctrl;
   late Animation<double> _scaleAnim;
   late Animation<double> _opacityAnim;
+
+  bool _expanded = false;
+  late AnimationController _expandCtrl;
+  late Animation<double> _expandAnim;
+
   Map<String, String> _colleagues = {};
+  String? _eventText;
   String? _debugLog;
   bool _debugLogCopied = false;
+
+  double _dragStartY = 0;
 
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 320));
-    _scaleAnim = CurvedAnimation(parent: _ctrl, curve: Curves.easeOutBack, reverseCurve: Curves.easeInBack);
-    _opacityAnim = CurvedAnimation(parent: _ctrl, curve: Curves.easeOut, reverseCurve: Curves.easeIn);
+    _ctrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 320));
+    _scaleAnim = CurvedAnimation(
+        parent: _ctrl,
+        curve: Curves.easeOutBack,
+        reverseCurve: Curves.easeInBack);
+    _opacityAnim = CurvedAnimation(
+        parent: _ctrl,
+        curve: Curves.easeOut,
+        reverseCurve: Curves.easeIn);
+
+    _expandCtrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 380));
+    _expandAnim = CurvedAnimation(
+        parent: _expandCtrl, curve: Curves.easeOutCubic,
+        reverseCurve: Curves.easeInCubic);
+
     _ctrl.forward();
-    _loadColleagues();
+    _loadData();
   }
 
   @override
-  void dispose() { _ctrl.dispose(); super.dispose(); }
+  void dispose() {
+    _ctrl.dispose();
+    _expandCtrl.dispose();
+    super.dispose();
+  }
 
-  void _loadColleagues() {
+  void _loadData() {
     final box = Hive.box('einstellungen');
     final monthKey = widget.dateKey.substring(0, 7);
+
     final raw = box.get('colleagues_$monthKey');
     if (raw is String) {
       try {
         final decoded = jsonDecode(raw) as Map<String, dynamic>;
         final dayData = decoded[widget.dateKey];
         if (dayData is Map) {
-          setState(() { _colleagues = Map<String, String>.from(dayData.map((k, v) => MapEntry(k.toString(), v.toString()))); });
+          setState(() {
+            _colleagues = Map<String, String>.from(
+                dayData.map((k, v) => MapEntry(k.toString(), v.toString())));
+          });
         }
       } catch (_) {}
     }
+
+    final evRaw = box.get('events_$monthKey');
+    if (evRaw is String) {
+      try {
+        final decoded = jsonDecode(evRaw) as Map<String, dynamic>;
+        final dayEvent = decoded[widget.dateKey];
+        if (dayEvent is String && dayEvent.isNotEmpty) {
+          setState(() => _eventText = dayEvent);
+        }
+      } catch (_) {}
+    }
+
     final box2 = Hive.box('einstellungen');
-    final isDevMode = box2.get('dienstplan_dev_placeholder', defaultValue: false) as bool;
+    final isDevMode =
+        box2.get('dienstplan_dev_placeholder', defaultValue: false) as bool;
     if (isDevMode) {
       final debugRaw = box.get('colleagues_debug_$monthKey');
-      if (debugRaw is String && debugRaw.isNotEmpty) setState(() => _debugLog = debugRaw);
+      if (debugRaw is String && debugRaw.isNotEmpty) {
+        setState(() => _debugLog = debugRaw);
+      }
     }
   }
 
-  void _close() { _ctrl.reverse().then((_) => widget.onClose()); }
+  void _close() => _ctrl.reverse().then((_) => widget.onClose());
+
+  void _expand() {
+    setState(() => _expanded = true);
+    _expandCtrl.forward();
+  }
+
+  void _collapse() {
+    _expandCtrl.reverse().then((_) => setState(() => _expanded = false));
+  }
 
   AppSkin get skin => widget.skin;
 
@@ -1923,9 +2106,13 @@ class _ColleaguesOverlayState extends State<_ColleaguesOverlay> with SingleTicke
       final rawShift = entry.value.trim().toUpperCase();
       final shiftParts = rawShift.split('/').map((s) => s.trim()).toList();
       bool matches = false;
-      for (final code in upperCodes) { if (shiftParts.contains(code)) { matches = true; break; } }
+      for (final code in upperCodes) {
+        if (shiftParts.contains(code)) { matches = true; break; }
+      }
       if (matches) {
-        final name = entry.key.contains(',') ? entry.key.split(',').first.trim() : entry.key.trim();
+        final name = entry.key.contains(',')
+            ? entry.key.split(',').first.trim()
+            : entry.key.trim();
         result.add(name);
       }
     }
@@ -1935,12 +2122,17 @@ class _ColleaguesOverlayState extends State<_ColleaguesOverlay> with SingleTicke
 
   List<String> _birthdayNames() {
     return _colleagues.entries
-        .where((e) => e.value.trim().toUpperCase().split('/').map((s) => s.trim()).contains('GEB'))
-        .map((e) => e.key.contains(',') ? e.key.split(',').first.trim() : e.key.trim())
+        .where((e) => e.value.trim().toUpperCase()
+            .split('/').map((s) => s.trim()).contains('GEB'))
+        .map((e) => e.key.contains(',')
+            ? e.key.split(',').first.trim()
+            : e.key.trim())
         .toList()..sort();
   }
 
-  Widget _shiftGroup({required List<({String label, List<String> names, Color color})> slots}) {
+  Widget _shiftGroup({
+    required List<({String label, List<String> names, Color color})> slots,
+  }) {
     if (slots.isEmpty) return const SizedBox.shrink();
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),
@@ -1955,7 +2147,10 @@ class _ColleaguesOverlayState extends State<_ColleaguesOverlay> with SingleTicke
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: skin.glassBorder, width: 1.0),
             boxShadow: [
-              BoxShadow(color: skin.glassShadow, blurRadius: 12, offset: const Offset(0, 3)),
+              BoxShadow(
+                  color: skin.glassShadow,
+                  blurRadius: 12,
+                  offset: const Offset(0, 3)),
             ],
           ),
           child: Row(
@@ -1964,8 +2159,10 @@ class _ColleaguesOverlayState extends State<_ColleaguesOverlay> with SingleTicke
               for (int i = 0; i < slots.length; i++) ...[
                 if (i > 0)
                   Container(
-                      width: 0.5, height: 40,
-                      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                      width: 0.5,
+                      height: 40,
+                      margin: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 2),
                       color: skin.glassBorder),
                 Expanded(
                   child: Column(
@@ -1973,19 +2170,28 @@ class _ColleaguesOverlayState extends State<_ColleaguesOverlay> with SingleTicke
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
                           color: slots[i].color.withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: Text(slots[i].label,
-                            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700,
-                                color: slots[i].color, letterSpacing: 0.4)),
+                            style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                color: slots[i].color,
+                                letterSpacing: 0.4)),
                       ),
                       const SizedBox(height: 5),
                       ...slots[i].names.map((n) => Padding(
                             padding: const EdgeInsets.only(bottom: 2),
-                            child: Text(n, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: skin.textPrimary, height: 1.3)),
+                            child: Text(n,
+                                style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                    color: skin.textPrimary,
+                                    height: 1.3)),
                           )),
                     ],
                   ),
@@ -1998,17 +2204,148 @@ class _ColleaguesOverlayState extends State<_ColleaguesOverlay> with SingleTicke
     );
   }
 
+  Widget _buildExpandedContent() {
+    final isChrome = skin.key == 'chrome';
+    final tColor = isChrome ? const Color(0xFFCCCCCC) : const Color(0xFF5B8DEF);
+    const isColor = Color(0xFFEF5B5B);
+    const aufColor = Color(0xFFEFBB5B);
+    const daColor = Color(0xFF6B7280);
+    const uColor = Color(0xFF8B8B9E);
+    const xColor = Color(0xFF6B7280);
+
+    final tNames = _namesForShifts(['T']);
+    final isNames = _namesForShifts(['IS']);
+    final aufNames = _namesForShifts(['AUF', 'AF']);
+    final daNames = _namesForShifts(['DA']);
+    final uNames = _namesForShifts(['U']);
+    final xNames = _namesForShifts(['X']);
+
+    final knownShifts = {
+      'P1','P2','P','F1','F2','F','VK','GEB','T','IS','AUF','AF',
+      'DA','U','X',
+    };
+    final otherEntries = <String, List<String>>{};
+    for (final entry in _colleagues.entries) {
+      final rawShift = entry.value.trim().toUpperCase();
+      final parts = rawShift.split('/').map((s) => s.trim()).toList();
+      for (final p in parts) {
+        if (!knownShifts.contains(p) && p.isNotEmpty && p != 'LÜ' && p != 'LUE') {
+          final name = entry.key.contains(',')
+              ? entry.key.split(',').first.trim()
+              : entry.key.trim();
+          otherEntries.putIfAbsent(p, () => []).add(name);
+        }
+      }
+    }
+    for (final k in otherEntries.keys) otherEntries[k]!.sort();
+
+    final hasTGroup = tNames.isNotEmpty || isNames.isNotEmpty || aufNames.isNotEmpty;
+    final hasFreeGroup = daNames.isNotEmpty || uNames.isNotEmpty || xNames.isNotEmpty;
+    final hasOther = otherEntries.isNotEmpty;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Divider(color: skin.glassBorder, height: 1),
+        ),
+
+        if (_eventText != null && _eventText!.isNotEmpty) ...[
+          Row(children: [
+            Icon(Icons.flag_rounded,
+                size: 12, color: const Color(0xFFFFB347)),
+            const SizedBox(width: 5),
+            Text('INFOS',
+                style: TextStyle(
+                    fontSize: 9,
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFFFFB347),
+                    letterSpacing: 0.8)),
+          ]),
+          const SizedBox(height: 6),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFB347).withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                      color: const Color(0xFFFFB347).withValues(alpha: 0.3)),
+                ),
+                child: Text(
+                  _eventText!,
+                  style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: Color(0xFFFFB347),
+                      height: 1.4),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
+
+        if (hasTGroup) ...[
+          _shiftGroup(slots: [
+            if (tNames.isNotEmpty)
+              (label: 'T', names: tNames, color: tColor),
+            if (isNames.isNotEmpty)
+              (label: 'IS', names: isNames, color: isColor),
+            if (aufNames.isNotEmpty)
+              (label: 'AuF', names: aufNames, color: aufColor),
+          ]),
+          const SizedBox(height: 10),
+        ],
+
+        if (hasFreeGroup) ...[
+          _shiftGroup(slots: [
+            if (daNames.isNotEmpty)
+              (label: 'DA', names: daNames, color: daColor),
+            if (uNames.isNotEmpty)
+              (label: 'U', names: uNames, color: uColor),
+            if (xNames.isNotEmpty)
+              (label: 'X', names: xNames, color: xColor),
+          ]),
+          const SizedBox(height: 10),
+        ],
+
+        if (hasOther) ...[
+          _shiftGroup(
+            slots: otherEntries.entries
+                .map((e) => (
+                      label: e.key,
+                      names: e.value,
+                      color: skin.surface(0.45),
+                    ))
+                .toList(),
+          ),
+          const SizedBox(height: 10),
+        ],
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final screenH = MediaQuery.of(context).size.height;
     final keyboardH = MediaQuery.of(context).viewInsets.bottom;
     final safeTop = MediaQuery.of(context).padding.top;
-    final cardTop = (safeTop + 56.0).clamp(safeTop + 48.0, screenH * 0.3);
+    final cardTop =
+        (safeTop + 56.0).clamp(safeTop + 48.0, screenH * 0.3);
     final maxCardHeight = screenH - cardTop - keyboardH - 32.0;
 
     final isChrome = skin.key == 'chrome';
-    final workColor = isChrome ? const Color(0xFFCCCCCC) : const Color(0xFF5B8DEF);
-    final fColor = isChrome ? const Color(0xFFAAAAAA) : const Color(0xFF5B8DEF);
+    final workColor =
+        isChrome ? const Color(0xFFCCCCCC) : const Color(0xFF5B8DEF);
+    final fColor =
+        isChrome ? const Color(0xFFAAAAAA) : const Color(0xFF5B8DEF);
     const vkColor = Color(0xFFEF5B5B);
     const gebColor = Color(0xFFFF6B9D);
 
@@ -2021,7 +2358,18 @@ class _ColleaguesOverlayState extends State<_ColleaguesOverlay> with SingleTicke
     final f2Names = _namesForShifts(['F2']);
     final gebNames = _birthdayNames();
 
-    final hasAny = [p1Names, p2Names, pNames, vkNames, f1Names, fNames, f2Names, gebNames].any((l) => l.isNotEmpty);
+    final hasAny = [
+      p1Names, p2Names, pNames, vkNames,
+      f1Names, fNames, f2Names, gebNames
+    ].any((l) => l.isNotEmpty);
+
+    final hasExpandable = _eventText != null ||
+        _namesForShifts(['T']).isNotEmpty ||
+        _namesForShifts(['IS']).isNotEmpty ||
+        _namesForShifts(['AUF', 'AF']).isNotEmpty ||
+        _namesForShifts(['DA']).isNotEmpty ||
+        _namesForShifts(['U']).isNotEmpty ||
+        _namesForShifts(['X']).isNotEmpty;
 
     return AnimatedBuilder(
       animation: _ctrl,
@@ -2032,15 +2380,23 @@ class _ColleaguesOverlayState extends State<_ColleaguesOverlay> with SingleTicke
               onTap: _close,
               child: Opacity(
                 opacity: _opacityAnim.value * 0.55,
-                child: Container(color: Colors.black, width: double.infinity, height: double.infinity),
+                child: Container(
+                    color: Colors.black,
+                    width: double.infinity,
+                    height: double.infinity),
               ),
             ),
             AnimatedPositioned(
-              duration: const Duration(milliseconds: 180), curve: Curves.easeOut,
-              top: cardTop, left: 20, right: 20,
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOut,
+              top: cardTop,
+              left: 20,
+              right: 20,
               child: Transform.scale(
                 scale: 0.85 + _scaleAnim.value * 0.15,
-                child: Opacity(opacity: _opacityAnim.value.clamp(0.0, 1.0), child: child!),
+                child: Opacity(
+                    opacity: _opacityAnim.value.clamp(0.0, 1.0),
+                    child: child!),
               ),
             ),
           ],
@@ -2051,184 +2407,486 @@ class _ColleaguesOverlayState extends State<_ColleaguesOverlay> with SingleTicke
         child: GestureDetector(
           onTap: () {},
           child: ConstrainedBox(
-            constraints: BoxConstraints(maxHeight: maxCardHeight.clamp(180.0, double.infinity)),
+            constraints: BoxConstraints(
+                maxHeight: maxCardHeight.clamp(180.0, double.infinity)),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(24),
               child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
+                filter: ImageFilter.blur(
+                    sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
                 child: Container(
                   decoration: BoxDecoration(
                     color: skin.isLight
                         ? Colors.white.withValues(alpha: skin.glassOpacity)
                         : skin.bgCard.withValues(alpha: skin.glassOpacity),
                     borderRadius: BorderRadius.circular(24),
-                    border: Border.all(color: skin.glassBorder, width: 1.0),
+                    border:
+                        Border.all(color: skin.glassBorder, width: 1.0),
                     boxShadow: [
-                      BoxShadow(color: skin.glassShadow, blurRadius: 24, spreadRadius: 0, offset: const Offset(0, 6)),
-                      BoxShadow(color: skin.glassHighlight, blurRadius: 0, spreadRadius: -1, offset: const Offset(0, 1)),
+                      BoxShadow(
+                          color: skin.glassShadow,
+                          blurRadius: 24,
+                          spreadRadius: 0,
+                          offset: const Offset(0, 6)),
+                      BoxShadow(
+                          color: skin.glassHighlight,
+                          blurRadius: 0,
+                          spreadRadius: -1,
+                          offset: const Offset(0, 1)),
                     ],
                   ),
-                  child: SingleChildScrollView(
-                    physics: const ClampingScrollPhysics(),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // ── Header mit Close-Icon ──
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 14, 12, 0),
-                          child: Row(children: [
-                            Icon(Icons.people_outline, size: 18, color: skin.primary),
-                            const SizedBox(width: 10),
-                            Expanded(child: Text('KOLLEGEN',
-                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: skin.primary, letterSpacing: 1.0))),
-                            GestureDetector(
-                              onTap: _close,
-                              child: Padding(
-                                padding: const EdgeInsets.all(6.0),
-                                child: Icon(Icons.close, size: 16, color: skin.surface(0.45)),
-                              ),
-                            ),
-                          ]),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-                          child: Divider(color: skin.glassBorder, height: 1),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                            if (_debugLog != null) ...[
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(10),
-                                child: BackdropFilter(
-                                  filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-                                  child: Container(
-                                    constraints: const BoxConstraints(maxHeight: 200),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFFEF5B5B).withValues(alpha: 0.07),
-                                      borderRadius: BorderRadius.circular(10),
-                                      border: Border.all(color: const Color(0xFFEF5B5B).withValues(alpha: 0.28)),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Flexible(
+                        child: SingleChildScrollView(
+                          physics: const ClampingScrollPhysics(),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                    16, 14, 12, 0),
+                                child: Row(children: [
+                                  Icon(Icons.people_outline,
+                                      size: 18, color: skin.primary),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                      child: Text('KOLLEGEN',
+                                          style: TextStyle(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w700,
+                                              color: skin.primary,
+                                              letterSpacing: 1.0))),
+                                  GestureDetector(
+                                    onTap: _close,
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(6.0),
+                                      child: Icon(Icons.close,
+                                          size: 16,
+                                          color: skin.surface(0.45)),
                                     ),
-                                    child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                                      Padding(
-                                        padding: const EdgeInsets.fromLTRB(10, 8, 8, 6),
-                                        child: Row(children: [
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                  ),
+                                ]),
+                              ),
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                    16, 10, 16, 0),
+                                child: Divider(
+                                    color: skin.glassBorder, height: 1),
+                              ),
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                    16, 12, 16, 0),
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                  children: [
+                                    if (_debugLog != null) ...[
+                                      ClipRRect(
+                                        borderRadius:
+                                            BorderRadius.circular(10),
+                                        child: BackdropFilter(
+                                          filter: ImageFilter.blur(
+                                              sigmaX: 8, sigmaY: 8),
+                                          child: Container(
+                                            constraints:
+                                                const BoxConstraints(
+                                                    maxHeight: 200),
                                             decoration: BoxDecoration(
-                                              color: const Color(0xFFEF5B5B).withValues(alpha: 0.15),
-                                              borderRadius: BorderRadius.circular(4),
-                                              border: Border.all(color: const Color(0xFFEF5B5B).withValues(alpha: 0.35)),
+                                              color: const Color(0xFFEF5B5B)
+                                                  .withValues(alpha: 0.07),
+                                              borderRadius:
+                                                  BorderRadius.circular(10),
+                                              border: Border.all(
+                                                  color: const Color(
+                                                          0xFFEF5B5B)
+                                                      .withValues(
+                                                          alpha: 0.28)),
                                             ),
-                                            child: const Text('DEV', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: Color(0xFFEF5B5B), letterSpacing: 0.8)),
+                                            child: Column(
+                                              mainAxisSize: MainAxisSize.min,
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.stretch,
+                                              children: [
+                                                Padding(
+                                                  padding:
+                                                      const EdgeInsets.fromLTRB(
+                                                          10, 8, 8, 6),
+                                                  child: Row(children: [
+                                                    Container(
+                                                      padding: const EdgeInsets
+                                                          .symmetric(
+                                                          horizontal: 5,
+                                                          vertical: 2),
+                                                      decoration:
+                                                          BoxDecoration(
+                                                        color: const Color(
+                                                                0xFFEF5B5B)
+                                                            .withValues(
+                                                                alpha: 0.15),
+                                                        borderRadius:
+                                                            BorderRadius.circular(
+                                                                4),
+                                                        border: Border.all(
+                                                            color: const Color(
+                                                                    0xFFEF5B5B)
+                                                                .withValues(
+                                                                    alpha:
+                                                                        0.35)),
+                                                      ),
+                                                      child: const Text(
+                                                          'DEV',
+                                                          style: TextStyle(
+                                                              fontSize: 9,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .w700,
+                                                              color: Color(
+                                                                  0xFFEF5B5B),
+                                                              letterSpacing:
+                                                                  0.8)),
+                                                    ),
+                                                    const SizedBox(width: 6),
+                                                    Expanded(
+                                                        child: Text(
+                                                            'Parser-Log',
+                                                            style: TextStyle(
+                                                                fontSize: 11,
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .w600,
+                                                                color: const Color(
+                                                                    0xFFEF5B5B)))),
+                                                    GestureDetector(
+                                                      onTap: () {
+                                                        Clipboard.setData(
+                                                            ClipboardData(
+                                                                text:
+                                                                    _debugLog!));
+                                                        setState(() =>
+                                                            _debugLogCopied =
+                                                                true);
+                                                        HapticFeedback
+                                                            .selectionClick();
+                                                        Future.delayed(
+                                                          const Duration(
+                                                              seconds: 2),
+                                                          () {
+                                                            if (mounted)
+                                                              setState(() =>
+                                                                  _debugLogCopied =
+                                                                      false);
+                                                          },
+                                                        );
+                                                      },
+                                                      child:
+                                                          AnimatedContainer(
+                                                        duration:
+                                                            const Duration(
+                                                                milliseconds:
+                                                                    200),
+                                                        padding:
+                                                            const EdgeInsets
+                                                                .symmetric(
+                                                                horizontal: 8,
+                                                                vertical: 4),
+                                                        decoration:
+                                                            BoxDecoration(
+                                                          color: _debugLogCopied
+                                                              ? skin.statComplete
+                                                                  .withValues(
+                                                                      alpha:
+                                                                          0.15)
+                                                              : const Color(
+                                                                      0xFFEF5B5B)
+                                                                  .withValues(
+                                                                      alpha:
+                                                                          0.12),
+                                                          borderRadius:
+                                                              BorderRadius
+                                                                  .circular(7),
+                                                        ),
+                                                        child: Row(
+                                                            mainAxisSize:
+                                                                MainAxisSize
+                                                                    .min,
+                                                            children: [
+                                                              Icon(
+                                                                  _debugLogCopied
+                                                                      ? Icons
+                                                                          .check_rounded
+                                                                      : Icons
+                                                                          .copy_outlined,
+                                                                  size: 12,
+                                                                  color: _debugLogCopied
+                                                                      ? skin.statComplete
+                                                                      : const Color(
+                                                                          0xFFEF5B5B)),
+                                                              const SizedBox(
+                                                                  width: 3),
+                                                              Text(
+                                                                  _debugLogCopied
+                                                                      ? 'Kopiert'
+                                                                      : 'Kopieren',
+                                                                  style: TextStyle(
+                                                                      fontSize:
+                                                                          10,
+                                                                      fontWeight:
+                                                                          FontWeight
+                                                                              .w600,
+                                                                      color: _debugLogCopied
+                                                                          ? skin.statComplete
+                                                                          : const Color(
+                                                                              0xFFEF5B5B))),
+                                                            ]),
+                                                      ),
+                                                    ),
+                                                  ]),
+                                                ),
+                                                Divider(
+                                                    height: 1,
+                                                    color: const Color(
+                                                            0xFFEF5B5B)
+                                                        .withValues(
+                                                            alpha: 0.15)),
+                                                Flexible(
+                                                  child: SingleChildScrollView(
+                                                    padding:
+                                                        const EdgeInsets.all(
+                                                            10),
+                                                    child: Text(_debugLog!,
+                                                        style: const TextStyle(
+                                                            fontSize: 10,
+                                                            color: Color(
+                                                                0xFFEF5B5B),
+                                                            height: 1.4)),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
                                           ),
-                                          const SizedBox(width: 6),
-                                          Expanded(child: Text('Parser-Log', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: const Color(0xFFEF5B5B)))),
-                                          GestureDetector(
-                                            onTap: () {
-                                              Clipboard.setData(ClipboardData(text: _debugLog!));
-                                              setState(() => _debugLogCopied = true);
-                                              HapticFeedback.selectionClick();
-                                              Future.delayed(const Duration(seconds: 2), () { if (mounted) setState(() => _debugLogCopied = false); });
-                                            },
-                                            child: AnimatedContainer(
-                                              duration: const Duration(milliseconds: 200),
-                                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 12),
+                                    ],
+                                    if (!hasAny)
+                                      Center(
+                                        child: Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                              vertical: 16),
+                                          child: Column(children: [
+                                            Icon(Icons.people_outline,
+                                                size: 32,
+                                                color: skin.textMuted
+                                                    .withValues(alpha: 0.4)),
+                                            const SizedBox(height: 8),
+                                            Text(
+                                                'Keine Kollegen-Daten verfügbar.',
+                                                style: TextStyle(
+                                                    color: skin.textMuted,
+                                                    fontSize: 13,
+                                                    fontWeight:
+                                                        FontWeight.w500),
+                                                textAlign: TextAlign.center),
+                                            const SizedBox(height: 3),
+                                            Text(
+                                                'Bitte Dienstplan erneut importieren.',
+                                                style: TextStyle(
+                                                    color: skin.textMuted
+                                                        .withValues(
+                                                            alpha: 0.6),
+                                                    fontSize: 11),
+                                                textAlign: TextAlign.center),
+                                          ]),
+                                        ),
+                                      ),
+                                    if (hasAny) ...[
+                                      if (p1Names.isNotEmpty ||
+                                          pNames.isNotEmpty ||
+                                          p2Names.isNotEmpty)
+                                        _shiftGroup(slots: [
+                                          if (p1Names.isNotEmpty)
+                                            (
+                                              label: 'P1',
+                                              names: p1Names,
+                                              color: workColor
+                                            ),
+                                          if (pNames.isNotEmpty)
+                                            (
+                                              label: 'P',
+                                              names: pNames,
+                                              color: workColor
+                                            ),
+                                          if (p2Names.isNotEmpty)
+                                            (
+                                              label: 'P2',
+                                              names: p2Names,
+                                              color: workColor
+                                            ),
+                                        ]),
+                                      if (vkNames.isNotEmpty) ...[
+                                        const SizedBox(height: 10),
+                                        _shiftGroup(slots: [
+                                          (
+                                            label: 'VK',
+                                            names: vkNames,
+                                            color: vkColor
+                                          )
+                                        ]),
+                                      ],
+                                      if (f1Names.isNotEmpty ||
+                                          fNames.isNotEmpty ||
+                                          f2Names.isNotEmpty) ...[
+                                        const SizedBox(height: 10),
+                                        _shiftGroup(slots: [
+                                          if (f1Names.isNotEmpty)
+                                            (
+                                              label: 'F1',
+                                              names: f1Names,
+                                              color: fColor
+                                            ),
+                                          if (fNames.isNotEmpty)
+                                            (
+                                              label: 'F',
+                                              names: fNames,
+                                              color: fColor
+                                            ),
+                                          if (f2Names.isNotEmpty)
+                                            (
+                                              label: 'F2',
+                                              names: f2Names,
+                                              color: fColor
+                                            ),
+                                        ]),
+                                      ],
+                                      if (gebNames.isNotEmpty) ...[
+                                        const SizedBox(height: 10),
+                                        ClipRRect(
+                                          borderRadius:
+                                              BorderRadius.circular(10),
+                                          child: BackdropFilter(
+                                            filter: ImageFilter.blur(
+                                                sigmaX: 8, sigmaY: 8),
+                                            child: Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                      horizontal: 10,
+                                                      vertical: 8),
                                               decoration: BoxDecoration(
-                                                color: _debugLogCopied ? skin.statComplete.withValues(alpha: 0.15) : const Color(0xFFEF5B5B).withValues(alpha: 0.12),
-                                                borderRadius: BorderRadius.circular(7),
+                                                color: skin.isLight
+                                                    ? Colors.white
+                                                        .withValues(
+                                                            alpha: skin
+                                                                .glassOpacity)
+                                                    : skin.bgCard.withValues(
+                                                        alpha:
+                                                            skin.glassOpacity),
+                                                borderRadius:
+                                                    BorderRadius.circular(10),
+                                                border: Border.all(
+                                                    color: skin.glassBorder,
+                                                    width: 1.0),
                                               ),
-                                              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                                                Icon(_debugLogCopied ? Icons.check_rounded : Icons.copy_outlined,
-                                                    size: 12, color: _debugLogCopied ? skin.statComplete : const Color(0xFFEF5B5B)),
-                                                const SizedBox(width: 3),
-                                                Text(_debugLogCopied ? 'Kopiert' : 'Kopieren',
-                                                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600,
-                                                        color: _debugLogCopied ? skin.statComplete : const Color(0xFFEF5B5B))),
+                                              child: Row(children: [
+                                                const Text('🎂',
+                                                    style: TextStyle(
+                                                        fontSize: 15)),
+                                                const SizedBox(width: 8),
+                                                Expanded(
+                                                    child: Text(
+                                                        gebNames.join(', '),
+                                                        style: TextStyle(
+                                                            fontSize: 13,
+                                                            fontWeight:
+                                                                FontWeight.w600,
+                                                            color:
+                                                                gebColor))),
                                               ]),
                                             ),
                                           ),
-                                        ]),
-                                      ),
-                                      Divider(height: 1, color: const Color(0xFFEF5B5B).withValues(alpha: 0.15)),
-                                      Flexible(
-                                        child: SingleChildScrollView(
-                                          padding: const EdgeInsets.all(10),
-                                          child: Text(_debugLog!, style: const TextStyle(fontSize: 10, color: Color(0xFFEF5B5B), height: 1.4)),
                                         ),
+                                      ],
+                                    ],
+                                    if (_expanded)
+                                      AnimatedBuilder(
+                                        animation: _expandAnim,
+                                        builder: (context, child) =>
+                                            ClipRect(
+                                          child: Align(
+                                            alignment: Alignment.topCenter,
+                                            heightFactor: _expandAnim.value,
+                                            child: child,
+                                          ),
+                                        ),
+                                        child: _buildExpandedContent(),
                                       ),
-                                    ]),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                            ],
-                            if (!hasAny)
-                              Center(
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(vertical: 16),
-                                  child: Column(children: [
-                                    Icon(Icons.people_outline, size: 32, color: skin.textMuted.withValues(alpha: 0.4)),
                                     const SizedBox(height: 8),
-                                    Text('Keine Kollegen-Daten verfügbar.',
-                                        style: TextStyle(color: skin.textMuted, fontSize: 13, fontWeight: FontWeight.w500),
-                                        textAlign: TextAlign.center),
-                                    const SizedBox(height: 3),
-                                    Text('Bitte Dienstplan erneut importieren.',
-                                        style: TextStyle(color: skin.textMuted.withValues(alpha: 0.6), fontSize: 11),
-                                        textAlign: TextAlign.center),
-                                  ]),
+                                  ],
                                 ),
                               ),
-                            if (hasAny) ...[
-                              if (p1Names.isNotEmpty || pNames.isNotEmpty || p2Names.isNotEmpty)
-                                _shiftGroup(slots: [
-                                  if (p1Names.isNotEmpty) (label: 'P1', names: p1Names, color: workColor),
-                                  if (pNames.isNotEmpty) (label: 'P', names: pNames, color: workColor),
-                                  if (p2Names.isNotEmpty) (label: 'P2', names: p2Names, color: workColor),
-                                ]),
-                              if (vkNames.isNotEmpty) ...[
-                                const SizedBox(height: 10),
-                                _shiftGroup(slots: [(label: 'VK', names: vkNames, color: vkColor)]),
-                              ],
-                              if (f1Names.isNotEmpty || fNames.isNotEmpty || f2Names.isNotEmpty) ...[
-                                const SizedBox(height: 10),
-                                _shiftGroup(slots: [
-                                  if (f1Names.isNotEmpty) (label: 'F1', names: f1Names, color: fColor),
-                                  if (fNames.isNotEmpty) (label: 'F', names: fNames, color: fColor),
-                                  if (f2Names.isNotEmpty) (label: 'F2', names: f2Names, color: fColor),
-                                ]),
-                              ],
-                              if (gebNames.isNotEmpty) ...[
-                                const SizedBox(height: 10),
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(10),
-                                  child: BackdropFilter(
-                                    filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                                      decoration: BoxDecoration(
-                                        color: skin.isLight
-                                            ? Colors.white.withValues(alpha: skin.glassOpacity)
-                                            : skin.bgCard.withValues(alpha: skin.glassOpacity),
-                                        borderRadius: BorderRadius.circular(10),
-                                        border: Border.all(color: skin.glassBorder, width: 1.0),
-                                      ),
-                                      child: Row(children: [
-                                        const Text('🎂', style: TextStyle(fontSize: 15)),
-                                        const SizedBox(width: 8),
-                                        Expanded(child: Text(gebNames.join(', '),
-                                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: gebColor))),
-                                      ]),
-                                    ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      if (hasExpandable)
+                        GestureDetector(
+                          onVerticalDragStart: (d) =>
+                              _dragStartY = d.globalPosition.dy,
+                          onVerticalDragEnd: (d) {
+                            final dy =
+                                d.globalPosition.dy - _dragStartY;
+                            if (!_expanded && dy > 30) {
+                              HapticFeedback.selectionClick();
+                              _expand();
+                            } else if (_expanded && dy < -30) {
+                              HapticFeedback.selectionClick();
+                              _collapse();
+                            }
+                          },
+                          onTap: () {
+                            HapticFeedback.selectionClick();
+                            if (_expanded) {
+                              _collapse();
+                            } else {
+                              _expand();
+                            }
+                          },
+                          behavior: HitTestBehavior.opaque,
+                          child: Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                            decoration: BoxDecoration(
+                              border: Border(
+                                  top: BorderSide(
+                                      color: skin.glassBorder, width: 0.5)),
+                            ),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                AnimatedRotation(
+                                  turns: _expanded ? 0.5 : 0.0,
+                                  duration:
+                                      const Duration(milliseconds: 300),
+                                  child: Icon(Icons.keyboard_arrow_down,
+                                      size: 14,
+                                      color: skin.surface(0.3)),
+                                ),
+                                const SizedBox(height: 4),
+                                Container(
+                                  width: 36,
+                                  height: 3.5,
+                                  decoration: BoxDecoration(
+                                    color: skin.surface(0.18),
+                                    borderRadius: BorderRadius.circular(2),
                                   ),
                                 ),
+                                const SizedBox(height: 2),
                               ],
-                            ],
-                          ]),
+                            ),
+                          ),
                         ),
-                      ],
-                    ),
+                    ],
                   ),
                 ),
               ),
@@ -2241,7 +2899,7 @@ class _ColleaguesOverlayState extends State<_ColleaguesOverlay> with SingleTicke
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DAY CARD — Glass (überarbeitet: reines Liquid Glass, Chips ohne Rahmen)
+// DAY CARD — Glass (mit eventText + Fähnchen-Icon)
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _DayCard extends StatefulWidget {
@@ -2257,12 +2915,13 @@ class _DayCard extends StatefulWidget {
   final VoidCallback onNoteChanged;
   final VoidCallback onOpenColleagues;
   final ValueNotifier<bool>? dayCardDragging;
+  final String? eventText;  // NEU
 
   const _DayCard({
     required this.day, required this.entry, required this.skin, required this.isChrome,
     required this.dateKey, required this.isChanged, required this.externallyOpenKey,
     required this.onCardSwiped, required this.onOpenNote, required this.onNoteChanged,
-    required this.onOpenColleagues, this.dayCardDragging,
+    required this.onOpenColleagues, this.dayCardDragging, this.eventText,  // NEU
   });
 
   @override
@@ -2368,13 +3027,13 @@ class _DayCardState extends State<_DayCard> with SingleTickerProviderStateMixin 
   void _onLongPressStart(LongPressStartDetails _) => _lpCtrl.forward();
 
   void _onLongPress() {
-  HapticFeedback.mediumImpact();
-  _lpCtrl.reverse();
-  _close();
-  Future.delayed(const Duration(milliseconds: 150), () {
-    if (mounted) widget.onOpenNote();
-  });
-}
+    HapticFeedback.mediumImpact();
+    _lpCtrl.reverse();
+    _close();
+    Future.delayed(const Duration(milliseconds: 150), () {
+      if (mounted) widget.onOpenNote();
+    });
+  }
 
   void _onLongPressCancel() => _lpCtrl.reverse();
   void _onLongPressEnd(LongPressEndDetails _) => _lpCtrl.reverse();
@@ -2389,8 +3048,8 @@ class _DayCardState extends State<_DayCard> with SingleTickerProviderStateMixin 
     final weekendAccent = widget.isChrome ? const Color(0xFFCCCCCC) : skin.primary;
     final hasNote = _hasNote;
     final noteColor = widget.isChrome ? const Color(0xFF888888) : skin.primary.withValues(alpha: 0.85);
+    final hasEvent = widget.eventText != null && widget.eventText!.isNotEmpty;
 
-    // ── Shift-Chips: Rahmen entfernt, nur farbiger Text ──
     Widget shiftContent;
     if (widget.entry == null || widget.entry!.shift.isEmpty) {
       shiftContent = Text('—', style: TextStyle(fontSize: 16, color: skin.surface(0.18)));
@@ -2470,9 +3129,24 @@ class _DayCardState extends State<_DayCard> with SingleTickerProviderStateMixin 
             ]),
           ]),
         ),
-        Container(width: 1, height: 36, margin: const EdgeInsets.symmetric(horizontal: 12), color: skin.surface(0.07)),
+        Builder(builder: (context) {
+          final isToday = DateFormat('yyyy-MM-dd').format(widget.day) ==
+              DateFormat('yyyy-MM-dd').format(DateTime.now());
+          return AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            width: isToday ? 2.5 : 1,
+            height: 36,
+            margin: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: BoxDecoration(
+              color: isToday
+                  ? skin.primary.withValues(alpha: 0.7)
+                  : skin.surface(0.07),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          );
+        }),
         Expanded(child: shiftContent),
-        if (widget.entry != null && widget.entry!.shift.isNotEmpty)
+        if (widget.entry != null && widget.entry!.shift.isNotEmpty) ...[
           _isBirthdayDay
               ? const SizedBox(width: 7, height: 7)
               : _DayDot(
@@ -2481,10 +3155,20 @@ class _DayCardState extends State<_DayCard> with SingleTickerProviderStateMixin 
                   isChrome: widget.isChrome,
                   isChanged: widget.isChanged,
                 ),
+          if (hasEvent) ...[
+            const SizedBox(width: 5),
+            Icon(
+              Icons.flag_rounded,
+              size: 11,
+              color: widget.isChrome
+                  ? const Color(0xFFFFB347).withValues(alpha: 0.75)
+                  : const Color(0xFFFFB347),
+            ),
+          ],
+        ],
       ],
     );
 
-    // ── Haupt-Card mit einheitlichem Liquid Glass (keine kategorieabhängigen Farben) ──
     Widget cardWidget;
     if (_isBirthdayDay) {
       cardWidget = Container(
@@ -2577,12 +3261,12 @@ class _DayCardState extends State<_DayCard> with SingleTickerProviderStateMixin 
       onLongPressCancel: _onLongPressCancel,
       onTap: _isOpen ? _close : null,
       onDoubleTap: () {
-  HapticFeedback.lightImpact();
-  _close();
-  Future.delayed(const Duration(milliseconds: 150), () {
-    if (mounted) widget.onOpenColleagues();
-  });
-},
+        HapticFeedback.lightImpact();
+        _close();
+        Future.delayed(const Duration(milliseconds: 150), () {
+          if (mounted) widget.onOpenColleagues();
+        });
+      },
       child: LayoutBuilder(
         builder: (context, constraints) {
           return SizedBox(
@@ -2663,7 +3347,7 @@ class _DayCardState extends State<_DayCard> with SingleTickerProviderStateMixin 
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DIENSTPLAN UPLOAD SHEET — Glass
+// DIENSTPLAN UPLOAD SHEET — Glass (mit Events-Import)
 // ─────────────────────────────────────────────────────────────────────────────
 
 class DienstplanUploadSheet extends StatefulWidget {
@@ -2797,6 +3481,16 @@ class _DienstplanUploadSheetState extends State<DienstplanUploadSheet> {
           if (colleagues.isNotEmpty) {
             final encoded = jsonEncode(colleagues.map((k, v) => MapEntry(k, v)));
             settingsBox.put('colleagues_$monthKey', encoded);
+          }
+          // Events parsen und speichern
+          final events = DienstplanParser.parseEvents(
+            bytes: bytesForColleagues,
+            fileName: _selectedFileName ?? '',
+            devMode: _isDevMode,
+          );
+          if (events.isNotEmpty) {
+            final encodedEvents = jsonEncode(events);
+            settingsBox.put('events_$monthKey', encodedEvents);
           }
         }
       } catch (e, stack) {

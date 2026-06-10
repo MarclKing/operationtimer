@@ -526,8 +526,21 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
           final encoded = jsonEncode(colleagues.map((k, v) => MapEntry(k, v)));
           settingsBox.put('colleagues_$monthKey', encoded);
         }
+
+        // ── NEU: Events parsen und speichern ──
+        final events = DienstplanParser.parseEvents(
+          bytes: bytes,
+          fileName: fileName,
+          devMode: devMode,
+        );
+        if (events.isNotEmpty) {
+          final encodedEvents = jsonEncode(events);
+          settingsBox.put('events_$monthKey', encodedEvents);
+        }
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[DEV] Events-Import Fehler: $e');
+    }
 
     setState(() => _scheduleViewMonth = month);
     await ScheduleScreenState.pushScheduleToWidget();
@@ -736,12 +749,28 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                 ),
               ),
 
+              // ── Navbar (Position 2) – liegt ÜBER den Pages, aber UNTER dem Overlay ──
+              Positioned(
+                bottom: bottomPad > 0 ? bottomPad + 8 : 16,
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: _GlassBottomNav(
+                    selectedIndex: _currentPage,
+                    dienstplanEnabled: true,
+                    onTap: _selectTab,
+                  ),
+                ),
+              ),
+
+              // ── Overlay (Position 3) – liegt ÜBER der Navbar ──
               if (_menuOpen)
                 GestureDetector(
                   onTap: _closeMenu,
                   child: Container(color: Colors.black.withValues(alpha: 0.5)),
                 ),
 
+              // ── Dropdown-Menü (Position 4) ──
               AnimatedBuilder(
                 animation: _menuAnimController,
                 builder: (context, _) => Positioned(
@@ -819,6 +848,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                 ),
               ),
 
+              // ── TopBar (Position 5) – ganz oben ──
               Positioned(
                 top: 0,
                 left: 0,
@@ -846,17 +876,6 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                       ),
                     ],
                   ),
-                ),
-              ),
-
-              Positioned(
-                bottom: bottomPad > 0 ? bottomPad + 8 : 16,
-                left: 40,
-                right: 40,
-                child: _GlassBottomNav(
-                  selectedIndex: _currentPage,
-                  dienstplanEnabled: true,
-                  onTap: _selectTab,
                 ),
               ),
             ],
@@ -921,11 +940,7 @@ class _Divider extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// FLOATING GLASS BOTTOM NAVIGATION (Icon-only, größer, besserer Abstand)
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _GlassBottomNav extends StatelessWidget {
+class _GlassBottomNav extends StatefulWidget {
   final int selectedIndex;
   final bool dienstplanEnabled;
   final Function(int) onTap;
@@ -937,81 +952,157 @@ class _GlassBottomNav extends StatelessWidget {
   });
 
   @override
+  State<_GlassBottomNav> createState() => _GlassBottomNavState();
+}
+
+class _GlassBottomNavState extends State<_GlassBottomNav>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _bounceCtrl;
+  late Animation<double> _stretchAnim;
+  int _lastIndex = 0;
+  double _stretchDirection = 0; // -1 links, +1 rechts
+
+  @override
+  void initState() {
+    super.initState();
+    _lastIndex = widget.selectedIndex;
+    _bounceCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 420),
+    );
+    _stretchAnim = CurvedAnimation(
+      parent: _bounceCtrl,
+      curve: Curves.elasticOut,
+    );
+  }
+
+  @override
+  void dispose() {
+    _bounceCtrl.dispose();
+    super.dispose();
+  }
+
+  void _handleTap(int index) {
+    if (index == widget.selectedIndex) return;
+    _stretchDirection = index > _lastIndex ? 1.0 : -1.0;
+    _lastIndex = index;
+    _bounceCtrl.forward(from: 0);
+    widget.onTap(index);
+  }
+
+  @override
   Widget build(BuildContext context) {
     final skin = AppTheme.of(context);
 
     final items = [
       _NavItem(Icons.access_time_outlined, Icons.access_time_filled, 'Zeiterfassung', 0),
       _NavItem(Icons.calendar_month_outlined, Icons.calendar_month, 'Monatsübersicht', 1),
-      if (dienstplanEnabled)
+      if (widget.dienstplanEnabled)
         _NavItem(Icons.event_note_outlined, Icons.event_note, 'Dienstplan', 2),
     ];
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(24),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-        child: Container(
-          decoration: BoxDecoration(
-            color: skin.isLight ? Colors.white.withValues(alpha: 0.72) : Colors.black.withValues(alpha: 0.55),
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(
-              color: skin.isLight ? Colors.white.withValues(alpha: 0.55) : Colors.white.withValues(alpha: 0.12),
-              width: 0.8,
+    return AnimatedBuilder(
+      animation: _stretchAnim,
+      builder: (context, child) {
+        final t = _stretchAnim.value;
+        final stretch = 1.0 + (_stretchDirection * 0.035 * (1.0 - t));
+        final squish = 1.0 - (0.018 * (1.0 - t));
+
+        return Transform(
+          alignment: Alignment.center,
+          transform: Matrix4.identity()
+            ..scale(stretch, squish),
+          child: child,
+        );
+      },
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(22),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+          child: Container(
+            decoration: BoxDecoration(
+              color: skin.isLight
+                  ? Colors.white.withValues(alpha: 0.72)
+                  : Colors.black.withValues(alpha: 0.55),
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(
+                color: skin.isLight
+                    ? Colors.white.withValues(alpha: 0.55)
+                    : Colors.white.withValues(alpha: 0.12),
+                width: 0.8,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(
+                      alpha: skin.isLight ? 0.08 : 0.35),
+                  blurRadius: 24,
+                  spreadRadius: 0,
+                  offset: const Offset(0, 6),
+                ),
+              ],
             ),
-            boxShadow: [
-              BoxShadow(color: Colors.black.withValues(alpha: skin.isLight ? 0.08 : 0.35), blurRadius: 24, spreadRadius: 0, offset: const Offset(0, 6)),
-            ],
-          ),
-          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: items.map((item) {
-              final isSelected = selectedIndex == item.index;
-              return GestureDetector(
-                onTap: () => onTap(item.index),
-                behavior: HitTestBehavior.opaque,
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 180),
-                  curve: Curves.easeInOut,
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  child: isSelected
-                      ? ClipRRect(
-                          borderRadius: BorderRadius.circular(16),
-                          child: BackdropFilter(
-                            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                              decoration: BoxDecoration(
-                                color: skin.isLight ? Colors.white.withValues(alpha: 0.75) : Colors.white.withValues(alpha: 0.12),
-                                borderRadius: BorderRadius.circular(16),
-                                border: Border.all(
-                                  color: skin.isLight ? Colors.white.withValues(alpha: 0.85) : Colors.white.withValues(alpha: 0.18),
-                                  width: 0.8,
+            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 6),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: items.map((item) {
+                final isSelected = widget.selectedIndex == item.index;
+                return GestureDetector(
+                  onTap: () => _handleTap(item.index),
+                  behavior: HitTestBehavior.opaque,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    curve: Curves.easeInOut,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 3),
+                    child: isSelected
+                        ? ClipRRect(
+                            borderRadius: BorderRadius.circular(14),
+                            child: BackdropFilter(
+                              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 18, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: skin.isLight
+                                      ? Colors.white.withValues(alpha: 0.75)
+                                      : Colors.white.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(
+                                    color: skin.isLight
+                                        ? Colors.white.withValues(alpha: 0.85)
+                                        : Colors.white.withValues(alpha: 0.18),
+                                    width: 0.8,
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withValues(
+                                          alpha: skin.isLight ? 0.04 : 0.20),
+                                      blurRadius: 6,
+                                      offset: const Offset(0, 1),
+                                    ),
+                                  ],
                                 ),
-                                boxShadow: [
-                                  BoxShadow(color: Colors.black.withValues(alpha: skin.isLight ? 0.04 : 0.20), blurRadius: 6, offset: const Offset(0, 1)),
-                                ],
-                              ),
-                              child: Icon(
-                                item.activeIcon,
-                                color: skin.primary,
-                                size: 26,
+                                child: Icon(
+                                  item.activeIcon,
+                                  color: skin.primary,
+                                  size: 24,
+                                ),
                               ),
                             ),
+                          )
+                        : Padding(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 8),
+                            child: Icon(
+                              item.icon,
+                              color: skin.surface(0.35),
+                              size: 21,
+                            ),
                           ),
-                        )
-                      : Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-                          child: Icon(
-                            item.icon,
-                            color: skin.surface(0.35),
-                            size: 22,
-                          ),
-                        ),
-                ),
-              );
-            }).toList(),
+                  ),
+                );
+              }).toList(),
+            ),
           ),
         ),
       ),
