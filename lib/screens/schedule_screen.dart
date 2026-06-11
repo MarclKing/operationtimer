@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/gestures.dart';
 import 'package:home_widget/home_widget.dart' if (dart.library.html) '../home_widget_stub.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
@@ -722,7 +723,6 @@ class DienstplanParser {
       final rows = _groupByY(items);
       final sortedYsDesc = rows.keys.toList()..sort((a, b) => b.compareTo(a));
 
-      // Datum-Zeile finden
       final dateRow = _findDateRow(rows);
       if (dateRow == null || dateRow.isEmpty) return {};
 
@@ -741,12 +741,10 @@ class DienstplanParser {
         'RESERVE', 'PERSONAL',
       };
 
-      // Kandidaten-Zeilen oberhalb der Datumzeile
       final aboveYs = sortedYsDesc
           .where((y) => y > dateRowY! + 5)
           .toList();
 
-      // Finde die Ereignis-Zeile
       List<(double, String)>? eventRow;
       for (final y in aboveYs) {
         final rowItems = rows[y]!;
@@ -765,7 +763,6 @@ class DienstplanParser {
       }
       if (eventRow == null) return {};
 
-      // Jeden Event-Text dem nächsten Datum zuordnen
       final result = <String, String>{};
       for (final (ex, eText) in eventRow) {
         final trimmed = eText.trim();
@@ -1105,12 +1102,17 @@ class ScheduleScreen extends StatefulWidget {
 class ScheduleScreenState extends State<ScheduleScreen> {
   late DateTime _selectedMonth;
   Map<String, String> _scheduleData = {};
-  Map<String, String> _eventsData = {};  // NEU: Events
+  Map<String, String> _eventsData = {};
   String? _activeNoteKey;
   bool _noteOverlayVisible = false;
   String? _activeColleaguesKey;
   bool _colleaguesOverlayVisible = false;
   String? _openSwipedCardKey;
+
+  final ScrollController _listScrollController = ScrollController();
+  
+  // NEU: Merkt sich, ob ein Monat schon initialisiert wurde
+  final Map<String, double> _scrollPositions = {};
 
   static Future<void> pushScheduleToWidget() async {
     if (kIsWeb) return;
@@ -1150,11 +1152,22 @@ class ScheduleScreenState extends State<ScheduleScreen> {
   }
 
   @override
-  void initState() {
-    super.initState();
-    final now = DateTime.now();
-    _selectedMonth = DateTime(now.year, now.month);
-    loadScheduleData();
+void initState() {
+  super.initState();
+  final now = DateTime.now();
+  _selectedMonth = DateTime(now.year, now.month);
+  loadScheduleData();
+  // Aktuellen Monat mit 0 vormerken, damit _setMonth beim
+  // ersten Besuch anderer Monate korrekt 0.0 zurückgibt
+  final monthKey = DateFormat('yyyy-MM').format(_selectedMonth);
+  _scrollPositions[monthKey] = 0.0;
+  WidgetsBinding.instance.addPostFrameCallback((_) => scrollToToday());
+}
+
+  @override
+  void dispose() {
+    _listScrollController.dispose();
+    super.dispose();
   }
 
   bool get _isDevMode {
@@ -1173,7 +1186,6 @@ class ScheduleScreenState extends State<ScheduleScreen> {
           _scheduleData[entry.key.toString()] = entry.value.toString();
         }
       }
-      // Events laden
       _eventsData = {};
       final eventsRaw = box.get('events_$monthKey');
       if (eventsRaw is String) {
@@ -1187,10 +1199,59 @@ class ScheduleScreenState extends State<ScheduleScreen> {
     });
   }
 
+  void scrollToToday() {
+    final now = DateTime.now();
+    if (_selectedMonth.year != now.year || _selectedMonth.month != now.month) return;
+    if (!_listScrollController.hasClients) return;
+    final todayIndex = now.day - 1;
+    const cardHeight = 68.0;
+    final offset = (todayIndex * cardHeight).clamp(0.0, _listScrollController.position.maxScrollExtent);
+    _listScrollController.animateTo(
+      offset,
+      duration: const Duration(milliseconds: 400),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
   void _setMonth(DateTime month) {
+    // Aktuelle Scroll-Position des verlassenen Monats sichern
+    if (_listScrollController.hasClients) {
+      final currentKey = DateFormat('yyyy-MM').format(_selectedMonth);
+      _scrollPositions[currentKey] = _listScrollController.offset;
+    }
+
     setState(() => _selectedMonth = month);
     widget.onMonthChanged?.call(month);
     loadScheduleData();
+
+    final monthKey = DateFormat('yyyy-MM').format(month);
+    final now = DateTime.now();
+    final isCurrentMonth = month.year == now.year && month.month == now.month;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_listScrollController.hasClients) return;
+      if (isCurrentMonth && !_scrollPositions.containsKey(monthKey)) {
+        // Aktueller Monat, noch nie besucht → zu heute scrollen
+        scrollToToday();
+      } else {
+        // Gespeicherte Position wiederherstellen, oder Anfang
+        _listScrollController.animateTo(
+          _scrollPositions[monthKey] ?? 0.0,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOutCubic,
+        );
+      }
+    });
+  }
+
+  // Öffentliche Methode für Doppeltipp auf Monatsnavigation
+  void scrollToCurrentMonth() {
+    final now = DateTime.now();
+    final currentMonth = DateTime(now.year, now.month);
+    // Gespeicherte Position löschen damit scrollToToday ausgeführt wird
+    final monthKey = DateFormat('yyyy-MM').format(currentMonth);
+    _scrollPositions.remove(monthKey);
+    _setMonth(currentMonth);
   }
 
   void _changeMonth(int delta) {
@@ -1282,7 +1343,7 @@ class ScheduleScreenState extends State<ScheduleScreen> {
                       skin: skin, label: 'Aktuell',
                       onTap: () {
                         final now = DateTime.now();
-                        _setMonth(DateTime(now.year, now.month));
+                        scrollToCurrentMonth(); // Änderung: scrollToCurrentMonth statt direkt _setMonth
                         Navigator.pop(ctx);
                       },
                     ),
@@ -1529,7 +1590,6 @@ class ScheduleScreenState extends State<ScheduleScreen> {
                           ]),
                           const SizedBox(height: 16),
 
-                          // ── Monats-Navigation mit Gestenunterstützung ──
                           GestureDetector(
                             onHorizontalDragEnd: (d) {
                               final v = d.primaryVelocity ?? 0;
@@ -1574,8 +1634,7 @@ class ScheduleScreenState extends State<ScheduleScreen> {
                                         onTap: _showMonthPicker,
                                         onDoubleTap: () {
                                           HapticFeedback.selectionClick();
-                                          final now = DateTime.now();
-                                          _setMonth(DateTime(now.year, now.month));
+                                          scrollToCurrentMonth(); // Änderung: scrollToCurrentMonth statt direkt _setMonth
                                         },
                                         child: Padding(
                                           padding: const EdgeInsets.symmetric(vertical: 12),
@@ -1660,6 +1719,7 @@ class ScheduleScreenState extends State<ScheduleScreen> {
                           : _FadingListView(
                               fadeFromBottom: bottomNavHeight + 20,
                               child: ListView.builder(
+                                controller: _listScrollController,
                                 padding: const EdgeInsets.fromLTRB(24, 4, 24, 0),
                                 itemCount: days.length + 1,
                                 itemBuilder: (context, index) {
@@ -1718,7 +1778,7 @@ class ScheduleScreenState extends State<ScheduleScreen> {
                                       onNoteChanged: () => setState(() {}),
                                       onOpenColleagues: () => openColleaguesOverlay(key),
                                       dayCardDragging: widget.dayCardDragging,
-                                      eventText: _eventsData[key],  // NEU
+                                      eventText: _eventsData[key],
                                     ),
                                   );
                                 },
@@ -1756,7 +1816,7 @@ class _NoteOverlay extends StatefulWidget {
   State<_NoteOverlay> createState() => _NoteOverlayState();
 }
 
-class _NoteOverlayState extends State<_NoteOverlay> with TickerProviderStateMixin  {
+class _NoteOverlayState extends State<_NoteOverlay> with TickerProviderStateMixin {
   late AnimationController _ctrl;
   late Animation<double> _scaleAnim;
   late Animation<double> _opacityAnim;
@@ -1868,11 +1928,10 @@ class _NoteOverlayState extends State<_NoteOverlay> with TickerProviderStateMixi
                     ],
                   ),
                   child: SingleChildScrollView(
-                    physics: const ClampingScrollPhysics(),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // ── Header ──
+                        physics: const ClampingScrollPhysics(),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
                         Padding(
                           padding: const EdgeInsets.fromLTRB(16, 14, 12, 0),
                           child: Row(children: [
@@ -1896,7 +1955,6 @@ class _NoteOverlayState extends State<_NoteOverlay> with TickerProviderStateMixi
                           padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
                           child: Divider(color: skin.glassBorder, height: 1),
                         ),
-                        // ── Telefon ──
                         Padding(
                           padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
                           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -1940,7 +1998,6 @@ class _NoteOverlayState extends State<_NoteOverlay> with TickerProviderStateMixi
                           padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
                           child: Divider(color: skin.glassBorder, height: 1),
                         ),
-                        // ── Notiz ──
                         Padding(
                           padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
                           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -1981,7 +2038,7 @@ class _NoteOverlayState extends State<_NoteOverlay> with TickerProviderStateMixi
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// KOLLEGEN OVERLAY — Glass (erweiterte Version mit Slide-Bar)
+// KOLLEGEN OVERLAY — Glass (mit einfacher Swipe-Geste Auf/Zu)
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _ColleaguesOverlay extends StatefulWidget {
@@ -1999,7 +2056,7 @@ class _ColleaguesOverlay extends StatefulWidget {
 }
 
 class _ColleaguesOverlayState extends State<_ColleaguesOverlay>
-    with TickerProviderStateMixin  {
+    with TickerProviderStateMixin {
   late AnimationController _ctrl;
   late Animation<double> _scaleAnim;
   late Animation<double> _opacityAnim;
@@ -2013,7 +2070,9 @@ class _ColleaguesOverlayState extends State<_ColleaguesOverlay>
   String? _debugLog;
   bool _debugLogCopied = false;
 
-  double _dragStartY = 0;
+  // Für Swipe-Geste
+  double _dragStartGlobalY = 0.0;
+  bool _isDraggingExpand = false;
 
   @override
   void initState() {
@@ -2090,11 +2149,37 @@ class _ColleaguesOverlayState extends State<_ColleaguesOverlay>
 
   void _expand() {
     setState(() => _expanded = true);
-    _expandCtrl.forward();
+    _expandCtrl.animateTo(1.0, duration: const Duration(milliseconds: 380), curve: Curves.easeOutCubic);
   }
 
   void _collapse() {
-    _expandCtrl.reverse().then((_) => setState(() => _expanded = false));
+    _expandCtrl.animateTo(0.0, duration: const Duration(milliseconds: 300), curve: Curves.easeInCubic)
+        .then((_) => setState(() => _expanded = false));
+  }
+
+  void _onDragStart(DragStartDetails d) {
+    _dragStartGlobalY = d.globalPosition.dy;
+    _isDraggingExpand = true;
+  }
+
+  void _onDragUpdate(DragUpdateDetails d) {
+    // Leer – Richtung wird beim Ende bestimmt
+  }
+
+  void _onDragEnd(DragEndDetails d) {
+    if (!_isDraggingExpand) return;
+    _isDraggingExpand = false;
+
+    final dy = d.globalPosition.dy - _dragStartGlobalY;
+    final vel = d.primaryVelocity ?? 0;
+
+    // Nach UNTEN wischen (dy > 0) → expand
+    // Nach OBEN wischen (dy < 0) → collapse
+    if ((dy > 30 || vel > 300) && !_expanded) {
+      _expand();
+    } else if ((dy < -30 || vel < -300) && _expanded) {
+      _collapse();
+    }
   }
 
   AppSkin get skin => widget.skin;
@@ -2440,13 +2525,14 @@ class _ColleaguesOverlayState extends State<_ColleaguesOverlay>
                     children: [
                       Flexible(
                         child: SingleChildScrollView(
-                          physics: const ClampingScrollPhysics(),
+                          physics: _expanded
+                              ? const ClampingScrollPhysics()
+                              : const NeverScrollableScrollPhysics(),
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Padding(
-                                padding: const EdgeInsets.fromLTRB(
-                                    16, 14, 12, 0),
+                                padding: const EdgeInsets.fromLTRB(16, 14, 12, 0),
                                 child: Row(children: [
                                   Icon(Icons.people_outline,
                                       size: 18, color: skin.primary),
@@ -2470,201 +2556,75 @@ class _ColleaguesOverlayState extends State<_ColleaguesOverlay>
                                 ]),
                               ),
                               Padding(
-                                padding: const EdgeInsets.fromLTRB(
-                                    16, 10, 16, 0),
-                                child: Divider(
-                                    color: skin.glassBorder, height: 1),
+                                padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                                child: Divider(color: skin.glassBorder, height: 1),
                               ),
                               Padding(
-                                padding: const EdgeInsets.fromLTRB(
-                                    16, 12, 16, 0),
+                                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                                 child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.start,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     if (_debugLog != null) ...[
                                       ClipRRect(
-                                        borderRadius:
-                                            BorderRadius.circular(10),
+                                        borderRadius: BorderRadius.circular(10),
                                         child: BackdropFilter(
-                                          filter: ImageFilter.blur(
-                                              sigmaX: 8, sigmaY: 8),
+                                          filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
                                           child: Container(
-                                            constraints:
-                                                const BoxConstraints(
-                                                    maxHeight: 200),
+                                            constraints: const BoxConstraints(maxHeight: 200),
                                             decoration: BoxDecoration(
-                                              color: const Color(0xFFEF5B5B)
-                                                  .withValues(alpha: 0.07),
-                                              borderRadius:
-                                                  BorderRadius.circular(10),
-                                              border: Border.all(
-                                                  color: const Color(
-                                                          0xFFEF5B5B)
-                                                      .withValues(
-                                                          alpha: 0.28)),
+                                              color: const Color(0xFFEF5B5B).withValues(alpha: 0.07),
+                                              borderRadius: BorderRadius.circular(10),
+                                              border: Border.all(color: const Color(0xFFEF5B5B).withValues(alpha: 0.28)),
                                             ),
-                                            child: Column(
-                                              mainAxisSize: MainAxisSize.min,
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.stretch,
-                                              children: [
-                                                Padding(
-                                                  padding:
-                                                      const EdgeInsets.fromLTRB(
-                                                          10, 8, 8, 6),
-                                                  child: Row(children: [
-                                                    Container(
-                                                      padding: const EdgeInsets
-                                                          .symmetric(
-                                                          horizontal: 5,
-                                                          vertical: 2),
-                                                      decoration:
-                                                          BoxDecoration(
-                                                        color: const Color(
-                                                                0xFFEF5B5B)
-                                                            .withValues(
-                                                                alpha: 0.15),
-                                                        borderRadius:
-                                                            BorderRadius.circular(
-                                                                4),
-                                                        border: Border.all(
-                                                            color: const Color(
-                                                                    0xFFEF5B5B)
-                                                                .withValues(
-                                                                    alpha:
-                                                                        0.35)),
-                                                      ),
-                                                      child: const Text(
-                                                          'DEV',
-                                                          style: TextStyle(
-                                                              fontSize: 9,
-                                                              fontWeight:
-                                                                  FontWeight
-                                                                      .w700,
-                                                              color: Color(
-                                                                  0xFFEF5B5B),
-                                                              letterSpacing:
-                                                                  0.8)),
+                                            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                                              Padding(
+                                                padding: const EdgeInsets.fromLTRB(10, 8, 8, 6),
+                                                child: Row(children: [
+                                                  Container(
+                                                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                                    decoration: BoxDecoration(
+                                                      color: const Color(0xFFEF5B5B).withValues(alpha: 0.15),
+                                                      borderRadius: BorderRadius.circular(4),
+                                                      border: Border.all(color: const Color(0xFFEF5B5B).withValues(alpha: 0.35)),
                                                     ),
-                                                    const SizedBox(width: 6),
-                                                    Expanded(
-                                                        child: Text(
-                                                            'Parser-Log',
-                                                            style: TextStyle(
-                                                                fontSize: 11,
-                                                                fontWeight:
-                                                                    FontWeight
-                                                                        .w600,
-                                                                color: const Color(
-                                                                    0xFFEF5B5B)))),
-                                                    GestureDetector(
-                                                      onTap: () {
-                                                        Clipboard.setData(
-                                                            ClipboardData(
-                                                                text:
-                                                                    _debugLog!));
-                                                        setState(() =>
-                                                            _debugLogCopied =
-                                                                true);
-                                                        HapticFeedback
-                                                            .selectionClick();
-                                                        Future.delayed(
-                                                          const Duration(
-                                                              seconds: 2),
-                                                          () {
-                                                            if (mounted)
-                                                              setState(() =>
-                                                                  _debugLogCopied =
-                                                                      false);
-                                                          },
-                                                        );
-                                                      },
-                                                      child:
-                                                          AnimatedContainer(
-                                                        duration:
-                                                            const Duration(
-                                                                milliseconds:
-                                                                    200),
-                                                        padding:
-                                                            const EdgeInsets
-                                                                .symmetric(
-                                                                horizontal: 8,
-                                                                vertical: 4),
-                                                        decoration:
-                                                            BoxDecoration(
-                                                          color: _debugLogCopied
-                                                              ? skin.statComplete
-                                                                  .withValues(
-                                                                      alpha:
-                                                                          0.15)
-                                                              : const Color(
-                                                                      0xFFEF5B5B)
-                                                                  .withValues(
-                                                                      alpha:
-                                                                          0.12),
-                                                          borderRadius:
-                                                              BorderRadius
-                                                                  .circular(7),
-                                                        ),
-                                                        child: Row(
-                                                            mainAxisSize:
-                                                                MainAxisSize
-                                                                    .min,
-                                                            children: [
-                                                              Icon(
-                                                                  _debugLogCopied
-                                                                      ? Icons
-                                                                          .check_rounded
-                                                                      : Icons
-                                                                          .copy_outlined,
-                                                                  size: 12,
-                                                                  color: _debugLogCopied
-                                                                      ? skin.statComplete
-                                                                      : const Color(
-                                                                          0xFFEF5B5B)),
-                                                              const SizedBox(
-                                                                  width: 3),
-                                                              Text(
-                                                                  _debugLogCopied
-                                                                      ? 'Kopiert'
-                                                                      : 'Kopieren',
-                                                                  style: TextStyle(
-                                                                      fontSize:
-                                                                          10,
-                                                                      fontWeight:
-                                                                          FontWeight
-                                                                              .w600,
-                                                                      color: _debugLogCopied
-                                                                          ? skin.statComplete
-                                                                          : const Color(
-                                                                              0xFFEF5B5B))),
-                                                            ]),
-                                                      ),
-                                                    ),
-                                                  ]),
-                                                ),
-                                                Divider(
-                                                    height: 1,
-                                                    color: const Color(
-                                                            0xFFEF5B5B)
-                                                        .withValues(
-                                                            alpha: 0.15)),
-                                                Flexible(
-                                                  child: SingleChildScrollView(
-                                                    padding:
-                                                        const EdgeInsets.all(
-                                                            10),
-                                                    child: Text(_debugLog!,
-                                                        style: const TextStyle(
-                                                            fontSize: 10,
-                                                            color: Color(
-                                                                0xFFEF5B5B),
-                                                            height: 1.4)),
+                                                    child: const Text('DEV', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: Color(0xFFEF5B5B), letterSpacing: 0.8)),
                                                   ),
+                                                  const SizedBox(width: 6),
+                                                  Expanded(child: Text('Parser-Log', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: const Color(0xFFEF5B5B)))),
+                                                  GestureDetector(
+                                                    onTap: () {
+                                                      Clipboard.setData(ClipboardData(text: _debugLog!));
+                                                      setState(() => _debugLogCopied = true);
+                                                      HapticFeedback.selectionClick();
+                                                      Future.delayed(const Duration(seconds: 2), () { if (mounted) setState(() => _debugLogCopied = false); });
+                                                    },
+                                                    child: AnimatedContainer(
+                                                      duration: const Duration(milliseconds: 200),
+                                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                                      decoration: BoxDecoration(
+                                                        color: _debugLogCopied ? skin.statComplete.withValues(alpha: 0.15) : const Color(0xFFEF5B5B).withValues(alpha: 0.12),
+                                                        borderRadius: BorderRadius.circular(7),
+                                                      ),
+                                                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                                                        Icon(_debugLogCopied ? Icons.check_rounded : Icons.copy_outlined,
+                                                            size: 12, color: _debugLogCopied ? skin.statComplete : const Color(0xFFEF5B5B)),
+                                                        const SizedBox(width: 3),
+                                                        Text(_debugLogCopied ? 'Kopiert' : 'Kopieren',
+                                                            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600,
+                                                                color: _debugLogCopied ? skin.statComplete : const Color(0xFFEF5B5B))),
+                                                      ]),
+                                                    ),
+                                                  ),
+                                                ]),
+                                              ),
+                                              Divider(height: 1, color: const Color(0xFFEF5B5B).withValues(alpha: 0.15)),
+                                              Flexible(
+                                                child: SingleChildScrollView(
+                                                  padding: const EdgeInsets.all(10),
+                                                  child: Text(_debugLog!, style: const TextStyle(fontSize: 10, color: Color(0xFFEF5B5B), height: 1.4)),
                                                 ),
-                                              ],
-                                            ),
+                                              ),
+                                            ]),
                                           ),
                                         ),
                                       ),
@@ -2673,13 +2633,11 @@ class _ColleaguesOverlayState extends State<_ColleaguesOverlay>
                                     if (!hasAny)
                                       Center(
                                         child: Padding(
-                                          padding: const EdgeInsets.symmetric(
-                                              vertical: 16),
+                                          padding: const EdgeInsets.symmetric(vertical: 16),
                                           child: Column(children: [
                                             Icon(Icons.people_outline,
                                                 size: 32,
-                                                color: skin.textMuted
-                                                    .withValues(alpha: 0.4)),
+                                                color: skin.textMuted.withValues(alpha: 0.4)),
                                             const SizedBox(height: 8),
                                             Text(
                                                 'Keine Kollegen-Daten verfügbar.',
@@ -2763,45 +2721,28 @@ class _ColleaguesOverlayState extends State<_ColleaguesOverlay>
                                       if (gebNames.isNotEmpty) ...[
                                         const SizedBox(height: 10),
                                         ClipRRect(
-                                          borderRadius:
-                                              BorderRadius.circular(10),
+                                          borderRadius: BorderRadius.circular(10),
                                           child: BackdropFilter(
-                                            filter: ImageFilter.blur(
-                                                sigmaX: 8, sigmaY: 8),
+                                            filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
                                             child: Container(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                      horizontal: 10,
-                                                      vertical: 8),
+                                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                                               decoration: BoxDecoration(
                                                 color: skin.isLight
-                                                    ? Colors.white
-                                                        .withValues(
-                                                            alpha: skin
-                                                                .glassOpacity)
-                                                    : skin.bgCard.withValues(
-                                                        alpha:
-                                                            skin.glassOpacity),
-                                                borderRadius:
-                                                    BorderRadius.circular(10),
-                                                border: Border.all(
-                                                    color: skin.glassBorder,
-                                                    width: 1.0),
+                                                    ? Colors.white.withValues(alpha: skin.glassOpacity)
+                                                    : skin.bgCard.withValues(alpha: skin.glassOpacity),
+                                                borderRadius: BorderRadius.circular(10),
+                                                border: Border.all(color: skin.glassBorder, width: 1.0),
                                               ),
                                               child: Row(children: [
-                                                const Text('🎂',
-                                                    style: TextStyle(
-                                                        fontSize: 15)),
+                                                const Text('🎂', style: TextStyle(fontSize: 15)),
                                                 const SizedBox(width: 8),
                                                 Expanded(
                                                     child: Text(
                                                         gebNames.join(', '),
                                                         style: TextStyle(
                                                             fontSize: 13,
-                                                            fontWeight:
-                                                                FontWeight.w600,
-                                                            color:
-                                                                gebColor))),
+                                                            fontWeight: FontWeight.w600,
+                                                            color: gebColor))),
                                               ]),
                                             ),
                                           ),
@@ -2831,19 +2772,9 @@ class _ColleaguesOverlayState extends State<_ColleaguesOverlay>
                       ),
                       if (hasExpandable)
                         GestureDetector(
-                          onVerticalDragStart: (d) =>
-                              _dragStartY = d.globalPosition.dy,
-                          onVerticalDragEnd: (d) {
-                            final dy =
-                                d.globalPosition.dy - _dragStartY;
-                            if (!_expanded && dy > 30) {
-                              HapticFeedback.selectionClick();
-                              _expand();
-                            } else if (_expanded && dy < -30) {
-                              HapticFeedback.selectionClick();
-                              _collapse();
-                            }
-                          },
+                          onVerticalDragStart: _onDragStart,
+                          onVerticalDragUpdate: _onDragUpdate,
+                          onVerticalDragEnd: _onDragEnd,
                           onTap: () {
                             HapticFeedback.selectionClick();
                             if (_expanded) {
@@ -2864,13 +2795,14 @@ class _ColleaguesOverlayState extends State<_ColleaguesOverlay>
                             child: Column(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                AnimatedRotation(
-                                  turns: _expanded ? 0.5 : 0.0,
-                                  duration:
-                                      const Duration(milliseconds: 300),
-                                  child: Icon(Icons.keyboard_arrow_down,
-                                      size: 14,
-                                      color: skin.surface(0.3)),
+                                AnimatedBuilder(
+                                  animation: _expandCtrl,
+                                  builder: (_, __) => Transform.rotate(
+                                    angle: _expandCtrl.value * 3.14159,
+                                    child: Icon(Icons.keyboard_arrow_down,
+                                        size: 14,
+                                        color: skin.surface(0.3)),
+                                  ),
                                 ),
                                 const SizedBox(height: 4),
                                 Container(
@@ -2915,20 +2847,20 @@ class _DayCard extends StatefulWidget {
   final VoidCallback onNoteChanged;
   final VoidCallback onOpenColleagues;
   final ValueNotifier<bool>? dayCardDragging;
-  final String? eventText;  // NEU
+  final String? eventText;
 
   const _DayCard({
     required this.day, required this.entry, required this.skin, required this.isChrome,
     required this.dateKey, required this.isChanged, required this.externallyOpenKey,
     required this.onCardSwiped, required this.onOpenNote, required this.onNoteChanged,
-    required this.onOpenColleagues, this.dayCardDragging, this.eventText,  // NEU
+    required this.onOpenColleagues, this.dayCardDragging, this.eventText,
   });
 
   @override
   State<_DayCard> createState() => _DayCardState();
 }
 
-class _DayCardState extends State<_DayCard> with TickerProviderStateMixin  {
+class _DayCardState extends State<_DayCard> with TickerProviderStateMixin {
   double _swipeOffset = 0;
   static const double _revealWidth = 180.0;
   static const double _snapThreshold = 65.0;
@@ -3147,25 +3079,25 @@ class _DayCardState extends State<_DayCard> with TickerProviderStateMixin  {
         }),
         Expanded(child: shiftContent),
         if (widget.entry != null && widget.entry!.shift.isNotEmpty) ...[
-  if (hasEvent) ...[
-    Icon(
-      Icons.flag_rounded,
-      size: 11,
-      color: widget.isChrome
-          ? const Color(0xFFFFB347).withValues(alpha: 0.75)
-          : const Color(0xFFFFB347),
-    ),
-    const SizedBox(width: 5),
-  ],
-  _isBirthdayDay
-      ? const SizedBox(width: 7, height: 7)
-      : _DayDot(
-          day: widget.day,
-          skin: skin,
-          isChrome: widget.isChrome,
-          isChanged: widget.isChanged,
-        ),
-],
+          if (hasEvent) ...[
+            Icon(
+              Icons.flag_rounded,
+              size: 11,
+              color: widget.isChrome
+                  ? const Color(0xFFFFB347).withValues(alpha: 0.75)
+                  : const Color(0xFFFFB347),
+            ),
+            const SizedBox(width: 5),
+          ],
+          _isBirthdayDay
+              ? const SizedBox(width: 7, height: 7)
+              : _DayDot(
+                  day: widget.day,
+                  skin: skin,
+                  isChrome: widget.isChrome,
+                  isChanged: widget.isChanged,
+                ),
+        ],
       ],
     );
 
@@ -3482,7 +3414,6 @@ class _DienstplanUploadSheetState extends State<DienstplanUploadSheet> {
             final encoded = jsonEncode(colleagues.map((k, v) => MapEntry(k, v)));
             settingsBox.put('colleagues_$monthKey', encoded);
           }
-          // Events parsen und speichern
           final events = DienstplanParser.parseEvents(
             bytes: bytesForColleagues,
             fileName: _selectedFileName ?? '',

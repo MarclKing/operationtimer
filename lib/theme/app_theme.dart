@@ -158,6 +158,7 @@ const AppSkin skinSpace = AppSkin(
 const AppSkin skinPaper = AppSkin(
   key: 'paper',
   displayName: 'Paper',
+  
   isLight: true,   // ← wichtig! steuert onGradient und surface()
 
   bgBase:  Color(0xFFF5F0E8),

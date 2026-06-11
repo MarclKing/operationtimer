@@ -803,7 +803,7 @@ void _autoSaveName() {
 
                         const SizedBox(height: 40),
                         Center(
-                          child: Text('OpTimes v1.1.0',
+                          child: Text('OpTimes v1.2.0',
                               style: TextStyle(
                                   fontSize: 12, color: skin.textHint)),
                         ),

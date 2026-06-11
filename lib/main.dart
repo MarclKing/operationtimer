@@ -527,7 +527,6 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
           settingsBox.put('colleagues_$monthKey', encoded);
         }
 
-        // ── NEU: Events parsen und speichern ──
         final events = DienstplanParser.parseEvents(
           bytes: bytes,
           fileName: fileName,
@@ -749,28 +748,25 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                 ),
               ),
 
-              // ── Navbar (Position 2) – liegt ÜBER den Pages, aber UNTER dem Overlay ──
               Positioned(
                 bottom: bottomPad > 0 ? bottomPad + 8 : 16,
                 left: 0,
                 right: 0,
                 child: Center(
                   child: _GlassBottomNav(
-                    selectedIndex: _currentPage,
-                    dienstplanEnabled: true,
-                    onTap: _selectTab,
-                  ),
+  selectedIndex: _currentPage,
+  dienstplanEnabled: true,
+  onTap: _selectTab,
+),
                 ),
               ),
 
-              // ── Overlay (Position 3) – liegt ÜBER der Navbar ──
               if (_menuOpen)
                 GestureDetector(
                   onTap: _closeMenu,
                   child: Container(color: Colors.black.withValues(alpha: 0.5)),
                 ),
 
-              // ── Dropdown-Menü (Position 4) ──
               AnimatedBuilder(
                 animation: _menuAnimController,
                 builder: (context, _) => Positioned(
@@ -848,7 +844,6 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                 ),
               ),
 
-              // ── TopBar (Position 5) – ganz oben ──
               Positioned(
                 top: 0,
                 left: 0,
@@ -960,7 +955,7 @@ class _GlassBottomNavState extends State<_GlassBottomNav>
   late AnimationController _bounceCtrl;
   late Animation<double> _stretchAnim;
   int _lastIndex = 0;
-  double _stretchDirection = 0; // -1 links, +1 rechts
+  double _stretchDirection = 0;
 
   @override
   void initState() {
