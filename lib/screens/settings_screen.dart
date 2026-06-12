@@ -47,7 +47,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
         box.get('nachtschicht_modus', defaultValue: false) as bool;
     _dienstplanDevMode =
         box.get('dienstplan_dev_placeholder', defaultValue: false) as bool;
-    _autoDeleteOldEntries();
   }
 
   @override
@@ -536,8 +535,12 @@ void _autoSaveName() {
                                             _deleteAfterMonths == months;
                                         return Expanded(
                                           child: GestureDetector(
-                                            onTap: () => setState(
-                                                () => _deleteAfterMonths = months),
+                                            onTap: () {
+                                              setState(() => _deleteAfterMonths = months);
+                                              Hive.box('einstellungen')
+                                                  .put('deleteAfterMonths', months);
+                                              _autoDeleteOldEntries();
+                                            },
                                             child: AnimatedContainer(
                                               duration: const Duration(
                                                   milliseconds: 200),
@@ -607,7 +610,7 @@ void _autoSaveName() {
                                         const SizedBox(width: 8),
                                         Expanded(
                                           child: Text(
-                                            'Zeiterfassungs-Einträge und Dienstplan-Daten werden gelöscht, sobald ihr Monat mehr als $monthLabel zurückliegt.',
+                                            'Zeiterfassungs-Einträge und Dienstplan-Daten werden gelöscht, sobald sie mehr als $monthLabel zurückliegt.',
                                             style: TextStyle(
                                                 fontSize: 12,
                                                 color: skin.textMuted,
@@ -803,7 +806,7 @@ void _autoSaveName() {
 
                         const SizedBox(height: 40),
                         Center(
-                          child: Text('OpTimes v1.2.0',
+                          child: Text('OpTimes v1.2.1',
                               style: TextStyle(
                                   fontSize: 12, color: skin.textHint)),
                         ),

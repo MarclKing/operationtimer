@@ -17,6 +17,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart';
 import 'dart:convert';
+import 'utils/cleanup.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -24,6 +25,7 @@ void main() async {
   await Hive.openBox('arbeitszeiten');
   await Hive.openBox('einstellungen');
   _migrateOldEntries();
+  await runAutoCleanup();
   await initializeDateFormatting('de', null);
   runApp(const MyApp());
 }
