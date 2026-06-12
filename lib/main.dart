@@ -11,6 +11,7 @@ import 'screens/month_screen.dart';
 import 'screens/schedule_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/support_screen.dart';
+import 'screens/fahrtenbuch_screen.dart';
 import 'services/pdf_service.dart';
 import 'theme/app_theme.dart';
 import 'package:flutter/gestures.dart';
@@ -157,12 +158,15 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   final _homeKey = GlobalKey<HomeScreenState>();
   final _scheduleKey = GlobalKey<ScheduleScreenState>();
   final _monthKey = GlobalKey<MonthScreenState>();
+  final _fahrtenbuchKey = GlobalKey<FahrtenbuchScreenState>();
   final ValueNotifier<bool> _dayCardDragging = ValueNotifier(false);
   final ValueNotifier<bool> _homeOverlayActive = ValueNotifier(false);
   static const _navChannel = MethodChannel('de.marcel.optimes/navigation');
 
   bool get _dienstplanEnabled => true;
-  int get _pageCount => _dienstplanEnabled ? 3 : 2;
+  int get _pageCount => _dienstplanEnabled ? 4 : 3;
+  bool get _isOnSchedulePage => _dienstplanEnabled && _currentPage == 2;
+  bool get _isOnFahrtenbuchPage => _currentPage == (_dienstplanEnabled ? 3 : 2);
 
   @override
   void initState() {
@@ -172,7 +176,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       vsync: this,
       duration: const Duration(milliseconds: 320),
       lowerBound: 0.0,
-      upperBound: 2.0,
+      upperBound: 3.0,
       value: 0.0,
     );
     _slideCtrl.addListener(() => setState(() {}));
@@ -626,7 +630,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   void _onDragUpdate(DragUpdateDetails d) {
     if (!_isDragging) return;
     if (_dayCardDragging.value) return;
-    if (_currentPage == 2 && d.delta.dx < 0) return;
+    if (_currentPage == (_pageCount - 1) && d.delta.dx < 0) return;
     final screenW = MediaQuery.of(context).size.width;
     final delta = -d.delta.dx / screenW;
     final newVal = (_slideCtrl.value + delta).clamp(0.0, (_pageCount - 1).toDouble());
@@ -685,9 +689,8 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
             onMonthChanged: (m) => setState(() => _scheduleViewMonth = m),
             dayCardDragging: _dayCardDragging,
           ),
+        FahrtenbuchScreen(key: _fahrtenbuchKey),
       ];
-
-  bool get _isOnSchedulePage => _dienstplanEnabled && _currentPage == 2;
 
   void _toggleMenu() {
     setState(() {
@@ -754,10 +757,10 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                 right: 0,
                 child: Center(
                   child: _GlassBottomNav(
-  selectedIndex: _currentPage,
-  dienstplanEnabled: true,
-  onTap: _selectTab,
-),
+                    selectedIndex: _currentPage,
+                    dienstplanEnabled: _dienstplanEnabled,
+                    onTap: _selectTab,
+                  ),
                 ),
               ),
 
@@ -794,7 +797,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                               child: Column(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  if (_isOnSchedulePage) ...[
+                                  if (_isOnSchedulePage && !_isOnFahrtenbuchPage) ...[
                                     _DropdownItem(
                                       icon: Icons.upload_file_outlined,
                                       label: 'Dienstplan importieren',
@@ -805,7 +808,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                                     ),
                                     _Divider(),
                                   ],
-                                  if (!_isOnSchedulePage) ...[
+                                  if (!_isOnSchedulePage && !_isOnFahrtenbuchPage) ...[
                                     _DropdownItem(
                                       icon: Icons.picture_as_pdf_outlined,
                                       label: 'Zeiten exportieren',
@@ -844,6 +847,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                 ),
               ),
 
+              // ── TopBar mit Plus-Button links (nur Fahrtenbuch) und Hamburger rechts ──
               Positioned(
                 top: 0,
                 left: 0,
@@ -854,18 +858,64 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const SizedBox(width: 8),
+                      // ── Plus-Button LINKS — nur auf Fahrtenbuch-Tab ──
+                      if (_isOnFahrtenbuchPage)
+                        GestureDetector(
+                          onTap: () {
+                            final devMode = Hive.box('einstellungen')
+                                .get('fahrtenbuch_dev_mode', defaultValue: false) as bool;
+                            if (!devMode) {
+                              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                                content: const Text(
+                                    'Fahrtenbuch ist noch nicht verfügbar. Entwickler-Modus in den Einstellungen aktivieren.'),
+                                backgroundColor: skin.textMuted,
+                                behavior: SnackBarBehavior.floating,
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(14)),
+                                margin: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+                                duration: const Duration(seconds: 3),
+                              ));
+                              return;
+                            }
+                            _fahrtenbuchKey.currentState?.showAddFahrtOverlay();
+                          },
+                          child: SizedBox(
+                            width: 40,
+                            height: 40,
+                            child: Center(
+                              child: Icon(Icons.add, color: skin.textPrimary, size: 22),
+                            ),
+                          ),
+                        )
+                      else
+                        const SizedBox(width: 40),
+
+                      const Spacer(),
+
+                      // ── Hamburger-Menü RECHTS — animiert zu X (nicht zu Plus!) ──
                       GestureDetector(
                         onTap: _toggleMenu,
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 250),
+                        child: SizedBox(
                           width: 40,
                           height: 40,
-                          decoration: BoxDecoration(borderRadius: BorderRadius.circular(12), color: Colors.transparent),
-                          child: AnimatedRotation(
-                            turns: _menuOpen ? 0.125 : 0,
-                            duration: const Duration(milliseconds: 250),
-                            child: Icon(_menuOpen ? Icons.close : Icons.menu_rounded, color: skin.textPrimary, size: 20),
+                          child: Center(
+                            child: AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 200),
+                              transitionBuilder: (child, animation) =>
+                                  ScaleTransition(
+                                    scale: CurvedAnimation(
+                                        parent: animation,
+                                        curve: Curves.easeInOutBack),
+                                    child: FadeTransition(
+                                        opacity: animation, child: child),
+                                  ),
+                              child: Icon(
+                                _menuOpen ? Icons.close_rounded : Icons.menu_rounded,
+                                key: ValueKey(_menuOpen),
+                                color: skin.textPrimary,
+                                size: 20,
+                              ),
+                            ),
                           ),
                         ),
                       ),
@@ -994,6 +1044,7 @@ class _GlassBottomNavState extends State<_GlassBottomNav>
       _NavItem(Icons.calendar_month_outlined, Icons.calendar_month, 'Monatsübersicht', 1),
       if (widget.dienstplanEnabled)
         _NavItem(Icons.event_note_outlined, Icons.event_note, 'Dienstplan', 2),
+      _NavItem(Icons.directions_car_outlined, Icons.directions_car, 'Fahrtenbuch', widget.dienstplanEnabled ? 3 : 2),
     ];
 
     return AnimatedBuilder(
