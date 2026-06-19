@@ -30,34 +30,14 @@ class FahrtExportService {
     final file = File('${dir.path}/$fileName');
     await file.writeAsString(html, flush: true);
 
-    final box = Hive.box('einstellungen');
-    final email = box.get('export_email', defaultValue: '') as String;
-
     final xfile = XFile(file.path, mimeType: 'text/html', name: fileName);
-
-    if (email.isNotEmpty) {
-      final mailtoUri = Uri(
-        scheme: 'mailto',
-        path: email,
-        queryParameters: {
-          'subject': betreff,
-          'body': 'Fahrten-Export aus OpTimes\n\nSiehe angehängte HTML-Datei.',
-        },
-      );
-      if (await canLaunchUrl(mailtoUri)) {
-        await launchUrl(mailtoUri);
-        await Future.delayed(const Duration(milliseconds: 800));
-      }
-    }
 
     try {
       await SharePlus.instance.share(
         ShareParams(
           files: [xfile],
           subject: betreff,
-          text: email.isNotEmpty
-              ? 'An: $email\n\nFahrten-Export aus OpTimes'
-              : 'Fahrten-Export aus OpTimes',
+          text: 'Fahrten-Export aus OpTimes',
         ),
       );
     } catch (e) {

@@ -197,218 +197,84 @@ struct DayTile: View {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SMALL WIDGET — Schnellstart Fahrtenbuch
+// SMALL WIDGET — Fahrtenbuch KM-Scan Schnellstart
+// Shield-Theme: Dunkel · Präzise · Funktional
 // ─────────────────────────────────────────────────────────────────────────────
 
-   struct SmallWidgetView: View {
+struct SmallWidgetView: View {
     var body: some View {
-        ZStack(alignment: .bottomLeading) {
-
-            // ── Straße (rein SwiftUI) ─────────────────────────────
+        ZStack {
+            // ── Hintergrund-Akzent oben links (dezentes Glühen) ──────────────
             GeometryReader { geo in
-                let w = geo.size.width
-                let h = geo.size.height
-                let cx = w / 2
-
-                ZStack {
-                    // Horizont-Glühen
-                    RadialGradient(
-                        colors: [
-                            Color(hex: "#4488FF").opacity(0.55),
-                            Color(hex: "#1A3A8A").opacity(0.25),
-                            Color.clear
-                        ],
-                        center: UnitPoint(x: 0.5, y: 0.28),
-                        startRadius: 0,
-                        endRadius: h * 0.65
-                    )
-
-                    // Straßen-Fläche
-                    Path { p in
-                        p.move(to: CGPoint(x: cx - 8, y: h * 0.42))
-                        p.addLine(to: CGPoint(x: cx + 8, y: h * 0.42))
-                        p.addLine(to: CGPoint(x: w * 0.92, y: h))
-                        p.addLine(to: CGPoint(x: w * 0.08, y: h))
-                        p.closeSubpath()
-                    }
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                Color(hex: "#0D1B4B").opacity(0.0),
-                                Color(hex: "#0D1B4B").opacity(0.6)
-                            ],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
-
-                    // Linke Straßenlinie
-                    Path { p in
-                        p.move(to: CGPoint(x: cx - 6, y: h * 0.42))
-                        p.addLine(to: CGPoint(x: w * 0.14, y: h))
-                    }
-                    .stroke(
-                        LinearGradient(
-                            colors: [Shield.primary.opacity(0.9), Shield.primary.opacity(0.2)],
-                            startPoint: .bottom, endPoint: .top
-                        ),
-                        lineWidth: 1.2
-                    )
-
-                    // Rechte Straßenlinie
-                    Path { p in
-                        p.move(to: CGPoint(x: cx + 6, y: h * 0.42))
-                        p.addLine(to: CGPoint(x: w * 0.86, y: h))
-                    }
-                    .stroke(
-                        LinearGradient(
-                            colors: [Shield.primary.opacity(0.9), Shield.primary.opacity(0.2)],
-                            startPoint: .bottom, endPoint: .top
-                        ),
-                        lineWidth: 1.2
-                    )
-
-                    // Mittellinie (gestrichelt)
-                    Path { p in
-                        let segments = 6
-                        for i in 0..<segments {
-                            let t0 = Double(i) / Double(segments)
-                            let t1 = t0 + 0.042
-                            let y0 = h * 0.44 + CGFloat(t0) * h * 0.56
-                            let y1 = h * 0.44 + CGFloat(t1) * h * 0.56
-                            let spread = CGFloat(t0) * 5.0
-                            p.move(to: CGPoint(x: cx - spread, y: y0))
-                            p.addLine(to: CGPoint(x: cx + spread, y: y0))
-                            p.move(to: CGPoint(x: cx - spread, y: y1 - 2))
-                            p.addLine(to: CGPoint(x: cx + spread, y: y1 - 2))
-                        }
-                    }
-                    .stroke(Shield.primary.opacity(0.7), lineWidth: 1.5)
-
-                    // Diagonale Licht-Streifen oben links
-                    Path { p in
-                        p.move(to: CGPoint(x: -10, y: h * 0.05))
-                        p.addLine(to: CGPoint(x: w * 0.65, y: h * 0.30))
-                    }
-                    .stroke(
-                        LinearGradient(
-                            colors: [Color.clear, Shield.primary.opacity(0.45), Color.clear],
-                            startPoint: .leading, endPoint: .trailing
-                        ),
-                        lineWidth: 2.5
-                    )
-
-                    Path { p in
-                        p.move(to: CGPoint(x: -10, y: h * 0.10))
-                        p.addLine(to: CGPoint(x: w * 0.55, y: h * 0.28))
-                    }
-                    .stroke(
-                        LinearGradient(
-                            colors: [Color.clear, Shield.primary.opacity(0.22), Color.clear],
-                            startPoint: .leading, endPoint: .trailing
-                        ),
-                        lineWidth: 1.2
-                    )
-                }
+                // Subtiler Primär-Schimmer, kein harter Gradient
+                Circle()
+                    .fill(Shield.primary.opacity(0.18))
+                    .frame(width: geo.size.width * 1.1)
+                    .offset(x: -geo.size.width * 0.35, y: -geo.size.height * 0.35)
+                    .blur(radius: 38)
             }
 
-            // ── Unterer Schatten-Gradient für Text-Lesbarkeit ─────
-            LinearGradient(
-                colors: [Color.black.opacity(0.0), Color.black.opacity(0.75)],
-                startPoint: UnitPoint(x: 0.5, y: 0.35),
-                endPoint: .bottom
-            )
+            // ── Inhalt ────────────────────────────────────────────────────────
+            VStack(alignment: .leading, spacing: 0) {
 
-            // ── Inhalt unten links ────────────────────────────────
-            VStack(alignment: .leading, spacing: 4) {
+                // Obere Zeile: Label + Status-Dot
+                HStack(alignment: .top) {
+                    Text("FAHRTENBUCH")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundColor(Shield.textMuted)
+                        .tracking(1.4)
 
-                // Auto-Icon mit Scan-Rahmen
+                    Spacer()
+
+                    // Puls-Dot: zeigt "bereit"
+                    Circle()
+                        .fill(Shield.primary)
+                        .frame(width: 5, height: 5)
+                }
+
+                Spacer()
+
+                // Kamera-Icon mit sauberem Rahmen
                 ZStack {
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(Shield.primary.opacity(0.8), lineWidth: 1.5)
-                        .frame(width: 36, height: 36)
+                    RoundedRectangle(cornerRadius: 14)
+                        .fill(Shield.primary.opacity(0.12))
+                        .frame(width: 52, height: 52)
 
-                    // Scan-Ecken
-                    ScanCorners(size: 36, color: Shield.primary)
+                    RoundedRectangle(cornerRadius: 14)
+                        .stroke(Shield.primary.opacity(0.35), lineWidth: 1)
+                        .frame(width: 52, height: 52)
 
-                    Image(systemName: "car.fill")
-                        .font(.system(size: 18, weight: .bold))
+                    Image(systemName: "camera.viewfinder")
+                        .font(.system(size: 24, weight: .regular))
                         .foregroundColor(Shield.primary)
                 }
 
-                Spacer().frame(height: 2)
+                Spacer().frame(height: 10)
 
-                Text("Fahrt\nstarten")
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundColor(.white)
+                // Haupttext
+                Text("KM-Start\nscannen")
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundColor(Shield.textPrimary)
                     .lineSpacing(1)
 
-                Text("KM SCANNEN")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundColor(Shield.primary)
-                    .tracking(1.5)
+                Spacer().frame(height: 6)
 
-                // Unterstrich-Akzent
-                Rectangle()
-                    .fill(Shield.primary.opacity(0.7))
-                    .frame(width: 28, height: 1.5)
-                    .cornerRadius(1)
+                // Unterzeile
+                HStack(spacing: 4) {
+                    // Kleiner Pfeil-Akzent
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundColor(Shield.primary)
+
+                    Text("Neue Fahrt starten")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(Shield.primary)
+                }
             }
-            .padding(.leading, 12)
-            .padding(.bottom, 14)
+            .padding(14)
         }
         .widgetURL(URL(string: "optimes://fahrtenbuch/neue-fahrt/scan-km-start"))
         .modifier(SmallBackgroundModifier())
-    }
-}
-
-// Scan-Ecken Helper
-struct ScanCorners: View {
-    let size: CGFloat
-    let color: Color
-    private let len: CGFloat = 8
-    private let thick: CGFloat = 2
-
-    var body: some View {
-        ZStack {
-            // oben links
-            Path { p in
-                p.move(to: CGPoint(x: 0, y: len))
-                p.addLine(to: CGPoint(x: 0, y: 0))
-                p.addLine(to: CGPoint(x: len, y: 0))
-            }.stroke(color, lineWidth: thick)
-            // oben rechts
-            Path { p in
-                p.move(to: CGPoint(x: size - len, y: 0))
-                p.addLine(to: CGPoint(x: size, y: 0))
-                p.addLine(to: CGPoint(x: size, y: len))
-            }.stroke(color, lineWidth: thick)
-            // unten links
-            Path { p in
-                p.move(to: CGPoint(x: 0, y: size - len))
-                p.addLine(to: CGPoint(x: 0, y: size))
-                p.addLine(to: CGPoint(x: len, y: size))
-            }.stroke(color, lineWidth: thick)
-            // unten rechts
-            Path { p in
-                p.move(to: CGPoint(x: size - len, y: size))
-                p.addLine(to: CGPoint(x: size, y: size))
-                p.addLine(to: CGPoint(x: size, y: size - len))
-            }.stroke(color, lineWidth: thick)
-        }
-        .frame(width: size, height: size)
-    }
-}
-
-struct SmallBackgroundModifier: ViewModifier {
-    func body(content: Content) -> some View {
-        if #available(iOS 17.0, *) {
-            content.containerBackground(for: .widget) {
-                Color(hex: "#0A0B0F")
-            }
-        } else {
-            content.background(Color(hex: "#0A0B0F"))
-        }
     }
 }
 
