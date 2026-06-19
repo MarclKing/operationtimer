@@ -197,6 +197,10 @@ struct DayTile: View {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// SMALL WIDGET — Schnellstart Fahrtenbuch
+// ─────────────────────────────────────────────────────────────────────────────
+
+   // ─────────────────────────────────────────────────────────────────────────────
 // SMALL WIDGET — Fahrtenbuch KM-Scan Schnellstart
 // Shield-Theme: Dunkel · Präzise · Funktional
 // ─────────────────────────────────────────────────────────────────────────────
@@ -275,6 +279,18 @@ struct SmallWidgetView: View {
         }
         .widgetURL(URL(string: "optimes://fahrtenbuch/neue-fahrt/scan-km-start"))
         .modifier(SmallBackgroundModifier())
+    }
+}
+
+struct SmallBackgroundModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 17.0, *) {
+            content.containerBackground(for: .widget) {
+                Color(hex: "#0A0B0F")
+            }
+        } else {
+            content.background(Color(hex: "#0A0B0F"))
+        }
     }
 }
 
