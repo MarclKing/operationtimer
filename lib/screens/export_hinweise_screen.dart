@@ -121,7 +121,7 @@ class _ExportHinweiseScreenState extends State<ExportHinweiseScreen> {
                     GestureDetector(
                       onTap: () async {
                         final subject = 'OpTimes – FleetPortal Bookmarklet';
-                        final body = '''Hallo,\n\nanbei die Installationsseite für das OpTimes-Bookmarklet, das den Import von Fahrten in FleetPortal automatisiert.\n\nEinmalige Installation (30 Sekunden):\n1. HTML-Anhang im Browser öffnen\n2. Den grünen Button in die Lesezeichenleiste ziehen\n3. Fertig – ab sofort steht das Bookmarklet in FleetPortal zur Verfügung\n\nPro Fahrt spart es ca. 2 Minuten manuelles Eintippen.\n\nViele Grüße''';
+                        final body = '''Hallo,\n\nanbei die Installationsseite für das OpTimes-Bookmarklet, das den Import von Fahrten in FleetPortal automatisiert.\n\nEinmalige Installation (30 Sekunden):\n1. HTML-Anhang im Browser öffnen\n2. Den grünen Button in die Lesezeichenleiste ziehen - diese mit STRG + UMSCHLT + B öffnen\n3. Fertig – ab sofort steht das Bookmarklet in FleetPortal zur Verfügung\n\nPro Fahrt spart es ca. 2 Minuten manuelles Eintippen.\n\nViele Grüße''';
                         
                         // Bookmarklet-HTML aus Assets oder inline
                         final bookmarkletHtml = _buildBookmarkletHtml();
