@@ -7,23 +7,11 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import '../theme/app_theme.dart';
-
-// ─────────────────────────────────────────────────────────────────────────────
-// LIQUID GLASS EXTENSION
-// ─────────────────────────────────────────────────────────────────────────────
-
-extension _AppSkinGlass on AppSkin {
-  double get glassBlur => isLight ? 18.0 : 22.0;
-  double get glassOpacity => isLight ? 0.62 : 0.55;
-  Color get glassHighlight =>
-      isLight ? Colors.white.withValues(alpha: 0.70) : Colors.white.withValues(alpha: 0.12);
-  Color get glassBorder =>
-      isLight ? Colors.white.withValues(alpha: 0.55) : Colors.white.withValues(alpha: 0.16);
-  Color get glassShadow =>
-      Colors.black.withValues(alpha: isLight ? 0.08 : 0.35);
-}
+import '../widgets/glass_pickers.dart';
 
 class PdfService {
+  static pw.Font? _fontRegular;
+  static pw.Font? _fontBold;
   static String _calcDuration(String kommen, String gehen) {
     if (kommen.isEmpty || gehen.isEmpty) return '--';
     try {
@@ -37,32 +25,6 @@ class PdfService {
     } catch (_) {
       return '--';
     }
-  }
-
-  static pw.Widget _pdfStatBox(
-      String label, String value, pw.Font font, pw.Font fontBold) {
-    return pw.Expanded(
-      child: pw.Container(
-        padding: const pw.EdgeInsets.symmetric(vertical: 14),
-        decoration: pw.BoxDecoration(
-          color: const PdfColor.fromInt(0xFFF0F4FF),
-          borderRadius: pw.BorderRadius.circular(10),
-        ),
-        child: pw.Column(
-          children: [
-            pw.Text(value,
-                style: pw.TextStyle(
-                    font: fontBold,
-                    fontSize: 22,
-                    color: const PdfColor.fromInt(0xFF1A1A2E))),
-            pw.SizedBox(height: 3),
-            pw.Text(label,
-                style: pw.TextStyle(
-                    font: font, fontSize: 10, color: const PdfColor.fromInt(0xFF8B8B9E))),
-          ],
-        ),
-      ),
-    );
   }
 
   static Future<void> exportMonth(
@@ -113,7 +75,6 @@ class PdfService {
     await _buildAndShare([entry], fullName, dateStr, fileKey);
   }
 
-  // ── Determines consecutive day blocks for PDF separators ──────────────────
   static List<int> _computeBlocks(List<Map<String, dynamic>> entries) {
     if (entries.isEmpty) return [];
     final blocks = List<int>.filled(entries.length, 0);
@@ -142,8 +103,10 @@ class PdfService {
     String fileKey,
   ) async {
     final pdf = pw.Document();
-    final font = await PdfGoogleFonts.notoSansRegular();
-    final fontBold = await PdfGoogleFonts.notoSansBold();
+    _fontRegular ??= await PdfGoogleFonts.notoSansRegular();
+    _fontBold ??= await PdfGoogleFonts.notoSansBold();
+    final font = _fontRegular!;
+    final fontBold = _fontBold!;
 
     final blocks = _computeBlocks(entries);
 
@@ -152,15 +115,15 @@ class PdfService {
         pageFormat: PdfPageFormat.a4,
         margin: const pw.EdgeInsets.all(40),
         build: (context) => [
-          // ── Header ────────────────────────────────────────────────────────
           pw.Container(
-            padding: const pw.EdgeInsets.all(20),
+            padding: const pw.EdgeInsets.symmetric(horizontal: 20, vertical: 16),
             decoration: pw.BoxDecoration(
-              color: const PdfColor.fromInt(0xFF1A1A2E),
-              borderRadius: pw.BorderRadius.circular(10),
+              color: const PdfColor.fromInt(0xFF0A0A0A),
+              borderRadius: pw.BorderRadius.circular(12),
             ),
             child: pw.Row(
               mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: pw.CrossAxisAlignment.center,
               children: [
                 pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -168,14 +131,14 @@ class PdfService {
                     pw.Text('OpTimes',
                         style: pw.TextStyle(
                             font: fontBold,
-                            fontSize: 22,
+                            fontSize: 20,
                             color: PdfColors.white)),
-                    pw.SizedBox(height: 4),
-                    pw.Text('Arbeitszeiterfassung',
+                    pw.SizedBox(height: 3),
+                    pw.Text('Arbeitszeiterfassung  ·  $title',
                         style: pw.TextStyle(
                             font: font,
-                            fontSize: 12,
-                            color: const PdfColor.fromInt(0xFF8B8B9E))),
+                            fontSize: 11,
+                            color: const PdfColor.fromInt(0xFF888888))),
                   ],
                 ),
                 pw.Column(
@@ -184,40 +147,36 @@ class PdfService {
                     pw.Text(fullName,
                         style: pw.TextStyle(
                             font: fontBold,
-                            fontSize: 14,
+                            fontSize: 13,
                             color: PdfColors.white)),
-                    pw.SizedBox(height: 4),
-                    pw.Text(title,
-                        style: pw.TextStyle(
-                            font: font,
-                            fontSize: 12,
-                            color: const PdfColor.fromInt(0xFF8B8B9E))),
+                    pw.SizedBox(height: 3),
+                    pw.Row(children: [
+                      pw.Text('${entries.length} Einträge',
+                          style: pw.TextStyle(
+                              font: font,
+                              fontSize: 10,
+                              color: const PdfColor.fromInt(0xFF888888))),
+                      pw.Text('  ·  ', style: pw.TextStyle(font: font, fontSize: 10,
+                          color: const PdfColor.fromInt(0xFF555555))),
+                      pw.Text('${entries.where((e) => (e['gehen'] ?? '').isNotEmpty).length} vollst.',
+                          style: pw.TextStyle(
+                              font: font,
+                              fontSize: 10,
+                              color: const PdfColor.fromInt(0xFF888888))),
+                      pw.Text('  ·  ', style: pw.TextStyle(font: font, fontSize: 10,
+                          color: const PdfColor.fromInt(0xFF555555))),
+                      pw.Text('${entries.where((e) => (e['gehen'] ?? '').isEmpty).length} offen',
+                          style: pw.TextStyle(
+                              font: font,
+                              fontSize: 10,
+                              color: const PdfColor.fromInt(0xFF888888))),
+                    ]),
                   ],
                 ),
               ],
             ),
           ),
           pw.SizedBox(height: 20),
-          // ── Stats ──────────────────────────────────────────────────────────
-          pw.Row(
-            children: [
-              _pdfStatBox('Einträge', '${entries.length}', font, fontBold),
-              pw.SizedBox(width: 10),
-              _pdfStatBox(
-                  'Vollständig',
-                  '${entries.where((e) => (e['gehen'] ?? '').isNotEmpty).length}',
-                  font,
-                  fontBold),
-              pw.SizedBox(width: 10),
-              _pdfStatBox(
-                  'Offen',
-                  '${entries.where((e) => (e['gehen'] ?? '').isEmpty).length}',
-                  font,
-                  fontBold),
-            ],
-          ),
-          pw.SizedBox(height: 20),
-          // ── Table header ───────────────────────────────────────────────────
           pw.Container(
             padding:
                 const pw.EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -266,8 +225,6 @@ class PdfService {
               ],
             ),
           ),
-
-          // ── Rows with block separators ─────────────────────────────────────
           ...() {
             final widgets = <pw.Widget>[];
             for (int i = 0; i < entries.length; i++) {
@@ -366,139 +323,191 @@ class PdfService {
     );
   }
 
-  // ── Month picker as zentrierter Dialog (Glass) ─────────────────────────────
+  // ── Month picker als Glass-Dialog mit PDF-Export ───────────────────────────
   static Future<void> showMonthPickerAndExport(BuildContext context) async {
-  final skin = AppTheme.of(context);
-  DateTime selectedMonth = DateTime(DateTime.now().year, DateTime.now().month);
+    final skin = AppTheme.of(context);
+    DateTime selectedMonth = DateTime(DateTime.now().year, DateTime.now().month);
 
-  await showGeneralDialog(
-    context: context,
-    barrierDismissible: true,
-    barrierLabel: 'Schließen',
-    barrierColor: Colors.black.withValues(alpha: 0.50),
-    transitionDuration: const Duration(milliseconds: 280),
-    transitionBuilder: (ctx, anim, _, child) {
-      final curved = CurvedAnimation(
-        parent: anim,
-        curve: Curves.easeOutBack,
-        reverseCurve: Curves.easeInBack,
-      );
-      return ScaleTransition(
-        scale: Tween<double>(begin: 0.88, end: 1.0).animate(curved),
-        child: FadeTransition(opacity: anim, child: child),
-      );
-    },
-    pageBuilder: (ctx, _, __) => StatefulBuilder(
-      builder: (ctx, setSheet) {
+    await showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Schließen',
+      barrierColor: Colors.black.withValues(alpha: 0.50),
+      transitionDuration: const Duration(milliseconds: 280),
+      transitionBuilder: (ctx, anim, _, child) {
+        final curved = CurvedAnimation(
+          parent: anim,
+          curve: Curves.easeOutBack,
+          reverseCurve: Curves.easeInBack,
+        );
+        return ScaleTransition(
+          scale: Tween<double>(begin: 0.88, end: 1.0).animate(curved),
+          child: FadeTransition(opacity: anim, child: child),
+        );
+      },
+      pageBuilder: (ctx, _, __) => StatefulBuilder(
+        builder: (ctx, setSheet) {
+          void changeMonth(int delta) {
+            setSheet(() => selectedMonth =
+                DateTime(selectedMonth.year, selectedMonth.month + delta));
+          }
 
-        void changeMonth(int delta) {
-          setSheet(() => selectedMonth =
-              DateTime(selectedMonth.year, selectedMonth.month + delta));
-        }
+          void showPicker() async {
+            // Nutzt gemeinsamen showMonthYearPicker aus glass_pickers.dart
+            final picked = await showMonthYearPicker(
+              context: ctx,
+              skin: skin,
+              initialMonth: selectedMonth,
+            );
+            if (picked != null) setSheet(() => selectedMonth = picked);
+          }
 
-        void showPicker() async {
-          int pickedYear = selectedMonth.year;
-          int pickedMonth = selectedMonth.month - 1;
-          final yearCount = DateTime.now().year - 2020 + 2;
-          final monthCtrl = FixedExtentScrollController(
-              initialItem: 1000 * 12 + pickedMonth);
-          final yearCtrl =
-              FixedExtentScrollController(initialItem: pickedYear - 2020);
+          final monthName =
+              DateFormat('MMMM yyyy', 'de').format(selectedMonth);
 
-          await showModalBottomSheet(
-            context: ctx,
-            backgroundColor: Colors.transparent,
-            builder: (_) => StatefulBuilder(
-              builder: (bCtx, setBottomSheet) => ClipRRect(
-                borderRadius:
-                    const BorderRadius.vertical(top: Radius.circular(28)),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(
-                      sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: skin.isLight
-                          ? Colors.white.withValues(alpha: 0.88)
-                          : skin.bgSheet.withValues(alpha: 0.90),
-                      borderRadius: const BorderRadius.vertical(
-                          top: Radius.circular(28)),
-                      border: Border.all(color: skin.glassBorder),
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          margin: const EdgeInsets.only(top: 12),
-                          width: 40, height: 4,
-                          decoration: BoxDecoration(
-                              color: skin.surface(0.18),
-                              borderRadius: BorderRadius.circular(2)),
-                        ),
-                        const SizedBox(height: 20),
-                        Text('Monat & Jahr',
-                            style: TextStyle(
-                                color: skin.textPrimary,
-                                fontSize: 17,
-                                fontWeight: FontWeight.w600)),
-                        const SizedBox(height: 16),
-                        SizedBox(
-                          height: 200,
-                          child: Row(children: [
-                            Expanded(
-                              flex: 2,
-                              child: CupertinoPicker(
-                                scrollController: monthCtrl,
-                                itemExtent: 44,
-                                looping: true,
-                                backgroundColor: Colors.transparent,
-                                onSelectedItemChanged: (i) =>
-                                    setBottomSheet(() => pickedMonth = i % 12),
-                                children: List.generate(
-                                    12,
-                                    (i) => Center(
-                                          child: Text(
-                                              DateFormat('MMMM', 'de').format(
-                                                  DateTime(2024, i + 1)),
-                                              style: TextStyle(
-                                                  fontSize: 17,
-                                                  fontWeight: FontWeight.w500,
-                                                  color: skin.textPrimary)),
-                                        )),
+          return Center(
+            child: Material(
+              color: Colors.transparent,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 32),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(28),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(
+                        sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: skin.isLight
+                            ? Colors.white.withValues(alpha: 0.88)
+                            : skin.bgCard.withValues(alpha: 0.90),
+                        borderRadius: BorderRadius.circular(28),
+                        border: Border.all(color: skin.glassBorder, width: 1.0),
+                        boxShadow: [
+                          BoxShadow(
+                              color: skin.glassShadow,
+                              blurRadius: 40,
+                              offset: const Offset(0, 12)),
+                          BoxShadow(
+                              color: skin.glassHighlight,
+                              blurRadius: 0,
+                              spreadRadius: -1,
+                              offset: const Offset(0, 1)),
+                        ],
+                      ),
+                      padding: const EdgeInsets.all(24),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 36, height: 4,
+                            decoration: BoxDecoration(
+                                color: skin.surface(0.18),
+                                borderRadius: BorderRadius.circular(2)),
+                          ),
+                          const SizedBox(height: 20),
+                          Text('Monat auswählen',
+                              style: TextStyle(
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.w600,
+                                  color: skin.textPrimary)),
+                          const SizedBox(height: 16),
+
+                          // ── Monats-Navigation ──
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(20),
+                            child: BackdropFilter(
+                              filter: ImageFilter.blur(
+                                  sigmaX: skin.glassBlur,
+                                  sigmaY: skin.glassBlur),
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: skin.isLight
+                                      ? Colors.white
+                                          .withValues(alpha: skin.glassOpacity)
+                                      : skin.bgCard
+                                          .withValues(alpha: skin.glassOpacity),
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(
+                                      color: skin.glassBorder, width: 1.0),
+                                  boxShadow: [
+                                    BoxShadow(
+                                        color: skin.glassShadow,
+                                        blurRadius: 24,
+                                        offset: const Offset(0, 6)),
+                                    BoxShadow(
+                                        color: skin.glassHighlight,
+                                        blurRadius: 0,
+                                        spreadRadius: -1,
+                                        offset: const Offset(0, 1)),
+                                  ],
+                                ),
+                                child: Row(children: [
+                                  GestureDetector(
+                                    onTap: () => changeMonth(-1),
+                                    child: const SizedBox(
+                                        width: 44, height: 52,
+                                        child: Center(
+                                            child: Icon(Icons.chevron_left,
+                                                size: 22))),
+                                  ),
+                                  Expanded(
+                                    child: GestureDetector(
+                                      onTap: showPicker,
+                                      onDoubleTap: () {
+                                        final now = DateTime.now();
+                                        setSheet(() => selectedMonth =
+                                            DateTime(now.year, now.month));
+                                      },
+                                      onHorizontalDragEnd: (d) {
+                                        final v = d.primaryVelocity ?? 0;
+                                        if (v < -300) changeMonth(1);
+                                        if (v > 300) changeMonth(-1);
+                                      },
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                            vertical: 12),
+                                        child: Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.center,
+                                          children: [
+                                            Text(monthName,
+                                                style: TextStyle(
+                                                    fontSize: 16,
+                                                    fontWeight: FontWeight.w600,
+                                                    color: skin.textPrimary)),
+                                            const SizedBox(width: 6),
+                                            Icon(Icons.expand_more,
+                                                color: skin.surface(0.4),
+                                                size: 18),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  GestureDetector(
+                                    onTap: () => changeMonth(1),
+                                    child: SizedBox(
+                                        width: 44, height: 52,
+                                        child: Center(
+                                            child: Icon(Icons.chevron_right,
+                                                size: 22,
+                                                color: skin.surface(0.5)))),
+                                  ),
+                                ]),
                               ),
                             ),
-                            Expanded(
-                              child: CupertinoPicker(
-                                scrollController: yearCtrl,
-                                itemExtent: 44,
-                                looping: false,
-                                backgroundColor: Colors.transparent,
-                                onSelectedItemChanged: (i) => setBottomSheet(
-                                    () => pickedYear =
-                                        2020 + i.clamp(0, yearCount - 1)),
-                                children: List.generate(
-                                    yearCount,
-                                    (i) => Center(
-                                          child: Text('${2020 + i}',
-                                              style: TextStyle(
-                                                  fontSize: 17,
-                                                  fontWeight: FontWeight.w500,
-                                                  color: skin.textPrimary)),
-                                        )),
-                              ),
-                            ),
-                          ]),
-                        ),
-                        const SizedBox(height: 16),
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
-                          child: Row(children: [
+                          ),
+
+                          const SizedBox(height: 20),
+
+                          // ── Buttons ──
+                          Row(children: [
                             Expanded(
                               child: GestureDetector(
                                 onTap: () {
                                   final now = DateTime.now();
                                   setSheet(() => selectedMonth =
                                       DateTime(now.year, now.month));
-                                  Navigator.pop(bCtx);
                                 },
                                 child: Container(
                                   padding:
@@ -524,10 +533,32 @@ class PdfService {
                             const SizedBox(width: 10),
                             Expanded(
                               child: GestureDetector(
-                                onTap: () {
-                                  setSheet(() => selectedMonth =
-                                      DateTime(pickedYear, pickedMonth + 1));
-                                  Navigator.pop(bCtx);
+                                onTap: () async {
+                                  Navigator.pop(ctx);
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Row(children: [
+                                        const SizedBox(width: 2, height: 2),
+                                        SizedBox(
+                                          width: 16, height: 16,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 12),
+                                        const Text('PDF wird erstellt…'),
+                                      ]),
+                                      backgroundColor: skin.textMuted,
+                                      behavior: SnackBarBehavior.floating,
+                                      shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(12)),
+                                      margin: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+                                      duration: const Duration(seconds: 10),
+                                    ),
+                                  );
+                                  await PdfService.exportMonth(context, selectedMonth);
+                                  ScaffoldMessenger.of(context).hideCurrentSnackBar();
                                 },
                                 child: Container(
                                   padding:
@@ -543,9 +574,20 @@ class PdfService {
                                           : skin.primary.withValues(alpha: 0.45),
                                       width: 1.5,
                                     ),
+                                    boxShadow: [
+                                      BoxShadow(
+                                          color: skin.glassShadow,
+                                          blurRadius: 16,
+                                          offset: const Offset(0, 4)),
+                                      BoxShadow(
+                                          color: skin.glassHighlight,
+                                          blurRadius: 0,
+                                          spreadRadius: -1,
+                                          offset: const Offset(0, 1)),
+                                    ],
                                   ),
                                   child: Center(
-                                    child: Text('Auswählen',
+                                    child: Text('PDF erstellen',
                                         style: TextStyle(
                                             fontSize: 15,
                                             fontWeight: FontWeight.w700,
@@ -559,244 +601,16 @@ class PdfService {
                               ),
                             ),
                           ]),
-                        ),
-                        const SizedBox(height: 32),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 ),
               ),
             ),
           );
-        }
-
-        final monthName =
-            DateFormat('MMMM yyyy', 'de').format(selectedMonth);
-
-        return Center(
-          child: Material(
-            color: Colors.transparent,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 32),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(28),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(
-                      sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: skin.isLight
-                          ? Colors.white.withValues(alpha: 0.88)
-                          : skin.bgCard.withValues(alpha: 0.90),
-                      borderRadius: BorderRadius.circular(28),
-                      border: Border.all(color: skin.glassBorder, width: 1.0),
-                      boxShadow: [
-                        BoxShadow(
-                            color: skin.glassShadow,
-                            blurRadius: 40,
-                            offset: const Offset(0, 12)),
-                        BoxShadow(
-                            color: skin.glassHighlight,
-                            blurRadius: 0,
-                            spreadRadius: -1,
-                            offset: const Offset(0, 1)),
-                      ],
-                    ),
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          width: 36, height: 4,
-                          decoration: BoxDecoration(
-                              color: skin.surface(0.18),
-                              borderRadius: BorderRadius.circular(2)),
-                        ),
-                        const SizedBox(height: 20),
-                        Text('Monat auswählen',
-                            style: TextStyle(
-                                fontSize: 17,
-                                fontWeight: FontWeight.w600,
-                                color: skin.textPrimary)),
-                        const SizedBox(height: 16),
-
-                        // ── Monats-Navigation (identisch zu MonthScreen) ──
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(20),
-                          child: BackdropFilter(
-                            filter: ImageFilter.blur(
-                                sigmaX: skin.glassBlur,
-                                sigmaY: skin.glassBlur),
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: skin.isLight
-                                    ? Colors.white
-                                        .withValues(alpha: skin.glassOpacity)
-                                    : skin.bgCard
-                                        .withValues(alpha: skin.glassOpacity),
-                                borderRadius: BorderRadius.circular(20),
-                                border: Border.all(
-                                    color: skin.glassBorder, width: 1.0),
-                                boxShadow: [
-                                  BoxShadow(
-                                      color: skin.glassShadow,
-                                      blurRadius: 24,
-                                      offset: const Offset(0, 6)),
-                                  BoxShadow(
-                                      color: skin.glassHighlight,
-                                      blurRadius: 0,
-                                      spreadRadius: -1,
-                                      offset: const Offset(0, 1)),
-                                ],
-                              ),
-                              child: Row(children: [
-                                GestureDetector(
-                                  onTap: () => changeMonth(-1),
-                                  child: const SizedBox(
-                                      width: 44, height: 52,
-                                      child: Center(
-                                          child: Icon(Icons.chevron_left,
-                                              size: 22))),
-                                ),
-                                Expanded(
-                                  child: GestureDetector(
-                                    onTap: showPicker,
-                                    onDoubleTap: () {
-                                      final now = DateTime.now();
-                                      setSheet(() => selectedMonth =
-                                          DateTime(now.year, now.month));
-                                    },
-                                    onHorizontalDragEnd: (d) {
-                                      final v = d.primaryVelocity ?? 0;
-                                      if (v < -300) changeMonth(1);
-                                      if (v > 300) changeMonth(-1);
-                                    },
-                                    child: Padding(
-                                      padding: const EdgeInsets.symmetric(
-                                          vertical: 12),
-                                      child: Row(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.center,
-                                        children: [
-                                          Text(monthName,
-                                              style: TextStyle(
-                                                  fontSize: 16,
-                                                  fontWeight: FontWeight.w600,
-                                                  color: skin.textPrimary)),
-                                          const SizedBox(width: 6),
-                                          Icon(Icons.expand_more,
-                                              color: skin.surface(0.4),
-                                              size: 18),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                GestureDetector(
-                                  onTap: () => changeMonth(1),
-                                  child: SizedBox(
-                                      width: 44, height: 52,
-                                      child: Center(
-                                          child: Icon(Icons.chevron_right,
-                                              size: 22,
-                                              color: skin.surface(0.5)))),
-                                ),
-                              ]),
-                            ),
-                          ),
-                        ),
-
-                        const SizedBox(height: 20),
-
-                        // ── Buttons ──
-                        Row(children: [
-                          Expanded(
-                            child: GestureDetector(
-                              onTap: () {
-                                final now = DateTime.now();
-                                setSheet(() => selectedMonth =
-                                    DateTime(now.year, now.month));
-                              },
-                              child: Container(
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 14),
-                                decoration: BoxDecoration(
-                                  color: skin.isLight
-                                      ? Colors.white.withValues(alpha: 0.75)
-                                      : Colors.white.withValues(alpha: 0.08),
-                                  borderRadius: BorderRadius.circular(14),
-                                  border: Border.all(
-                                      color: skin.glassBorder, width: 1.0),
-                                ),
-                                child: Center(
-                                  child: Text('Aktuell',
-                                      style: TextStyle(
-                                          fontSize: 15,
-                                          fontWeight: FontWeight.w600,
-                                          color: skin.textPrimary)),
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: GestureDetector(
-                              onTap: () {
-                                Navigator.pop(ctx);
-                                PdfService.exportMonth(
-                                    context, selectedMonth);
-                              },
-                              child: Container(
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 14),
-                                decoration: BoxDecoration(
-                                  color: skin.isLight
-                                      ? skin.primary.withValues(alpha: 0.13)
-                                      : skin.primary.withValues(alpha: 0.22),
-                                  borderRadius: BorderRadius.circular(14),
-                                  border: Border.all(
-                                    color: skin.isLight
-                                        ? skin.primary.withValues(alpha: 0.28)
-                                        : skin.primary.withValues(alpha: 0.45),
-                                    width: 1.5,
-                                  ),
-                                  boxShadow: [
-                                    BoxShadow(
-                                        color: skin.glassShadow,
-                                        blurRadius: 16,
-                                        offset: const Offset(0, 4)),
-                                    BoxShadow(
-                                        color: skin.glassHighlight,
-                                        blurRadius: 0,
-                                        spreadRadius: -1,
-                                        offset: const Offset(0, 1)),
-                                  ],
-                                ),
-                                child: Center(
-                                  child: Text('PDF erstellen',
-                                      style: TextStyle(
-                                          fontSize: 15,
-                                          fontWeight: FontWeight.w700,
-                                          color: skin.isLight
-                                              ? skin.primary
-                                                  .withValues(alpha: 0.90)
-                                              : skin.primary
-                                                  .withValues(alpha: 0.85))),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ]),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        );
-      },
-    ),
- );
-}
+        },
+      ),
+    );
+  }
 }

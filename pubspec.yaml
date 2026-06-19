@@ -20,10 +20,14 @@ dependencies:
   url_launcher: ^6.3.2
   flutter_slidable: ^4.0.3
   file_picker: ^10.3.2
-  archive: ^3.6.1
+  archive: ^4.0.9
   receive_sharing_intent: ^1.8.0
   home_widget: ^0.7.0
   image_picker: ^1.1.2
+  google_mlkit_text_recognition: ^0.13.0
+  permission_handler: ^11.3.1
+  camera: ^0.11.0+2
+  flutter_native_splash: ^2.4.8  # ← auf 2.4.8 erhöht
 
 dev_dependencies:
   flutter_test:
@@ -36,11 +40,16 @@ flutter_launcher_icons:
   ios: true
   image_path: "assets/logo.png"
 
+flutter_native_splash:
+  color: "#0A0B0F"          # ← exakt dein skin.bgBase (Shield dark)
+  color_dark: "#0A0B0F"
+  image: assets/logo.png
+  android_12:
+    color: "#0A0B0F"
+    image: assets/logo.png
+    icon_background_color: "#0A0B0F"
+
 flutter:
   uses-material-design: true
   assets:
     - assets/logo.png
-    - assets/logo_trans1.png
-    - assets/logo_trans2.png
-  config:
-    enable-lldb-debugging: false

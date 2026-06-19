@@ -5,77 +5,24 @@ import 'package:flutter/services.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
 import '../theme/app_theme.dart';
+import '../widgets/glass_kit.dart';
+import '../widgets/glass_pickers.dart';
 import '../services/night_shift_helper.dart';
+import 'week_shift_strip.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// LIQUID GLASS DESIGN SYSTEM
+// Entfernt: extension AppSkinGlass  → jetzt in glass_kit.dart (AppSkinGlass)
+// Entfernt: GlassSurface            → jetzt in glass_kit.dart
+// Entfernt: _GlassPrimaryButton     → jetzt GlassPrimaryButton in glass_kit.dart
+// Entfernt: _GlassButton            → jetzt GlassSecondaryButton in glass_kit.dart
+// Entfernt: _GlassSheet             → jetzt GlassSheet in glass_kit.dart
+// Entfernt: _SheetHandle            → jetzt SheetHandle in glass_kit.dart
+// Entfernt: _GlassIconBadge         → jetzt GlassIconBadge in glass_kit.dart
+// Entfernt: _IOSTimePicker          → jetzt IOSTimePicker(confirmOnDismiss: false)
+//                                      in glass_pickers.dart
+// Entfernt: _selectDateWithPicker   → nutzt jetzt showSingleDatePicker aus
+//                                      glass_pickers.dart
 // ─────────────────────────────────────────────────────────────────────────────
-
-extension AppSkinGlass on AppSkin {
-  double get glassBlur => isLight ? 18.0 : 22.0;
-  double get glassOpacity => isLight ? 0.62 : 0.55;
-  Color get glassHighlight => isLight ? Colors.white.withValues(alpha: 0.70) : Colors.white.withValues(alpha: 0.12);
-  Color get glassBorder => isLight ? Colors.white.withValues(alpha: 0.55) : Colors.white.withValues(alpha: 0.16);
-  Color get glassShadow => Colors.black.withValues(alpha: isLight ? 0.08 : 0.35);
-}
-
-/// Die zentrale Glass-Karte
-class GlassSurface extends StatelessWidget {
-  final Widget child;
-  final double borderRadius;
-  final EdgeInsetsGeometry? padding;
-  final bool useBlur;
-  final bool highlighted;
-  final Color? overrideColor;
-
-  const GlassSurface({
-    super.key,
-    required this.child,
-    this.borderRadius = 24,
-    this.padding,
-    this.useBlur = true,
-    this.highlighted = false,
-    this.overrideColor,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final skin = AppTheme.of(context);
-    final br = BorderRadius.circular(borderRadius);
-    final baseColor = overrideColor ??
-        (skin.isLight
-            ? Colors.white.withValues(alpha: skin.glassOpacity)
-            : skin.bgCard.withValues(alpha: skin.glassOpacity));
-
-    final decoration = BoxDecoration(
-      color: baseColor,
-      borderRadius: br,
-      border: Border.all(
-        color: highlighted ? skin.primary.withValues(alpha: 0.45) : skin.glassBorder,
-        width: highlighted ? 1.5 : 1.0,
-      ),
-      boxShadow: [
-        BoxShadow(color: skin.glassShadow, blurRadius: 24, spreadRadius: 0, offset: const Offset(0, 6)),
-        BoxShadow(color: skin.glassHighlight, blurRadius: 0, spreadRadius: -1, offset: const Offset(0, 1)),
-      ],
-    );
-
-    final inner = Container(
-      padding: padding ?? const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
-      decoration: decoration,
-      child: child,
-    );
-
-    if (!useBlur) return ClipRRect(borderRadius: br, child: inner);
-    return ClipRRect(
-      borderRadius: br,
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
-        child: inner,
-      ),
-    );
-  }
-}
 
 enum _OverlayField { none, tkf, notiz }
 
@@ -368,65 +315,17 @@ class HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _dismissKeyboardAndOverlay();
     await Future.delayed(const Duration(milliseconds: 80));
     if (!mounted) return;
-
     final skin = AppTheme.of(context);
-    DateTime tempDate = _selectedDate;
-    UniqueKey pickerKey = UniqueKey();
 
-    await showModalBottomSheet(
+    // ── showSingleDatePicker aus glass_pickers.dart ──
+    final result = await showSingleDatePicker(
       context: context,
-      backgroundColor: Colors.transparent,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => _GlassSheet(
-          skin: skin,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _SheetHandle(skin: skin),
-              const SizedBox(height: 8),
-              Text('Datum auswählen', style: TextStyle(color: skin.textPrimary, fontSize: 17, fontWeight: FontWeight.w600)),
-              const SizedBox(height: 16),
-              SizedBox(
-                height: 200,
-                child: CupertinoDatePicker(
-                  key: pickerKey,
-                  mode: CupertinoDatePickerMode.date,
-                  initialDateTime: tempDate,
-                  minimumDate: DateTime(2020),
-                  maximumDate: DateTime(2030),
-                  backgroundColor: Colors.transparent,
-                  onDateTimeChanged: (d) => tempDate = d,
-                ),
-              ),
-              const SizedBox(height: 16),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
-                child: Row(children: [
-                  Expanded(
-                    child: _GlassButton(skin: skin, label: 'Heute', onTap: () {
-                      tempDate = DateTime.now();
-                      pickerKey = UniqueKey();
-                      setDialogState(() {});
-                    }),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: _GlassPrimaryButton(
-                      skin: skin,
-                      label: 'Übernehmen',
-                      onTap: () {
-                        _setDate(tempDate);
-                        Navigator.pop(context);
-                      }),
-                  ),
-                ]),
-              ),
-              const SizedBox(height: 24),
-            ],
-          ),
-        ),
-      ),
+      skin: skin,
+      initialDate: _selectedDate,
+      minimumDate: DateTime(2020),
+      maximumDate: DateTime(2030),
     );
+    if (result != null) _setDate(result);
   }
 
   Future<void> _selectTimeWithPicker(TextEditingController controller) async {
@@ -445,10 +344,14 @@ class HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (_) => _IOSTimePicker(
+      // ── IOSTimePicker aus glass_pickers.dart
+      // confirmOnDismiss: false = home_screen-Verhalten
+      // (Zeit nur bei explizitem "Übernehmen"-Tap übernehmen) ──
+      builder: (_) => IOSTimePicker(
         initialTime: _parseTime(controller.text) ?? TimeOfDay.now(),
         skin: skin,
         label: isKommen ? 'Uhrzeit Kommen' : 'Uhrzeit Gehen',
+        confirmOnDismiss: false,
         onTimeSelected: (t) => selectedTime = t,
       ),
     );
@@ -495,7 +398,6 @@ class HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         behavior: HitTestBehavior.translucent,
         child: Stack(
           children: [
-            // Hauptinhalt
             GestureDetector(
               onTap: overlayOpen ? _closeOverlay : null,
               behavior: HitTestBehavior.translucent,
@@ -504,7 +406,7 @@ class HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   controller: _scrollController,
                   physics: overlayOpen ? const NeverScrollableScrollPhysics() : const AlwaysScrollableScrollPhysics(),
                   children: [
-                    const SizedBox(height: 80),
+                    const SizedBox(height: 40),
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 24),
                       child: Column(
@@ -519,98 +421,84 @@ class HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                             const SizedBox(height: 2),
                             Text(_firstName, style: TextStyle(fontSize: 32, fontWeight: FontWeight.w700, color: skin.primary, letterSpacing: -0.5)),
                           ],
+                          const SizedBox(height: 6),
+                          WeekShiftStrip(skin: skin),
                         ],
                       ),
                     ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 40),
 
-                    // ── DATUMSKARTE MIT INTEGRIERTEN PFEILEN (unsichtbare Hitbox) ──
+                    // ── DATUMSKARTE ──
                     Padding(
-  padding: const EdgeInsets.symmetric(horizontal: 24),
-  child: GestureDetector(
-    onHorizontalDragEnd: (d) {
-      final v = d.primaryVelocity ?? 0;
-      if (v < -300) _changeDate(1);
-      if (v > 300) _changeDate(-1);
-    },
-    child: ClipRRect(
-      borderRadius: BorderRadius.circular(20),
-      child: Container(
-        decoration: BoxDecoration(
-                            color: skin.isLight ? Colors.white.withValues(alpha: skin.glassOpacity) : skin.bgCard.withValues(alpha: skin.glassOpacity),
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                              color: isToday ? skin.primary.withValues(alpha: 0.45) : skin.glassBorder,
-                              width: isToday ? 1.5 : 1.0,
-                            ),
-                            boxShadow: [
-                              BoxShadow(color: skin.glassShadow, blurRadius: 24, spreadRadius: 0, offset: const Offset(0, 6)),
-                              BoxShadow(color: skin.glassHighlight, blurRadius: 0, spreadRadius: -1, offset: const Offset(0, 1)),
-                            ],
-                          ),
-                          child: Row(
-                            children: [
-                              // Pfeil links — nur Hitbox, kein sichtbarer Rahmen
-                              GestureDetector(
-                                onTap: () => _changeDate(-1),
-                                child: const SizedBox(
-                                  width: 44,
-                                  height: 52,
-                                  child: Center(
-                                    child: Icon(Icons.chevron_left, size: 22),
-                                  ),
-                                ),
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: GestureDetector(
+                        onHorizontalDragEnd: (d) {
+                          final v = d.primaryVelocity ?? 0;
+                          if (v < -300) _changeDate(1);
+                          if (v > 300) _changeDate(-1);
+                        },
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(20),
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: skin.isLight ? Colors.white.withValues(alpha: skin.glassOpacity) : skin.bgCard.withValues(alpha: skin.glassOpacity),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: isToday ? skin.primary.withValues(alpha: 0.45) : skin.glassBorder,
+                                width: isToday ? 1.5 : 1.0,
                               ),
-                              // Datum-Inhalt
-                              Expanded(
-  child: GestureDetector(
-    onTap: _selectDateWithPicker,
-    onDoubleTap: () {
-      HapticFeedback.selectionClick();
-      _setDate(DateTime.now());
-    },
-    child: Padding(
-                                    padding: const EdgeInsets.symmetric(vertical: 12),
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.center,
-                                      children: [
-                                        Text(
-                                          isToday ? 'HEUTE' : 'DATUM',
-                                          style: TextStyle(
-                                              fontSize: 9,
-                                              fontWeight: FontWeight.w700,
-                                              color: isToday ? skin.primary : skin.surface(0.35),
-                                              letterSpacing: 1.2),
-                                        ),
-                                        const SizedBox(height: 2),
-                                        Text(
-                                          DateFormat('EEEE, d. MMMM yyyy', 'de').format(_selectedDate),
-                                          style: TextStyle(fontSize: 13, color: skin.textPrimary, fontWeight: FontWeight.w600),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          textAlign: TextAlign.center,
-                                        ),
-                                      ],
+                              boxShadow: [
+                                BoxShadow(color: skin.glassShadow, blurRadius: 24, spreadRadius: 0, offset: const Offset(0, 6)),
+                                BoxShadow(color: skin.glassHighlight, blurRadius: 0, spreadRadius: -1, offset: const Offset(0, 1)),
+                              ],
+                            ),
+                            child: Row(
+                              children: [
+                                GestureDetector(
+                                  onTap: () => _changeDate(-1),
+                                  child: const SizedBox(width: 44, height: 52,
+                                      child: Center(child: Icon(Icons.chevron_left, size: 22))),
+                                ),
+                                Expanded(
+                                  child: GestureDetector(
+                                    onTap: _selectDateWithPicker,
+                                    onDoubleTap: () {
+                                      HapticFeedback.selectionClick();
+                                      _setDate(DateTime.now());
+                                    },
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(vertical: 12),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.center,
+                                        children: [
+                                          Text(
+                                            isToday ? 'HEUTE' : 'DATUM',
+                                            style: TextStyle(
+                                                fontSize: 9, fontWeight: FontWeight.w700,
+                                                color: isToday ? skin.primary : skin.surface(0.35),
+                                                letterSpacing: 1.2),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            DateFormat('EEEE, d. MMMM yyyy', 'de').format(_selectedDate),
+                                            style: TextStyle(fontSize: 13, color: skin.textPrimary, fontWeight: FontWeight.w600),
+                                            maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center,
+                                          ),
+                                        ],
+                                      ),
                                     ),
                                   ),
                                 ),
-                              ),
-                              // Pfeil rechts — nur Hitbox, kein sichtbarer Rahmen
-                              GestureDetector(
-                                onTap: () => _changeDate(1),
-                                child: SizedBox(
-                                  width: 44,
-                                  height: 52,
-                                  child: Center(
-                                    child: Icon(Icons.chevron_right, size: 22, color: skin.surface(0.5)),
-                                  ),
+                                GestureDetector(
+                                  onTap: () => _changeDate(1),
+                                  child: SizedBox(width: 44, height: 52,
+                                      child: Center(child: Icon(Icons.chevron_right, size: 22, color: skin.surface(0.5)))),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
                       ),
-  ),
                     ),
                     const SizedBox(height: 16),
 
@@ -645,7 +533,7 @@ class HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     ),
                     const SizedBox(height: 16),
 
-                    // TKF-Karte - OHNE AnimatedOpacity
+                    // TKF-Karte
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 24),
                       child: GestureDetector(
@@ -662,7 +550,7 @@ class HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     ),
                     const SizedBox(height: 10),
 
-                    // Notiz-Karte - OHNE AnimatedOpacity
+                    // Notiz-Karte
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 24),
                       child: GestureDetector(
@@ -683,8 +571,10 @@ class HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 24),
                       child: ScaleTransition(
-                        scale: Tween<double>(begin: 1.0, end: 0.96).animate(CurvedAnimation(parent: _saveAnimController, curve: Curves.easeInOut)),
-                        child: _GlassPrimaryButton(
+                        scale: Tween<double>(begin: 1.0, end: 0.96).animate(
+                            CurvedAnimation(parent: _saveAnimController, curve: Curves.easeInOut)),
+                        // ── GlassPrimaryButton aus glass_kit.dart ──
+                        child: GlassPrimaryButton(
                           skin: skin,
                           label: 'Eintrag speichern',
                           icon: Icons.save_rounded,
@@ -737,7 +627,7 @@ class HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GLASS ZEIT-KARTE (Kommen / Gehen) — einheitlicher Glaseffekt wie TKF/Notiz
+// GLASS ZEIT-KARTE (Kommen / Gehen)
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _GlassTimeCard extends StatefulWidget {
@@ -781,8 +671,6 @@ class _GlassTimeCardState extends State<_GlassTimeCard> {
         builder: (context, __) {
           final skin = widget.skin;
           final isEmpty = widget.controller.text.isEmpty;
-
-          // Exakt gleiche Basis wie _GlassInputCard (useBlur: false)
           final br = BorderRadius.circular(20);
           final baseColor = skin.isLight
               ? Colors.white.withValues(alpha: skin.glassOpacity)
@@ -813,7 +701,8 @@ class _GlassTimeCardState extends State<_GlassTimeCard> {
                     children: [
                       Text(widget.label,
                           style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: widget.color, letterSpacing: 1.2)),
-                      _GlassIconBadge(skin: skin, icon: Icons.unfold_more_rounded),
+                      // ── GlassIconBadge aus glass_kit.dart ──
+                      GlassIconBadge(skin: skin, icon: Icons.unfold_more_rounded),
                     ],
                   ),
                   const SizedBox(height: 8),
@@ -822,7 +711,8 @@ class _GlassTimeCardState extends State<_GlassTimeCard> {
                     alignment: Alignment.centerLeft,
                     child: Text(
                       isEmpty ? '--:--' : widget.controller.text,
-                      style: TextStyle(fontSize: 32, fontWeight: FontWeight.w700, color: isEmpty ? skin.surface(0.2) : skin.textPrimary, letterSpacing: -1),
+                      style: TextStyle(fontSize: 32, fontWeight: FontWeight.w700,
+                          color: isEmpty ? skin.surface(0.2) : skin.textPrimary, letterSpacing: -1),
                     ),
                   ),
                 ],
@@ -852,31 +742,34 @@ class _GlassInputCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: controller,
+      // ── GlassSurface aus glass_kit.dart ──
       builder: (_, __) => GlassSurface(
         borderRadius: 20, useBlur: false,
         padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Container(
-              width: 36, height: 36,
-              child: Icon(icon, size: 20, color: skin.primary),
-            ),
+            SizedBox(width: 36, height: 36,
+                child: Icon(icon, size: 20, color: skin.primary)),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text(label, style: TextStyle(fontSize: 9, color: skin.primary, fontWeight: FontWeight.w700, letterSpacing: 1.0), overflow: TextOverflow.ellipsis, maxLines: 1),
+                  Text(label, style: TextStyle(fontSize: 9, color: skin.primary, fontWeight: FontWeight.w700, letterSpacing: 1.0),
+                      overflow: TextOverflow.ellipsis, maxLines: 1),
                   const SizedBox(height: 3),
                   Text(controller.text.isEmpty ? hint : controller.text,
-                      style: TextStyle(fontSize: 14, fontWeight: controller.text.isEmpty ? FontWeight.w400 : FontWeight.w600, color: controller.text.isEmpty ? skin.surface(0.3) : skin.textPrimary),
+                      style: TextStyle(fontSize: 14,
+                          fontWeight: controller.text.isEmpty ? FontWeight.w400 : FontWeight.w600,
+                          color: controller.text.isEmpty ? skin.surface(0.3) : skin.textPrimary),
                       maxLines: 1, overflow: TextOverflow.ellipsis),
                 ],
               ),
             ),
-            _GlassIconBadge(skin: skin, icon: Icons.edit_outlined),
+            // ── GlassIconBadge aus glass_kit.dart ──
+            GlassIconBadge(skin: skin, icon: Icons.edit_outlined),
           ],
         ),
       ),
@@ -885,191 +778,7 @@ class _GlassInputCard extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GLASS ICON BADGE - Ohne Rahmen, nur Icon (wie bei Datumspfeilen)
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _GlassIconBadge extends StatelessWidget {
-  final AppSkin skin;
-  final IconData icon;
-  final VoidCallback? onTap;
-  const _GlassIconBadge({required this.skin, required this.icon, this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Padding(
-        padding: const EdgeInsets.all(6.0),
-        child: Icon(icon, size: 16, color: skin.surface(0.45)),
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// GLASS BUTTONS & HELPERS
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _GlassPrimaryButton extends StatelessWidget {
-  final AppSkin skin;
-  final String label;
-  final IconData? icon;
-  final VoidCallback onTap;
-  final bool large;
-
-  const _GlassPrimaryButton({
-    required this.skin,
-    required this.label,
-    required this.onTap,
-    this.icon,
-    this.large = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final bgColor = skin.isLight
-        ? skin.primary.withValues(alpha: 0.13)
-        : skin.primary.withValues(alpha: 0.22);
-
-    final borderColor = skin.isLight
-        ? skin.primary.withValues(alpha: 0.28)
-        : skin.primary.withValues(alpha: 0.45);
-
-    final textColor = skin.isLight
-        ? skin.primary.withValues(alpha: 0.90)
-        : skin.primary.withValues(alpha: 0.85);
-
-    final iconColor = skin.isLight
-        ? skin.primary.withValues(alpha: 0.65)
-        : skin.primary.withValues(alpha: 0.70);
-
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: double.infinity,
-        padding: EdgeInsets.symmetric(
-            vertical: large ? 17 : 14, horizontal: 20),
-        decoration: BoxDecoration(
-          color: bgColor,
-          borderRadius: BorderRadius.circular(large ? 20 : 14),
-          border: Border.all(color: borderColor, width: 1.5),
-          boxShadow: [
-            BoxShadow(
-              color: skin.glassShadow,
-              blurRadius: 24,
-              spreadRadius: 0,
-              offset: const Offset(0, 6),
-            ),
-            BoxShadow(
-              color: skin.glassHighlight,
-              blurRadius: 0,
-              spreadRadius: -1,
-              offset: const Offset(0, 1),
-            ),
-          ],
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            if (icon != null) ...[
-              Icon(icon, color: iconColor, size: large ? 20 : 17),
-              const SizedBox(width: 8),
-            ],
-            Text(label,
-                style: TextStyle(
-                    fontSize: large ? 16 : 15,
-                    fontWeight: FontWeight.w700,
-                    color: textColor,
-                    letterSpacing: 0.2)),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _GlassButton extends StatelessWidget {
-  final AppSkin skin;
-  final String label;
-  final VoidCallback onTap;
-
-  const _GlassButton({
-    required this.skin,
-    required this.label,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
-        decoration: BoxDecoration(
-          color: skin.isLight
-              ? Colors.white.withValues(alpha: 0.75)
-              : Colors.white.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: skin.glassBorder, width: 1.0),
-          boxShadow: [
-            BoxShadow(
-              color: skin.glassShadow,
-              blurRadius: 24,
-              spreadRadius: 0,
-              offset: const Offset(0, 6),
-            ),
-          ],
-        ),
-        child: Center(
-          child: Text(label,
-              style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  color: skin.textPrimary)),
-        ),
-      ),
-    );
-  }
-}
-
-class _GlassSheet extends StatelessWidget {
-  final AppSkin skin; final Widget child;
-  const _GlassSheet({required this.skin, required this.child});
-
-  @override
-  Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
-        child: Container(
-          decoration: BoxDecoration(
-            color: skin.isLight ? Colors.white.withValues(alpha: 0.82) : skin.bgSheet.withValues(alpha: 0.88),
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-            border: Border.all(color: skin.glassBorder),
-          ),
-          child: child,
-        ),
-      ),
-    );
-  }
-}
-
-class _SheetHandle extends StatelessWidget {
-  final AppSkin skin;
-  const _SheetHandle({required this.skin});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(margin: const EdgeInsets.only(top: 12), width: 40, height: 4,
-        decoration: BoxDecoration(color: skin.surface(0.18), borderRadius: BorderRadius.circular(2)));
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// FLYING CARD OVERLAY (TKF / Notiz Eingabe) — überarbeitet
+// FLYING CARD OVERLAY (TKF / Notiz Eingabe)
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _FlyingCardOverlay extends StatelessWidget {
@@ -1112,91 +821,51 @@ class _FlyingCardOverlay extends StatelessWidget {
           filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
           child: Container(
             decoration: BoxDecoration(
-              // ── Gleiche milchige Glasfarbe wie alle anderen Kacheln ──
               color: skin.isLight
                   ? Colors.white.withValues(alpha: skin.glassOpacity)
                   : skin.bgCard.withValues(alpha: skin.glassOpacity),
               borderRadius: BorderRadius.circular(24),
-              border: Border.all(
-                color: skin.glassBorder,
-                width: 1.0,
-              ),
+              border: Border.all(color: skin.glassBorder, width: 1.0),
               boxShadow: [
-                BoxShadow(
-                  color: skin.glassShadow,
-                  blurRadius: 24,
-                  spreadRadius: 0,
-                  offset: const Offset(0, 6),
-                ),
-                BoxShadow(
-                  color: skin.glassHighlight,
-                  blurRadius: 0,
-                  spreadRadius: -1,
-                  offset: const Offset(0, 1),
-                ),
+                BoxShadow(color: skin.glassShadow, blurRadius: 24, spreadRadius: 0, offset: const Offset(0, 6)),
+                BoxShadow(color: skin.glassHighlight, blurRadius: 0, spreadRadius: -1, offset: const Offset(0, 1)),
               ],
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // ── Header ──────────────────────────────────────────────
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 14, 12, 0),
                   child: Row(children: [
-                    // Icon ohne Container, ohne Rahmen/Hintergrund
                     Icon(icon, size: 18, color: skin.primary),
                     const SizedBox(width: 10),
                     Expanded(
-                      child: Text(
-                        label,
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          color: skin.primary,
-                          letterSpacing: 1.0,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                        maxLines: 1,
-                      ),
+                      child: Text(label,
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: skin.primary, letterSpacing: 1.0),
+                          overflow: TextOverflow.ellipsis, maxLines: 1),
                     ),
-                    // Nur Löschen-Icon, kein Fertig-Button
                     GestureDetector(
                       onTap: onClear,
-                      child: _GlassIconBadge(
-                        skin: skin,
-                        icon: Icons.backspace_outlined,
-                      ),
+                      // ── GlassIconBadge aus glass_kit.dart ──
+                      child: GlassIconBadge(skin: skin, icon: Icons.backspace_outlined),
                     ),
                   ]),
                 ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-                  child: Divider(
-                    color: skin.glassBorder,
-                    height: 1,
-                  ),
+                  child: Divider(color: skin.glassBorder, height: 1),
                 ),
-                // ── Textfeld ─────────────────────────────────────────────
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 10, 16, 18),
                   child: TextField(
                     controller: controller,
                     focusNode: focusNode,
                     maxLines: field == _OverlayField.notiz ? 3 : 1,
-                    style: TextStyle(
-                      color: skin.textPrimary,
-                      fontSize: 17,
-                      fontWeight: FontWeight.w500,
-                    ),
+                    style: TextStyle(color: skin.textPrimary, fontSize: 17, fontWeight: FontWeight.w500),
                     decoration: InputDecoration(
                       hintText: hint,
-                      hintStyle: TextStyle(
-                        color: skin.surface(0.22),
-                        fontSize: 17,
-                      ),
-                      border: InputBorder.none,
-                      isDense: true,
-                      contentPadding: EdgeInsets.zero,
+                      hintStyle: TextStyle(color: skin.surface(0.22), fontSize: 17),
+                      border: InputBorder.none, isDense: true, contentPadding: EdgeInsets.zero,
                     ),
                     textCapitalization: TextCapitalization.sentences,
                     textInputAction: TextInputAction.done,
@@ -1208,106 +877,6 @@ class _FlyingCardOverlay extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// IOS TIME PICKER
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _IOSTimePicker extends StatefulWidget {
-  final TimeOfDay initialTime; final AppSkin skin; final Function(TimeOfDay) onTimeSelected; final String label;
-  const _IOSTimePicker({required this.initialTime, required this.skin, required this.onTimeSelected, this.label = 'Uhrzeit auswählen'});
-
-  @override
-  State<_IOSTimePicker> createState() => _IOSTimePickerState();
-}
-
-class _IOSTimePickerState extends State<_IOSTimePicker> {
-  late int _selectedHour, _selectedMinute;
-  late FixedExtentScrollController _hourController, _minuteController;
-  static const int _hourLoopOffset = 500, _minuteLoopOffset = 500;
-
-  @override
-  void initState() {
-    super.initState();
-    _selectedHour = widget.initialTime.hour;
-    _selectedMinute = widget.initialTime.minute;
-    _hourController = FixedExtentScrollController(initialItem: _hourLoopOffset * 24 + _selectedHour);
-    _minuteController = FixedExtentScrollController(initialItem: _minuteLoopOffset * 60 + _selectedMinute);
-  }
-
-  @override
-  void dispose() { _hourController.dispose(); _minuteController.dispose(); super.dispose(); }
-
-  void _setCurrentTime() {
-    final now = DateTime.now();
-    final nowHour = now.hour, nowMinute = now.minute;
-    final currentHourIdx = _hourController.selectedItem;
-    final currentHourBase = (currentHourIdx ~/ 24) * 24;
-    int targetHourIdx = currentHourBase + nowHour;
-    if (targetHourIdx < currentHourIdx) targetHourIdx += 24;
-    final currentMinuteIdx = _minuteController.selectedItem;
-    final currentMinuteBase = (currentMinuteIdx ~/ 60) * 60;
-    int targetMinuteIdx = currentMinuteBase + nowMinute;
-    if (targetMinuteIdx < currentMinuteIdx) targetMinuteIdx += 60;
-    _hourController.animateToItem(targetHourIdx, duration: const Duration(milliseconds: 350), curve: Curves.easeOutCubic);
-    _minuteController.animateToItem(targetMinuteIdx, duration: const Duration(milliseconds: 350), curve: Curves.easeOutCubic);
-    setState(() { _selectedHour = nowHour; _selectedMinute = nowMinute; });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final skin = widget.skin;
-    return _GlassSheet(
-      skin: skin,
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        _SheetHandle(skin: skin),
-        const SizedBox(height: 16),
-        Text(widget.label, style: TextStyle(color: skin.textPrimary, fontSize: 17, fontWeight: FontWeight.w600)),
-        const SizedBox(height: 16),
-        SizedBox(
-          height: 200,
-          child: Row(children: [
-            Expanded(
-              child: CupertinoPicker(
-                scrollController: _hourController, magnification: 1.2, backgroundColor: Colors.transparent,
-                itemExtent: 40, looping: true,
-                onSelectedItemChanged: (index) => setState(() => _selectedHour = index % 24),
-                children: List.generate(24, (h) => Center(child: Text(h.toString().padLeft(2, '0'),
-                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.w600, color: _selectedHour == h ? skin.primary : skin.surface(0.5))))),
-              ),
-            ),
-            Text(':', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w600, color: skin.primary)),
-            Expanded(
-              child: CupertinoPicker(
-                scrollController: _minuteController, magnification: 1.2, backgroundColor: Colors.transparent,
-                itemExtent: 40, looping: true,
-                onSelectedItemChanged: (index) => setState(() => _selectedMinute = index % 60),
-                children: List.generate(60, (m) => Center(child: Text(m.toString().padLeft(2, '0'),
-                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.w600, color: _selectedMinute == m ? skin.primary : skin.surface(0.5))))),
-              ),
-            ),
-          ]),
-        ),
-        const SizedBox(height: 16),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
-          child: Row(children: [
-            Expanded(child: _GlassButton(skin: skin, label: 'Jetzt', onTap: _setCurrentTime)),
-            const SizedBox(width: 10),
-            Expanded(child: _GlassPrimaryButton(
-              skin: skin,
-              label: 'Übernehmen',
-              onTap: () {
-                widget.onTimeSelected(TimeOfDay(hour: _selectedHour, minute: _selectedMinute));
-                Navigator.pop(context);
-              })),
-          ]),
-        ),
-        const SizedBox(height: 28),
-      ]),
     );
   }
 }

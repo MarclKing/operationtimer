@@ -33,7 +33,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _activeSkin = 'chrome';
   bool _nachtschichtModus = false;
   bool _dienstplanDevMode = false;
-  bool _fahrtenbuchDevMode = false;
 
   @override
   void initState() {
@@ -48,9 +47,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
         box.get('nachtschicht_modus', defaultValue: false) as bool;
     _dienstplanDevMode =
         box.get('dienstplan_dev_placeholder', defaultValue: false) as bool;
-    _fahrtenbuchDevMode =
-        box.get('fahrtenbuch_dev_mode', defaultValue: false) as bool;
-    _autoDeleteOldEntries();
   }
 
   @override
@@ -82,19 +78,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (granted) {
       setState(() => _dienstplanDevMode = true);
       Hive.box('einstellungen').put('dienstplan_dev_placeholder', true);
-    }
-  }
-
-  Future<void> _toggleFahrtenbuchDevMode(bool desiredValue) async {
-    if (!desiredValue) {
-      setState(() => _fahrtenbuchDevMode = false);
-      Hive.box('einstellungen').put('fahrtenbuch_dev_mode', false);
-      return;
-    }
-    final granted = await _showPinDialog();
-    if (granted) {
-      setState(() => _fahrtenbuchDevMode = true);
-      Hive.box('einstellungen').put('fahrtenbuch_dev_mode', true);
     }
   }
 
@@ -312,27 +295,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
     ));
   }
 
-  void _autoSaveName() {
-    final box = Hive.box('einstellungen');
-    final formatted = _capitalizeEachWord(_nameController.text);
-    _nameController.text = formatted;
-    final existingName = box.get('name', defaultValue: '') as String;
-    final isNew = existingName.isEmpty;
-    if (formatted == existingName) return; // nichts geändert
-    box.put('name', formatted);
-    final skin = AppTheme.of(context);
-    final message = isNew ? 'Name gespeichert ✓' : 'Name geändert ✓';
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(message),
-      backgroundColor: skin.primary == Colors.white
-          ? const Color(0xFF3DD6C8)
-          : skin.primary,
-      behavior: SnackBarBehavior.floating,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 100),
-      duration: const Duration(milliseconds: 1500),
-    ));
-  }
+void _autoSaveName() {
+  final box = Hive.box('einstellungen');
+  final formatted = _capitalizeEachWord(_nameController.text);
+  _nameController.text = formatted;
+  final existingName = box.get('name', defaultValue: '') as String;
+  final isNew = existingName.isEmpty;
+  if (formatted == existingName) return; // nichts geändert
+  box.put('name', formatted);
+  final skin = AppTheme.of(context);
+  final message = isNew ? 'Name gespeichert ✓' : 'Name geändert ✓';
+  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+    content: Text(message),
+    backgroundColor: skin.primary == Colors.white
+        ? const Color(0xFF3DD6C8)
+        : skin.primary,
+    behavior: SnackBarBehavior.floating,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+    margin: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+    duration: const Duration(milliseconds: 1500),
+  ));
+}
 
   void _autoDeleteOldEntries() {
     final now = DateTime.now();
@@ -360,8 +343,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         final monthStr = k.substring('schedule_'.length);
         final parts = monthStr.split('-');
         if (parts.length < 2) return false;
-        final entryMonth =
-            DateTime(int.parse(parts[0]), int.parse(parts[1]));
+        final entryMonth = DateTime(int.parse(parts[0]), int.parse(parts[1]));
         return entryMonth.isBefore(cutoffMonth);
       } catch (_) {
         return false;
@@ -384,6 +366,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
     }).toList();
     for (final key in noteKeysToDelete) {
+      settingsBox.delete(key);
+    }
+
+    // NEU: Fahrtenbuch-Einträge löschen
+    final fahrtKeys = settingsBox.keys.where((key) {
+      final k = key.toString();
+      if (!k.startsWith('fahrten_')) return false;
+      try {
+        final monthStr = k.substring('fahrten_'.length);
+        final parts = monthStr.split('-');
+        if (parts.length < 2) return false;
+        final entryMonth = DateTime(int.parse(parts[0]), int.parse(parts[1]));
+        return entryMonth.isBefore(cutoffMonth);
+      } catch (_) {
+        return false;
+      }
+    }).toList();
+    for (final key in fahrtKeys) {
       settingsBox.delete(key);
     }
   }
@@ -459,22 +459,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               ),
                               const SizedBox(height: 14),
                               Focus(
-                                onFocusChange: (hasFocus) {
-                                  if (!hasFocus) {
-                                    _autoSaveName();
-                                  }
-                                },
-                                child: _TiTextField(
-                                  skin: skin,
-                                  controller: _nameController,
-                                  hint: 'z.B. Max Mustermann',
-                                  onChanged: _onNameChanged,
-                                  onSubmitted: (_) {
-                                    _dismissKeyboard();
-                                    _autoSaveName();
-                                  },
-                                ),
-                              ),
+  onFocusChange: (hasFocus) {
+    if (!hasFocus) {
+      _autoSaveName();
+    }
+  },
+  child: _TiTextField(
+    skin: skin,
+    controller: _nameController,
+    hint: 'z.B. Max Mustermann',
+    onChanged: _onNameChanged,
+    onSubmitted: (_) {
+      _dismissKeyboard();
+      _autoSaveName();
+    },
+  ),
+),
                             ],
                           ),
                         ),
@@ -552,8 +552,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                             _deleteAfterMonths == months;
                                         return Expanded(
                                           child: GestureDetector(
-                                            onTap: () => setState(
-                                                () => _deleteAfterMonths = months),
+                                            onTap: () {
+                                              setState(() => _deleteAfterMonths = months);
+                                              Hive.box('einstellungen')
+                                                  .put('deleteAfterMonths', months);
+                                              _autoDeleteOldEntries();
+                                            },
                                             child: AnimatedContainer(
                                               duration: const Duration(
                                                   milliseconds: 200),
@@ -623,7 +627,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                         const SizedBox(width: 8),
                                         Expanded(
                                           child: Text(
-                                            'Zeiterfassungs-Einträge und Dienstplan-Daten werden gelöscht, sobald ihr Monat mehr als $monthLabel zurückliegt.',
+                                            'Zeiterfassungs-Einträge, sowie Dienstplan- und Fahrtenbuch-Daten werden gelöscht, sobald sie mehr als $monthLabel zurückliegen.',
                                             style: TextStyle(
                                                 fontSize: 12,
                                                 color: skin.textMuted,
@@ -817,147 +821,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ),
                         ),
 
-                        const SizedBox(height: 16),
-
-                        // ── Fahrtenbuch ────────────────────────────────────────
-                        _TiCard(
-                          skin: skin,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(children: [
-                                _TiCardHeader(
-                                    skin: skin,
-                                    icon: Icons.directions_car_outlined,
-                                    label: 'Fahrtenbuch'),
-                                const SizedBox(width: 8),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 8, vertical: 3),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFFFB347)
-                                        .withValues(alpha: 0.12),
-                                    borderRadius: BorderRadius.circular(6),
-                                    border: Border.all(
-                                        color: const Color(0xFFFFB347)
-                                            .withValues(alpha: 0.35)),
-                                  ),
-                                  child: const Text('BETA',
-                                      style: TextStyle(
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.w700,
-                                          color: Color(0xFFFFB347),
-                                          letterSpacing: 0.8)),
-                                ),
-                              ]),
-                              const SizedBox(height: 14),
-                              Container(
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFFFB347).withValues(alpha: 0.07),
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(
-                                    color: const Color(0xFFFFB347).withValues(alpha: 0.2),
-                                  ),
-                                ),
-                                child: Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Text('⚠️', style: TextStyle(fontSize: 14)),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: Text(
-                                        'Diese Funktion befindet sich noch in der Entwicklung.',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: const Color(0xFFFFB347).withValues(alpha: 0.85),
-                                          height: 1.45,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(height: 14),
-                              // Dev-Modus
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(14),
-                                child: BackdropFilter(
-                                  filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-                                  child: Container(
-                                    padding: const EdgeInsets.all(14),
-                                    decoration: BoxDecoration(
-                                      color: skin.isLight
-                                          ? Colors.white.withValues(alpha: 0.45)
-                                          : Colors.white.withValues(alpha: 0.05),
-                                      borderRadius: BorderRadius.circular(14),
-                                      border: Border.all(color: skin.glassBorder),
-                                    ),
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Row(
-                                          children: [
-                                            Container(
-                                              padding: const EdgeInsets.symmetric(
-                                                  horizontal: 6, vertical: 2),
-                                              decoration: BoxDecoration(
-                                                color: const Color(0xFFEF5B5B)
-                                                    .withValues(alpha: 0.12),
-                                                borderRadius: BorderRadius.circular(6),
-                                                border: Border.all(
-                                                    color: const Color(0xFFEF5B5B)
-                                                        .withValues(alpha: 0.3)),
-                                              ),
-                                              child: const Text('DEV',
-                                                  style: TextStyle(
-                                                      fontSize: 10,
-                                                      fontWeight: FontWeight.w700,
-                                                      color: Color(0xFFEF5B5B),
-                                                      letterSpacing: 0.8)),
-                                            ),
-                                            const SizedBox(width: 8),
-                                            Expanded(
-                                              child: Text(
-                                                'Entwickler-Modus',
-                                                style: TextStyle(
-                                                  fontSize: 14,
-                                                  fontWeight: FontWeight.w600,
-                                                  color: skin.textPrimary,
-                                                ),
-                                              ),
-                                            ),
-                                            Switch(
-                                              value: _fahrtenbuchDevMode,
-                                              onChanged: _toggleFahrtenbuchDevMode,
-                                              activeThumbColor: const Color(0xFFEF5B5B),
-                                              activeTrackColor:
-                                                  const Color(0xFFEF5B5B).withValues(alpha: 0.25),
-                                              inactiveThumbColor: skin.textMuted,
-                                              inactiveTrackColor: skin.surface(0.08),
-                                            ),
-                                          ],
-                                        ),
-                                        const SizedBox(height: 8),
-                                        Text(
-                                          'Schaltet das Fahrtenbuch frei und zeigt den aktuellen Entwicklungsstand.',
-                                          style: TextStyle(
-                                              fontSize: 12,
-                                              color: skin.textMuted,
-                                              height: 1.45),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-
                         const SizedBox(height: 40),
                         Center(
-                          child: Text('OpTimes v1.3.0',
+                          child: Text('OpTimes v1.3.0 Beta',
                               style: TextStyle(
                                   fontSize: 12, color: skin.textHint)),
                         ),
@@ -1209,8 +1075,8 @@ class _TiSkinPicker extends StatefulWidget {
 }
 
 class _TiSkinPickerState extends State<_TiSkinPicker> {
-  static const _skins = ['chrome', 'space', 'paper', 'titanium'];
-  static const _labels = ['Chrome', 'Space', 'Paper', 'Titanium'];
+  static const _skins = ['shield', 'chrome', 'crystal', 'titanium'];
+  static const _labels = ['Shield', 'Chrome', 'Crystal', 'Titanium'];
 
   List<BoxShadow> _cardShadow(AppSkin skin) {
     if (skin.isLight) {

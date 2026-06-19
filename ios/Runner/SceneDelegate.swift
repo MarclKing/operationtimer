@@ -74,6 +74,19 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             return
         }
 
+if url.scheme == "optimes" && url.absoluteString.contains("fahrtenbuch/neue-fahrt/scan-km-start") {
+    guard let controller = window?.rootViewController as? FlutterViewController else { return }
+    let channel = FlutterMethodChannel(
+        name: "de.marcel.optimes/navigation",
+        binaryMessenger: controller.binaryMessenger
+    )
+    channel.invokeMethod("openFromWidget", arguments: [
+        "path": "fahrtenbuch_neue_fahrt_scan",
+        "url": url.absoluteString
+    ])
+    return
+}
+
         if url.scheme == "optimes" {
             let urlString = url.absoluteString
 

@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
@@ -12,21 +13,59 @@ import 'screens/schedule_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/support_screen.dart';
 import 'screens/fahrtenbuch_screen.dart';
+import 'screens/welcome_screen.dart';
+import 'screens/splash_screen.dart';
 import 'services/pdf_service.dart';
 import 'theme/app_theme.dart';
+import 'widgets/glass_kit.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart';
 import 'dart:convert';
+import 'utils/cleanup.dart';
+import 'package:intl/intl.dart';
 
 void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+  WidgetsBinding binding = WidgetsFlutterBinding.ensureInitialized();
+  FlutterNativeSplash.preserve(widgetsBinding: binding);
+
   await Hive.initFlutter();
   await Hive.openBox('arbeitszeiten');
   await Hive.openBox('einstellungen');
   _migrateOldEntries();
+  await runAutoCleanup();
   await initializeDateFormatting('de', null);
+
+  FlutterNativeSplash.remove();
+
   runApp(const MyApp());
+}
+
+Future<bool?> confirmDeleteDialog(
+  BuildContext context, {
+  required String title,
+  required String body,
+  String confirmLabel = 'Löschen',
+}) {
+  final skin = AppTheme.of(context);
+  return showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      backgroundColor: skin.bgCard,
+      title: Text(title, style: TextStyle(color: skin.textPrimary)),
+      content: Text(body, style: TextStyle(color: skin.textMuted)),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, false),
+          child: Text('Abbrechen', style: TextStyle(color: skin.textMuted)),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, true),
+          child: Text(confirmLabel, style: TextStyle(color: skin.deleteColor)),
+        ),
+      ],
+    ),
+  );
 }
 
 void _migrateOldEntries() {
@@ -69,7 +108,7 @@ void _migrateOldEntries() {
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
-  static final _mainScreenKey = GlobalKey<_MainScreenState>();
+  static final mainScreenKey = GlobalKey<_MainScreenState>();
 
   @override
   Widget build(BuildContext context) {
@@ -88,23 +127,23 @@ class MyApp extends StatelessWidget {
               if (name.startsWith('optimes://dienstplan/note/')) {
                 final dateKey = name.replaceFirst('optimes://dienstplan/note/', '');
                 Future.delayed(const Duration(milliseconds: 200), () {
-                  MyApp._mainScreenKey.currentState?._navigateToScheduleNote(dateKey);
+                  MyApp.mainScreenKey.currentState?._navigateToScheduleNote(dateKey);
                 });
               } else if (name == 'optimes://dienstplan' || name == '/dienstplan') {
                 Future.delayed(const Duration(milliseconds: 200), () {
-                  MyApp._mainScreenKey.currentState?._goToPage(2);
+                  MyApp.mainScreenKey.currentState?._goToPage(2);
                 });
               } else if (name.isNotEmpty &&
                   name != '/' &&
                   !name.startsWith('http') &&
                   name.toLowerCase().endsWith('.pdf')) {
                 Future.delayed(const Duration(milliseconds: 200), () {
-                  MyApp._mainScreenKey.currentState?.handleSharedPdf(name);
+                  MyApp.mainScreenKey.currentState?.handleSharedPdf(name);
                 });
               }
               return null;
             },
-            onUnknownRoute: (settings) => MaterialPageRoute(builder: (_) => const MainScreen()),
+            onUnknownRoute: (settings) => MaterialPageRoute(builder: (_) => MainScreen(key: MyApp.mainScreenKey)),
             theme: ThemeData(
               brightness: skin.isLight ? Brightness.light : Brightness.dark,
               scaffoldBackgroundColor: skin.bgBase,
@@ -125,7 +164,7 @@ class MyApp extends StatelessWidget {
               ),
               useMaterial3: true,
             ),
-            home: MainScreen(key: MyApp._mainScreenKey),
+            home: const SplashScreen(),
           ),
         );
       },
@@ -235,6 +274,13 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
         final path = args['path'] as String;
         await Future.delayed(const Duration(milliseconds: 150));
         if (!mounted) return;
+        if (path == 'fahrtenbuch_neue_fahrt_scan') {
+          await _animateToPage(_dienstplanEnabled ? 3 : 2);
+          await Future.delayed(const Duration(milliseconds: 500));
+          if (!mounted) return;
+          _fahrtenbuchKey.currentState?.triggerKmStartScan();
+          return;
+        }
         if (url.contains('/note/')) {
           final dateKey = url.split('/').last;
           await _navigateToScheduleNote(dateKey);
@@ -263,6 +309,10 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       _homeKey.currentState?.onOverlayStateChanged = () {
         _homeOverlayActive.value = _homeKey.currentState?.isOverlayOpen ?? false;
       };
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) maybeShowWelcomeDialog(context);
     });
   }
 
@@ -616,10 +666,37 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     _homeKey.currentState?.closeOverlays();
     _scheduleKey.currentState?.closeOverlays();
     _monthKey.currentState?.closeAllRows();
+    _fahrtenbuchKey.currentState?.closeOverlays();
     _animateToPage(index);
   }
 
-  void _selectTab(int index) => _goToPage(index);
+  void _onPlusPressed() {
+    final hasDraft = _fahrtenbuchKey.currentState?.hasDraft ?? false;
+    _fahrtenbuchKey.currentState?.closeOverlays();
+    if (hasDraft) {
+      _fahrtenbuchKey.currentState?.reopenDraft();
+    } else {
+      _fahrtenbuchKey.currentState?.showAddFahrtOverlay();
+    }
+  }
+
+  void _selectTab(int index) {
+    if (index == _currentPage) {
+      switch (index) {
+        case 1:
+          _monthKey.currentState?.scrollToTop();
+          break;
+        case 2:
+          if (_dienstplanEnabled) _scheduleKey.currentState?.scrollToTop();
+          break;
+        case 3:
+          _fahrtenbuchKey.currentState?.scrollToTop();
+          break;
+      }
+      return;
+    }
+    _goToPage(index);
+  }
 
   void _onDragStart(DragStartDetails d) {
     if (_slideCtrl.isAnimating) _slideCtrl.stop();
@@ -658,6 +735,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       _homeKey.currentState?.closeOverlays();
       _scheduleKey.currentState?.closeOverlays();
       _monthKey.currentState?.closeAllRows();
+      _fahrtenbuchKey.currentState?.closeOverlays();
     }
 
     setState(() => _currentPage = targetPage);
@@ -689,7 +767,10 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
             onMonthChanged: (m) => setState(() => _scheduleViewMonth = m),
             dayCardDragging: _dayCardDragging,
           ),
-        FahrtenbuchScreen(key: _fahrtenbuchKey),
+        FahrtenbuchScreen(
+          key: _fahrtenbuchKey,
+          onDraftChanged: () => setState(() {}),
+        ),
       ];
 
   void _toggleMenu() {
@@ -709,6 +790,15 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     _menuAnimController.reverse();
   }
 
+  void _showKfzVerwaltung(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => const _KfzVerwaltungSheet(),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final skin = AppTheme.of(context);
@@ -721,6 +811,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       builder: (context, box, _) {
         final pages = _buildPages();
         final pageCount = pages.length;
+        final hasDraft = _fahrtenbuchKey.currentState?.hasDraft ?? false;
 
         return Scaffold(
           backgroundColor: skin.bgBase,
@@ -797,6 +888,17 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                               child: Column(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
+                                  if (_isOnFahrtenbuchPage) ...[
+                                    _DropdownItem(
+                                      icon: Icons.directions_car_outlined,
+                                      label: 'Fahrzeuge verwalten',
+                                      onTap: () {
+                                        _closeMenu();
+                                        _showKfzVerwaltung(context);
+                                      },
+                                    ),
+                                    _Divider(),
+                                  ],
                                   if (_isOnSchedulePage && !_isOnFahrtenbuchPage) ...[
                                     _DropdownItem(
                                       icon: Icons.upload_file_outlined,
@@ -847,7 +949,6 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                 ),
               ),
 
-              // ── TopBar mit Plus-Button links (nur Fahrtenbuch) und Hamburger rechts ──
               Positioned(
                 top: 0,
                 left: 0,
@@ -858,41 +959,23 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      // ── Plus-Button LINKS — nur auf Fahrtenbuch-Tab ──
+                      const SizedBox(width: 40),
+                      const Spacer(),
                       if (_isOnFahrtenbuchPage)
                         GestureDetector(
-                          onTap: () {
-                            final devMode = Hive.box('einstellungen')
-                                .get('fahrtenbuch_dev_mode', defaultValue: false) as bool;
-                            if (!devMode) {
-                              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                                content: const Text(
-                                    'Fahrtenbuch ist noch nicht verfügbar. Entwickler-Modus in den Einstellungen aktivieren.'),
-                                backgroundColor: skin.textMuted,
-                                behavior: SnackBarBehavior.floating,
-                                shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(14)),
-                                margin: const EdgeInsets.fromLTRB(16, 0, 16, 100),
-                                duration: const Duration(seconds: 3),
-                              ));
-                              return;
-                            }
-                            _fahrtenbuchKey.currentState?.showAddFahrtOverlay();
-                          },
+                          onTap: _onPlusPressed,
                           child: SizedBox(
                             width: 40,
                             height: 40,
                             child: Center(
-                              child: Icon(Icons.add, color: skin.textPrimary, size: 22),
+                              child: Icon(
+                                hasDraft ? Icons.edit_note_rounded : Icons.add,
+                                color: skin.textPrimary,
+                                size: 22,
+                              ),
                             ),
                           ),
-                        )
-                      else
-                        const SizedBox(width: 40),
-
-                      const Spacer(),
-
-                      // ── Hamburger-Menü RECHTS — animiert zu X (nicht zu Plus!) ──
+                        ),
                       GestureDetector(
                         onTap: _toggleMenu,
                         child: SizedBox(
@@ -943,6 +1026,280 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
           setState(() {});
           _scheduleKey.currentState?.loadScheduleData();
         },
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// KFZ-Verwaltung Sheet
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _KfzVerwaltungSheet extends StatefulWidget {
+  const _KfzVerwaltungSheet();
+
+  @override
+  State<_KfzVerwaltungSheet> createState() => _KfzVerwaltungSheetState();
+}
+
+class _KfzVerwaltungSheetState extends State<_KfzVerwaltungSheet> {
+  List<Map<String, dynamic>> _entries = [];
+  final Map<String, double> _swipeOffsets = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  void _load() {
+    setState(() => _entries = KmMemory.getAll());
+  }
+
+  String _formatKm(int km) {
+    if (km >= 1000) return '${km ~/ 1000}.${(km % 1000).toString().padLeft(3, '0')}';
+    return km.toString();
+  }
+
+  Future<void> _deleteEntry(String kennzeichen) async {
+    final skin = AppTheme.of(context);
+    final confirmed = await confirmDeleteDialog(
+      context,
+      title: '$kennzeichen löschen?',
+      body: 'Das Fahrzeug wird aus dem KM-Gedächtnis entfernt.',
+      confirmLabel: 'Löschen',
+    );
+    if (confirmed == true) {
+      KmMemory.delete(kennzeichen);
+      _load();
+    }
+  }
+
+  void _editKm(Map<String, dynamic> entry) {
+    final skin = AppTheme.of(context);
+    final kz = entry['kennzeichen'] as String;
+    final ctrl = TextEditingController(text: (entry['kmEnd'] as int).toString());
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+        child: ClipRRect(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
+              decoration: BoxDecoration(
+                color: skin.isLight ? Colors.white.withValues(alpha: 0.92) : skin.bgSheet.withValues(alpha: 0.92),
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+                border: Border.all(color: skin.glassBorder),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(child: Container(width: 40, height: 4,
+                      decoration: BoxDecoration(color: skin.surface(0.2), borderRadius: BorderRadius.circular(2)))),
+                  const SizedBox(height: 16),
+                  Text('KM-Stand bearbeiten – $kz',
+                      style: TextStyle(color: skin.textPrimary, fontSize: 16, fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: ctrl,
+                    autofocus: true,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    style: TextStyle(color: skin.textPrimary, fontSize: 28, fontWeight: FontWeight.w700),
+                    decoration: InputDecoration(
+                      hintText: '0',
+                      hintStyle: TextStyle(color: skin.surface(0.2), fontSize: 28),
+                      border: InputBorder.none,
+                      suffix: Text(' km', style: TextStyle(color: skin.surface(0.4), fontSize: 16)),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  GestureDetector(
+                    onTap: () {
+                      final km = int.tryParse(ctrl.text);
+                      if (km != null && km > 0) {
+                        KmMemory.save(kz, km);
+                        Navigator.pop(context);
+                        _load();
+                      }
+                    },
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(vertical: 15),
+                      decoration: BoxDecoration(
+                        color: skin.primary.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: skin.primary.withValues(alpha: 0.35)),
+                      ),
+                      child: Center(child: Text('Übernehmen',
+                          style: TextStyle(color: skin.primary, fontSize: 15, fontWeight: FontWeight.w700))),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final skin = AppTheme.of(context);
+    return ClipRRect(
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+        child: Container(
+          constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.75),
+          decoration: BoxDecoration(
+            color: skin.isLight ? Colors.white.withValues(alpha: 0.92) : skin.bgSheet.withValues(alpha: 0.92),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+            border: Border.all(color: skin.glassBorder),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(margin: const EdgeInsets.only(top: 12), width: 40, height: 4,
+                  decoration: BoxDecoration(color: skin.surface(0.18), borderRadius: BorderRadius.circular(2))),
+              const SizedBox(height: 16),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Row(children: [
+                  Icon(Icons.directions_car_outlined, color: skin.primary, size: 20),
+                  const SizedBox(width: 10),
+                  Text('Fahrzeuge & KM-Stand', style: TextStyle(color: skin.textPrimary, fontSize: 17, fontWeight: FontWeight.w700)),
+                ]),
+              ),
+              const SizedBox(height: 12),
+              if (_entries.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.all(32),
+                  child: Text('Noch keine Fahrzeuge gespeichert.',
+                      style: TextStyle(color: skin.textMuted, fontSize: 14), textAlign: TextAlign.center),
+                )
+              else
+                Flexible(
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                    itemCount: _entries.length,
+                    itemBuilder: (context, i) {
+                      final e = _entries[i];
+                      final kz = e['kennzeichen'] as String? ?? '';
+                      final km = e['kmEnd'] as int? ?? 0;
+                      final datum = e['datum'] as String?;
+                      final dateStr = datum != null
+                          ? DateFormat('dd.MM.yy').format(DateTime.tryParse(datum) ?? DateTime.now())
+                          : '';
+                      final swipe = _swipeOffsets[kz] ?? 0.0;
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: GestureDetector(
+                          onHorizontalDragUpdate: (d) {
+                            setState(() {
+                              _swipeOffsets[kz] = ((_swipeOffsets[kz] ?? 0) + d.delta.dx).clamp(-80.0, 0.0);
+                            });
+                          },
+                          onHorizontalDragEnd: (d) {
+                            if ((_swipeOffsets[kz] ?? 0) < -40) {
+                              setState(() => _swipeOffsets[kz] = -80.0);
+                            } else {
+                              setState(() => _swipeOffsets[kz] = 0.0);
+                            }
+                          },
+                          child: SizedBox(
+                            height: 72,
+                            child: ClipRect(
+                              child: Stack(
+                                children: [
+                                  Positioned(
+                                    right: 0, top: 4, bottom: 4, width: 75,
+                                    child: GestureDetector(
+                                      onTap: () => _deleteEntry(kz),
+                                      child: Opacity(
+                                        opacity: ((-(_swipeOffsets[kz] ?? 0)) / 80).clamp(0.0, 1.0),
+                                        child: ClipRRect(
+                                          borderRadius: BorderRadius.circular(14),
+                                          child: BackdropFilter(
+                                            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                                            child: Container(
+                                              margin: const EdgeInsets.only(left: 5),
+                                              decoration: BoxDecoration(
+                                                color: skin.deleteColor.withValues(alpha: 0.10),
+                                                borderRadius: BorderRadius.circular(14),
+                                                border: Border.all(color: skin.deleteColor.withValues(alpha: 0.22)),
+                                              ),
+                                              child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                                                Icon(Icons.delete_outline, color: skin.deleteColor, size: 20),
+                                                const SizedBox(height: 3),
+                                                Text('Löschen', style: TextStyle(color: skin.deleteColor, fontSize: 10, fontWeight: FontWeight.w600)),
+                                              ]),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  Transform.translate(
+                                    offset: Offset(swipe, 0),
+                                    child: GestureDetector(
+                                      onTap: () => _editKm(e),
+                                      child: ClipRRect(
+                                        borderRadius: BorderRadius.circular(14),
+                                        child: BackdropFilter(
+                                          filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+                                          child: Container(
+                                            width: double.infinity,
+                                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                                            decoration: BoxDecoration(
+                                              color: skin.isLight ? Colors.white.withValues(alpha: 0.72) : skin.bgCard.withValues(alpha: 0.65),
+                                              borderRadius: BorderRadius.circular(14),
+                                              border: Border.all(color: skin.glassBorder),
+                                            ),
+                                            child: Row(children: [
+                                              Container(
+                                                width: 36, height: 36,
+                                                decoration: BoxDecoration(
+                                                  color: skin.primary.withValues(alpha: 0.10),
+                                                  borderRadius: BorderRadius.circular(10),
+                                                ),
+                                                child: Icon(Icons.directions_car_outlined, color: skin.primary, size: 18),
+                                              ),
+                                              const SizedBox(width: 12),
+                                              Expanded(
+                                                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                                  Text(kz, style: TextStyle(color: skin.textPrimary, fontSize: 15, fontWeight: FontWeight.w700)),
+                                                  Text('${_formatKm(km)} km  ·  $dateStr',
+                                                      style: TextStyle(color: skin.textMuted, fontSize: 11)),
+                                                ]),
+                                              ),
+                                              Icon(Icons.edit_outlined, color: skin.surface(0.3), size: 16),
+                                            ]),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -1028,7 +1385,10 @@ class _GlassBottomNavState extends State<_GlassBottomNav>
   }
 
   void _handleTap(int index) {
-    if (index == widget.selectedIndex) return;
+    if (index == widget.selectedIndex) {
+      widget.onTap(index);
+      return;
+    }
     _stretchDirection = index > _lastIndex ? 1.0 : -1.0;
     _lastIndex = index;
     _bounceCtrl.forward(from: 0);
