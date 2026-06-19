@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../screens/fahrtenbuch_screen.dart';
 import 'package:flutter/foundation.dart';
@@ -33,6 +34,21 @@ class FahrtExportService {
     final email = box.get('export_email', defaultValue: '') as String;
 
     final xfile = XFile(file.path, mimeType: 'text/html', name: fileName);
+
+    if (email.isNotEmpty) {
+      final mailtoUri = Uri(
+        scheme: 'mailto',
+        path: email,
+        queryParameters: {
+          'subject': betreff,
+          'body': 'Fahrten-Export aus OpTimes\n\nSiehe angehängte HTML-Datei.',
+        },
+      );
+      if (await canLaunchUrl(mailtoUri)) {
+        await launchUrl(mailtoUri);
+        await Future.delayed(const Duration(milliseconds: 800));
+      }
+    }
 
     try {
       await SharePlus.instance.share(
