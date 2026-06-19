@@ -197,86 +197,49 @@ struct DayTile: View {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SMALL WIDGET — Schnellstart Fahrtenbuch
-// ─────────────────────────────────────────────────────────────────────────────
-
-   // ─────────────────────────────────────────────────────────────────────────────
 // SMALL WIDGET — Fahrtenbuch KM-Scan Schnellstart
 // Shield-Theme: Dunkel · Präzise · Funktional
 // ─────────────────────────────────────────────────────────────────────────────
 
 struct SmallWidgetView: View {
     var body: some View {
-        ZStack {
-            // ── Hintergrund-Akzent oben links (dezentes Glühen) ──────────────
-            GeometryReader { geo in
-                // Subtiler Primär-Schimmer, kein harter Gradient
-                Circle()
-                    .fill(Shield.primary.opacity(0.18))
-                    .frame(width: geo.size.width * 1.1)
-                    .offset(x: -geo.size.width * 0.35, y: -geo.size.height * 0.35)
-                    .blur(radius: 38)
+        VStack(alignment: .leading, spacing: 0) {
+
+            // Oberes Label
+            Text("FAHRTENBUCH")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundColor(Shield.textHint)
+                .tracking(1.5)
+
+            Spacer()
+
+            // Kamera-Icon
+            ZStack {
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Shield.primary.opacity(0.13))
+                    .frame(width: 44, height: 44)
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Shield.primary.opacity(0.28), lineWidth: 1)
+                    .frame(width: 44, height: 44)
+                Image(systemName: "camera.fill")
+                    .font(.system(size: 20, weight: .regular))
+                    .foregroundColor(Shield.primary)
             }
 
-            // ── Inhalt ────────────────────────────────────────────────────────
-            VStack(alignment: .leading, spacing: 0) {
+            Spacer().frame(height: 8)
 
-                // Obere Zeile: Label + Status-Dot
-                HStack(alignment: .top) {
-                    Text("FAHRTENBUCH")
-                        .font(.system(size: 8, weight: .bold))
-                        .foregroundColor(Shield.textMuted)
-                        .tracking(1.4)
+            // Haupttext — kurz, passt sicher rein
+            Text("KM scannen")
+                .font(.system(size: 15, weight: .bold))
+                .foregroundColor(Shield.textPrimary)
 
-                    Spacer()
+            Spacer().frame(height: 3)
 
-                    // Puls-Dot: zeigt "bereit"
-                    Circle()
-                        .fill(Shield.primary)
-                        .frame(width: 5, height: 5)
-                }
-
-                Spacer()
-
-                // Kamera-Icon mit sauberem Rahmen
-                ZStack {
-                    RoundedRectangle(cornerRadius: 14)
-                        .fill(Shield.primary.opacity(0.12))
-                        .frame(width: 52, height: 52)
-
-                    RoundedRectangle(cornerRadius: 14)
-                        .stroke(Shield.primary.opacity(0.35), lineWidth: 1)
-                        .frame(width: 52, height: 52)
-
-                    Image(systemName: "camera.viewfinder")
-                        .font(.system(size: 24, weight: .regular))
-                        .foregroundColor(Shield.primary)
-                }
-
-                Spacer().frame(height: 10)
-
-                // Haupttext
-                Text("KM-Start\nscannen")
-                    .font(.system(size: 17, weight: .bold))
-                    .foregroundColor(Shield.textPrimary)
-                    .lineSpacing(1)
-
-                Spacer().frame(height: 6)
-
-                // Unterzeile
-                HStack(spacing: 4) {
-                    // Kleiner Pfeil-Akzent
-                    Image(systemName: "arrow.right")
-                        .font(.system(size: 8, weight: .bold))
-                        .foregroundColor(Shield.primary)
-
-                    Text("Neue Fahrt starten")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(Shield.primary)
-                }
-            }
-            .padding(14)
+            Text("Fahrt starten")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(Shield.primary)
         }
+        .padding(14)
         .widgetURL(URL(string: "optimes://fahrtenbuch/neue-fahrt/scan-km-start"))
         .modifier(SmallBackgroundModifier())
     }

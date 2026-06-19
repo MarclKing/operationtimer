@@ -26,6 +26,9 @@ class FahrtExportService {
         ? 'Fahrt ${DateFormat('dd.MM.yyyy').format(fahrten.first.datum)}'
         : 'Fahrten $first – $last (${fahrten.length} Fahrten)';
 
+    // ── HIER wird die E-Mail-Vorschau gebaut ──────────────────────────────
+    final emailText = _buildEmailText(fahrten);
+
     final dir = await getTemporaryDirectory();
     final file = File('${dir.path}/$fileName');
     await file.writeAsString(html, flush: true);
@@ -37,7 +40,7 @@ class FahrtExportService {
         ShareParams(
           files: [xfile],
           subject: betreff,
-          text: 'Fahrten-Export aus OpTimes',
+          text: emailText,
         ),
       );
     } catch (e) {
@@ -52,10 +55,40 @@ class FahrtExportService {
     }
   }
 
+  // ── E-Mail-Vorschautext (Plaintext, da Mail-Apps kein HTML im "text"-Feld
+  // annehmen — wird mit Unicode-Linien und Struktur trotzdem ordentlich) ────
+  static String _buildEmailText(List<Fahrt> fahrten) {
+    final sorted = List<Fahrt>.from(fahrten)
+      ..sort((a, b) => a.datum.compareTo(b.datum));
+    final monthLabel = sorted.isNotEmpty
+        ? DateFormat('MMMM yyyy', 'de').format(sorted.first.datum)
+        : '';
+    final countLabel =
+        '${fahrten.length} ${fahrten.length == 1 ? 'Fahrt' : 'Fahrten'}';
+
+    return '''Fahrten-Export · OpTimes
+────────────────────────
+$countLabel · $monthLabel im Anhang als HTML-Datei.
+
+Datei im Browser öffnen → Fahrt kopieren
+→ FleetPortal → Bookmarklet → Felder ausfüllen.
+
+──
+OpTimes · Fahrtenbuch & Dienstplanung''';
+  }
+
   static String _buildHtml(List<Fahrt> fahrten) {
     _cardIndex = 0;
     final rows = fahrten.map((f) => _fahrtToJson(f)).toList();
     final cards = fahrten.map((f) => _buildCard(f)).join('\n');
+
+    final sortedFahrten = List<Fahrt>.from(fahrten)
+      ..sort((a, b) => a.datum.compareTo(b.datum));
+    final monthLabel = sortedFahrten.isNotEmpty
+        ? DateFormat('MMMM yyyy', 'de').format(sortedFahrten.first.datum)
+        : '';
+    final countLabel =
+        '${fahrten.length} ${fahrten.length == 1 ? 'Fahrt' : 'Fahrten'}';
 
     return '''<!DOCTYPE html>
 <html lang="de">
@@ -64,43 +97,101 @@ class FahrtExportService {
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Fahrten-Export – OpTimes</title>
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-         background: #0d0e14; color: #e8e9f0; min-height: 100vh; padding: 24px 16px; }
-  h1 { font-size: 22px; font-weight: 700; color: #fff; margin-bottom: 4px; }
-  .subtitle { font-size: 13px; color: #6b7280; margin-bottom: 28px; }
-  .card { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.10);
-          border-radius: 18px; padding: 20px; margin-bottom: 16px; }
-  .card-header { display: flex; justify-content: space-between; align-items: flex-start;
-                 margin-bottom: 14px; }
-  .datum { font-size: 15px; font-weight: 700; color: #fff; }
-  .kz { font-size: 12px; color: #6b7280; margin-top: 2px; }
-  .km-row { display: flex; gap: 10px; margin-bottom: 14px; }
-  .km-box { flex: 1; background: rgba(255,255,255,0.05); border-radius: 12px;
-             padding: 12px 14px; border: 1px solid rgba(255,255,255,0.08); }
-  .km-label { font-size: 10px; font-weight: 700; letter-spacing: 1px; margin-bottom: 4px; }
-  .km-start .km-label { color: #3DD6C8; }
-  .km-end .km-label { color: #a78bfa; }
-  .km-value { font-size: 26px; font-weight: 800; color: #fff; letter-spacing: -1px; }
-  .km-diff { font-size: 12px; color: #6b7280; margin-top: 2px; }
-  .meta { font-size: 12px; color: #9ca3af; display: flex; gap: 16px; flex-wrap: wrap;
-          margin-bottom: 14px; }
-  .meta span { display: flex; align-items: center; gap: 4px; }
-  .copy-btn { width: 100%; background: rgba(61,214,200,0.12); border: 1px solid rgba(61,214,200,0.35);
-              color: #3DD6C8; border-radius: 12px; padding: 13px; font-size: 14px;
-              font-weight: 700; cursor: pointer; transition: background 0.15s; }
-  .copy-btn:hover { background: rgba(61,214,200,0.22); }
-  .copy-btn.copied { background: rgba(61,214,200,0.25); color: #fff; }
-  .hint { font-size: 11px; color: #4b5563; text-align: center; margin-top: 24px; }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+       background:#0A0B0F;color:#e8e9f0;min-height:100vh;padding:32px 16px;}
+  .wrap{max-width:480px;margin:0 auto;}
+  .header{margin-bottom:32px;}
+  .header-top{display:flex;align-items:center;gap:14px;margin-bottom:8px;}
+  .logo{width:42px;height:42px;background:rgba(45,108,255,0.14);
+        border:1px solid rgba(45,108,255,0.30);border-radius:12px;
+        display:flex;align-items:center;justify-content:center;}
+  .logo svg{width:20px;height:20px;}
+  .app-name{font-size:11px;font-weight:700;letter-spacing:1.6px;color:#4B5263;}
+  .title{font-size:24px;font-weight:800;color:#fff;letter-spacing:-0.5px;}
+  .meta-line{font-size:13px;color:#4B5263;margin-top:4px;}
+  .divider{height:1px;background:linear-gradient(90deg,rgba(45,108,255,0.4),
+           rgba(45,108,255,0.0));margin:20px 0 28px;}
+  .card{background:#14161D;border:1px solid rgba(255,255,255,0.08);
+        border-radius:18px;padding:20px;margin-bottom:14px;
+        overflow:hidden;position:relative;}
+  .card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;
+                background:linear-gradient(90deg,rgba(45,108,255,0.6),
+                rgba(45,108,255,0.0));}
+  .card-top{display:flex;justify-content:space-between;align-items:flex-start;
+            margin-bottom:16px;}
+  .datum{font-size:14px;font-weight:700;color:#fff;}
+  .kz-pill{background:rgba(45,108,255,0.12);border:1px solid rgba(45,108,255,0.25);
+           border-radius:8px;padding:4px 10px;font-size:11px;font-weight:700;
+           color:#2D6CFF;letter-spacing:0.5px;white-space:nowrap;}
+  .km-row{display:flex;gap:10px;margin-bottom:14px;}
+  .km-box{flex:1;background:rgba(255,255,255,0.04);
+          border:1px solid rgba(255,255,255,0.07);border-radius:12px;padding:12px 14px;}
+  .km-label{font-size:9px;font-weight:700;letter-spacing:1.2px;
+            color:#4B5263;margin-bottom:6px;}
+  .km-val{font-size:24px;font-weight:800;color:#fff;letter-spacing:-1px;line-height:1;}
+  .km-time{font-size:11px;color:#4B5263;margin-top:4px;}
+  .tags{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px;}
+  .tag{font-size:11px;color:#7A8699;display:flex;align-items:center;gap:5px;}
+  .tag-dot{width:4px;height:4px;border-radius:50%;background:#2D6CFF;opacity:0.5;}
+  .copy-btn{width:100%;background:rgba(45,108,255,0.10);
+            border:1px solid rgba(45,108,255,0.28);color:#2D6CFF;
+            border-radius:12px;padding:13px;font-size:13px;font-weight:700;
+            cursor:pointer;letter-spacing:0.3px;transition:background 0.15s;}
+  .copy-btn:hover{background:rgba(45,108,255,0.20);}
+  .copy-btn.copied{background:rgba(45,108,255,0.25);color:#fff;}
+  .sig{margin-top:40px;padding-top:24px;border-top:1px solid rgba(255,255,255,0.06);}
+  .sig-inner{display:flex;align-items:center;gap:16px;}
+  .sig-logo{width:38px;height:38px;background:rgba(45,108,255,0.12);
+            border:1px solid rgba(45,108,255,0.22);border-radius:10px;
+            display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .sig-name{font-size:14px;font-weight:700;color:#fff;}
+  .sig-sub{font-size:11px;color:#4B5263;margin-top:2px;}
+  .sig-note{font-size:11px;color:#2D2F3A;margin-top:16px;text-align:center;}
+  .hint{font-size:11px;color:#2D2F3A;text-align:center;margin-top:12px;}
 </style>
 </head>
 <body>
-<h1>Fahrten-Export</h1>
-<p class="subtitle">${fahrten.length} ${fahrten.length == 1 ? 'Fahrt' : 'Fahrten'} – exportiert aus OpTimes</p>
+<div class="wrap">
 
-$cards
+  <div class="header">
+    <div class="header-top">
+      <div class="logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#2D6CFF" stroke-width="1.8"
+             stroke-linecap="round" stroke-linejoin="round">
+          <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+          <circle cx="12" cy="13" r="4"/>
+        </svg>
+      </div>
+      <span class="app-name">OPTIMES · FAHRTENBUCH</span>
+    </div>
+    <div class="title">Fahrten-Export</div>
+    <div class="meta-line">$countLabel · $monthLabel</div>
+    <div class="divider"></div>
+  </div>
 
-<p class="hint">Kopiere eine Fahrt, wechsle zu FleetPortal, klicke das Bookmarklet → "📋 Fahrt importieren" → "Felder ausfüllen"</p>
+  $cards
+
+  <p class="hint">Fahrt kopieren → FleetPortal → Bookmarklet → Felder ausfüllen</p>
+
+  <div class="sig">
+    <div class="sig-inner">
+      <div class="sig-logo">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2D6CFF"
+             stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="18" height="18" rx="2"/>
+          <path d="M3 9h18M9 21V9"/>
+        </svg>
+      </div>
+      <div>
+        <div class="sig-name">OpTimes</div>
+        <div class="sig-sub">Dienstplanung · Fahrtenbuch · Zeiterfassung</div>
+      </div>
+    </div>
+    <div class="sig-note">Automatisch erstellt · Nicht zur externen Weitergabe bestimmt</div>
+  </div>
+
+</div>
 
 <script>
 function copyFahrt(index) {
@@ -111,7 +202,7 @@ function copyFahrt(index) {
     btn.textContent = '✓ Kopiert!';
     btn.classList.add('copied');
     setTimeout(() => {
-      btn.textContent = '📋 Diese Fahrt kopieren';
+      btn.textContent = 'Fahrt kopieren';
       btn.classList.remove('copied');
     }, 2500);
   });
@@ -124,35 +215,41 @@ function copyFahrt(index) {
   static String _buildCard(Fahrt f) {
     final idx = _cardIndex++;
     final datumStr = DateFormat('EEEE, dd.MM.yyyy', 'de').format(f.datum);
-    final kmDiff = f.kmEnd > 0 && f.kmStart > 0 ? '${f.kmEnd - f.kmStart} km gefahren' : '';
+    final kmDiff = f.kmEnd > 0 && f.kmStart > 0
+        ? '${f.kmEnd - f.kmStart} km gefahren'
+        : '';
     final abfahrt = f.abfahrtZeit != null
-        ? '${f.abfahrtZeit!.hour.toString().padLeft(2, '0')}:${f.abfahrtZeit!.minute.toString().padLeft(2, '0')}'
+        ? '${f.abfahrtZeit!.hour.toString().padLeft(2, '0')}:${f.abfahrtZeit!.minute.toString().padLeft(2, '0')} Uhr'
         : '';
     final ankunft = f.ankunftZeit != null
-        ? '${f.ankunftZeit!.hour.toString().padLeft(2, '0')}:${f.ankunftZeit!.minute.toString().padLeft(2, '0')}'
+        ? '${f.ankunftZeit!.hour.toString().padLeft(2, '0')}:${f.ankunftZeit!.minute.toString().padLeft(2, '0')} Uhr'
         : '';
+    final hasZiel = f.fahrtZiel.isNotEmpty;
+    final hasTyp = f.fahrtTyp.isNotEmpty;
 
     return '''<div class="card">
-  <div class="card-header">
-    <div>
-      <div class="datum">$datumStr</div>
-      <div class="kz">${f.kennzeichen}${f.fahrtZiel.isNotEmpty ? ' · ${f.fahrtZiel}' : ''}</div>
-    </div>
+  <div class="card-top">
+    <div class="datum">$datumStr</div>
+    <div class="kz-pill">${f.kennzeichen}</div>
   </div>
   <div class="km-row">
-    <div class="km-box km-start">
+    <div class="km-box">
       <div class="km-label">ABFAHRT KM</div>
-      <div class="km-value">${f.kmStart > 0 ? _fmtKm(f.kmStart) : '—'}</div>
-      ${abfahrt.isNotEmpty ? '<div class="km-diff">🕐 $abfahrt Uhr</div>' : ''}
+      <div class="km-val">${f.kmStart > 0 ? _fmtKm(f.kmStart) : '—'}</div>
+      ${abfahrt.isNotEmpty ? '<div class="km-time">$abfahrt</div>' : ''}
     </div>
-    <div class="km-box km-end">
+    <div class="km-box">
       <div class="km-label">ANKUNFT KM</div>
-      <div class="km-value">${f.kmEnd > 0 ? _fmtKm(f.kmEnd) : '—'}</div>
-      ${ankunft.isNotEmpty ? '<div class="km-diff">🕐 $ankunft Uhr</div>' : ''}
+      <div class="km-val">${f.kmEnd > 0 ? _fmtKm(f.kmEnd) : '—'}</div>
+      ${ankunft.isNotEmpty ? '<div class="km-time">$ankunft</div>' : ''}
     </div>
   </div>
-  ${kmDiff.isNotEmpty ? '<div class="meta"><span>📍 $kmDiff</span>${f.fahrtTyp.isNotEmpty ? '<span>🏷 ${f.fahrtTyp}</span>' : ''}</div>' : ''}
-  <button class="copy-btn" id="btn-$idx" onclick="copyFahrt($idx)">📋 Diese Fahrt kopieren</button>
+  <div class="tags">
+    ${kmDiff.isNotEmpty ? '<div class="tag"><div class="tag-dot"></div>$kmDiff</div>' : ''}
+    ${hasTyp ? '<div class="tag"><div class="tag-dot"></div>${f.fahrtTyp}</div>' : ''}
+    ${hasZiel ? '<div class="tag"><div class="tag-dot"></div>${f.fahrtZiel}</div>' : ''}
+  </div>
+  <button class="copy-btn" id="btn-$idx" onclick="copyFahrt($idx)">Fahrt kopieren</button>
 </div>''';
   }
 
