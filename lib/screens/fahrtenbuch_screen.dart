@@ -929,7 +929,7 @@ Widget build(BuildContext context) {
                       ]),
                       const SizedBox(height: 8),
                       Text(
-                        'Wischen  ·  Doppeltippen  ·  lange tippen zum Auswählen',
+                        'Wischen · Gedrückt Halten · Doppeltippen',
                         style: TextStyle(fontSize: 11, color: skin.surface(0.3)),
                       ),
                     ],

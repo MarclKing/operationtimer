@@ -368,7 +368,7 @@ class _ExportHinweiseScreenState extends State<ExportHinweiseScreen> {
     <a class="drag-target" id="bookmarklet-link" href="#" onclick="return false;">
       🚗 OpTimes → FleetPortal
     </a>
-    <div class="drag-hint">⬆ Diesen Button in die Lesezeichenleiste ziehen</div>
+    <div class="drag-hint">⬆ Diesen Button in die Lesezeichenleiste ziehen - (STRG + UMSCHLT + B)</div>
   </div>
 
   <div class="section-label">So funktioniert es</div>
