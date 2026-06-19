@@ -14,6 +14,7 @@ import '../widgets/glass_dialogs.dart';
 import '../widgets/swipe_animation_mixin.dart';
 import 'km_scanner_screen.dart';
 import 'fuel_scanner_screen.dart';
+import '../services/fahrt_export_service.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // FAHRT MODEL
@@ -473,6 +474,10 @@ class FahrtenbuchScreenState extends State<FahrtenbuchScreen> with TickerProvide
   bool _sheetOpen = false;
   String? _openSwipedFahrtId;
 
+  // ── Mehrfachauswahl ───────────────────────────────────────────────────────
+  bool _selectionMode = false;
+  final Set<String> _selectedIds = {};
+
   late AnimationController _draftBannerCtrl;
   late Animation<double> _draftBannerAnim;
 
@@ -494,11 +499,24 @@ class FahrtenbuchScreenState extends State<FahrtenbuchScreen> with TickerProvide
       curve: Curves.easeOut,
       reverseCurve: Curves.easeIn,
     );
+    _selectionBarCtrl = AnimationController(
+  vsync: this,
+  duration: const Duration(milliseconds: 320),
+);
+_selectionBarAnim = CurvedAnimation(
+  parent: _selectionBarCtrl,
+  curve: Curves.easeOutCubic,
+  reverseCurve: Curves.easeInCubic,
+);
   }
+
+  late AnimationController _selectionBarCtrl;
+  late Animation<double> _selectionBarAnim;
 
   @override
   void dispose() {
     _draftBannerCtrl.dispose();
+    _selectionBarCtrl.dispose();
     _fahrtScrollController.dispose();
     super.dispose();
   }
@@ -515,11 +533,62 @@ class FahrtenbuchScreenState extends State<FahrtenbuchScreen> with TickerProvide
 
   bool get hasDraft => _draftVisible;
 
-  void closeOverlays() {
-    if (_openSwipedFahrtId != null) {
-      setState(() => _openSwipedFahrtId = null);
+  // ── Mehrfachauswahl-Logik ─────────────────────────────────────────────────
+
+  void _enterSelectionMode(String id) {
+  HapticFeedback.mediumImpact();
+  setState(() {
+    _selectionMode = true;
+    _selectedIds.add(id);
+    _openSwipedFahrtId = null;
+  });
+  _selectionBarCtrl.forward();
+}
+
+  void _toggleSelection(String id) {
+    HapticFeedback.selectionClick();
+    setState(() {
+      if (_selectedIds.contains(id)) {
+        _selectedIds.remove(id);
+      } else {
+        _selectedIds.add(id);
+      }
+    });
+    // Auto-Exit wenn keine mehr ausgewählt
+    if (_selectedIds.isEmpty && _selectionMode) {
+      _exitSelectionMode();
     }
   }
+  void _exitSelectionMode() {
+  _selectionBarCtrl.reverse().then((_) {
+    if (mounted) {
+      setState(() {
+        _selectionMode = false;
+        _selectedIds.clear();
+      });
+    }
+  });
+}
+
+  Future<void> _exportSelected() async {
+    final fahrten = _getFahrtenForMonth().where((f) => _selectedIds.contains(f.id)).toList();
+    if (fahrten.isEmpty) return;
+    _exitSelectionMode();
+    await FahrtExportService.exportFahrten(fahrten);
+  }
+
+  Future<void> _exportAll() async {
+    final fahrten = _getFahrtenForMonth();
+    if (fahrten.isEmpty) return;
+    await FahrtExportService.exportFahrten(fahrten);
+  }
+
+  void closeOverlays() {
+  if (_openSwipedFahrtId != null) {
+    setState(() => _openSwipedFahrtId = null);
+  }
+  if (_selectionMode) _exitSelectionMode();
+}
 
   void reopenDraft() {
     if (_sheetOpen) return;
@@ -790,20 +859,26 @@ class FahrtenbuchScreenState extends State<FahrtenbuchScreen> with TickerProvide
   }
 
   @override
-  Widget build(BuildContext context) {
-    final skin = AppTheme.of(context);
-    final fahrten = _getFahrtenForMonth();
-    final monthName = DateFormat('MMMM yyyy', 'de').format(_selectedMonth);
-    final bottomNavHeight = 70.0 + MediaQuery.of(context).padding.bottom;
-    final draftBannerHeight = 56.0;
-    final extraBottomOffset = _draftVisible ? draftBannerHeight + 8 : 0.0;
+Widget build(BuildContext context) {
+  final skin = AppTheme.of(context);
+  final fahrten = _getFahrtenForMonth();
+  final monthName = DateFormat('MMMM yyyy', 'de').format(_selectedMonth);
+  final bottomNavHeight = 70.0 + MediaQuery.of(context).padding.bottom;
+  final draftBannerHeight = 56.0;
+  final extraBottomOffset = _draftVisible ? draftBannerHeight + 8 : 48.0;
 
-    final totalFahrten = fahrten.length;
-    final uebertragenCount = fahrten.where((f) => f.uebertragen).length;
+  final totalFahrten = fahrten.length;
+  final uebertragenCount = fahrten.where((f) => f.uebertragen).length;
 
-    return Scaffold(
-      backgroundColor: skin.bgBase,
-      body: Stack(
+  return Scaffold(
+    backgroundColor: skin.bgBase,
+    body: GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onTap: () {
+        if (_selectionMode) _exitSelectionMode();
+        if (_openSwipedFahrtId != null) setState(() => _openSwipedFahrtId = null);
+      },
+      child: Stack(
         children: [
           SafeArea(
             bottom: false,
@@ -848,14 +923,13 @@ class FahrtenbuchScreenState extends State<FahrtenbuchScreen> with TickerProvide
                       ),
                       const SizedBox(height: 12),
                       Row(children: [
-                        // ── GlassStatCard aus glass_kit.dart ──
                         GlassStatCard(label: 'Fahrten', value: '$totalFahrten', color: skin.primary),
                         const SizedBox(width: 10),
                         GlassStatCard(label: 'Eingetragen', value: '$uebertragenCount', color: skin.statComplete),
                       ]),
                       const SizedBox(height: 8),
                       Text(
-                        'Wischen  ·  Doppeltippen',
+                        'Wischen  ·  Doppeltippen  ·  lange tippen zum Auswählen',
                         style: TextStyle(fontSize: 11, color: skin.surface(0.3)),
                       ),
                     ],
@@ -877,7 +951,6 @@ class FahrtenbuchScreenState extends State<FahrtenbuchScreen> with TickerProvide
                             ),
                           ]),
                         )
-                      // ── FadingListView aus glass_kit.dart ──
                       : FadingListView(
                           fadeFromBottom: bottomNavHeight + extraBottomOffset + 20,
                           child: GestureDetector(
@@ -889,8 +962,18 @@ class FahrtenbuchScreenState extends State<FahrtenbuchScreen> with TickerProvide
                               itemCount: fahrten.length + 1,
                               itemBuilder: (context, index) {
                                 if (index == fahrten.length) {
-                                  return SizedBox(height: bottomNavHeight + extraBottomOffset + 40);
-                                }
+  return Padding(
+    padding: EdgeInsets.fromLTRB(0, 8, 0, bottomNavHeight + extraBottomOffset + 32),
+    child: _ExportButtonAnimated(
+      skin: skin,
+      animation: _selectionBarAnim,
+      selectedCount: _selectedIds.length,
+      onExportAll: _exportAll,
+      onExportSelected: _exportSelected,
+      onExitSelection: _exitSelectionMode,
+    ),
+  );
+}
                                 final fahrt = fahrten[index];
                                 _fahrtCardKeys.putIfAbsent(fahrt.id, () => GlobalKey<_FahrtCardState>());
                                 return Padding(
@@ -898,6 +981,10 @@ class FahrtenbuchScreenState extends State<FahrtenbuchScreen> with TickerProvide
                                   child: _FahrtCard(
                                     key: _fahrtCardKeys[fahrt.id],
                                     fahrt: fahrt, skin: skin,
+                                    selectionMode: _selectionMode,
+                                    isSelected: _selectedIds.contains(fahrt.id),
+                                    onLongPress: () => _enterSelectionMode(fahrt.id),
+                                    onSelectTap: () => _toggleSelection(fahrt.id),
                                     onDelete: () => _deleteFahrtWithAnimation(fahrt.id),
                                     onToggleUebertragen: () {
                                       _saveFahrt(Fahrt(
@@ -925,6 +1012,8 @@ class FahrtenbuchScreenState extends State<FahrtenbuchScreen> with TickerProvide
               ],
             ),
           ),
+
+          // ── Draft Banner ────────────────────────────────────────────────────
           AnimatedBuilder(
             animation: _draftBannerAnim,
             builder: (context, child) {
@@ -942,9 +1031,22 @@ class FahrtenbuchScreenState extends State<FahrtenbuchScreen> with TickerProvide
           ),
 
           // ── Glass FAB ───────────────────────────────────────────────────────
-          Positioned(
-            bottom: bottomNavHeight + extraBottomOffset + 16,
-            right: 20,
+          AnimatedBuilder(
+            animation: _selectionBarAnim,
+            builder: (context, child) {
+              final bottomOffset = _draftVisible
+                  ? bottomNavHeight + draftBannerHeight + 20
+                  : bottomNavHeight + 16;
+              // FAB blendet aus wenn Selection aktiv
+              return Positioned(
+                bottom: bottomOffset,
+                right: 20,
+                child: Opacity(
+                  opacity: (1 - _selectionBarAnim.value).clamp(0.0, 1.0),
+                  child: child,
+                ),
+              );
+            },
             child: GestureDetector(
               onTap: () {
                 if (_sheetOpen) return;
@@ -992,8 +1094,9 @@ class FahrtenbuchScreenState extends State<FahrtenbuchScreen> with TickerProvide
           ),
         ],
       ),
-    );
-  }
+    ),
+  );
+}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1108,6 +1211,361 @@ class _DraftBannerState extends State<_DraftBanner> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ANIMIERTER EXPORT / SELECTION BAR
+// Morpht vom "Alle Fahrten exportieren" Button zur Selection-Bar
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _AnimatedExportSelectionBar extends StatelessWidget {
+  final AppSkin skin;
+  final double progress; // 0 = normaler Export-Button, 1 = Selection-Bar
+  final bool selectionMode;
+  final int selectedCount;
+  final VoidCallback onExportAll;
+  final VoidCallback onExportSelected;
+  final VoidCallback onExitSelection;
+
+  const _AnimatedExportSelectionBar({
+    required this.skin,
+    required this.progress,
+    required this.selectionMode,
+    required this.selectedCount,
+    required this.onExportAll,
+    required this.onExportSelected,
+    required this.onExitSelection,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // Höhe bleibt konstant, Breite wird durch right: im Positioned gesteuert
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+        child: Container(
+          height: 52,
+          decoration: BoxDecoration(
+            color: skin.isLight
+                ? Colors.white.withValues(alpha: 0.88)
+                : Colors.black.withValues(alpha: 0.70),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: skin.glassBorder),
+            boxShadow: [BoxShadow(
+              color: Colors.black.withValues(alpha: 0.18),
+              blurRadius: 16, offset: const Offset(0, 4),
+            )],
+          ),
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              // ── Normal: "Alle Fahrten exportieren" ──
+              Opacity(
+                opacity: (1 - progress * 2).clamp(0.0, 1.0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.upload_outlined, size: 15, color: skin.primary),
+                    const SizedBox(width: 7),
+                    Text(
+                      'Alle Fahrten exportieren',
+                      style: TextStyle(
+                        color: skin.primary,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // ── Selection: X + Count + Export-Chips ──
+              Opacity(
+                opacity: ((progress - 0.5) * 2).clamp(0.0, 1.0),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      // X Button
+                      Transform.scale(
+                        scale: ((progress - 0.4) / 0.6).clamp(0.0, 1.0),
+                        child: GestureDetector(
+                          onTap: onExitSelection,
+                          child: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: skin.surface(0.08),
+                              borderRadius: BorderRadius.circular(9),
+                            ),
+                            child: Icon(Icons.close_rounded, size: 20, color: skin.textMuted),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      // Count
+                      Transform.scale(
+                        scale: ((progress - 0.5) / 0.5).clamp(0.0, 1.0),
+                        child: Text(
+                          '$selectedCount ausgewählt',
+                          style: TextStyle(
+                            color: skin.textPrimary,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      // Export Chip
+                      Transform.scale(
+                        scale: ((progress - 0.45) / 0.55).clamp(0.0, 1.0),
+                        child: GestureDetector(
+                          onTap: onExportSelected,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                            decoration: BoxDecoration(
+                              gradient: skin.gradient,
+                              borderRadius: BorderRadius.circular(11),
+                              boxShadow: [BoxShadow(
+                                color: skin.primaryWithAlpha(0.30),
+                                blurRadius: 8, offset: const Offset(0, 3),
+                              )],
+                            ),
+                            child: Row(mainAxisSize: MainAxisSize.min, children: [
+                              Icon(Icons.upload_outlined, size: 14, color: skin.onGradient),
+                              const SizedBox(width: 5),
+                              Text('Exportieren',
+                                  style: TextStyle(
+                                    color: skin.onGradient,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                  )),
+                            ]),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EXPORT BUTTON MIT SELECTION-ANIMATION
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _ExportButtonAnimated extends StatelessWidget {
+  final AppSkin skin;
+  final Animation<double> animation;
+  final int selectedCount;
+  final VoidCallback onExportAll;
+  final VoidCallback onExportSelected;
+  final VoidCallback onExitSelection;
+
+  const _ExportButtonAnimated({
+    required this.skin,
+    required this.animation,
+    required this.selectedCount,
+    required this.onExportAll,
+    required this.onExportSelected,
+    required this.onExitSelection,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: animation,
+      builder: (context, _) {
+        final p = animation.value; // 0 = normal, 1 = selection
+
+        // Breite: normal = nur Label-Breite (min), selection = volle Breite
+        // Wir verwenden einen AnimatedContainer-ähnlichen Ansatz über SizedBox
+        // height bleibt konstant bei 50
+        const double buttonHeight = 50.0;
+
+        // Chips-Scale: erscheinen von 0 → 1 gestaffelt
+        final closeScale = Curves.easeOutBack.transform(
+          ((p - 0.1) / 0.6).clamp(0.0, 1.0),
+        );
+        final countScale = Curves.easeOutBack.transform(
+          ((p - 0.2) / 0.6).clamp(0.0, 1.0),
+        );
+        final exportChipScale = Curves.easeOutBack.transform(
+          ((p - 0.3) / 0.6).clamp(0.0, 1.0),
+        );
+        final normalOpacity = (1 - p * 2.5).clamp(0.0, 1.0);
+        final selectionOpacity = ((p - 0.4) / 0.6).clamp(0.0, 1.0);
+
+        return Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // Der Button selbst wächst von "auto" auf "full row minus margins"
+            // indem wir den Clip/Container animieren
+            ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: double.infinity,
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(14),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+                  child: AnimatedContainer(
+                    duration: Duration.zero, // wird durch AnimatedBuilder gesteuert
+                    height: buttonHeight,
+                    // Padding schmilzt beim Übergang
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 20 + p * 4,
+                      vertical: 0,
+                    ),
+                    decoration: BoxDecoration(
+                      // Im Selection-Mode: glassmorphism weiß/schwarz
+                      // Im Normal-Mode: primary-tint
+                      color: Color.lerp(
+                        skin.primary.withValues(alpha: 0.07),
+                        skin.isLight
+                            ? Colors.white.withValues(alpha: 0.88)
+                            : Colors.black.withValues(alpha: 0.70),
+                        p,
+                      ),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: Color.lerp(
+                          skin.primary.withValues(alpha: 0.22),
+                          skin.glassBorder,
+                          p,
+                        )!,
+                        width: 1.0 + p * 0.5,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.08 + p * 0.10),
+                          blurRadius: 12 + p * 8,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        // ── Normal Label ──
+                        Opacity(
+                          opacity: normalOpacity,
+                          child: GestureDetector(
+                            onTap: p < 0.1 ? onExportAll : null,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.upload_outlined,
+                                    color: skin.primary, size: 16),
+                                const SizedBox(width: 7),
+                                Text(
+                                  'Alle Fahrten exportieren',
+                                  style: TextStyle(
+                                    color: skin.primary,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+
+                        // ── Selection Chips ──
+                        Opacity(
+                          opacity: selectionOpacity,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              // X Button
+                              Transform.scale(
+                                scale: closeScale,
+                                child: GestureDetector(
+                                  onTap: onExitSelection,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(7),
+                                    decoration: BoxDecoration(
+                                      color: skin.surface(0.08),
+                                      borderRadius: BorderRadius.circular(9),
+                                    ),
+                                    child: Icon(Icons.close_rounded,
+                                        size: 16, color: skin.textMuted),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              // Count
+                              Transform.scale(
+                                scale: countScale,
+                                child: Text(
+                                  '$selectedCount ausgewählt',
+                                  style: TextStyle(
+                                    color: skin.textPrimary,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              // Export Chip
+                              Transform.scale(
+                                scale: exportChipScale,
+                                child: GestureDetector(
+                                  onTap: onExportSelected,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 14, vertical: 9),
+                                    decoration: BoxDecoration(
+                                      gradient: skin.gradient,
+                                      borderRadius: BorderRadius.circular(11),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: skin.primaryWithAlpha(0.30),
+                                          blurRadius: 8,
+                                          offset: const Offset(0, 3),
+                                        )
+                                      ],
+                                    ),
+                                    child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(Icons.upload_outlined,
+                                              size: 14,
+                                              color: skin.onGradient),
+                                          const SizedBox(width: 5),
+                                          Text('Exportieren',
+                                              style: TextStyle(
+                                                color: skin.onGradient,
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w700,
+                                              )),
+                                        ]),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // MONATSNAVIGATION
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1190,10 +1648,20 @@ class _FahrtCard extends StatefulWidget {
   final String? externallyOpenKey;
   final void Function(String?) onCardSwiped;
 
+  // Mehrfachauswahl
+  final bool selectionMode;
+  final bool isSelected;
+  final VoidCallback? onLongPress;
+  final VoidCallback? onSelectTap;
+
   const _FahrtCard({
     super.key, required this.fahrt, required this.skin,
     required this.onDelete, required this.onToggleUebertragen, required this.onEdit,
     this.externallyOpenKey, required this.onCardSwiped,
+    this.selectionMode = false,
+    this.isSelected = false,
+    this.onLongPress,
+    this.onSelectTap,
   });
 
   @override
@@ -1406,11 +1874,14 @@ class _FahrtCardState extends State<_FahrtCard>
             child: Transform.translate(offset: Offset(_slideOutAnim.value, 0), child: child!)),
       ),
       child: GestureDetector(
-        onHorizontalDragStart: _onPanStart,
-        onHorizontalDragUpdate: _onPanUpdate,
-        onHorizontalDragEnd: _onPanEnd,
-        onTap: (_isOpenRight || _isOpenLeft) ? _close : null,
-        onDoubleTap: () { if (!_isOpenRight && !_isOpenLeft) widget.onEdit(); },
+        onHorizontalDragStart: widget.selectionMode ? null : _onPanStart,
+        onHorizontalDragUpdate: widget.selectionMode ? null : _onPanUpdate,
+        onHorizontalDragEnd: widget.selectionMode ? null : _onPanEnd,
+        onTap: widget.selectionMode
+            ? widget.onSelectTap
+            : ((_isOpenRight || _isOpenLeft) ? _close : null),
+        onDoubleTap: widget.selectionMode ? null : () { if (!_isOpenRight && !_isOpenLeft) widget.onEdit(); },
+        onLongPress: widget.selectionMode ? null : widget.onLongPress,
         child: SizedBox(
           height: 90,
           width: double.infinity,
@@ -1497,114 +1968,167 @@ class _FahrtCardState extends State<_FahrtCard>
                   ),
 
                 Transform.translate(
-                  offset: Offset(swipeOffset, 0),
-                  child: SizedBox(
-                    width: double.infinity,
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(14),
-                      child: BackdropFilter(
-                        filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: skin.isLight ? Colors.white.withValues(alpha: skin.glassOpacity) : skin.bgCard.withValues(alpha: skin.glassOpacity),
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(
-                              color: fahrt.uebertragen ? skin.statComplete.withValues(alpha: 0.35) : skin.glassBorder,
-                              width: fahrt.uebertragen ? 1.5 : 1.0,
-                            ),
-                            boxShadow: [
-                              BoxShadow(color: skin.glassShadow, blurRadius: 24, spreadRadius: 0, offset: const Offset(0, 6)),
-                              BoxShadow(color: skin.glassHighlight, blurRadius: 0, spreadRadius: -1, offset: const Offset(0, 1)),
-                            ],
-                          ),
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              SizedBox(
-                                width: 52,
-                                child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
-                                  Text(dayName.toUpperCase(),
-                                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 0.8, color: skin.surface(0.38))),
-                                  const SizedBox(height: 2),
-                                  Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
-                                    Text(dayNum, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: skin.textPrimary, height: 1)),
-                                    const SizedBox(width: 3),
-                                    Text(monthAbbr, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w500, color: skin.surface(0.3))),
-                                  ]),
-                                ]),
-                              ),
-                              Container(width: 1, height: 44, margin: const EdgeInsets.symmetric(horizontal: 12), color: skin.surface(0.07)),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    LayoutBuilder(
-                                      builder: (context, constraints) {
-                                        return _AdaptiveKmRow(
-                                          kmStart: fahrt.kmStart,
-                                          kmEnd: fahrt.kmEnd,
-                                          skin: skin,
-                                          maxWidth: constraints.maxWidth,
-                                        );
-                                      },
-                                    ),
-                                    if (fahrt.kennzeichen.isNotEmpty) ...[
-                                      const SizedBox(height: 4),
-                                      Row(children: [
-                                        Icon(Icons.directions_car_outlined, size: 13, color: skin.surface(0.35)),
-                                        const SizedBox(width: 4),
-                                        Flexible(child: Text(fahrt.kennzeichen,
-                                            style: TextStyle(fontSize: 12, color: skin.surface(0.42), fontWeight: FontWeight.w500),
-                                            maxLines: 1, overflow: TextOverflow.ellipsis)),
-                                        if (hatGetankt) ...[
-                                          const SizedBox(width: 8),
-                                          Icon(Icons.local_gas_station_outlined, size: 13, color: skin.primary.withValues(alpha: 0.55)),
-                                        ],
-                                        if (fahrt.sonderWegerecht) ...[
-                                          const SizedBox(width: 6),
-                                          Icon(Icons.emergency_outlined, size: 13, color: const Color(0xFF2962FF).withValues(alpha: 0.75)),
-                                        ],
-                                      ]),
-                                    ],
-                                  ],
+                  offset: Offset(widget.selectionMode ? 0 : swipeOffset, 0),
+                  child: Stack(
+                    children: [
+                      SizedBox(
+                        width: double.infinity,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(14),
+                          child: BackdropFilter(
+                            filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: skin.isLight ? Colors.white.withValues(alpha: skin.glassOpacity) : skin.bgCard.withValues(alpha: skin.glassOpacity),
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(
+                                  color: fahrt.uebertragen ? skin.statComplete.withValues(alpha: 0.35) : skin.glassBorder,
+                                  width: fahrt.uebertragen ? 1.5 : 1.0,
                                 ),
+                                boxShadow: [
+                                  BoxShadow(color: skin.glassShadow, blurRadius: 24, spreadRadius: 0, offset: const Offset(0, 6)),
+                                  BoxShadow(color: skin.glassHighlight, blurRadius: 0, spreadRadius: -1, offset: const Offset(0, 1)),
+                                ],
                               ),
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.end,
-                                mainAxisAlignment: MainAxisAlignment.center,
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.center,
                                 children: [
-                                  Text(
-                                    fahrt.kmStart == 0 || fahrt.kmEnd == 0 ? '—' : '${fahrt.kmGefahren} km',
-                                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: skin.textPrimary),
-                                  ),
-                                  const SizedBox(height: 4),
                                   SizedBox(
-                                    width: 100,
-                                    child: Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-                                      Icon(
-                                        fahrt.uebertragen ? Icons.check_circle_rounded : Icons.radio_button_unchecked,
-                                        size: 12,
-                                        color: fahrt.uebertragen ? skin.statComplete : skin.statOpen,
-                                      ),
-                                      const SizedBox(width: 4),
-                                      Flexible(child: Text(
-                                        fahrt.fahrtTyp.isNotEmpty
-                                            ? (fahrtTypObj != null ? fahrtTypObj.label : fahrt.fahrtTyp)
-                                            : (fahrt.fahrtZiel.isNotEmpty ? fahrt.fahrtZiel : (fahrt.uebertragen ? 'Eingetr.' : 'Offen')),
-                                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: skin.textMuted),
-                                        maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.right,
-                                      )),
+                                    width: 52,
+                                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
+                                      Text(dayName.toUpperCase(),
+                                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 0.8, color: skin.surface(0.38))),
+                                      const SizedBox(height: 2),
+                                      Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
+                                        Text(dayNum, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: skin.textPrimary, height: 1)),
+                                        const SizedBox(width: 3),
+                                        Text(monthAbbr, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w500, color: skin.surface(0.3))),
+                                      ]),
                                     ]),
+                                  ),
+                                  Container(width: 1, height: 44, margin: const EdgeInsets.symmetric(horizontal: 12), color: skin.surface(0.07)),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        LayoutBuilder(
+                                          builder: (context, constraints) {
+                                            return _AdaptiveKmRow(
+                                              kmStart: fahrt.kmStart,
+                                              kmEnd: fahrt.kmEnd,
+                                              skin: skin,
+                                              maxWidth: constraints.maxWidth,
+                                            );
+                                          },
+                                        ),
+                                        if (fahrt.kennzeichen.isNotEmpty) ...[
+                                          const SizedBox(height: 4),
+                                          Row(children: [
+                                            Icon(Icons.directions_car_outlined, size: 13, color: skin.surface(0.35)),
+                                            const SizedBox(width: 4),
+                                            Flexible(child: Text(fahrt.kennzeichen,
+                                                style: TextStyle(fontSize: 12, color: skin.surface(0.42), fontWeight: FontWeight.w500),
+                                                maxLines: 1, overflow: TextOverflow.ellipsis)),
+                                            if (hatGetankt) ...[
+                                              const SizedBox(width: 8),
+                                              Icon(Icons.local_gas_station_outlined, size: 13, color: skin.primary.withValues(alpha: 0.55)),
+                                            ],
+                                            if (fahrt.sonderWegerecht) ...[
+                                              const SizedBox(width: 6),
+                                              Icon(Icons.emergency_outlined, size: 13, color: const Color(0xFF2962FF).withValues(alpha: 0.75)),
+                                            ],
+                                          ]),
+                                        ],
+                                      ],
+                                    ),
+                                  ),
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Text(
+                                        fahrt.kmStart == 0 || fahrt.kmEnd == 0 ? '—' : '${fahrt.kmGefahren} km',
+                                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: skin.textPrimary),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      SizedBox(
+                                        width: 100,
+                                        child: Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+                                          Icon(
+                                            fahrt.uebertragen ? Icons.check_circle_rounded : Icons.radio_button_unchecked,
+                                            size: 12,
+                                            color: fahrt.uebertragen ? skin.statComplete : skin.statOpen,
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Flexible(child: Text(
+                                            fahrt.fahrtTyp.isNotEmpty
+                                                ? (fahrtTypObj != null ? fahrtTypObj.label : fahrt.fahrtTyp)
+                                                : (fahrt.fahrtZiel.isNotEmpty ? fahrt.fahrtZiel : (fahrt.uebertragen ? 'Eingetr.' : 'Offen')),
+                                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: skin.textMuted),
+                                            maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.right,
+                                          )),
+                                        ]),
+                                      ),
+                                    ],
                                   ),
                                 ],
                               ),
-                            ],
+                            ),
                           ),
                         ),
                       ),
-                    ),
+                      // Auswahl-Overlay
+                      if (widget.selectionMode)
+                        Positioned.fill(
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 180),
+                            decoration: BoxDecoration(
+                              color: widget.isSelected
+                                  ? widget.skin.primary.withValues(alpha: 0.18)
+                                  : Colors.transparent,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: widget.isSelected
+                                    ? widget.skin.primary.withValues(alpha: 0.6)
+                                    : widget.skin.glassBorder,
+                                width: widget.isSelected ? 2.0 : 1.0,
+                              ),
+                            ),
+                            child: widget.isSelected
+                                ? Align(
+                                    alignment: Alignment.topRight,
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(8),
+                                      child: Container(
+                                        width: 22,
+                                        height: 22,
+                                        decoration: BoxDecoration(
+                                          color: widget.skin.primary,
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: const Icon(Icons.check_rounded, size: 14, color: Colors.white),
+                                      ),
+                                    ),
+                                  )
+                                : Align(
+                                    alignment: Alignment.topRight,
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(8),
+                                      child: Container(
+                                        width: 22,
+                                        height: 22,
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          border: Border.all(color: widget.skin.surface(0.3), width: 1.5),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                          ),
+                        ),
+                    ],
                   ),
                 ),
               ],

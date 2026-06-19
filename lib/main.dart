@@ -13,6 +13,7 @@ import 'screens/schedule_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/support_screen.dart';
 import 'screens/fahrtenbuch_screen.dart';
+import 'screens/export_hinweise_screen.dart';
 import 'screens/welcome_screen.dart';
 import 'screens/splash_screen.dart';
 import 'services/pdf_service.dart';
@@ -895,6 +896,20 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                                       onTap: () {
                                         _closeMenu();
                                         _showKfzVerwaltung(context);
+                                      },
+                                    ),
+                                    _Divider(),
+                                    _DropdownItem(
+                                      icon: Icons.upload_outlined,
+                                      label: 'Hinweise Exportieren',
+                                      onTap: () {
+                                        _closeMenu();
+                                        Navigator.push(
+                                          context,
+                                          CupertinoPageRoute(
+                                            builder: (_) => const ExportHinweiseScreen(),
+                                          ),
+                                        );
                                       },
                                     ),
                                     _Divider(),
