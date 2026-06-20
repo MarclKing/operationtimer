@@ -5,29 +5,26 @@
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
   <meta name="description" content="OpTimes">
 
-  <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="OpTimes">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
-
-  <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png">
 
   <title>OpTimes</title>
   <link rel="manifest" href="manifest.json">
 
-  <!-- Splash / Loading Screen Styles -->
+  <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport">
+
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
     body {
-      background: #0a0a0f;
+      background: #0A0B0F;
       display: flex;
       align-items: center;
       justify-content: center;
       height: 100vh;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
       overflow: hidden;
     }
 
@@ -36,7 +33,7 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 24px;
+      gap: 48px;
       opacity: 1;
       transition: opacity 0.4s ease;
     }
@@ -46,168 +43,63 @@
       pointer-events: none;
     }
 
-    .logo-wrapper {
-      position: relative;
-      width: 96px;
-      height: 96px;
-    }
-
     .logo-wrapper img {
-      width: 96px;
-      height: 96px;
-      border-radius: 22px;
+      width: 160px;
+      height: 160px;
       object-fit: contain;
     }
 
-    .logo-glow {
+    /* Dot trail */
+    .dot-trail {
+      position: relative;
+      width: 37px;
+      height: 37px;
+      animation: trail-spin 1.4s linear infinite;
+    }
+
+    .dot-trail span {
       position: absolute;
-      inset: -12px;
-      border-radius: 34px;
-      background: radial-gradient(ellipse at center, rgba(91,141,239,0.35) 0%, transparent 70%);
-      animation: pulse 2s ease-in-out infinite;
-    }
-
-    @keyframes pulse {
-      0%, 100% { opacity: 0.5; transform: scale(0.95); }
-      50%       { opacity: 1.0; transform: scale(1.05); }
-    }
-
-    .app-name {
-      font-size: 26px;
-      font-weight: 700;
-      color: #f0f0f5;
-      letter-spacing: 0.5px;
-    }
-
-    .loading-bar-track {
-      width: 120px;
-      height: 3px;
-      background: rgba(255,255,255,0.08);
-      border-radius: 2px;
-      overflow: hidden;
-    }
-
-    .loading-bar-fill {
-      height: 100%;
-      width: 0%;
-      background: linear-gradient(90deg, #5B8DEF, #9B6BF2);
-      border-radius: 2px;
-      animation: load 1.8s ease-in-out forwards;
-    }
-
-    @keyframes load {
-      0%   { width: 0%; }
-      60%  { width: 75%; }
-      90%  { width: 92%; }
-      100% { width: 100%; }
-    }
-  </style>
-  
-  
-  <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport">
-  
-  
-  
-  
-  <style id="splash-screen-style">
-    html {
-      height: 100%
-    }
-
-    body {
-      margin: 0;
-      min-height: 100%;
-      background-color: #0A0B0F;
-          background-size: 100% 100%;
-    }
-
-    .center {
-      margin: 0;
-      position: absolute;
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: #7F77DD;
+      left: 50%;
       top: 50%;
-      left: 50%;
-      -ms-transform: translate(-50%, -50%);
-      transform: translate(-50%, -50%);
+      margin-left: -2.5px;
+      margin-top: -2.5px;
     }
 
-    .contain {
-      display:block;
-      width:100%; height:100%;
-      object-fit: contain;
-    }
+    .dot-trail span:nth-child(1) { transform: rotate(0deg)   translateY(-14px); opacity: 1.00; }
+    .dot-trail span:nth-child(2) { transform: rotate(72deg)  translateY(-14px); opacity: 0.72; }
+    .dot-trail span:nth-child(3) { transform: rotate(144deg) translateY(-14px); opacity: 0.45; }
+    .dot-trail span:nth-child(4) { transform: rotate(216deg) translateY(-14px); opacity: 0.20; }
+    .dot-trail span:nth-child(5) { transform: rotate(288deg) translateY(-14px); opacity: 0.07; }
 
-    .stretch {
-      display:block;
-      width:100%; height:100%;
-    }
-
-    .cover {
-      display:block;
-      width:100%; height:100%;
-      object-fit: cover;
-    }
-
-    .bottom {
-      position: absolute;
-      bottom: 0;
-      left: 50%;
-      -ms-transform: translate(-50%, 0);
-      transform: translate(-50%, 0);
-    }
-
-    .bottomLeft {
-      position: absolute;
-      bottom: 0;
-      left: 0;
-    }
-
-    .bottomRight {
-      position: absolute;
-      bottom: 0;
-      right: 0;
-    }
-
-    @media (prefers-color-scheme: dark) {
-      body {
-        background-color: #0A0B0F;
-          }
+    @keyframes trail-spin {
+      to { transform: rotate(360deg); }
     }
   </style>
-  <script id="splash-screen-script">
+
+  <script>
     function removeSplashFromWeb() {
       document.getElementById("splash")?.remove();
-      document.getElementById("splash-branding")?.remove();
       document.body.style.background = "transparent";
     }
   </script>
 </head>
 
 <body>
-  <picture id="splash">
-      <source srcset="splash/img/light-1x.png 1x, splash/img/light-2x.png 2x, splash/img/light-3x.png 3x, splash/img/light-4x.png 4x" media="(prefers-color-scheme: light)">
-      <source srcset="splash/img/dark-1x.png 1x, splash/img/dark-2x.png 2x, splash/img/dark-3x.png 3x, splash/img/dark-4x.png 4x" media="(prefers-color-scheme: dark)">
-      <img class="center" aria-hidden="true" src="splash/img/light-1x.png" alt="">
-  </picture>
-  
-  
-  
-
-  <!-- Loading Screen -->
   <div id="loading-screen">
     <div class="logo-wrapper">
-      <div class="logo-glow"></div>
-      <img src="assets/assets/logo.png" alt="OpTimes Logo" onerror="this.src='icons/Icon-192.png'">
+      <img src="assets/assets/logo_trans.png" alt="OpTimes" onerror="this.src='icons/Icon-192.png'">
     </div>
-    <div class="app-name">OpTimes</div>
-    <div class="loading-bar-track">
-      <div class="loading-bar-fill"></div>
+    <div class="dot-trail">
+      <span></span><span></span><span></span><span></span><span></span>
     </div>
   </div>
 
-  <!-- Flutter Bootstrap (modern only) -->
   <script src="flutter_bootstrap.js" async=""></script>
 
-  <!-- Hide loading screen -->
   <script>
     window.addEventListener('flutter-first-frame', function () {
       const screen = document.getElementById('loading-screen');
@@ -217,6 +109,4 @@
       }
     });
   </script>
-
-
 </body></html>

@@ -203,43 +203,67 @@ struct DayTile: View {
 
 struct SmallWidgetView: View {
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        ZStack {
+            // ── Hintergrund: dezente Routenlinie ─────────────────────
+            GeometryReader { geo in
+                let w = geo.size.width
+                let h = geo.size.height
 
-            // Oberes Label
-            Text("FAHRTENBUCH")
-                .font(.system(size: 10, weight: .bold))
-                .foregroundColor(Shield.textHint)
-                .tracking(1.5)
+                Path { path in
+                    path.move(to: CGPoint(x: -10, y: h * 0.24))
+                    path.addCurve(
+                        to: CGPoint(x: w * 0.53, y: h * 0.33),
+                        control1: CGPoint(x: w * 0.36, y: h * 0.12),
+                        control2: CGPoint(x: w * 0.53, y: h * 0.33)
+                    )
+                    path.addCurve(
+                        to: CGPoint(x: w + 10, y: h * 0.42),
+                        control1: CGPoint(x: w * 0.53, y: h * 0.33),
+                        control2: CGPoint(x: w * 0.85, y: h * 0.42)
+                    )
+                }
+                .stroke(
+                    Shield.primary.opacity(0.22),
+                    style: StrokeStyle(lineWidth: 1.5, lineCap: .round, dash: [1, 7])
+                )
 
-            Spacer()
-
-            // Kamera-Icon
-            ZStack {
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(Shield.primary.opacity(0.13))
-                    .frame(width: 44, height: 44)
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(Shield.primary.opacity(0.28), lineWidth: 1)
-                    .frame(width: 44, height: 44)
-                Image(systemName: "camera.fill")
-                    .font(.system(size: 20, weight: .regular))
-                    .foregroundColor(Shield.primary)
+                Circle()
+                    .fill(Shield.primary.opacity(0.4))
+                    .frame(width: 5, height: 5)
+                    .position(x: w * 0.53, y: h * 0.33)
             }
 
-            Spacer().frame(height: 8)
+            // ── Inhalt: Schlüssel-Fob-Stil ────────────────────────────
+            VStack(spacing: 12) {
+                ZStack {
+                    Circle()
+                        .stroke(Shield.primary.opacity(0.18), lineWidth: 1)
+                        .frame(width: 70, height: 70)
 
-            // Haupttext — kurz, passt sicher rein
-            Text("KM scannen")
-                .font(.system(size: 15, weight: .bold))
-                .foregroundColor(Shield.textPrimary)
+                    Circle()
+                        .fill(Color.white.opacity(0.04))
+                        .frame(width: 58, height: 58)
+                    Circle()
+                        .stroke(Shield.primary.opacity(0.5), lineWidth: 1.5)
+                        .frame(width: 58, height: 58)
 
-            Spacer().frame(height: 3)
+                    Image(systemName: "car.fill")
+                        .font(.system(size: 24, weight: .regular))
+                        .foregroundColor(Shield.textPrimary)
+                }
 
-            Text("Fahrt starten")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundColor(Shield.primary)
+                VStack(spacing: 2) {
+                    Text("Fahrt starten")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(Shield.textPrimary)
+
+                    Text("Antippen zum Scannen")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(Shield.primary.opacity(0.85))
+                }
+            }
         }
-        .padding(14)
+        .padding(18)
         .widgetURL(URL(string: "optimes://fahrtenbuch/neue-fahrt/scan-km-start"))
         .modifier(SmallBackgroundModifier())
     }

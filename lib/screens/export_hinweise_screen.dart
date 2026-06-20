@@ -47,7 +47,7 @@ class _ExportHinweiseScreenState extends State<ExportHinweiseScreen> {
                     ),
                   ),
                   const SizedBox(width: 14),
-                  Text('Hinweise Exportieren',
+                  Text('Exportanleitung',
                       style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: skin.textPrimary)),
                 ],
               ),

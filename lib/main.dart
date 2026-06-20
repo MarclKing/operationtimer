@@ -116,7 +116,7 @@ class MyApp extends StatelessWidget {
     return ValueListenableBuilder(
       valueListenable: Hive.box('einstellungen').listenable(),
       builder: (context, box, _) {
-        final skinKey = box.get(AppTheme.hiveKey, defaultValue: 'chrome') as String;
+        final skinKey = box.get(AppTheme.hiveKey, defaultValue: 'shield') as String;
         final skin = AppTheme.fromKey(skinKey);
         return SkinProvider(
           skin: skin,
@@ -901,7 +901,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                                     _Divider(),
                                     _DropdownItem(
                                       icon: Icons.upload_outlined,
-                                      label: 'Hinweise Exportieren',
+                                      label: 'Exportanleitung',
                                       onTap: () {
                                         _closeMenu();
                                         Navigator.push(

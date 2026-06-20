@@ -41,15 +41,16 @@ flutter_launcher_icons:
   image_path: "assets/logo.png"
 
 flutter_native_splash:
-  color: "#0A0B0F"          # ← exakt dein skin.bgBase (Shield dark)
+  color: "#0A0B0F"
   color_dark: "#0A0B0F"
-  image: assets/logo.png
+  image: assets/logo_trans.png   # ← von logo.png auf logo_trans.png
   android_12:
     color: "#0A0B0F"
-    image: assets/logo.png
+    image: assets/logo_trans.png
     icon_background_color: "#0A0B0F"
 
 flutter:
   uses-material-design: true
   assets:
     - assets/logo.png
+    - assets/logo_trans.png
