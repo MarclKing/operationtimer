@@ -43,10 +43,11 @@ flutter_launcher_icons:
 flutter_native_splash:
   color: "#0A0B0F"
   color_dark: "#0A0B0F"
-  image: assets/logo_trans_splash.png   # ← neue, gepaddete Version
+  image: assets/logo_trans.png
+  web: false
   android_12:
     color: "#0A0B0F"
-    image: assets/logo_trans_splash.png  # ← hier auch anpassen
+    image: assets/logo_trans.png
     icon_background_color: "#0A0B0F"
 
 flutter:
@@ -54,4 +55,3 @@ flutter:
   assets:
     - assets/logo.png
     - assets/logo_trans.png
-    - assets/logo_trans_splash.png   # ← neu hinzufügen
