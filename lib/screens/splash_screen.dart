@@ -82,7 +82,7 @@ class _SplashScreenState extends State<SplashScreen>
     final skin = AppTheme.of(context);
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
-    final logoSize = screenWidth * 0.55;
+    final logoSize = screenWidth * 0.65;
 
     return Scaffold(
       backgroundColor: skin.bgBase,

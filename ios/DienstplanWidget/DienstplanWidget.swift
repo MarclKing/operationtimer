@@ -256,7 +256,7 @@ struct SmallWidgetView: View {
                 }
 
                 Text("Fahrt starten")
-                    .font(.system(size: 15, weight: .bold))
+                    .font(.system(size: 13, weight: .bold))
                     .foregroundColor(Shield.primary.opacity(0.85))
 
                 Text("KM scannen")
