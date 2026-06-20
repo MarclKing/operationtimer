@@ -204,44 +204,47 @@ struct DayTile: View {
 struct SmallWidgetView: View {
     var body: some View {
         ZStack {
-            // ── Hintergrund: Routenlinie ──────────────────────────────
+            // ── Hintergrund: Routenlinie, unterbrochen am Kreis ───────
             GeometryReader { geo in
                 let w = geo.size.width
                 let h = geo.size.height
 
+                // Segment 1: von links bis kurz vor den Kreis
                 Path { path in
                     path.move(to: CGPoint(x: -10, y: h * 0.24))
-                    path.addCurve(
-                        to: CGPoint(x: w * 0.53, y: h * 0.33),
-                        control1: CGPoint(x: w * 0.36, y: h * 0.12),
-                        control2: CGPoint(x: w * 0.53, y: h * 0.33)
-                    )
-                    path.addCurve(
-                        to: CGPoint(x: w + 10, y: h * 0.42),
-                        control1: CGPoint(x: w * 0.53, y: h * 0.33),
-                        control2: CGPoint(x: w * 0.85, y: h * 0.42)
+                    path.addQuadCurve(
+                        to: CGPoint(x: w * 0.46, y: h * 0.30),
+                        control: CGPoint(x: w * 0.36, y: h * 0.12)
                     )
                 }
                 .stroke(
-                    Shield.primary.opacity(0.38),
+                    Shield.primary.opacity(0.55),
                     style: StrokeStyle(lineWidth: 2, lineCap: .round, dash: [1, 7])
                 )
 
-                Circle()
-                    .fill(Shield.primary.opacity(0.55))
-                    .frame(width: 6, height: 6)
-                    .position(x: w * 0.53, y: h * 0.33)
+                // Segment 2: kurz nach dem Kreis weiter nach rechts
+                Path { path in
+                    path.move(to: CGPoint(x: w * 0.60, y: h * 0.36))
+                    path.addQuadCurve(
+                        to: CGPoint(x: w + 10, y: h * 0.42),
+                        control: CGPoint(x: w * 0.77, y: h * 0.38)
+                    )
+                }
+                .stroke(
+                    Shield.primary.opacity(0.55),
+                    style: StrokeStyle(lineWidth: 2, lineCap: .round, dash: [1, 7])
+                )
             }
 
-            // ── Inhalt: Schlüssel-Fob-Stil ────────────────────────────
-            VStack(spacing: 12) {
+            // ── Inhalt: Kreis + Texte ──────────────────────────────────
+            VStack(spacing: 8) {
                 ZStack {
                     Circle()
                         .stroke(Shield.primary.opacity(0.18), lineWidth: 1)
                         .frame(width: 70, height: 70)
 
                     Circle()
-                        .fill(Color.white.opacity(0.04))
+                        .fill(Shield.bgBase)
                         .frame(width: 58, height: 58)
                     Circle()
                         .stroke(Shield.primary.opacity(0.5), lineWidth: 1.5)
@@ -252,9 +255,13 @@ struct SmallWidgetView: View {
                         .foregroundColor(Shield.textPrimary)
                 }
 
+                Text("Fahrt starten")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundColor(Shield.primary.opacity(0.85))
+
                 Text("KM scannen")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundColor(Shield.textPrimary)
+                    .font(.system(size: 11.5, weight: .medium))
+                    .foregroundColor(Shield.textMuted)
             }
         }
         .padding(18)
