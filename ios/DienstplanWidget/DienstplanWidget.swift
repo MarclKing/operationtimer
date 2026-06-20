@@ -204,7 +204,7 @@ struct DayTile: View {
 struct SmallWidgetView: View {
     var body: some View {
         ZStack {
-            // ── Hintergrund: dezente Routenlinie ─────────────────────
+            // ── Hintergrund: Routenlinie ──────────────────────────────
             GeometryReader { geo in
                 let w = geo.size.width
                 let h = geo.size.height
@@ -223,13 +223,13 @@ struct SmallWidgetView: View {
                     )
                 }
                 .stroke(
-                    Shield.primary.opacity(0.22),
-                    style: StrokeStyle(lineWidth: 1.5, lineCap: .round, dash: [1, 7])
+                    Shield.primary.opacity(0.38),
+                    style: StrokeStyle(lineWidth: 2, lineCap: .round, dash: [1, 7])
                 )
 
                 Circle()
-                    .fill(Shield.primary.opacity(0.4))
-                    .frame(width: 5, height: 5)
+                    .fill(Shield.primary.opacity(0.55))
+                    .frame(width: 6, height: 6)
                     .position(x: w * 0.53, y: h * 0.33)
             }
 
@@ -252,15 +252,9 @@ struct SmallWidgetView: View {
                         .foregroundColor(Shield.textPrimary)
                 }
 
-                VStack(spacing: 2) {
-                    Text("Fahrt starten")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundColor(Shield.textPrimary)
-
-                    Text("Antippen zum Scannen")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(Shield.primary.opacity(0.85))
-                }
+                Text("KM scannen")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(Shield.textPrimary)
             }
         }
         .padding(18)
