@@ -78,54 +78,54 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   @override
-  Widget build(BuildContext context) {
-    final skin = AppTheme.of(context);
-    final screenHeight = MediaQuery.of(context).size.height;
+Widget build(BuildContext context) {
+  final skin = AppTheme.of(context);
+  final screenWidth = MediaQuery.of(context).size.width;
+  final screenHeight = MediaQuery.of(context).size.height;
+  final logoSize = screenWidth * 0.55;
 
-    return Scaffold(
-      backgroundColor: skin.bgBase,
-      body: FadeTransition(
-        opacity: _fadeAnim,
-        child: ScaleTransition(
-          scale: _scaleAnim,
-          child: Stack(
-            children: [
-              // ── Logo ─────────────────────────────────────────────────
-              Positioned(
-                top: screenHeight * 0.5 - 100,
-                left: 0,
-                right: 0,
-                child: Center(
-                  child: Image.asset(
-                    'assets/logo_trans.png',
-                    width: 180,
-                    height: 180,
-                    fit: BoxFit.contain,
+  return Scaffold(
+    backgroundColor: skin.bgBase,
+    body: FadeTransition(
+      opacity: _fadeAnim,
+      child: ScaleTransition(
+        scale: _scaleAnim,
+        child: Stack(
+          children: [
+            // ── Logo ─────────────────────────────────────────────────
+            Positioned(
+              top: screenHeight * 0.5 - (logoSize / 2),
+              left: 0,
+              right: 0,
+              child: Center(
+                child: Image.asset(
+                  'assets/logo_trans.png',
+                  width: logoSize,
+                  fit: BoxFit.contain,
+                ),
+              ),
+            ),
+
+            // ── Dot Trail ────────────────────────────────────────────
+            Positioned(
+              top: screenHeight * 0.72 - 18,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: FadeTransition(
+                  opacity: _trailFadeAnim,
+                  child: _DotTrail(
+                    controller: _trailCtrl,
+                    color: skin.primary,
                   ),
                 ),
               ),
-
-              // ── Dot Trail ────────────────────────────────────────────
-              Positioned(
-                top: screenHeight * 0.72 - 18,
-                left: 0,
-                right: 0,
-                child: Center(
-                  child: FadeTransition(
-                    opacity: _trailFadeAnim,
-                    child: _DotTrail(
-                      controller: _trailCtrl,
-                      color: skin.primary,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
-    );
-  }
+    ),
+  );
 }
 
 // ── Dot Trail ────────────────────────────────────────────────────────────────
