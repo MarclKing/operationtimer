@@ -212,7 +212,8 @@ struct SmallWidgetView: View {
         Canvas { context, size in
             let cx = size.width / 2
             let cy = size.height / 2
-            let r: CGFloat = min(size.width, size.height) * 0.38
+            // ── Größerer Radius ──────────────────────────────────────
+            let r: CGFloat = min(size.width, size.height) * 0.44
 
             let startAngle: Double = 150
             let sweep: Double = 240
@@ -236,7 +237,7 @@ struct SmallWidgetView: View {
                 drawTick(
                     context: context, cx: cx, cy: cy,
                     angleDeg: angleDeg,
-                    innerR: r - 6, outerR: r + 3,
+                    innerR: r - 6, outerR: bezelRadius,   // ← bis zum Bezel-Rand
                     color: Shield.secondary.opacity(0.55),
                     lineWidth: 2
                 )
@@ -250,7 +251,7 @@ struct SmallWidgetView: View {
                 drawTick(
                     context: context, cx: cx, cy: cy,
                     angleDeg: angleDeg,
-                    innerR: r - 4, outerR: r + 1,
+                    innerR: r - 4, outerR: bezelRadius - 2, // ← nahe am Rand
                     color: Shield.primary.opacity(0.18),
                     lineWidth: 1.2
                 )
@@ -287,16 +288,19 @@ struct SmallWidgetView: View {
                 )
             }
 
-            // ── Tacho-Nadel ──
+            // ── Tacho-Nadel — schließt bündig am äußersten Bezel ab ──
             let needleAngleDeg = startAngle + Double(activeDotCount) * dotStep
             let needleRad = needleAngleDeg * .pi / 180
+
+            // Spitze genau auf dem Bezel-Ring
             let needleOuter = CGPoint(
-                x: cx + (r + 9) * cos(needleRad),
-                y: cy + (r + 9) * sin(needleRad)
+                x: cx + bezelRadius * cos(needleRad),
+                y: cy + bezelRadius * sin(needleRad)
             )
+            // Basis leicht innerhalb der Dot-Skala
             let needleInner = CGPoint(
-                x: cx + (dotRadius - 1) * cos(needleRad),
-                y: cy + (dotRadius - 1) * sin(needleRad)
+                x: cx + (dotRadius - 4) * cos(needleRad),
+                y: cy + (dotRadius - 4) * sin(needleRad)
             )
             var needlePath = Path()
             needlePath.move(to: needleOuter)
@@ -313,35 +317,35 @@ struct SmallWidgetView: View {
                 style: StrokeStyle(lineWidth: 1, lineCap: .round)
             )
 
-            // ── Zahlen-Skala ──
+            // ── Zahlen-Skala — nach innen verschoben wegen größerem r ──
             drawLabel(context: context, cx: cx, cy: cy, r: r,
-                      angleDeg: startAngle, text: "0", radiusOffset: 22)
+                      angleDeg: startAngle, text: "0", radiusOffset: 26)
             drawLabel(context: context, cx: cx, cy: cy, r: r,
-                      angleDeg: startAngle + sweep / 2, text: "50", radiusOffset: 24)
+                      angleDeg: startAngle + sweep / 2, text: "50", radiusOffset: 28)
             drawLabel(context: context, cx: cx, cy: cy, r: r,
-                      angleDeg: endAngle, text: "100", radiusOffset: 22)
+                      angleDeg: endAngle, text: "100", radiusOffset: 26)
         }
         .overlay(alignment: .center) {
             VStack(spacing: 0) {
                 Image(systemName: "car.fill")
-                    .font(.system(size: 26, weight: .regular))
+                    .font(.system(size: 28, weight: .regular))
                     .foregroundColor(.white)
 
-                Spacer().frame(height: 11)
+                Spacer().frame(height: 14)
                 Text("Fahrt starten")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(size: 13, weight: .semibold))
                     .foregroundColor(.white)
                 Text("KM scannen")
                     .font(.system(size: 10, weight: .medium))
                     .foregroundColor(Color(hex: "#5A8CFF"))
             }
-            .offset(y: 4)
+            .offset(y: 10)  // etwas nach unten, damit Platz zum Tacho-Rand bleibt
         }
         .widgetURL(URL(string: "optimes://fahrtenbuch/neue-fahrt/scan-km-start"))
         .modifier(SmallBackgroundModifier())
     }
 
-    // ── Hilfsfunktionen ──
+    // ── Hilfsfunktionen (unverändert) ──────────────────────────────────────
 
     private func drawTick(context: GraphicsContext, cx: CGFloat, cy: CGFloat,
                            angleDeg: Double, innerR: CGFloat, outerR: CGFloat,
