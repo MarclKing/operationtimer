@@ -1717,7 +1717,7 @@ class _SheetHandleBar extends StatelessWidget {
       child: Container(
         width: double.infinity,
         color: Colors.transparent,
-        padding: const EdgeInsets.symmetric(vertical: 16),
+        padding: const EdgeInsets.symmetric(vertical: 8),
         alignment: Alignment.center,
         child: SheetHandle(skin: skin),
       ),
@@ -2093,13 +2093,13 @@ class _TaskEditSheetState extends State<_TaskEditSheet> {
             child: SingleChildScrollView(
               physics: const BouncingScrollPhysics(),
           child: Padding(
-            padding: EdgeInsets.fromLTRB(20, 16, 20, 20 + MediaQuery.of(context).padding.bottom),
+            padding: EdgeInsets.fromLTRB(20, 4, 20, 20 + MediaQuery.of(context).padding.bottom),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _SheetHandleBar(skin: skin),
-                const SizedBox(height: 16),
+                const SizedBox(height: 4),
                 Row(children: [
                   Icon(Icons.task_alt_outlined, size: 18, color: skin.primary),
                   const SizedBox(width: 8),
