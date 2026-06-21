@@ -99,10 +99,10 @@ class _SplashScreenState extends State<SplashScreen>
                 right: 0,
                 child: Center(
                   child: Image.asset(
-                    'assets/logo_trans.png',
-                    width: logoSize,
-                    fit: BoxFit.contain,
-                  ),
+  skin.isLight ? 'assets/logo_trans_rev.png' : 'assets/logo_trans.png',
+  width: logoSize,
+  fit: BoxFit.contain,
+),
                 ),
               ),
 
