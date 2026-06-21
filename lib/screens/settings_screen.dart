@@ -33,6 +33,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _activeSkin = 'chrome';
   bool _nachtschichtModus = false;
   bool _dienstplanDevMode = false;
+  String _taskAutoDelete = 'never';
 
   @override
   void initState() {
@@ -47,6 +48,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         box.get('nachtschicht_modus', defaultValue: false) as bool;
     _dienstplanDevMode =
         box.get('dienstplan_dev_placeholder', defaultValue: false) as bool;
+    _taskAutoDelete =
+        box.get('task_auto_delete', defaultValue: 'never') as String;
   }
 
   @override
@@ -262,6 +265,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
         .map((w) =>
             w.isEmpty ? w : w[0].toUpperCase() + w.substring(1).toLowerCase())
         .join(' ');
+  }
+
+String _taskAutoDeleteLabel(String key) {
+    switch (key) {
+      case '1d': return '1 Tag';
+      case '2d': return '2 Tagen';
+      case '1w': return '1 Woche';
+      case '1m': return '1 Monat';
+      default: return '';
+    }
   }
 
   void _onNameChanged(String value) {
@@ -628,6 +641,136 @@ void _autoSaveName() {
                                         Expanded(
                                           child: Text(
                                             'Zeiterfassungs-Einträge, sowie Dienstplan- und Fahrtenbuch-Daten werden gelöscht, sobald sie mehr als $monthLabel zurückliegen.',
+                                            style: TextStyle(
+                                                fontSize: 12,
+                                                color: skin.textMuted,
+                                                height: 1.5),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(height: 16),
+
+                         // ── Auto-Löschen erledigter Aufgaben ─────────────────
+                        _TiCard(
+                          skin: skin,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _TiCardHeader(
+                                  skin: skin,
+                                  icon: Icons.task_alt_outlined,
+                                  label: 'Erledigte Aufgaben'),
+                              const SizedBox(height: 12),
+                              Text(
+                                'Erledigte Aufgaben automatisch löschen nach:',
+                                style: TextStyle(fontSize: 13, color: skin.textMuted),
+                              ),
+                              const SizedBox(height: 14),
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(14),
+                                child: BackdropFilter(
+                                  filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                                  child: Container(
+                                    padding: const EdgeInsets.all(4),
+                                    decoration: BoxDecoration(
+                                      color: skin.isLight
+                                          ? Colors.white.withValues(alpha: 0.45)
+                                          : Colors.white.withValues(alpha: 0.06),
+                                      borderRadius: BorderRadius.circular(14),
+                                      border: Border.all(color: skin.glassBorder),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        {'key': 'never', 'label': 'Nie'},
+                                        {'key': '1d', 'label': '1T'},
+                                        {'key': '2d', 'label': '2T'},
+                                        {'key': '1w', 'label': '1W'},
+                                        {'key': '1m', 'label': '1M'},
+                                      ].map((opt) {
+                                        final isSelected = _taskAutoDelete == opt['key'];
+                                        return Expanded(
+                                          child: GestureDetector(
+                                            onTap: () {
+                                              setState(() => _taskAutoDelete = opt['key']!);
+                                              Hive.box('einstellungen')
+                                                  .put('task_auto_delete', opt['key']);
+                                            },
+                                            child: AnimatedContainer(
+                                              duration: const Duration(milliseconds: 200),
+                                              padding: const EdgeInsets.symmetric(vertical: 10),
+                                              decoration: BoxDecoration(
+                                                color: isSelected
+                                                    ? (skin.isLight
+                                                        ? Colors.white.withValues(alpha: 0.80)
+                                                        : Colors.white.withValues(alpha: 0.14))
+                                                    : Colors.transparent,
+                                                borderRadius: BorderRadius.circular(10),
+                                                border: isSelected
+                                                    ? Border.all(color: skin.glassBorder)
+                                                    : null,
+                                                boxShadow: isSelected
+                                                    ? [BoxShadow(
+                                                        color: skin.glassShadow,
+                                                        blurRadius: 8,
+                                                        offset: const Offset(0, 2))]
+                                                    : null,
+                                              ),
+                                              child: Center(
+                                                child: Text(
+                                                  opt['label']!,
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                    fontWeight: isSelected
+                                                        ? FontWeight.w700
+                                                        : FontWeight.w400,
+                                                    color: isSelected
+                                                        ? skin.primary
+                                                        : skin.surface(0.45),
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        );
+                                      }).toList(),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(12),
+                                child: BackdropFilter(
+                                  filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                                  child: Container(
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: skin.isLight
+                                          ? Colors.white.withValues(alpha: 0.50)
+                                          : skin.primary.withValues(alpha: 0.06),
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(color: skin.glassBorder),
+                                    ),
+                                    child: Row(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Icon(Icons.info_outline_rounded,
+                                            color: skin.primary.withValues(alpha: 0.6),
+                                            size: 16),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            _taskAutoDelete == 'never'
+                                                ? 'Erledigte Aufgaben bleiben dauerhaft erhalten.'
+                                                : 'Erledigte Aufgaben werden ${_taskAutoDeleteLabel(_taskAutoDelete)} nach dem Abhaken automatisch gelöscht.',
                                             style: TextStyle(
                                                 fontSize: 12,
                                                 color: skin.textMuted,

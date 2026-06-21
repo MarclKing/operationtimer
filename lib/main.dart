@@ -916,74 +916,79 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                                 boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.25), blurRadius: 24, offset: const Offset(0, 8))],
                               ),
                               child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  if (_isOnFahrtenbuchPage && _currentPage != (_dienstplanEnabled ? 4 : 3)) ...[
-                                    _DropdownItem(
-                                      icon: Icons.directions_car_outlined,
-                                      label: 'Fahrzeuge verwalten',
-                                      onTap: () {
-                                        _closeMenu();
-                                        _showKfzVerwaltung(context);
-                                      },
-                                    ),
-                                    _Divider(),
-                                    _DropdownItem(
-                                      icon: Icons.upload_outlined,
-                                      label: 'Exportanleitung',
-                                      onTap: () {
-                                        _closeMenu();
-                                        Navigator.push(
-                                          context,
-                                          CupertinoPageRoute(
-                                            builder: (_) => const ExportHinweiseScreen(),
-                                          ),
-                                        );
-                                      },
-                                    ),
-                                    _Divider(),
-                                  ],
-                                  if (_isOnSchedulePage && !_isOnFahrtenbuchPage) ...[
-                                    _DropdownItem(
-                                      icon: Icons.upload_file_outlined,
-                                      label: 'Dienstplan importieren',
-                                      onTap: () {
-                                        _closeMenu();
-                                        _showUploadSheet(context, skin);
-                                      },
-                                    ),
-                                    _Divider(),
-                                  ],
-                                  if (_currentPage == 1) ...[
-                                    _DropdownItem(
-                                      icon: Icons.picture_as_pdf_outlined,
-                                      label: 'Zeiten exportieren',
-                                      onTap: () {
-                                        _closeMenu();
-                                        PdfService.showMonthPickerAndExport(context);
-                                      },
-                                    ),
-                                    _Divider(),
-                                  ],
-                                  _DropdownItem(
-                                    icon: Icons.settings_outlined,
-                                    label: 'Einstellungen',
-                                    onTap: () {
-                                      _closeMenu();
-                                      Navigator.push(context, CupertinoPageRoute(builder: (_) => const SettingsScreen()));
-                                    },
-                                  ),
-                                  _Divider(),
-                                  _DropdownItem(
-                                    icon: Icons.support_agent_outlined,
-                                    label: 'Support',
-                                    onTap: () {
-                                      _closeMenu();
-                                      Navigator.push(context, CupertinoPageRoute(builder: (_) => const SupportScreen()));
-                                    },
-                                  ),
-                                ],
-                              ),
+  mainAxisSize: MainAxisSize.min,
+  children: [
+    // IMMER OBEN: Einstellungen
+    _DropdownItem(
+      icon: Icons.settings_outlined,
+      label: 'Einstellungen',
+      onTap: () {
+        _closeMenu();
+        Navigator.push(context, CupertinoPageRoute(builder: (_) => const SettingsScreen()));
+      },
+    ),
+    _Divider(),
+
+    // DYNAMISCHE EINTRÄGE je nach aktiver Seite
+    if (_isOnFahrtenbuchPage && _currentPage != (_dienstplanEnabled ? 4 : 3)) ...[
+      _DropdownItem(
+        icon: Icons.directions_car_outlined,
+        label: 'Fahrzeuge verwalten',
+        onTap: () {
+          _closeMenu();
+          _showKfzVerwaltung(context);
+        },
+      ),
+      _Divider(),
+      _DropdownItem(
+        icon: Icons.upload_outlined,
+        label: 'Exportanleitung',
+        onTap: () {
+          _closeMenu();
+          Navigator.push(
+            context,
+            CupertinoPageRoute(
+              builder: (_) => const ExportHinweiseScreen(),
+            ),
+          );
+        },
+      ),
+      _Divider(),
+    ],
+    if (_isOnSchedulePage && !_isOnFahrtenbuchPage) ...[
+      _DropdownItem(
+        icon: Icons.upload_file_outlined,
+        label: 'Dienstplan importieren',
+        onTap: () {
+          _closeMenu();
+          _showUploadSheet(context, skin);
+        },
+      ),
+      _Divider(),
+    ],
+    if (_currentPage == 1) ...[
+      _DropdownItem(
+        icon: Icons.picture_as_pdf_outlined,
+        label: 'Zeiten exportieren',
+        onTap: () {
+          _closeMenu();
+          PdfService.showMonthPickerAndExport(context);
+        },
+      ),
+      _Divider(),
+    ],
+
+    // IMMER UNTEN: Support
+    _DropdownItem(
+      icon: Icons.support_agent_outlined,
+      label: 'Support',
+      onTap: () {
+        _closeMenu();
+        Navigator.push(context, CupertinoPageRoute(builder: (_) => const SupportScreen()));
+      },
+    ),
+  ],
+),
                             ),
                           ),
                         ),
@@ -1408,11 +1413,11 @@ class _GlassBottomNavState extends State<_GlassBottomNav>
   int _lastIndex = 0;
   double _stretchDirection = 0;
 
-  // NEU: Scrubbing-State
-  bool _isScrubbing = false;
-  double _scrubStartX = 0;
-  int _scrubStartIndex = 0;
-  static const double _scrubItemWidth = 64.0; // ca. Breite pro Tab-Item
+  // NEU
+  bool _isDraggingNav = false;
+  double _dragStartX = 0;
+  int _dragStartIndex = 0;
+  static const double _scrubItemWidth = 58.0;
 
   @override
   void initState() {
@@ -1445,42 +1450,6 @@ class _GlassBottomNavState extends State<_GlassBottomNav>
     widget.onTap(index);
   }
 
-  // NEU: Scrubbing-Logik
-  void _onLongPressStart(LongPressStartDetails details) {
-    _isScrubbing = true;
-    _scrubStartX = details.localPosition.dx;
-    _scrubStartIndex = widget.selectedIndex;
-
-    // Haptic Feedback wie bei Apple
-    HapticFeedback.mediumImpact();
-  }
-
-  void _onLongPressMoveUpdate(LongPressMoveUpdateDetails details) {
-    if (!_isScrubbing) return;
-
-    final delta = details.localPosition.dx - _scrubStartX;
-    final itemCount = widget.dienstplanEnabled ? 5 : 4;
-
-    // Wie viele Items wir seit Start gescrubt haben
-    final steps = (delta / _scrubItemWidth).round();
-    final newIndex = (_scrubStartIndex + steps).clamp(0, itemCount - 1);
-
-    if (newIndex != widget.selectedIndex) {
-      // Leichtes Haptic bei jedem Tab-Wechsel
-      HapticFeedback.selectionClick();
-
-      _stretchDirection = newIndex > widget.selectedIndex ? 1.0 : -1.0;
-      _lastIndex = newIndex;
-      _bounceCtrl.forward(from: 0);
-      widget.onTap(newIndex);
-    }
-  }
-
-  void _onLongPressEnd(LongPressEndDetails details) {
-    _isScrubbing = false;
-    HapticFeedback.lightImpact();
-  }
-
   @override
   Widget build(BuildContext context) {
     final skin = AppTheme.of(context);
@@ -1494,116 +1463,148 @@ class _GlassBottomNavState extends State<_GlassBottomNav>
       _NavItem(Icons.check_rounded, Icons.check_rounded, 'Aufgaben', widget.dienstplanEnabled ? 4 : 3),
     ];
 
-    return GestureDetector(
-      // NEU: LongPress-Scrubbing auf der gesamten Navbar
-      onLongPressStart: _onLongPressStart,
-      onLongPressMoveUpdate: _onLongPressMoveUpdate,
-      onLongPressEnd: _onLongPressEnd,
-      child: AnimatedBuilder(
-        animation: _stretchAnim,
-        builder: (context, child) {
-          final t = _stretchAnim.value;
-          final stretch = 1.0 + (_stretchDirection * 0.035 * (1.0 - t));
-          final squish = 1.0 - (0.018 * (1.0 - t));
-
-          return Transform(
-            alignment: Alignment.center,
-            transform: Matrix4.identity()..scale(stretch, squish),
-            child: child,
-          );
-        },
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(22),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-            child: Container(
-              decoration: BoxDecoration(
+    final navContent = AnimatedBuilder(
+      animation: _stretchAnim,
+      builder: (context, child) {
+        final t = _stretchAnim.value;
+        final stretch = 1.0 + (_stretchDirection * 0.035 * (1.0 - t));
+        final squish = 1.0 - (0.018 * (1.0 - t));
+        return Transform(
+          alignment: Alignment.center,
+          transform: Matrix4.identity()..scale(stretch, squish),
+          child: child,
+        );
+      },
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(22),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+          child: Container(
+            decoration: BoxDecoration(
+              color: skin.isLight
+                  ? Colors.white.withValues(alpha: 0.72)
+                  : Colors.black.withValues(alpha: 0.55),
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(
                 color: skin.isLight
-                    ? Colors.white.withValues(alpha: 0.72)
-                    : Colors.black.withValues(alpha: 0.55),
-                borderRadius: BorderRadius.circular(22),
-                border: Border.all(
-                  color: skin.isLight
-                      ? Colors.white.withValues(alpha: 0.55)
-                      : Colors.white.withValues(alpha: 0.12),
-                  width: 0.8,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(
-                        alpha: skin.isLight ? 0.08 : 0.35),
-                    blurRadius: 24,
-                    spreadRadius: 0,
-                    offset: const Offset(0, 6),
-                  ),
-                ],
+                    ? Colors.white.withValues(alpha: 0.55)
+                    : Colors.white.withValues(alpha: 0.12),
+                width: 0.8,
               ),
-              padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 6),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: items.map((item) {
-                  final isSelected = widget.selectedIndex == item.index;
-                  return GestureDetector(
-                    onTap: () => _handleTap(item.index),
-                    behavior: HitTestBehavior.opaque,
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 180),
-                      curve: Curves.easeInOut,
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 3),
-                      child: isSelected
-                          ? ClipRRect(
-                              borderRadius: BorderRadius.circular(14),
-                              child: BackdropFilter(
-                                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 18, vertical: 8),
-                                  decoration: BoxDecoration(
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(
+                      alpha: skin.isLight ? 0.08 : 0.35),
+                  blurRadius: 24,
+                  spreadRadius: 0,
+                  offset: const Offset(0, 6),
+                ),
+              ],
+            ),
+            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 6),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: items.map((item) {
+                final isSelected = widget.selectedIndex == item.index;
+                return GestureDetector(
+                  onTap: () => _handleTap(item.index),
+                  behavior: HitTestBehavior.opaque,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    curve: Curves.easeInOut,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 3),
+                    child: isSelected
+                        ? ClipRRect(
+                            borderRadius: BorderRadius.circular(14),
+                            child: BackdropFilter(
+                              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 18, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: skin.isLight
+                                      ? Colors.white.withValues(alpha: 0.75)
+                                      : Colors.white.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(
                                     color: skin.isLight
-                                        ? Colors.white.withValues(alpha: 0.75)
-                                        : Colors.white.withValues(alpha: 0.12),
-                                    borderRadius: BorderRadius.circular(14),
-                                    border: Border.all(
-                                      color: skin.isLight
-                                          ? Colors.white.withValues(alpha: 0.85)
-                                          : Colors.white.withValues(alpha: 0.18),
-                                      width: 0.8,
+                                        ? Colors.white.withValues(alpha: 0.85)
+                                        : Colors.white.withValues(alpha: 0.18),
+                                    width: 0.8,
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withValues(
+                                          alpha: skin.isLight ? 0.04 : 0.20),
+                                      blurRadius: 6,
+                                      offset: const Offset(0, 1),
                                     ),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.black.withValues(
-                                            alpha: skin.isLight ? 0.04 : 0.20),
-                                        blurRadius: 6,
-                                        offset: const Offset(0, 1),
-                                      ),
-                                    ],
-                                  ),
-                                  child: Icon(
-                                    item.activeIcon,
-                                    color: skin.primary,
-                                    size: 24,
-                                  ),
+                                  ],
+                                ),
+                                child: Icon(
+                                  item.activeIcon,
+                                  color: skin.primary,
+                                  size: 24,
                                 ),
                               ),
-                            )
-                          : Padding(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 8, vertical: 8),
-                              child: Icon(
-                                item.icon,
-                                color: skin.surface(0.35),
-                                size: 21,
-                              ),
                             ),
-                    ),
-                  );
-                }).toList(),
-              ),
+                          )
+                        : Padding(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 8),
+                            child: Icon(
+                              item.icon,
+                              color: skin.surface(0.35),
+                              size: 21,
+                            ),
+                          ),
+                  ),
+                );
+              }).toList(),
             ),
           ),
         ),
       ),
+    );
+
+    // NEU: RawGestureDetector statt GestureDetector
+    return RawGestureDetector(
+      behavior: HitTestBehavior.opaque,
+      gestures: {
+        HorizontalDragGestureRecognizer:
+            GestureRecognizerFactoryWithHandlers<HorizontalDragGestureRecognizer>(
+          () => HorizontalDragGestureRecognizer(),
+          (instance) {
+            instance
+              ..onStart = (details) {
+                  _isDraggingNav = true;
+                  _dragStartX = details.localPosition.dx;
+                  _dragStartIndex = widget.selectedIndex;
+                }
+              ..onUpdate = (details) {
+                  if (!_isDraggingNav) return;
+                  final delta = details.localPosition.dx - _dragStartX;
+                  final itemCount = widget.dienstplanEnabled ? 5 : 4;
+                  final steps = (delta / _scrubItemWidth).round();
+                  final newIndex =
+                      (_dragStartIndex + steps).clamp(0, itemCount - 1);
+                  if (newIndex != widget.selectedIndex) {
+                    HapticFeedback.selectionClick();
+                    _stretchDirection =
+                        newIndex > widget.selectedIndex ? 1.0 : -1.0;
+                    _lastIndex = newIndex;
+                    _bounceCtrl.forward(from: 0);
+                    widget.onTap(newIndex);
+                  }
+                }
+              ..onEnd = (details) {
+                  _isDraggingNav = false;
+                };
+          },
+        ),
+      },
+      child: navContent,
     );
   }
 }
