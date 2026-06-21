@@ -213,7 +213,7 @@ struct SmallWidgetView: View {
             let cx = size.width / 2
             let cy = size.height / 2
             // ── Größerer Radius ──────────────────────────────────────
-            let r: CGFloat = min(size.width, size.height) * 0.44
+            let r: CGFloat = min(size.width, size.height) * 0.50
 
             let startAngle: Double = 150
             let sweep: Double = 240
@@ -319,11 +319,11 @@ struct SmallWidgetView: View {
 
             // ── Zahlen-Skala — nach innen verschoben wegen größerem r ──
             drawLabel(context: context, cx: cx, cy: cy, r: r,
-                      angleDeg: startAngle, text: "0", radiusOffset: 26)
+                      angleDeg: startAngle, text: "0", radiusOffset: 28)
             drawLabel(context: context, cx: cx, cy: cy, r: r,
-                      angleDeg: startAngle + sweep / 2, text: "50", radiusOffset: 28)
+                      angleDeg: startAngle + sweep / 2, text: "50", radiusOffset: 30)
             drawLabel(context: context, cx: cx, cy: cy, r: r,
-                      angleDeg: endAngle, text: "100", radiusOffset: 26)
+                      angleDeg: endAngle, text: "100", radiusOffset: 28)
         }
         .overlay(alignment: .center) {
             VStack(spacing: 0) {
@@ -339,7 +339,7 @@ struct SmallWidgetView: View {
                     .font(.system(size: 10, weight: .medium))
                     .foregroundColor(Color(hex: "#5A8CFF"))
             }
-            .offset(y: 10)  // etwas nach unten, damit Platz zum Tacho-Rand bleibt
+            .offset(y: 14)  // etwas nach unten, damit Platz zum Tacho-Rand bleibt
         }
         .widgetURL(URL(string: "optimes://fahrtenbuch/neue-fahrt/scan-km-start"))
         .modifier(SmallBackgroundModifier())
