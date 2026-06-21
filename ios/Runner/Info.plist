@@ -16,6 +16,10 @@
 		<string>6.0</string>
 		<key>CFBundleName</key>
 		<string>optimes</string>
+		<key>NSMicrophoneUsageDescription</key>
+    	<string>Diese App benötigt Mikrofonzugriff, um gesprochene Aufgaben per Diktierfunktion zu erfassen.</string>
+    	<key>NSSpeechRecognitionUsageDescription</key>
+    	<string>Diese App nutzt Spracherkennung, um deine gesprochenen Aufgaben automatisch in Text umzuwandeln.</string>
 		<key>CFBundlePackageType</key>
 		<string>APPL</string>
 		<key>CFBundleShortVersionString</key>

@@ -12,7 +12,6 @@ import '../widgets/glass_kit.dart';
 import '../widgets/glass_pickers.dart';
 import '../services/night_shift_helper.dart';
 import '../services/pdf_service.dart';
-import 'week_shift_strip.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MonthScreen
@@ -22,6 +21,115 @@ import 'week_shift_strip.dart';
 // ─────────────────────────────────────────────────────────────────────────────
 
 enum _OverlayField { none, tkf, notiz }
+enum _MonthTab { zeit, monat }
+
+class _GlassSegmentSwitcher extends StatelessWidget {
+  final AppSkin skin;
+  final _MonthTab active;
+  final ValueChanged<_MonthTab> onChanged;
+
+  const _GlassSegmentSwitcher({
+    required this.skin,
+    required this.active,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(18),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
+          child: Container(
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: skin.isLight
+                  ? Colors.white.withValues(alpha: skin.glassOpacity)
+                  : skin.bgCard.withValues(alpha: skin.glassOpacity),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: skin.glassBorder, width: 1.0),
+              boxShadow: [
+                BoxShadow(
+                    color: skin.glassShadow,
+                    blurRadius: 24,
+                    offset: const Offset(0, 6)),
+                BoxShadow(
+                    color: skin.glassHighlight,
+                    blurRadius: 0,
+                    spreadRadius: -1,
+                    offset: const Offset(0, 1)),
+              ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _segment(
+                  label: 'Zeiterfassung',
+                  icon: Icons.access_time_rounded,
+                  tab: _MonthTab.zeit,
+                ),
+                _segment(
+                  label: 'Monatsübersicht',
+                  icon: Icons.calendar_month_rounded,
+                  tab: _MonthTab.monat,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _segment({
+    required String label,
+    required IconData icon,
+    required _MonthTab tab,
+  }) {
+    final isActive = active == tab;
+    return GestureDetector(
+      onTap: () {
+        if (!isActive) {
+          HapticFeedback.selectionClick();
+          onChanged(tab);
+        }
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          color: isActive ? skin.primary.withValues(alpha: 0.22) : Colors.transparent,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: isActive ? skin.primary.withValues(alpha: 0.45) : Colors.transparent,
+            width: 1.5,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 15,
+              color: isActive ? skin.primary : skin.surface(0.4),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: isActive ? FontWeight.w700 : FontWeight.w600,
+                color: isActive ? skin.primary : skin.surface(0.4),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 class MonthScreen extends StatefulWidget {
   final VoidCallback onNavigateToHome;
@@ -41,14 +149,9 @@ class MonthScreen extends StatefulWidget {
 
 class MonthScreenState extends State<MonthScreen> with TickerProviderStateMixin {
 
-  // ── Scroll & Barrier ──────────────────────────────────────────────────────
+  // ── Tab-Switcher ───────────────────────────────────────────────────────────
+  _MonthTab _activeTab = _MonthTab.zeit;
   final ScrollController _scrollController = ScrollController();
-  bool _barrierBroken = false;
-  double _barrierPull = 0.0; // 0.0–1.0 wie weit gezogen
-  static const double _barrierHeight = 72.0;
-  static const double _breakThreshold = 0.72; // 72% = Durchbruch
-  bool _didLightImpact = false;
-  bool _didMediumImpact = false;
 
   // ── HomeScreen State ──────────────────────────────────────────────────────
   late DateTime _selectedDate;
@@ -152,10 +255,7 @@ class MonthScreenState extends State<MonthScreen> with TickerProviderStateMixin 
         curve: Curves.easeOutCubic,
       );
     }
-    setState(() {
-      _barrierBroken = false;
-      _barrierPull = 0.0;
-    });
+    setState(() => _activeTab = _MonthTab.zeit);
   }
 
   void closeAllRows() {
@@ -173,20 +273,6 @@ class MonthScreenState extends State<MonthScreen> with TickerProviderStateMixin 
   // ─────────────────────────────────────────────────────────────────────────
 
   String get _dateKey => DateFormat('yyyy-MM-dd').format(_selectedDate);
-
-  String get _greeting {
-    final hour = DateTime.now().hour;
-    if (hour < 12) return 'Guten Morgen';
-    if (hour < 18) return 'Guten Tag';
-    return 'Guten Abend';
-  }
-
-  String get _firstName {
-    final box = Hive.box('einstellungen');
-    final fullName = box.get('name', defaultValue: '') as String;
-    if (fullName.trim().isEmpty) return '';
-    return fullName.trim().split(' ').first;
-  }
 
   String _getCurrentTimeFormatted() {
     final now = DateTime.now();
@@ -554,7 +640,7 @@ class MonthScreenState extends State<MonthScreen> with TickerProviderStateMixin 
     final kommenCtrl = TextEditingController(text: entry['kommen'] ?? '');
     final gehenCtrl = TextEditingController(text: entry['gehen'] ?? '');
     final tkfCtrl = TextEditingController(text: entry['TKF'] ?? '');
-    final notizCtrl = TextEditingController(text: entry['notiz'] ?? '');
+    final notizCtrl = TextEditingController(text: entry['bemerkung'] ?? '');
     final entryId = entry['id'] as String;
 
     showModalBottomSheet(
@@ -604,7 +690,7 @@ class MonthScreenState extends State<MonthScreen> with TickerProviderStateMixin 
         (entry['kommen'] ?? '').isEmpty ? '--:--' : entry['kommen'];
     final gehen = (entry['gehen'] ?? '').isEmpty ? '--:--' : entry['gehen'];
     final tkf = entry['TKF'] ?? '';
-    final notiz = entry['notiz'] ?? '';
+    final notiz = entry['Bemerkung'] ?? '';
 
     final pdf = pw.Document();
     final font = await PdfGoogleFonts.notoSansRegular();
@@ -697,7 +783,7 @@ class MonthScreenState extends State<MonthScreen> with TickerProviderStateMixin 
           ],
           if (notiz.isNotEmpty) ...[
             pw.SizedBox(height: 8),
-            pw.Text('Notiz: $notiz',
+            pw.Text('Bemerkung: $notiz',
                 style: pw.TextStyle(
                     font: font,
                     fontSize: 12,
@@ -731,78 +817,6 @@ class MonthScreenState extends State<MonthScreen> with TickerProviderStateMixin 
       initialMonth: _selectedMonth,
     );
     if (result != null) _setMonth(result);
-  }
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // Spring Barrier Logik
-  // ─────────────────────────────────────────────────────────────────────────
-
-  void _onBarrierDragUpdate(DragUpdateDetails details) {
-    if (_barrierBroken) return;
-    final delta = -details.delta.dy; // nach unten ziehen = positiv
-    final newPull = (_barrierPull + delta / (_barrierHeight * 1.8)).clamp(0.0, 1.0);
-    setState(() => _barrierPull = newPull);
-
-    // Stufe 1: 30% — "da ist was"
-    if (newPull > 0.30 && !_didLightImpact) {
-      _didLightImpact = true;
-      HapticFeedback.selectionClick();
-    }
-    // Stufe 2: 55% — "fast da"
-    if (newPull > 0.55 && !_didMediumImpact) {
-      _didMediumImpact = true;
-      HapticFeedback.lightImpact();
-    }
-  }
-
-  void _onBarrierDragEnd(DragEndDetails details) {
-    if (_barrierBroken) return;
-    final velocity = -(details.primaryVelocity ?? 0); // nach unten positiv
-
-    final shouldBreak =
-        _barrierPull >= _breakThreshold || velocity > 800;
-
-    if (shouldBreak) {
-      HapticFeedback.heavyImpact();
-      Future.delayed(const Duration(milliseconds: 60), () {
-        if (mounted) HapticFeedback.mediumImpact();
-      });
-      setState(() {
-        _barrierBroken = true;
-        _barrierPull = 0.0;
-        _didLightImpact = false;
-        _didMediumImpact = false;
-      });
-      // Nach dem Durchbruch sanft zur Monatsübersicht scrollen
-      Future.delayed(const Duration(milliseconds: 80), () {
-        if (_scrollController.hasClients) {
-          _scrollController.animateTo(
-            _scrollController.position.maxScrollExtent,
-            duration: const Duration(milliseconds: 420),
-            curve: Curves.easeOutCubic,
-          );
-        }
-      });
-    } else {
-      // Zurückfedern
-      setState(() {
-        _barrierPull = 0.0;
-        _didLightImpact = false;
-        _didMediumImpact = false;
-      });
-    }
-  }
-
-  void _onBarrierTap() {
-    if (_barrierBroken) {
-      // Zurück nach oben
-      HapticFeedback.lightImpact();
-      setState(() => _barrierBroken = false);
-      scrollToTop();
-    } else {
-      // Hinweis-Haptik
-      HapticFeedback.selectionClick();
-    }
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -840,598 +854,58 @@ class MonthScreenState extends State<MonthScreen> with TickerProviderStateMixin 
         behavior: HitTestBehavior.translucent,
         child: Stack(
           children: [
-            // ── Haupt-ScrollView ──
             GestureDetector(
               onTap: overlayOpen ? _closeOverlay : null,
               behavior: HitTestBehavior.translucent,
-              child: CustomScrollView(
-                controller: _scrollController,
-                // Scrollen erst nach Barriere-Durchbruch erlauben
-                physics: _barrierBroken
-                    ? const AlwaysScrollableScrollPhysics()
-                    : const NeverScrollableScrollPhysics(),
-                slivers: [
-
-                  // ── SEKTION 1: HomeScreen-Inhalt ──────────────────────────
-                  SliverToBoxAdapter(
-                    child: SafeArea(
-                      bottom: false,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const SizedBox(height: 40),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 24),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(children: [
-                                  Text(_greeting,
-                                      style: TextStyle(
-                                          fontSize: 20,
-                                          fontWeight: FontWeight.w500,
-                                          color: skin.surface(0.55))),
-                                  const SizedBox(width: 8),
-                                  const Text('👋',
-                                      style: TextStyle(fontSize: 20)),
-                                ]),
-                                if (_firstName.isNotEmpty) ...[
-                                  const SizedBox(height: 2),
-                                  Text(_firstName,
-                                      style: TextStyle(
-                                          fontSize: 32,
-                                          fontWeight: FontWeight.w700,
-                                          color: skin.primary,
-                                          letterSpacing: -0.5)),
-                                ],
-                                const SizedBox(height: 6),
-                                WeekShiftStrip(skin: skin),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 40),
-
-                          // Datumskarte
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 24),
-                            child: GestureDetector(
-                              onHorizontalDragEnd: (d) {
-                                final v = d.primaryVelocity ?? 0;
-                                if (v < -300) _changeDate(1);
-                                if (v > 300) _changeDate(-1);
-                              },
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(20),
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    color: skin.isLight
-                                        ? Colors.white
-                                            .withValues(alpha: skin.glassOpacity)
-                                        : skin.bgCard
-                                            .withValues(alpha: skin.glassOpacity),
-                                    borderRadius: BorderRadius.circular(20),
-                                    border: Border.all(
-                                      color: DateFormat('yyyy-MM-dd')
-                                                  .format(DateTime.now()) ==
-                                              _dateKey
-                                          ? skin.primary.withValues(alpha: 0.45)
-                                          : skin.glassBorder,
-                                      width: DateFormat('yyyy-MM-dd')
-                                                  .format(DateTime.now()) ==
-                                              _dateKey
-                                          ? 1.5
-                                          : 1.0,
-                                    ),
-                                    boxShadow: [
-                                      BoxShadow(
-                                          color: skin.glassShadow,
-                                          blurRadius: 24,
-                                          offset: const Offset(0, 6)),
-                                      BoxShadow(
-                                          color: skin.glassHighlight,
-                                          blurRadius: 0,
-                                          spreadRadius: -1,
-                                          offset: const Offset(0, 1)),
-                                    ],
-                                  ),
-                                  child: Row(children: [
-                                    GestureDetector(
-                                      onTap: () => _changeDate(-1),
-                                      child: const SizedBox(
-                                          width: 44,
-                                          height: 52,
-                                          child: Center(
-                                              child: Icon(Icons.chevron_left,
-                                                  size: 22))),
-                                    ),
-                                    Expanded(
-                                      child: GestureDetector(
-                                        onTap: _selectDateWithPicker,
-                                        onDoubleTap: () {
-                                          HapticFeedback.selectionClick();
-                                          _setDate(DateTime.now());
-                                        },
-                                        child: Padding(
-                                          padding: const EdgeInsets.symmetric(
-                                              vertical: 12),
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.center,
-                                            children: [
-                                              Text(
-                                                DateFormat('yyyy-MM-dd').format(
-                                                            DateTime.now()) ==
-                                                        _dateKey
-                                                    ? 'HEUTE'
-                                                    : 'DATUM',
-                                                style: TextStyle(
-                                                    fontSize: 9,
-                                                    fontWeight: FontWeight.w700,
-                                                    color: DateFormat('yyyy-MM-dd')
-                                                                .format(DateTime
-                                                                    .now()) ==
-                                                            _dateKey
-                                                        ? skin.primary
-                                                        : skin.surface(0.35),
-                                                    letterSpacing: 1.2),
-                                              ),
-                                              const SizedBox(height: 2),
-                                              Text(
-                                                DateFormat(
-                                                        'EEEE, d. MMMM yyyy',
-                                                        'de')
-                                                    .format(_selectedDate),
-                                                style: TextStyle(
-                                                    fontSize: 13,
-                                                    color: skin.textPrimary,
-                                                    fontWeight:
-                                                        FontWeight.w600),
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                                textAlign: TextAlign.center,
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                    GestureDetector(
-                                      onTap: () => _changeDate(1),
-                                      child: SizedBox(
-                                          width: 44,
-                                          height: 52,
-                                          child: Center(
-                                              child: Icon(Icons.chevron_right,
-                                                  size: 22,
-                                                  color: skin.surface(0.5)))),
-                                    ),
-                                  ]),
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-
-                          // Zeit-Karten
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 24),
-                            child: Row(children: [
-                              Expanded(
-                                child: _GlassTimeCard(
-                                  label: 'KOMMEN',
-                                  color: skin.kommenColor,
-                                  controller: _kommenController,
-                                  skin: skin,
-                                  onTap: () => _selectTimeWithPicker(
-                                      _kommenController),
-                                  onDoubleTap: () =>
-                                      _onTimeCardDoubleTap(_kommenController),
-                                  onSwipeUp: () =>
-                                      _adjustHomeTime(_kommenController, 1),
-                                  onSwipeDown: () =>
-                                      _adjustHomeTime(_kommenController, -1),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: _GlassTimeCard(
-                                  label: 'GEHEN',
-                                  color: skin.gehenColor,
-                                  controller: _gehenController,
-                                  skin: skin,
-                                  onTap: () => _selectTimeWithPicker(
-                                      _gehenController),
-                                  onDoubleTap: () =>
-                                      _onTimeCardDoubleTap(_gehenController),
-                                  onSwipeUp: () =>
-                                      _adjustHomeTime(_gehenController, 1),
-                                  onSwipeDown: () =>
-                                      _adjustHomeTime(_gehenController, -1),
-                                ),
-                              ),
-                            ]),
-                          ),
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(24, 6, 24, 0),
-                            child: Text('Wischen · Tippen · Doppeltippen',
-                                style: TextStyle(
-                                    fontSize: 11,
-                                    color: skin.surface(0.28))),
-                          ),
-                          const SizedBox(height: 16),
-
-                          // TKF
-                          Padding(
-                            padding:
-                                const EdgeInsets.symmetric(horizontal: 24),
-                            child: GestureDetector(
-                              onTap: () => _openOverlay(_OverlayField.tkf),
-                              onDoubleTap: () {
-                                setState(() => _teamchefController.clear());
-                                HapticFeedback.selectionClick();
-                              },
-                              child: _GlassInputCard(
-                                skin: skin,
-                                label: 'TAGESKOMMANDOFÜHRER',
-                                icon: Icons.person_outline_rounded,
-                                controller: _teamchefController,
-                                hint: 'Name des TKF',
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-
-                          // Notiz
-                          Padding(
-                            padding:
-                                const EdgeInsets.symmetric(horizontal: 24),
-                            child: GestureDetector(
-                              onTap: () => _openOverlay(_OverlayField.notiz),
-                              onDoubleTap: () {
-                                setState(() => _notizController.clear());
-                                HapticFeedback.selectionClick();
-                              },
-                              child: _GlassInputCard(
-                                skin: skin,
-                                label: 'NOTIZ',
-                                icon: Icons.edit_note_rounded,
-                                controller: _notizController,
-                                hint: 'Optionale Notiz...',
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 24),
-
-                          // Speichern
-                          Padding(
-                            padding:
-                                const EdgeInsets.symmetric(horizontal: 24),
-                            child: ScaleTransition(
-                              scale: Tween<double>(begin: 1.0, end: 0.96)
-                                  .animate(CurvedAnimation(
-                                      parent: _saveAnimController,
-                                      curve: Curves.easeInOut)),
-                              child: GlassPrimaryButton(
-                                skin: skin,
-                                label: 'Eintrag speichern',
-                                icon: Icons.save_rounded,
-                                onTap: () => _saveEntry(context),
-                                large: true,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 32),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                  // ── SEKTION 2: Spring-Barriere ────────────────────────────
-                  SliverToBoxAdapter(
-                    child: _SpringBarrier(
-                      skin: skin,
-                      pullProgress: _barrierPull,
-                      broken: _barrierBroken,
-                      onDragUpdate: _onBarrierDragUpdate,
-                      onDragEnd: _onBarrierDragEnd,
-                      onTap: _onBarrierTap,
-                    ),
-                  ),
-
-                  // ── SEKTION 3: Monatsübersicht ────────────────────────────
-                  SliverToBoxAdapter(
-                    child: SafeArea(
-                      top: false,
-                      bottom: false,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 24),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const SizedBox(height: 32),
-                            Text('Monatsübersicht',
-                                style: TextStyle(
-                                    fontSize: 26,
-                                    fontWeight: FontWeight.w700,
-                                    color: skin.textPrimary)),
-                            const SizedBox(height: 16),
-
-                            // Monats-Navigation
-                            GestureDetector(
-                              onHorizontalDragEnd: (d) {
-                                final v = d.primaryVelocity ?? 0;
-                                if (v < -300) _changeMonth(1);
-                                if (v > 300) _changeMonth(-1);
-                              },
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(20),
-                                child: BackdropFilter(
-                                  filter: ImageFilter.blur(
-                                      sigmaX: skin.glassBlur,
-                                      sigmaY: skin.glassBlur),
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      color: skin.isLight
-                                          ? Colors.white.withValues(
-                                              alpha: skin.glassOpacity)
-                                          : skin.bgCard.withValues(
-                                              alpha: skin.glassOpacity),
-                                      borderRadius: BorderRadius.circular(20),
-                                      border: Border.all(
-                                          color: skin.glassBorder, width: 1.0),
-                                      boxShadow: [
-                                        BoxShadow(
-                                            color: skin.glassShadow,
-                                            blurRadius: 24,
-                                            offset: const Offset(0, 6)),
-                                        BoxShadow(
-                                            color: skin.glassHighlight,
-                                            blurRadius: 0,
-                                            spreadRadius: -1,
-                                            offset: const Offset(0, 1)),
-                                      ],
-                                    ),
-                                    child: Row(children: [
-                                      GestureDetector(
-                                        onTap: () => _changeMonth(-1),
-                                        child: const SizedBox(
-                                            width: 44,
-                                            height: 52,
-                                            child: Center(
-                                                child: Icon(
-                                                    Icons.chevron_left,
-                                                    size: 22))),
-                                      ),
-                                      Expanded(
-                                        child: GestureDetector(
-                                          onTap: _showMonthPicker,
-                                          onDoubleTap: () {
-                                            HapticFeedback.selectionClick();
-                                            final now = DateTime.now();
-                                            _setMonth(DateTime(
-                                                now.year, now.month));
-                                          },
-                                          child: Padding(
-                                            padding: const EdgeInsets.symmetric(
-                                                vertical: 12),
-                                            child: Row(
-                                              mainAxisAlignment:
-                                                  MainAxisAlignment.center,
-                                              children: [
-                                                Text(monthName,
-                                                    style: TextStyle(
-                                                        fontSize: 16,
-                                                        fontWeight:
-                                                            FontWeight.w600,
-                                                        color:
-                                                            skin.textPrimary)),
-                                                const SizedBox(width: 6),
-                                                Icon(Icons.expand_more,
-                                                    color: skin.surface(0.4),
-                                                    size: 18),
-                                              ],
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                      GestureDetector(
-                                        onTap: () => _changeMonth(1),
-                                        child: SizedBox(
-                                            width: 44,
-                                            height: 52,
-                                            child: Center(
-                                                child: Icon(
-                                                    Icons.chevron_right,
-                                                    size: 22,
-                                                    color:
-                                                        skin.surface(0.5)))),
-                                      ),
-                                    ]),
-                                  ),
-                                ),
-                              ),
-                            ),
-
-                            const SizedBox(height: 12),
-                            Row(children: [
-                              GlassStatCard(
-                                  label: 'Arbeit',
-                                  value: '${entries.length}',
-                                  color: skin.statEntries),
-                              const SizedBox(width: 10),
-                              GlassStatCard(
-                                  label: 'Tage',
-                                  value: '$daysInMonth',
-                                  color: skin.statComplete),
-                              const SizedBox(width: 10),
-                              GlassStatCard(
-                                  label: 'Offen',
-                                  value: '$offeneEntries',
-                                  color: skin.statOpen),
-                            ]),
-                            const SizedBox(height: 8),
-                            Text('Wischen  ·  Doppeltippen',
-                                style: TextStyle(
-                                    fontSize: 11, color: skin.surface(0.3))),
-                            const SizedBox(height: 12),
-                          ],
+              child: Column(
+                children: [
+                  // ── Titel + Segment-Switcher (fix, scrollt nicht) ──
+                  SafeArea(
+                    bottom: false,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 50),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 24),
+                          child: Text('Arbeitszeit',
+                              style: TextStyle(
+                                  fontSize: 26,
+                                  fontWeight: FontWeight.w700,
+                                  color: skin.textPrimary)),
                         ),
-                      ),
-                    ),
-                  ),
-
-                  // Einträge Liste
-                  entries.isEmpty
-                      ? SliverToBoxAdapter(
-                          child: SizedBox(
-                            height: 200,
-                            child: Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  const Text('📭',
-                                      style: TextStyle(fontSize: 48)),
-                                  const SizedBox(height: 12),
-                                  Text('Keine Einträge für diesen Monat',
-                                      style: TextStyle(
-                                          color: skin.surface(0.3),
-                                          fontSize: 15)),
-                                ],
-                              ),
-                            ),
-                          ),
-                        )
-                      : SliverPadding(
-                          padding: const EdgeInsets.fromLTRB(24, 4, 24, 0),
-                          sliver: SliverList(
-                            delegate: SliverChildBuilderDelegate(
-                              (context, index) {
-                                if (index == entries.length) {
-                                  return Padding(
-                                    padding: EdgeInsets.fromLTRB(
-                                        0, 8, 0, bottomNavHeight + 32),
-                                    child: Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      children: [
-                                        GestureDetector(
-                                          onTap: () async {
-                                            closeAllRows();
-                                            ScaffoldMessenger.of(context)
-                                                .showSnackBar(SnackBar(
-                                              content: Row(children: const [
-                                                SizedBox(
-                                                  width: 16,
-                                                  height: 16,
-                                                  child:
-                                                      CircularProgressIndicator(
-                                                          strokeWidth: 2,
-                                                          color: Colors.white),
-                                                ),
-                                                SizedBox(width: 12),
-                                                Text('PDF wird erstellt…'),
-                                              ]),
-                                              backgroundColor: skin.textMuted,
-                                              behavior:
-                                                  SnackBarBehavior.floating,
-                                              shape: RoundedRectangleBorder(
-                                                  borderRadius:
-                                                      BorderRadius.circular(
-                                                          12)),
-                                              margin:
-                                                  const EdgeInsets.fromLTRB(
-                                                      16, 0, 16, 100),
-                                              duration: const Duration(
-                                                  seconds: 10),
-                                            ));
-                                            await PdfService.exportMonth(
-                                                context, _selectedMonth);
-                                            ScaffoldMessenger.of(context)
-                                                .hideCurrentSnackBar();
-                                          },
-                                          child: ClipRRect(
-                                            borderRadius:
-                                                BorderRadius.circular(12),
-                                            child: BackdropFilter(
-                                              filter: ImageFilter.blur(
-                                                  sigmaX: 10, sigmaY: 10),
-                                              child: Container(
-                                                padding:
-                                                    const EdgeInsets.symmetric(
-                                                        vertical: 11,
-                                                        horizontal: 20),
-                                                decoration: BoxDecoration(
-                                                  color: skin.primary
-                                                      .withValues(alpha: 0.07),
-                                                  borderRadius:
-                                                      BorderRadius.circular(12),
-                                                  border: Border.all(
-                                                      color: skin.primary
-                                                          .withValues(
-                                                              alpha: 0.22)),
-                                                ),
-                                                child: Row(
-                                                  mainAxisSize:
-                                                      MainAxisSize.min,
-                                                  children: [
-                                                    Icon(
-                                                        Icons
-                                                            .picture_as_pdf_outlined,
-                                                        color: skin.primary,
-                                                        size: 16),
-                                                    const SizedBox(width: 7),
-                                                    Text(
-                                                        'Diesen Monat exportieren',
-                                                        style: TextStyle(
-                                                            color: skin.primary,
-                                                            fontSize: 13,
-                                                            fontWeight:
-                                                                FontWeight
-                                                                    .w600)),
-                                                  ],
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  );
-                                }
-
-                                final entry = entries[index];
-                                final datum = entry['datum'] as String;
-                                final entryId = entry['id'] as String;
-                                _rowKeys[entryId] ??=
-                                    GlobalKey<_SlidableRowState>();
-                                return Padding(
-                                  padding: const EdgeInsets.only(bottom: 10),
-                                  child: _SlidableRow(
-                                    key: _rowKeys[entryId],
-                                    entry: entry,
-                                    entryId: entryId,
-                                    duration: _calcDuration(
-                                        entry['kommen'] ?? '',
-                                        entry['gehen'] ?? ''),
-                                    isComplete: _isEntryComplete(entry),
-                                    onEdit: () => _editEntry(entry),
-                                    onDelete: () =>
-                                        _deleteEntry(datum, entryId),
-                                    onShare: () => _shareEntry(entry),
-                                    onCloseOthers: () =>
-                                        _closeOtherRows(entryId),
-                                  ),
-                                );
-                              },
-                              childCount: entries.length + 1,
-                            ),
+                        const SizedBox(height: 16),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 24),
+                          child: _GlassSegmentSwitcher(
+                            skin: skin,
+                            active: _activeTab,
+                            onChanged: (tab) {
+                              FocusScope.of(context).unfocus();
+                              setState(() => _activeTab = tab);
+                            },
                           ),
                         ),
+                        const SizedBox(height: 12),
+                      ],
+                    ),
+                  ),
+
+                  // ── Inhalt je aktivem Tab ──
+                  Expanded(
+                    child: IndexedStack(
+                      index: _activeTab == _MonthTab.zeit ? 0 : 1,
+                      children: [
+                        _buildZeiterfassungTab(skin),
+                        _buildMonatsuebersichtTab(skin, entries, monthName,
+                            daysInMonth, offeneEntries, bottomNavHeight),
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ),
 
-            // ── Overlay-Dimmer ──
             if (overlayOpen)
               Positioned.fill(
                 child: AnimatedBuilder(
@@ -1445,7 +919,6 @@ class MonthScreenState extends State<MonthScreen> with TickerProviderStateMixin 
                 ),
               ),
 
-            // ── Flying Card Overlay (TKF / Notiz) ──
             if (overlayOpen)
               _FlyingCardOverlay(
                 field: _activeOverlay,
@@ -1475,120 +948,470 @@ class MonthScreenState extends State<MonthScreen> with TickerProviderStateMixin 
       ),
     );
   }
-}
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SPRING BARRIER WIDGET
-// ─────────────────────────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────
+  // TAB 1: Zeiterfassung
+  // ─────────────────────────────────────────────────────────────────────────
 
-class _SpringBarrier extends StatelessWidget {
-  final AppSkin skin;
-  final double pullProgress; // 0.0–1.0
-  final bool broken;
-  final GestureDragUpdateCallback onDragUpdate;
-  final GestureDragEndCallback onDragEnd;
-  final VoidCallback onTap;
+  Widget _buildZeiterfassungTab(AppSkin skin) {
+    return SingleChildScrollView(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 8),
 
-  const _SpringBarrier({
-    required this.skin,
-    required this.pullProgress,
-    required this.broken,
-    required this.onDragUpdate,
-    required this.onDragEnd,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    // Spring-Easing: Widerstand wird stärker je weiter gezogen
-    final eased = pullProgress < 0.5
-        ? 2 * pullProgress * pullProgress
-        : 1 - (-2 * pullProgress + 2) * (-2 * pullProgress + 2) / 2;
-    final arrowOffset = eased * 18.0;
-    final glowOpacity = pullProgress * 0.6;
-    final lineOpacity = 0.12 + pullProgress * 0.25;
-
-    return GestureDetector(
-      onTap: onTap,
-      onVerticalDragUpdate: onDragUpdate,
-      onVerticalDragEnd: onDragEnd,
-      behavior: HitTestBehavior.opaque,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        height: broken ? 0 : 72,
-        child: broken
-            ? const SizedBox.shrink()
-            : ClipRect(
-                child: Column(
-                  children: [
-                    // Trennlinie oben
-                    Container(
-                      height: 1,
-                      margin: const EdgeInsets.symmetric(horizontal: 24),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            Colors.transparent,
-                            skin.primary.withValues(alpha: lineOpacity),
-                            skin.primary.withValues(alpha: lineOpacity * 1.5),
-                            skin.primary.withValues(alpha: lineOpacity),
-                            Colors.transparent,
-                          ],
-                        ),
-                      ),
+            // Datumskarte
+            GestureDetector(
+              onHorizontalDragEnd: (d) {
+                final v = d.primaryVelocity ?? 0;
+                if (v < -300) _changeDate(1);
+                if (v > 300) _changeDate(-1);
+              },
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: skin.isLight
+                        ? Colors.white.withValues(alpha: skin.glassOpacity)
+                        : skin.bgCard.withValues(alpha: skin.glassOpacity),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: DateFormat('yyyy-MM-dd').format(DateTime.now()) ==
+                              _dateKey
+                          ? skin.primary.withValues(alpha: 0.45)
+                          : skin.glassBorder,
+                      width: DateFormat('yyyy-MM-dd').format(DateTime.now()) ==
+                              _dateKey
+                          ? 1.5
+                          : 1.0,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                          color: skin.glassShadow,
+                          blurRadius: 24,
+                          offset: const Offset(0, 6)),
+                      BoxShadow(
+                          color: skin.glassHighlight,
+                          blurRadius: 0,
+                          spreadRadius: -1,
+                          offset: const Offset(0, 1)),
+                    ],
+                  ),
+                  child: Row(children: [
+                    GestureDetector(
+                      onTap: () => _changeDate(-1),
+                      child: const SizedBox(
+                          width: 44,
+                          height: 52,
+                          child: Center(
+                              child: Icon(Icons.chevron_left, size: 22))),
                     ),
                     Expanded(
-                      child: Center(
-                        child: Transform.translate(
-                          offset: Offset(0, arrowOffset),
+                      child: GestureDetector(
+                        onTap: _selectDateWithPicker,
+                        onDoubleTap: () {
+                          HapticFeedback.selectionClick();
+                          _setDate(DateTime.now());
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
                           child: Column(
-                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
-                              // Pfeil-Icon mit Glow bei Pull
-                              AnimatedContainer(
-                                duration: const Duration(milliseconds: 100),
-                                child: Icon(
-                                  Icons.keyboard_arrow_down_rounded,
-                                  color: skin.primary.withValues(
-                                      alpha: 0.35 + pullProgress * 0.55),
-                                  size: 20 + pullProgress * 6,
-                                ),
+                              Text(
+                                DateFormat('yyyy-MM-dd')
+                                            .format(DateTime.now()) ==
+                                        _dateKey
+                                    ? 'HEUTE'
+                                    : 'DATUM',
+                                style: TextStyle(
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.w700,
+                                    color: DateFormat('yyyy-MM-dd')
+                                                .format(DateTime.now()) ==
+                                            _dateKey
+                                        ? skin.primary
+                                        : skin.surface(0.35),
+                                    letterSpacing: 1.2),
                               ),
                               const SizedBox(height: 2),
                               Text(
-                                pullProgress > 0.55
-                                    ? 'Loslassen für Monatsübersicht'
-                                    : 'Monatsübersicht',
+                                DateFormat('EEEE, d. MMMM yyyy', 'de')
+                                    .format(_selectedDate),
                                 style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w500,
-                                  color: skin.surface(0.28 + pullProgress * 0.35),
-                                  letterSpacing: 0.3,
-                                ),
+                                    fontSize: 13,
+                                    color: skin.textPrimary,
+                                    fontWeight: FontWeight.w600),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                textAlign: TextAlign.center,
                               ),
                             ],
                           ),
                         ),
                       ),
                     ),
-                    // Trennlinie unten
-                    Container(
-                      height: 1,
-                      margin: const EdgeInsets.symmetric(horizontal: 24),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            Colors.transparent,
-                            skin.surface(0.06),
-                            Colors.transparent,
-                          ],
-                        ),
-                      ),
+                    GestureDetector(
+                      onTap: () => _changeDate(1),
+                      child: SizedBox(
+                          width: 44,
+                          height: 52,
+                          child: Center(
+                              child: Icon(Icons.chevron_right,
+                                  size: 22, color: skin.surface(0.5)))),
                     ),
-                  ],
+                  ]),
                 ),
               ),
+            ),
+            const SizedBox(height: 16),
+
+            Row(children: [
+              Expanded(
+                child: _GlassTimeCard(
+                  label: 'KOMMEN',
+                  color: skin.kommenColor,
+                  controller: _kommenController,
+                  skin: skin,
+                  onTap: () => _selectTimeWithPicker(_kommenController),
+                  onDoubleTap: () => _onTimeCardDoubleTap(_kommenController),
+                  onSwipeUp: () => _adjustHomeTime(_kommenController, 1),
+                  onSwipeDown: () => _adjustHomeTime(_kommenController, -1),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _GlassTimeCard(
+                  label: 'GEHEN',
+                  color: skin.gehenColor,
+                  controller: _gehenController,
+                  skin: skin,
+                  onTap: () => _selectTimeWithPicker(_gehenController),
+                  onDoubleTap: () => _onTimeCardDoubleTap(_gehenController),
+                  onSwipeUp: () => _adjustHomeTime(_gehenController, 1),
+                  onSwipeDown: () => _adjustHomeTime(_gehenController, -1),
+                ),
+              ),
+            ]),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(0, 6, 0, 0),
+              child: Text('Wischen · Tippen · Doppeltippen',
+                  style: TextStyle(fontSize: 11, color: skin.surface(0.28))),
+            ),
+            const SizedBox(height: 16),
+
+            GestureDetector(
+              onTap: () => _openOverlay(_OverlayField.tkf),
+              onDoubleTap: () {
+                setState(() => _teamchefController.clear());
+                HapticFeedback.selectionClick();
+              },
+              child: _GlassInputCard(
+                skin: skin,
+                label: 'TAGESKOMMANDOFÜHRER',
+                icon: Icons.person_outline_rounded,
+                controller: _teamchefController,
+                hint: 'Name des TKF',
+              ),
+            ),
+            const SizedBox(height: 10),
+
+            GestureDetector(
+              onTap: () => _openOverlay(_OverlayField.notiz),
+              onDoubleTap: () {
+                setState(() => _notizController.clear());
+                HapticFeedback.selectionClick();
+              },
+              child: _GlassInputCard(
+                skin: skin,
+                label: 'Bemerkung',
+                icon: Icons.edit_note_rounded,
+                controller: _notizController,
+                hint: 'Optionale Bemerkung...',
+              ),
+            ),
+            const SizedBox(height: 24),
+
+            ScaleTransition(
+              scale: Tween<double>(begin: 1.0, end: 0.96).animate(
+                  CurvedAnimation(
+                      parent: _saveAnimController, curve: Curves.easeInOut)),
+              child: GlassPrimaryButton(
+                skin: skin,
+                label: 'Eintrag speichern',
+                icon: Icons.save_rounded,
+                onTap: () => _saveEntry(context),
+                large: true,
+              ),
+            ),
+            const SizedBox(height: 32),
+          ],
+        ),
       ),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // TAB 2: Monatsübersicht
+  // ─────────────────────────────────────────────────────────────────────────
+
+  Widget _buildMonatsuebersichtTab(
+    AppSkin skin,
+    List<Map<String, dynamic>> entries,
+    String monthName,
+    int daysInMonth,
+    int offeneEntries,
+    double bottomNavHeight,
+  ) {
+    return CustomScrollView(
+      controller: _scrollController,
+      slivers: [
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 8),
+
+                // Monats-Navigation
+                GestureDetector(
+                  onHorizontalDragEnd: (d) {
+                    final v = d.primaryVelocity ?? 0;
+                    if (v < -300) _changeMonth(1);
+                    if (v > 300) _changeMonth(-1);
+                  },
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(20),
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(
+                          sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: skin.isLight
+                              ? Colors.white.withValues(alpha: skin.glassOpacity)
+                              : skin.bgCard.withValues(alpha: skin.glassOpacity),
+                          borderRadius: BorderRadius.circular(20),
+                          border:
+                              Border.all(color: skin.glassBorder, width: 1.0),
+                          boxShadow: [
+                            BoxShadow(
+                                color: skin.glassShadow,
+                                blurRadius: 24,
+                                offset: const Offset(0, 6)),
+                            BoxShadow(
+                                color: skin.glassHighlight,
+                                blurRadius: 0,
+                                spreadRadius: -1,
+                                offset: const Offset(0, 1)),
+                          ],
+                        ),
+                        child: Row(children: [
+                          GestureDetector(
+                            onTap: () => _changeMonth(-1),
+                            child: const SizedBox(
+                                width: 44,
+                                height: 52,
+                                child: Center(
+                                    child:
+                                        Icon(Icons.chevron_left, size: 22))),
+                          ),
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: _showMonthPicker,
+                              onDoubleTap: () {
+                                HapticFeedback.selectionClick();
+                                final now = DateTime.now();
+                                _setMonth(DateTime(now.year, now.month));
+                              },
+                              child: Padding(
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 12),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Text(monthName,
+                                        style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w600,
+                                            color: skin.textPrimary)),
+                                    const SizedBox(width: 6),
+                                    Icon(Icons.expand_more,
+                                        color: skin.surface(0.4), size: 18),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                          GestureDetector(
+                            onTap: () => _changeMonth(1),
+                            child: SizedBox(
+                                width: 44,
+                                height: 52,
+                                child: Center(
+                                    child: Icon(Icons.chevron_right,
+                                        size: 22, color: skin.surface(0.5)))),
+                          ),
+                        ]),
+                      ),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 12),
+                Row(children: [
+                  GlassStatCard(
+                      label: 'Arbeit',
+                      value: '${entries.length}',
+                      color: skin.statEntries),
+                  const SizedBox(width: 10),
+                  GlassStatCard(
+                      label: 'Tage',
+                      value: '$daysInMonth',
+                      color: skin.statComplete),
+                  const SizedBox(width: 10),
+                  GlassStatCard(
+                      label: 'Offen',
+                      value: '$offeneEntries',
+                      color: skin.statOpen),
+                ]),
+                const SizedBox(height: 8),
+                Text('Wischen  ·  Doppeltippen',
+                    style: TextStyle(fontSize: 11, color: skin.surface(0.3))),
+                const SizedBox(height: 12),
+              ],
+            ),
+          ),
+        ),
+        entries.isEmpty
+            ? SliverToBoxAdapter(
+                child: SizedBox(
+                  height: 200,
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Text('📭', style: TextStyle(fontSize: 48)),
+                        const SizedBox(height: 12),
+                        Text('Keine Einträge für diesen Monat',
+                            style: TextStyle(
+                                color: skin.surface(0.3), fontSize: 15)),
+                      ],
+                    ),
+                  ),
+                ),
+              )
+            : SliverPadding(
+                padding: const EdgeInsets.fromLTRB(24, 4, 24, 0),
+                sliver: SliverList(
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) {
+                      if (index == entries.length) {
+                        return Padding(
+                          padding: EdgeInsets.fromLTRB(
+                              0, 8, 0, bottomNavHeight + 32),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              GestureDetector(
+                                onTap: () async {
+                                  closeAllRows();
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                    content: Row(children: const [
+                                      SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: Colors.white),
+                                      ),
+                                      SizedBox(width: 12),
+                                      Text('PDF wird erstellt…'),
+                                    ]),
+                                    backgroundColor: skin.textMuted,
+                                    behavior: SnackBarBehavior.floating,
+                                    shape: RoundedRectangleBorder(
+                                        borderRadius:
+                                            BorderRadius.circular(12)),
+                                    margin: const EdgeInsets.fromLTRB(
+                                        16, 0, 16, 100),
+                                    duration: const Duration(seconds: 10),
+                                  ));
+                                  await PdfService.exportMonth(
+                                      context, _selectedMonth);
+                                  ScaffoldMessenger.of(context)
+                                      .hideCurrentSnackBar();
+                                },
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: BackdropFilter(
+                                    filter: ImageFilter.blur(
+                                        sigmaX: 10, sigmaY: 10),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          vertical: 11, horizontal: 20),
+                                      decoration: BoxDecoration(
+                                        color: skin.primary
+                                            .withValues(alpha: 0.07),
+                                        borderRadius:
+                                            BorderRadius.circular(12),
+                                        border: Border.all(
+                                            color: skin.primary
+                                                .withValues(alpha: 0.22)),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                              Icons.picture_as_pdf_outlined,
+                                              color: skin.primary,
+                                              size: 16),
+                                          const SizedBox(width: 7),
+                                          Text('Diesen Monat exportieren',
+                                              style: TextStyle(
+                                                  color: skin.primary,
+                                                  fontSize: 13,
+                                                  fontWeight:
+                                                      FontWeight.w600)),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }
+
+                      final entry = entries[index];
+                      final datum = entry['datum'] as String;
+                      final entryId = entry['id'] as String;
+                      _rowKeys[entryId] ??= GlobalKey<_SlidableRowState>();
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: _SlidableRow(
+                          key: _rowKeys[entryId],
+                          entry: entry,
+                          entryId: entryId,
+                          duration: _calcDuration(
+                              entry['kommen'] ?? '', entry['gehen'] ?? ''),
+                          isComplete: _isEntryComplete(entry),
+                          onEdit: () => _editEntry(entry),
+                          onDelete: () => _deleteEntry(datum, entryId),
+                          onShare: () => _shareEntry(entry),
+                          onCloseOthers: () => _closeOtherRows(entryId),
+                        ),
+                      );
+                    },
+                    childCount: entries.length + 1,
+                  ),
+                ),
+              ),
+      ],
     );
   }
 }
@@ -1828,10 +1651,10 @@ class _FlyingCardOverlay extends StatelessWidget {
   Widget build(BuildContext context) {
     final skin = AppTheme.of(context);
     final isTkf = field == _OverlayField.tkf;
-    final label = isTkf ? 'TAGESKOMMANDOFÜHRER' : 'NOTIZ';
+    final label = isTkf ? 'TAGESKOMMANDOFÜHRER' : 'BEMERKUNG';
     final icon =
         isTkf ? Icons.person_outline_rounded : Icons.edit_note_rounded;
-    final hint = isTkf ? 'Name des TKF' : 'Optionale Notiz...';
+    final hint = isTkf ? 'Name des TKF' : 'Optionale Bemerkung...';
     final screenH = MediaQuery.of(context).size.height;
     final cardTop = screenH * 0.22;
 
@@ -2098,7 +1921,7 @@ class _SlidableRowState extends State<_SlidableRow>
     final kommen = entry['kommen'] ?? '';
     final gehen = entry['gehen'] ?? '';
     final tkf = entry['TKF'] ?? '';
-    final hasNotiz = (entry['notiz'] ?? '').isNotEmpty;
+    final hasNotiz = (entry['Bemerkung'] ?? '').isNotEmpty;
     final isComplete = widget.isComplete;
 
     final entryNumber = _getEntryNumber();
@@ -2856,7 +2679,7 @@ class _EditSheetState extends State<_EditSheet> {
                       HapticFeedback.selectionClick();
                     },
                     child: _GlassTextFieldInput(
-                        label: 'NOTIZ',
+                        label: 'BEMERKUNG',
                         ctrl: widget.notizCtrl,
                         maxLines: 2,
                         capitalize: true),

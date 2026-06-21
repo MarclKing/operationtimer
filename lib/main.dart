@@ -25,6 +25,7 @@ import 'package:flutter/services.dart';
 import 'dart:convert';
 import 'utils/cleanup.dart';
 import 'package:intl/intl.dart';
+import 'screens/tasks_screen.dart';
 
 void main() async {
   WidgetsBinding binding = WidgetsFlutterBinding.ensureInitialized();
@@ -205,12 +206,13 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   final _scheduleKey = GlobalKey<ScheduleScreenState>();
   final _monthKey = GlobalKey<MonthScreenState>();
   final _fahrtenbuchKey = GlobalKey<FahrtenbuchScreenState>();
+  final _tasksKey = GlobalKey<TasksScreenState>();
   final ValueNotifier<bool> _dayCardDragging = ValueNotifier(false);
   final ValueNotifier<bool> _homeOverlayActive = ValueNotifier(false);
   static const _navChannel = MethodChannel('de.marcel.optimes/navigation');
 
   bool get _dienstplanEnabled => true;
-  int get _pageCount => _dienstplanEnabled ? 4 : 3;
+  int get _pageCount => _dienstplanEnabled ? 5 : 4;
   bool get _isOnSchedulePage => _dienstplanEnabled && _currentPage == 2;
   bool get _isOnFahrtenbuchPage => _currentPage == (_dienstplanEnabled ? 3 : 2);
 
@@ -222,7 +224,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       vsync: this,
       duration: const Duration(milliseconds: 320),
       lowerBound: 0.0,
-      upperBound: 3.0,
+      upperBound: 4.0,
       value: 0.0,
     );
     _slideCtrl.addListener(() => setState(() {}));
@@ -667,13 +669,19 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     );
   }
 
-  void _goToPage(int index) {
+    void _goToPage(int index) {
     FocusManager.instance.primaryFocus?.unfocus();
     _closeMenu();
     _homeKey.currentState?.closeOverlays();
     _scheduleKey.currentState?.closeOverlays();
     _monthKey.currentState?.closeAllRows();
     _fahrtenbuchKey.currentState?.closeOverlays();
+    
+    // NEU: Wenn wir zum Schedule-Tab (Index 2) wechseln, Task-Marker aktualisieren
+    if (index == 2 && _dienstplanEnabled) {
+      _scheduleKey.currentState?.refreshTaskMarkers();
+    }
+    
     _animateToPage(index);
   }
 
@@ -687,7 +695,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     }
   }
 
-  void _selectTab(int index) {
+    void _selectTab(int index) {
     if (index == _currentPage) {
       switch (index) {
         case 1:
@@ -699,9 +707,18 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
         case 3:
           _fahrtenbuchKey.currentState?.scrollToTop();
           break;
+        case 4:
+          if (_dienstplanEnabled) _tasksKey.currentState?.scrollToTop();
+          break;
       }
       return;
     }
+    
+    // NEU: Wenn wir zum Schedule-Tab (Index 2) wechseln, Task-Marker aktualisieren
+    if (index == 2 && _dienstplanEnabled) {
+      _scheduleKey.currentState?.refreshTaskMarkers();
+    }
+    
     _goToPage(index);
   }
 
@@ -721,7 +738,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     _slideCtrl.value = newVal;
   }
 
-  void _onDragEnd(DragEndDetails d) {
+    void _onDragEnd(DragEndDetails d) {
     if (!_isDragging) return;
     _isDragging = false;
     _dayCardDragging.value = false;
@@ -743,6 +760,11 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       _scheduleKey.currentState?.closeOverlays();
       _monthKey.currentState?.closeAllRows();
       _fahrtenbuchKey.currentState?.closeOverlays();
+      
+      // NEU: Wenn wir zum Schedule-Tab (Index 2) wechseln, Task-Marker aktualisieren
+      if (targetPage == 2 && _dienstplanEnabled) {
+        _scheduleKey.currentState?.refreshTaskMarkers();
+      }
     }
 
     setState(() => _currentPage = targetPage);
@@ -778,6 +800,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
           key: _fahrtenbuchKey,
           onDraftChanged: () => setState(() {}),
         ),
+        TasksScreen(key: _tasksKey),
       ];
 
   void _toggleMenu() {
@@ -895,7 +918,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                               child: Column(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  if (_isOnFahrtenbuchPage) ...[
+                                  if (_isOnFahrtenbuchPage && _currentPage != (_dienstplanEnabled ? 4 : 3)) ...[
                                     _DropdownItem(
                                       icon: Icons.directions_car_outlined,
                                       label: 'Fahrzeuge verwalten',
@@ -931,7 +954,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                                     ),
                                     _Divider(),
                                   ],
-                                  if (!_isOnSchedulePage && !_isOnFahrtenbuchPage) ...[
+                                  if (_currentPage == 1) ...[
                                     _DropdownItem(
                                       icon: Icons.picture_as_pdf_outlined,
                                       label: 'Zeiten exportieren',
@@ -982,7 +1005,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                     children: [
                       const SizedBox(width: 40),
                       const Spacer(),
-                      if (_isOnFahrtenbuchPage)
+                     if (_isOnFahrtenbuchPage)
                         GestureDetector(
                           onTap: _onPlusPressed,
                           child: SizedBox(
@@ -1421,11 +1444,12 @@ class _GlassBottomNavState extends State<_GlassBottomNav>
     final skin = AppTheme.of(context);
 
     final items = [
-      _NavItem(Icons.access_time_outlined, Icons.access_time_filled, 'Zeiterfassung', 0),
-      _NavItem(Icons.calendar_month_outlined, Icons.calendar_month, 'Monatsübersicht', 1),
+      _NavItem(Icons.home_outlined, Icons.home_filled, 'Zeiterfassung', 0),
+      _NavItem(Icons.access_time_outlined, Icons.access_time_filled, 'Monatsübersicht', 1),
       if (widget.dienstplanEnabled)
         _NavItem(Icons.event_note_outlined, Icons.event_note, 'Dienstplan', 2),
       _NavItem(Icons.directions_car_outlined, Icons.directions_car, 'Fahrtenbuch', widget.dienstplanEnabled ? 3 : 2),
+      _NavItem(Icons.check_rounded, Icons.check_rounded, 'Aufgaben', widget.dienstplanEnabled ? 4 : 3),
     ];
 
     return AnimatedBuilder(

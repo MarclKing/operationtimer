@@ -217,7 +217,7 @@ class PdfService {
                             color: PdfColors.white))),
                 pw.Expanded(
                     flex: 2,
-                    child: pw.Text('Notiz',
+                    child: pw.Text('Bemerkung',
                         style: pw.TextStyle(
                             font: fontBold,
                             fontSize: 10,
@@ -248,7 +248,7 @@ class PdfService {
               final kommen = entry['kommen'] ?? '';
               final gehen = entry['gehen'] ?? '';
               final tkf = entry['TKF'] ?? '';
-              final notiz = entry['notiz'] ?? '';
+              final notiz = entry['Bemerkung'] ?? '';
               final duration = _calcDuration(kommen, gehen);
 
               int blockStart = i;

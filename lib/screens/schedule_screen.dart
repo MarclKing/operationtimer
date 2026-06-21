@@ -16,6 +16,7 @@ import '../widgets/glass_pickers.dart';
 import '../widgets/glass_dialogs.dart';
 import 'package:archive/archive.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'tasks_screen.dart' show TaskStore;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Entfernt: extension _AppSkinGlass   → jetzt AppSkinGlass in glass_kit.dart
@@ -788,6 +789,8 @@ class ScheduleScreenState extends State<ScheduleScreen> {
     });
   }
 
+  void refreshTaskMarkers() => setState(() {});
+
   void scrollToToday() {
     final now = DateTime.now();
     if (_selectedMonth.year != now.year || _selectedMonth.month != now.month) return;
@@ -1113,7 +1116,7 @@ class ScheduleScreenState extends State<ScheduleScreen> {
                                   final key = DateFormat('yyyy-MM-dd').format(day);
                                   final shift = _scheduleData[key] ?? '';
                                   final entry = shift.isEmpty ? null : ScheduleEntry(shift);
-                                  return Padding(
+                                                                    return Padding(
                                     padding: const EdgeInsets.only(bottom: 8),
                                     child: _DayCard(
                                       day: day, entry: entry, skin: skin, isChrome: isChrome,
@@ -1125,6 +1128,7 @@ class ScheduleScreenState extends State<ScheduleScreen> {
                                       onOpenColleagues: () => openColleaguesOverlay(key),
                                       dayCardDragging: widget.dayCardDragging,
                                       eventText: _eventsData[key],
+                                      hasTask: entry != null && TaskStore.hasOpenTaskOnDay(day), // NEU
                                     ),
                                   );
                                 },
@@ -1816,12 +1820,14 @@ class _DayCard extends StatefulWidget {
   final VoidCallback onOpenColleagues;
   final ValueNotifier<bool>? dayCardDragging;
   final String? eventText;
+  final bool hasTask; // NEU: true, wenn an diesem Tag eine offene Aufgabe mit Deadline existiert
 
   const _DayCard({
     required this.day, required this.entry, required this.skin, required this.isChrome,
     required this.dateKey, required this.isChanged, required this.externallyOpenKey,
     required this.onCardSwiped, required this.onOpenNote, required this.onNoteChanged,
     required this.onOpenColleagues, this.dayCardDragging, this.eventText,
+    this.hasTask = false, // NEU
   });
 
   @override
@@ -2001,10 +2007,18 @@ class _DayCardState extends State<_DayCard> with TickerProviderStateMixin {
             ),
           );
         }),
-        Expanded(child: shiftContent),
+                Expanded(child: shiftContent),
         if (widget.entry != null && widget.entry!.shift.isNotEmpty) ...[
           if (hasEvent) ...[
             Icon(Icons.flag_rounded, size: 11, color: widget.isChrome ? const Color(0xFFFFB347).withValues(alpha: 0.75) : const Color(0xFFFFB347)),
+            const SizedBox(width: 5),
+          ],
+          if (widget.hasTask) ...[
+            Icon(
+              Icons.task_alt_rounded,
+              size: 11,
+              color: widget.isChrome ? const Color(0xFFCCCCCC).withValues(alpha: 0.85) : skin.primary.withValues(alpha: 0.7),
+            ),
             const SizedBox(width: 5),
           ],
           _isBirthdayDay ? const SizedBox(width: 7, height: 7) : _DayDot(day: widget.day, skin: skin, isChrome: widget.isChrome, isChanged: widget.isChanged),
