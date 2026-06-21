@@ -1697,120 +1697,29 @@ class _TaskTimeTileState extends State<_TaskTimeTile> {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SHEET HANDLE BAR — Tap ODER nach unten wischen schließt das Sheet.
-//
-// Nutzt einen rohen Listener (statt GestureDetector) für die Drag-Erkennung,
-// damit das Wischen garantiert NICHT vom darüberliegenden
-// SingleChildScrollView "geklaut" werden kann — Listener bekommt alle
-// Pointer-Events unabhängig davon, wer die Geste in der Gesture-Arena
-// gewinnt. Großzügige Hitbox: volle Breite, viel vertikaler Puffer.
+// Statisch (kein Live-Tracking/Transform) — analog zur Handle-Bar in
+// fahrtenbuch_screen.dart: onVerticalDragEnd prüft nur die Geschwindigkeit
+// beim Loslassen. Großzügige Hitbox: volle Breite, viel vertikaler Puffer.
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _SheetHandleBar extends StatefulWidget {
+class _SheetHandleBar extends StatelessWidget {
   final AppSkin skin;
   const _SheetHandleBar({required this.skin});
 
   @override
-  State<_SheetHandleBar> createState() => _SheetHandleBarState();
-}
-
-class _SheetHandleBarState extends State<_SheetHandleBar> with SingleTickerProviderStateMixin {
-  late final AnimationController _snapCtrl;
-  double _dragY = 0.0;
-  double? _startY;
-  double _lastY = 0.0;
-  DateTime? _lastTime;
-  double _velocity = 0.0;
-
-  static const double _closeOffsetThreshold = 70.0;
-  static const double _closeVelocityThreshold = 700.0;
-  static const double _maxDrag = 160.0;
-
-  @override
-  void initState() {
-    super.initState();
-    _snapCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 220));
-  }
-
-  @override
-  void dispose() {
-    _snapCtrl.dispose();
-    super.dispose();
-  }
-
-  void _onPointerDown(PointerDownEvent e) {
-    _snapCtrl.stop();
-    _startY = e.position.dy;
-    _lastY = e.position.dy;
-    _lastTime = DateTime.now();
-    _velocity = 0.0;
-  }
-
-  void _onPointerMove(PointerMoveEvent e) {
-    if (_startY == null) return;
-    final now = DateTime.now();
-    final dtMs = now.difference(_lastTime ?? now).inMilliseconds;
-    if (dtMs > 0) {
-      _velocity = (e.position.dy - _lastY) / dtMs * 1000;
-    }
-    _lastTime = now;
-    _lastY = e.position.dy;
-
-    final dy = e.position.dy - _startY!;
-    setState(() => _dragY = dy.clamp(0.0, _maxDrag));
-  }
-
-  void _onPointerUp(PointerUpEvent e) {
-    if (_startY == null) return;
-    _startY = null;
-    if (_dragY > _closeOffsetThreshold || _velocity > _closeVelocityThreshold) {
-      HapticFeedback.mediumImpact();
-      Navigator.pop(context);
-      return;
-    }
-    _snapBack();
-  }
-
-  void _onPointerCancel(PointerCancelEvent e) {
-    _startY = null;
-    _snapBack();
-  }
-
-  void _snapBack() {
-    final anim = Tween<double>(begin: _dragY, end: 0.0).animate(
-      CurvedAnimation(parent: _snapCtrl, curve: Curves.easeOutCubic),
-    );
-    void listener() => setState(() => _dragY = anim.value);
-    anim.addListener(listener);
-    _snapCtrl.forward(from: 0).whenCompleteOrCancel(() => anim.removeListener(listener));
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final skin = widget.skin;
-    final fade = (_dragY / _maxDrag).clamp(0.0, 1.0);
-
-    return Listener(
+    return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onPointerDown: _onPointerDown,
-      onPointerMove: _onPointerMove,
-      onPointerUp: _onPointerUp,
-      onPointerCancel: _onPointerCancel,
-      child: GestureDetector(
-        onTap: () => Navigator.pop(context),
-        behavior: HitTestBehavior.opaque,
-        child: Transform.translate(
-          offset: Offset(0, _dragY),
-          child: Container(
-            width: double.infinity,
-            color: Colors.transparent,
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            alignment: Alignment.center,
-            child: Opacity(
-              opacity: 1.0 - fade * 0.4,
-              child: SheetHandle(skin: skin),
-            ),
-          ),
-        ),
+      onTap: () => Navigator.pop(context),
+      onVerticalDragEnd: (d) {
+        if ((d.primaryVelocity ?? 0) > 100) Navigator.pop(context);
+      },
+      child: Container(
+        width: double.infinity,
+        color: Colors.transparent,
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        alignment: Alignment.center,
+        child: SheetHandle(skin: skin),
       ),
     );
   }
@@ -2320,9 +2229,6 @@ class _TaskEditSheetState extends State<_TaskEditSheet> {
     );
   }
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// REMINDER QUICK CHIPS
 
 // ─────────────────────────────────────────────────────────────────────────────
 // REMINDER QUICK CHIPS — v3
