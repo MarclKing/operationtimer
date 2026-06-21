@@ -1765,6 +1765,7 @@ class _TaskEditSheetState extends State<_TaskEditSheet> {
   final _titleFocus = FocusNode();
   DateTime? _dueDate;
   bool _hasTime = false;
+  bool _fristEnabled = true; // Steuert den FRIST-Switch im Sheet
 
   // Reminder-Auswahl: Liste der gewählten ReminderOption-IDs (max 3).
   List<String> _selectedReminderIds = [];
@@ -1791,6 +1792,7 @@ class _TaskEditSheetState extends State<_TaskEditSheet> {
   _dueDate = DateTime(now.year, now.month, now.day, now.hour + 1, 0);
   _hasTime = true;
 }
+    _fristEnabled = _dueDate != null;
     _selectedReminderIds = List<String>.from(widget.existingTask?.reminderOptionIds ?? []);
     _refreshQuickOptions();
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1825,6 +1827,7 @@ class _TaskEditSheetState extends State<_TaskEditSheet> {
       final hadDeadlineBefore = _dueDate != null;
       setState(() {
         _dueDate = DateTime(result.year, result.month, result.day, _dueDate?.hour ?? 0, _dueDate?.minute ?? 0);
+        _fristEnabled = true;
       });
       if (!hadDeadlineBefore) await _onDeadlineModeChanged();
     }
@@ -1845,14 +1848,15 @@ class _TaskEditSheetState extends State<_TaskEditSheet> {
   void _doubleTapDate() {
     HapticFeedback.mediumImpact();
     if (_dueDate != null) {
-      // Datum vorhanden → beides löschen (Datum + Uhrzeit)
+      // Datum vorhanden → beides löschen (Datum + Uhrzeit) → Frist aus
       _clearDate();
     } else {
-      // Datum leer → aktuelles Datum setzen, KEINE Uhrzeit
+      // Datum leer → aktuelles Datum setzen, KEINE Uhrzeit → Frist an
       final now = DateTime.now();
       setState(() {
         _dueDate = DateTime(now.year, now.month, now.day, 0, 0);
         _hasTime = false;
+        _fristEnabled = true;
       });
     }
   }
@@ -1870,6 +1874,7 @@ class _TaskEditSheetState extends State<_TaskEditSheet> {
         _dueDate = DateTime(_dueDate!.year, _dueDate!.month, _dueDate!.day,
             now.hour + 1, 0);
         _hasTime = true;
+        _fristEnabled = true;
       });
     } else {
       // Gar nichts gesetzt → aktuelles Datum + nächste volle Stunde
@@ -1877,6 +1882,7 @@ class _TaskEditSheetState extends State<_TaskEditSheet> {
       setState(() {
         _dueDate = DateTime(now.year, now.month, now.day, now.hour + 1, 0);
         _hasTime = true;
+        _fristEnabled = true;
       });
     }
   }
@@ -1917,8 +1923,39 @@ class _TaskEditSheetState extends State<_TaskEditSheet> {
     setState(() {
       _dueDate = null;
       _hasTime = false;
+      _fristEnabled = false;
     });
     if (hadDeadlineBefore) await _onDeadlineModeChanged();
+  }
+
+  // ── Frist Switch ──
+
+  /// Zentrale Methode zum Ein-/Ausschalten der Frist — wird vom Switch
+  /// aufgerufen. Doppeltipp-Handler (Datum/Uhrzeit) pflegen _fristEnabled
+  /// direkt mit, sodass Switch und Doppeltipp immer denselben Zustand
+  /// erzeugen und nie auseinanderlaufen können.
+  Future<void> _setFristEnabled(bool enabled) async {
+    if (enabled == _fristEnabled) return;
+    if (!enabled) {
+      // Frist aus → Datum/Uhrzeit komplett entfernen (= "ohne Frist").
+      final hadDeadlineBefore = _dueDate != null;
+      setState(() {
+        _fristEnabled = false;
+        _dueDate = null;
+        _hasTime = false;
+      });
+      if (hadDeadlineBefore) await _onDeadlineModeChanged();
+    } else {
+      // Frist an → Datum auf heute, Uhrzeit auf nächste volle Stunde.
+      final hadDeadlineBefore = _dueDate != null;
+      final now = DateTime.now();
+      setState(() {
+        _fristEnabled = true;
+        _dueDate = DateTime(now.year, now.month, now.day, now.hour + 1, 0);
+        _hasTime = true;
+      });
+      if (!hadDeadlineBefore) await _onDeadlineModeChanged();
+    }
   }
 
   /// Wird aufgerufen, sobald sich der Deadline-Status (vorhanden ↔ keine)
@@ -2116,7 +2153,7 @@ class _TaskEditSheetState extends State<_TaskEditSheet> {
                   textCapitalization: TextCapitalization.sentences,
                   style: TextStyle(color: skin.textPrimary, fontSize: 17, fontWeight: FontWeight.w500),
                   decoration: InputDecoration(
-                    hintText: '...',
+                    hintText: 'Titel',
                     hintStyle: TextStyle(color: skin.surface(0.22), fontSize: 17),
                     border: InputBorder.none,
                     isDense: true,
@@ -2125,36 +2162,70 @@ class _TaskEditSheetState extends State<_TaskEditSheet> {
                   onSubmitted: (_) => _save(),
                 ),
 
-                const SizedBox(height: 18),
-                _SectionLabel(label: 'FRIST', skin: skin),
-                const SizedBox(height: 8),
-                Row(children: [
-                  Expanded(
-                    child: _TaskDateTile(
-                      skin: skin,
-                      date: _dueDate,
-                      onTap: _pickDate,
-                      onDoubleTap: _doubleTapDate,
-                      onSwipeDay: _swipeDate,
-                    ),
+                const SizedBox(height: 14),
+                Container(height: 0.6, color: skin.surface(0.10)),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: _notesCtrl,
+                  maxLines: 4,
+                  minLines: 1,
+                  textCapitalization: TextCapitalization.sentences,
+                  style: TextStyle(color: skin.textPrimary, fontSize: 14, fontWeight: FontWeight.w500, height: 1.4),
+                  decoration: InputDecoration(
+                    hintText: 'Notiz hinzufügen…',
+                    hintStyle: TextStyle(color: skin.surface(0.26), fontSize: 14),
+                    border: InputBorder.none,
+                    isDense: true,
+                    contentPadding: EdgeInsets.zero,
                   ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: _TaskTimeTile(
-                      skin: skin,
-                      enabled: _dueDate != null,
-                      time: (_dueDate != null && _hasTime) ? TimeOfDay(hour: _dueDate!.hour, minute: _dueDate!.minute) : null,
-                      onTap: _pickTime,
-                      onDoubleTap: _doubleTapTime,
-                      onSwipeMinute: _swipeTime,
+                ),
+
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    _SectionLabel(label: 'FRIST', skin: skin),
+                    Transform.scale(
+                      scale: 0.75,
+                      child: Switch(
+                        value: _fristEnabled,
+                        onChanged: (v) => _setFristEnabled(v),
+                        activeThumbColor: skin.primary,
+                        activeTrackColor: skin.primary.withValues(alpha: 0.28),
+                        inactiveThumbColor: skin.surface(0.4),
+                        inactiveTrackColor: skin.surface(0.08),
+                      ),
                     ),
-                  ),
-                ]),
-                if (_dueDate != null) ...[
+                  ],
+                ),
+                if (_fristEnabled) ...[
                   const SizedBox(height: 8),
+                  Row(children: [
+                    Expanded(
+                      child: _TaskDateTile(
+                        skin: skin,
+                        date: _dueDate,
+                        onTap: _pickDate,
+                        onDoubleTap: _doubleTapDate,
+                        onSwipeDay: _swipeDate,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _TaskTimeTile(
+                        skin: skin,
+                        enabled: _dueDate != null,
+                        time: (_dueDate != null && _hasTime) ? TimeOfDay(hour: _dueDate!.hour, minute: _dueDate!.minute) : null,
+                        onTap: _pickTime,
+                        onDoubleTap: _doubleTapTime,
+                        onSwipeMinute: _swipeTime,
+                      ),
+                    ),
+                  ]),
+                  const SizedBox(height: 6),
                   Text('Wischen · Tippen · Doppeltippen', style: TextStyle(fontSize: 10, color: skin.surface(0.28))),
                 ],
-                const SizedBox(height: 18),
+                const SizedBox(height: 16),
                 _SectionLabel(label: 'HINWEISEN', skin: skin),
                 const SizedBox(height: 8),
                 Text(
@@ -2177,39 +2248,6 @@ class _TaskEditSheetState extends State<_TaskEditSheet> {
                     style: TextStyle(fontSize: 10.5, color: skin.surface(0.32)),
                   ),
                 ],
-
-                const SizedBox(height: 18),
-                _SectionLabel(label: 'NOTIZEN', skin: skin),
-                const SizedBox(height: 8),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(14),
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-                    child: Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                      decoration: BoxDecoration(
-                        color: skin.isLight ? Colors.white.withValues(alpha: skin.glassOpacity) : skin.bgCard.withValues(alpha: skin.glassOpacity),
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: skin.glassBorder),
-                      ),
-                      child: TextField(
-                        controller: _notesCtrl,
-                        maxLines: 4,
-                        minLines: 2,
-                        textCapitalization: TextCapitalization.sentences,
-                        style: TextStyle(color: skin.textPrimary, fontSize: 14, fontWeight: FontWeight.w500, height: 1.4),
-                        decoration: InputDecoration(
-                          hintText: 'Notiz eingeben…',
-                          hintStyle: TextStyle(color: skin.surface(0.25), fontSize: 14),
-                          border: InputBorder.none,
-                          isDense: true,
-                          contentPadding: EdgeInsets.zero,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
 
                 const SizedBox(height: 22),
                 GlassPrimaryButton(
