@@ -42,17 +42,12 @@ flutter_launcher_icons:
 
 flutter_native_splash:
   color: "#0A0B0F"
-  color_dark: "#F0F2F7"
   image: assets/logo_trans.png
-  image_dark: assets/logo_trans_rev.png   # ← dein neues Logo (heller Hintergrund)
   web: false
   android_12:
     color: "#0A0B0F"
-    color_dark: "#F0F2F7"
     image: assets/logo_trans.png
-    image_dark: assets/logo_trans_rev.png
     icon_background_color: "#0A0B0F"
-    icon_background_color_dark: "#F0F2F7"
 
 flutter:
   uses-material-design: true
