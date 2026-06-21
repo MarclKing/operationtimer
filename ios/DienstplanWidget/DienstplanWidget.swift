@@ -339,7 +339,7 @@ struct SmallWidgetView: View {
                     .font(.system(size: 10, weight: .medium))
                     .foregroundColor(Color(hex: "#5A8CFF"))
             }
-            .offset(y: 24)  // etwas nach unten, damit Platz zum Tacho-Rand bleibt
+            .offset(y: 22)  // etwas nach unten, damit Platz zum Tacho-Rand bleibt
         }
         .widgetURL(URL(string: "optimes://fahrtenbuch/neue-fahrt/scan-km-start"))
         .modifier(SmallBackgroundModifier())
