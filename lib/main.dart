@@ -30,6 +30,12 @@ void main() async {
   WidgetsBinding binding = WidgetsFlutterBinding.ensureInitialized();
   FlutterNativeSplash.preserve(widgetsBinding: binding);
 
+  // Querformat sperren
+  await SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+    DeviceOrientation.portraitDown,
+  ]);
+
   await Hive.initFlutter();
   await Hive.openBox('arbeitszeiten');
   await Hive.openBox('einstellungen');

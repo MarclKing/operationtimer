@@ -30,28 +30,19 @@ class _ExportHinweiseScreenState extends State<ExportHinweiseScreen> {
           children: [
             // Header
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-              child: Row(
-                children: [
-                  GestureDetector(
-                    onTap: () => Navigator.pop(context),
-                    child: Container(
-                      width: 36,
-                      height: 36,
-                      decoration: BoxDecoration(
-                        color: skin.surface(0.08),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: skin.glassBorder),
-                      ),
-                      child: Icon(Icons.arrow_back_ios_new_rounded, size: 16, color: skin.textPrimary),
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Text('Exportanleitung',
-                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: skin.textPrimary)),
-                ],
-              ),
-            ),
+  padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+  child: Row(
+    children: [
+      GestureDetector(
+        onTap: () => Navigator.pop(context),
+        child: Icon(Icons.arrow_back_ios_new_rounded, size: 20, color: skin.textPrimary),
+      ),
+      const SizedBox(width: 14),
+      Text('Exportanleitung',
+          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: skin.textPrimary)),
+    ],
+  ),
+),
 
             const SizedBox(height: 24),
 
