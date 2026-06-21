@@ -1,6 +1,7 @@
 import UIKit
 import Flutter
 import WidgetKit
+import UserNotifications  // ← NEU: für lokale Notifications
 
 @main
 @objc class AppDelegate: FlutterAppDelegate {
@@ -9,6 +10,24 @@ import WidgetKit
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
     ) -> Bool {
+        // ── NEU: Lokale Notification-Berechtigung anfordern ──
+        if #available(iOS 10.0, *) {
+            UNUserNotificationCenter.current().delegate = self
+            UNUserNotificationCenter.current().requestAuthorization(
+                options: [.alert, .sound, .badge]
+            ) { granted, error in
+                if granted {
+                    DispatchQueue.main.async {
+                        application.registerForRemoteNotifications()
+                    }
+                }
+            }
+        } else {
+            let settings = UIUserNotificationSettings(types: [.alert, .sound, .badge], categories: nil)
+            application.registerUserNotificationSettings(settings)
+            application.registerForRemoteNotifications()
+        }
+
         GeneratedPluginRegistrant.register(with: self)
         let result = super.application(application, didFinishLaunchingWithOptions: launchOptions)
 

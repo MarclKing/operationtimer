@@ -26,6 +26,7 @@ import 'dart:convert';
 import 'utils/cleanup.dart';
 import 'package:intl/intl.dart';
 import 'screens/tasks_screen.dart';
+import 'services/notification_service.dart';
 
 void main() async {
   WidgetsBinding binding = WidgetsFlutterBinding.ensureInitialized();
@@ -40,6 +41,9 @@ void main() async {
   await Hive.initFlutter();
   await Hive.openBox('arbeitszeiten');
   await Hive.openBox('einstellungen');
+
+  await NotificationService.instance.init();
+  
   _migrateOldEntries();
   await runAutoCleanup();
   await initializeDateFormatting('de', null);
@@ -323,6 +327,9 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) maybeShowWelcomeDialog(context);
     });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+    NotificationService.instance.requestPermissions();
+  });
   }
 
   @override

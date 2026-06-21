@@ -309,15 +309,18 @@ class TasksScreenState extends State<TasksScreen> with TickerProviderStateMixin 
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (_) => _TaskEditSheet(
-        skin: skin,
-        initialTitle: initialTitle,
-        initialDate: initialDate,
-        onSaved: (task) {
-          TaskStore.add(task);
-          _load();
-          _scheduleReminders(task);
-        },
+      builder: (_) => Padding(
+        padding: EdgeInsets.only(top: MediaQuery.of(context).size.height * 0.08),
+        child: _TaskEditSheet(
+          skin: skin,
+          initialTitle: initialTitle,
+          initialDate: initialDate,
+          onSaved: (task) {
+            TaskStore.add(task);
+            _load();
+            _scheduleReminders(task);
+          },
+        ),
       ),
     );
   }
@@ -328,15 +331,19 @@ class TasksScreenState extends State<TasksScreen> with TickerProviderStateMixin 
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (_) => _TaskEditSheet(
-        skin: skin,
-        existingTask: task,
-        onSaved: (updated) {
-          TaskStore.update(updated);
-          _load();
-          NotificationService.instance.cancelTaskReminders(updated.id);
-          _scheduleReminders(updated);
-        },
+      useSafeArea: false,
+      builder: (_) => Padding(
+        padding: EdgeInsets.only(top: MediaQuery.of(context).size.height * 0.08),
+        child: _TaskEditSheet(
+          skin: skin,
+          existingTask: task,
+          onSaved: (updated) {
+            TaskStore.update(updated);
+            _load();
+            NotificationService.instance.cancelTaskReminders(updated.id);
+            _scheduleReminders(updated);
+          },
+        ),
       ),
     );
   }
@@ -1011,10 +1018,10 @@ class _SpectrumIndicatorState extends State<_SpectrumIndicator>
         // Idle-Puls: sehr leichte Bewegung, phasenverschoben pro Balken
         final idleVal = 0.06 + math.sin(_idleTick + _idlePhase[i]) * 0.04;
         // Echter Pegel mit Balken-Offset, Minimum = idleVal
-        final target = math.max(
-          widget.level + _barOffsets[i],
-          idleVal,
-        ).clamp(0.06, 1.0);
+        // level wird verstärkt (×2.5), damit es bei typischen Mikrofon-
+        // Pegelwerten (0.1–0.4) deutlich sichtbar wird.
+        final boosted = (widget.level * 2.5 + _barOffsets[i]).clamp(0.0, 1.0);
+        final target = math.max(boosted, idleVal).clamp(0.06, 1.0);
         // Asymmetrisches Smoothing: schnell hoch (Attack), langsam runter (Release)
         final s = target > _smoothed[i] ? 0.55 : _smoothing;
         _smoothed[i] = _smoothed[i] + (target - _smoothed[i]) * s;
@@ -1687,6 +1694,128 @@ class _TaskTimeTileState extends State<_TaskTimeTile> {
     );
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SHEET HANDLE BAR — Tap ODER nach unten wischen schließt das Sheet.
+//
+// Nutzt einen rohen Listener (statt GestureDetector) für die Drag-Erkennung,
+// damit das Wischen garantiert NICHT vom darüberliegenden
+// SingleChildScrollView "geklaut" werden kann — Listener bekommt alle
+// Pointer-Events unabhängig davon, wer die Geste in der Gesture-Arena
+// gewinnt. Großzügige Hitbox: volle Breite, viel vertikaler Puffer.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _SheetHandleBar extends StatefulWidget {
+  final AppSkin skin;
+  const _SheetHandleBar({required this.skin});
+
+  @override
+  State<_SheetHandleBar> createState() => _SheetHandleBarState();
+}
+
+class _SheetHandleBarState extends State<_SheetHandleBar> with SingleTickerProviderStateMixin {
+  late final AnimationController _snapCtrl;
+  double _dragY = 0.0;
+  double? _startY;
+  double _lastY = 0.0;
+  DateTime? _lastTime;
+  double _velocity = 0.0;
+
+  static const double _closeOffsetThreshold = 70.0;
+  static const double _closeVelocityThreshold = 700.0;
+  static const double _maxDrag = 160.0;
+
+  @override
+  void initState() {
+    super.initState();
+    _snapCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 220));
+  }
+
+  @override
+  void dispose() {
+    _snapCtrl.dispose();
+    super.dispose();
+  }
+
+  void _onPointerDown(PointerDownEvent e) {
+    _snapCtrl.stop();
+    _startY = e.position.dy;
+    _lastY = e.position.dy;
+    _lastTime = DateTime.now();
+    _velocity = 0.0;
+  }
+
+  void _onPointerMove(PointerMoveEvent e) {
+    if (_startY == null) return;
+    final now = DateTime.now();
+    final dtMs = now.difference(_lastTime ?? now).inMilliseconds;
+    if (dtMs > 0) {
+      _velocity = (e.position.dy - _lastY) / dtMs * 1000;
+    }
+    _lastTime = now;
+    _lastY = e.position.dy;
+
+    final dy = e.position.dy - _startY!;
+    setState(() => _dragY = dy.clamp(0.0, _maxDrag));
+  }
+
+  void _onPointerUp(PointerUpEvent e) {
+    if (_startY == null) return;
+    _startY = null;
+    if (_dragY > _closeOffsetThreshold || _velocity > _closeVelocityThreshold) {
+      HapticFeedback.mediumImpact();
+      Navigator.pop(context);
+      return;
+    }
+    _snapBack();
+  }
+
+  void _onPointerCancel(PointerCancelEvent e) {
+    _startY = null;
+    _snapBack();
+  }
+
+  void _snapBack() {
+    final anim = Tween<double>(begin: _dragY, end: 0.0).animate(
+      CurvedAnimation(parent: _snapCtrl, curve: Curves.easeOutCubic),
+    );
+    void listener() => setState(() => _dragY = anim.value);
+    anim.addListener(listener);
+    _snapCtrl.forward(from: 0).whenCompleteOrCancel(() => anim.removeListener(listener));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final skin = widget.skin;
+    final fade = (_dragY / _maxDrag).clamp(0.0, 1.0);
+
+    return Listener(
+      behavior: HitTestBehavior.opaque,
+      onPointerDown: _onPointerDown,
+      onPointerMove: _onPointerMove,
+      onPointerUp: _onPointerUp,
+      onPointerCancel: _onPointerCancel,
+      child: GestureDetector(
+        onTap: () => Navigator.pop(context),
+        behavior: HitTestBehavior.opaque,
+        child: Transform.translate(
+          offset: Offset(0, _dragY),
+          child: Container(
+            width: double.infinity,
+            color: Colors.transparent,
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            alignment: Alignment.center,
+            child: Opacity(
+              opacity: 1.0 - fade * 0.4,
+              child: SheetHandle(skin: skin),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // TASK EDIT SHEET — v3
 //
@@ -2039,22 +2168,28 @@ class _TaskEditSheetState extends State<_TaskEditSheet> {
       padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: GlassSheet(
         skin: skin,
-        child: SingleChildScrollView(
-          physics: const BouncingScrollPhysics(),
+        child: NotificationListener<ScrollNotification>(
+          onNotification: (notification) {
+            if (notification is ScrollUpdateNotification) {
+              if (notification.scrollDelta != null && notification.scrollDelta! < -5) {
+                FocusScope.of(context).unfocus();
+              }
+            }
+            return false;
+          },
+          child: GestureDetector(
+            onVerticalDragUpdate: (d) {
+              if (d.delta.dy > 12) FocusScope.of(context).unfocus();
+            },
+            child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
           child: Padding(
             padding: EdgeInsets.fromLTRB(20, 16, 20, 20 + MediaQuery.of(context).padding.bottom),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                GestureDetector(
-  onTap: () => Navigator.pop(context),
-  behavior: HitTestBehavior.opaque,
-  child: Padding(
-    padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 60),
-    child: SheetHandle(skin: skin),
-  ),
-),
+                _SheetHandleBar(skin: skin),
                 const SizedBox(height: 16),
                 Row(children: [
                   Icon(Icons.task_alt_outlined, size: 18, color: skin.primary),
@@ -2108,18 +2243,8 @@ class _TaskEditSheetState extends State<_TaskEditSheet> {
                 ]),
                 if (_dueDate != null) ...[
                   const SizedBox(height: 8),
-                  GestureDetector(
-                    onTap: _clearDate,
-                    child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      Icon(Icons.close, size: 13, color: skin.deleteColor),
-                      const SizedBox(width: 4),
-                      Text('Frist entfernen', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: skin.deleteColor)),
-                    ]),
-                  ),
-                  const SizedBox(height: 2),
-                  Text('Wischen: ← → Tag · ↑ ↓ Minute', style: TextStyle(fontSize: 10, color: skin.surface(0.28))),
+                  Text('Wischen · Tippen · Doppeltippen', style: TextStyle(fontSize: 10, color: skin.surface(0.28))),
                 ],
-
                 const SizedBox(height: 18),
                 _SectionLabel(label: 'HINWEISEN', skin: skin),
                 const SizedBox(height: 8),
@@ -2189,10 +2314,15 @@ class _TaskEditSheetState extends State<_TaskEditSheet> {
             ),
           ),
         ),
+          ),
+        ),
       ),
     );
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// REMINDER QUICK CHIPS
 
 // ─────────────────────────────────────────────────────────────────────────────
 // REMINDER QUICK CHIPS — v3
