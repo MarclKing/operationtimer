@@ -21,11 +21,10 @@
 //     Wenn das Wort "dringend" (oder "DRINGEND:") irgendwo im Satz vorkommt
 //     → priority = TaskPriority.urgent, Wort wird aus Titel entfernt.
 //
-// Bewusst weggelassen (= kein Raten, kein falsches Parsen):
-//   - Kompositum-Normalisierung ("auto waschen" → "Autowaschen")
-//   - Selbstgespräch-Trigger ("ich muss noch...")
-//   - Fuzzy-Datumsextraktion aus freiem Text
-//   - Edge-Filler-Ketten / Post-Date-Bridge
+// v2 Erweiterungen:
+//   - Relative Datumsausdrücke: "morgen früh", "heute abend", "am Wochenende", "nächsten Monat"
+//   - "in X Wochen/Monaten" Unterstützung
+//   - _nextWeekday Hilfsfunktion
 // ─────────────────────────────────────────────────────────────────────────────
 
 class ParsedSpokenTask {
@@ -291,18 +290,19 @@ class SpokenTaskParser {
 
     // Suche nach "an:" als hartem Trennmarker
     // Auch "an :" mit Leerzeichen tolerieren
-    final markerRx = RegExp(r'\ban\s*:\s*', caseSensitive: false);
-    final markerM = markerRx.firstMatch(afterTrigger);
+    final markerWithColonRx = RegExp(r'\ban\s*:\s*', caseSensitive: false);
+    final markerBareRx = RegExp(r'\ban\s+', caseSensitive: false);
 
     String? titleRaw;
     String? dateTimeWindow;
 
+    final markerM = markerWithColonRx.firstMatch(afterTrigger) 
+                   ?? markerBareRx.allMatches(afterTrigger).lastOrNull;
+
     if (markerM != null) {
-      // Format mit "an:": alles vor "an:" = Datum/Zeit-Fenster, alles danach = Titel
       dateTimeWindow = afterTrigger.substring(0, markerM.start).trim();
       titleRaw = afterTrigger.substring(markerM.end).trim();
     } else {
-      // Kein "an:" → kein erkanntes Erinnere-Muster (könnte Muster 1 sein)
       return null;
     }
 
@@ -509,11 +509,20 @@ class SpokenTaskParser {
     // 2d) Relative Ausdrücke — nur wenn noch kein Datum
     if (date == null) {
       final relPatterns = <(RegExp, DateTime)>[
+        // Übermorgen zuerst (vor "morgen"!)
         (RegExp(r'\bübermorgen\b'), today.add(const Duration(days: 2))),
-        (RegExp(r'\bmorgen\s+früh\b'), today.add(const Duration(days: 1))),
+        // "morgen früh/vormittag/mittag/nachmittag/abend/nacht" — spezifisch zuerst
+        (RegExp(r'\bmorgen\s+(?:früh|vormittag|mittag|nachmittag|abend|nacht)\b'), today.add(const Duration(days: 1))),
         (RegExp(r'\bmorgen\b'), today.add(const Duration(days: 1))),
+        // "heute abend" etc.
+        (RegExp(r'\bheute\s+(?:früh|vormittag|mittag|nachmittag|abend|nacht)\b'), today),
         (RegExp(r'\bheute\b'), today),
+        // Nächste Woche = nächster Montag
         (RegExp(r'\bnächste\s+woche\b'), today.add(Duration(days: 8 - today.weekday))),
+        // Nächsten Monat = 1. des nächsten Monats
+        (RegExp(r'\bnächsten\s+monat\b'), DateTime(today.year, today.month + 1, 1)),
+        // Am Wochenende / dieses Wochenende = nächster Samstag
+        (RegExp(r'\b(?:am|dieses?)\s+wochenende\b'), _nextWeekday(today, DateTime.saturday)),
       ];
       for (final (rx, target) in relPatterns) {
         if (rx.hasMatch(w)) {
@@ -539,13 +548,25 @@ class SpokenTaskParser {
       }
     }
 
-    // 2f) "in X Tagen"
+    // 2f) "in X Tagen / Wochen / Monaten"
     if (date == null) {
-      final inDaysRx = RegExp(r'\bin\s+(\d{1,2})\s+tagen?\b', caseSensitive: false);
-      final m = inDaysRx.firstMatch(w);
+      final inUnitRx = RegExp(
+        r'\bin\s+(\d{1,2})\s+(tagen?|wochen?|monaten?)\b',
+        caseSensitive: false,
+      );
+      final m = inUnitRx.firstMatch(w);
       if (m != null) {
-        final d = int.tryParse(m.group(1) ?? '');
-        if (d != null) date = today.add(Duration(days: d));
+        final n = int.tryParse(m.group(1) ?? '');
+        final unit = (m.group(2) ?? '').toLowerCase();
+        if (n != null) {
+          if (unit.startsWith('tag')) {
+            date = today.add(Duration(days: n));
+          } else if (unit.startsWith('woch')) {
+            date = today.add(Duration(days: n * 7));
+          } else if (unit.startsWith('monat')) {
+            date = DateTime(today.year, today.month + n, today.day);
+          }
+        }
       }
     }
 
@@ -668,6 +689,14 @@ class SpokenTaskParser {
   static String _capitalizeFirst(String s) {
     if (s.isEmpty) return s;
     return s[0].toUpperCase() + s.substring(1);
+  }
+
+  /// Gibt das Datum des nächsten [weekday] zurück (1=Mo … 7=So).
+  /// Ist heute bereits dieser Wochentag, wird die nächste Woche genommen.
+  static DateTime _nextWeekday(DateTime from, int weekday) {
+    int diff = (weekday - from.weekday) % 7;
+    if (diff == 0) diff = 7;
+    return from.add(Duration(days: diff));
   }
 }
 

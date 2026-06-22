@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "594306195787",
+    "project_id": "optimes-707",
+    "storage_bucket": "optimes-707.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:594306195787:android:2864dbd8feb8c0379f08ce",
+        "android_client_info": {
+          "package_name": "com.example.meine_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyACeQuVl2qKy_hAQ5NUqaDW7yDUHwLJeOE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

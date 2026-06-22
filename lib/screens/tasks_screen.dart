@@ -16,6 +16,8 @@ import '../widgets/swipe_animation_mixin.dart';
 import '../services/notification_service.dart';
 import '../services/spoken_task_parser.dart';
 import '../services/reminder_manager.dart';
+import '../services/speech_normalizer.dart';
+import '../services/speech_log.dart'; // Pfad ggf. anpassen
 import 'package:flutter/gestures.dart';
 import 'package:flutter/scheduler.dart';
 
@@ -200,7 +202,12 @@ class TasksScreenState extends State<TasksScreen> with TickerProviderStateMixin 
     super.dispose();
   }
 
-  void _load() => setState(() => _tasks = TaskStore.loadAll());
+  void _load() => setState(() {
+  _tasks = TaskStore.loadAll();
+  // Keys bereinigen damit Flutter die Karten korrekt neu zuordnet
+  final loadedIds = _tasks.map((t) => t.id).toSet();
+  _taskCardKeys.removeWhere((id, _) => !loadedIds.contains(id));
+});
 
   void scrollToTop() {
     if (_scrollController.hasClients) {
@@ -379,10 +386,10 @@ constraints: BoxConstraints(
     dueDate: combined,
     hasTime: parsed.hasTime,
     createdAt: DateTime.now(),
-    isUrgent: parsed.isUrgent, // ← NEU
+    isUrgent: parsed.isUrgent,
   );
   TaskStore.add(task);
-  _load();
+  _load(); // lädt neu + setState
   HapticFeedback.mediumImpact();
 }
 
@@ -720,7 +727,7 @@ class _DictationFabState extends State<_DictationFab> with TickerProviderStateMi
   // ── Amplitude ──
   // Rohwert direkt von onSoundLevelChange, KEIN externes Smoothing mehr —
   // der SpectrumIndicator macht das selbst per Ticker (frame-synchron).
-  double _rawLevel = 0.0;
+  final ValueNotifier<double> _rawLevelNotifier = ValueNotifier(0.0);
 
   // ── Abbruch-Logik ──
   bool _aborted = false;          // gesetzt sobald Abbruch beginnt — blockt JEDEN anderen Pfad
@@ -817,14 +824,15 @@ class _DictationFabState extends State<_DictationFab> with TickerProviderStateMi
   }
 
   @override
-  void dispose() {
-    _revealTimer?.cancel();
-    _fabPulseCtrl.dispose();
-    _idlePulseCtrl.dispose();
-    _bubbleCtrl.dispose();
-    _cancelAnimCtrl.dispose();
-    super.dispose();
-  }
+void dispose() {
+  _revealTimer?.cancel();
+  _fabPulseCtrl.dispose();
+  _idlePulseCtrl.dispose();
+  _bubbleCtrl.dispose();
+  _cancelAnimCtrl.dispose();
+  _rawLevelNotifier.dispose(); // ← NEU
+  super.dispose();
+}
 
   Future<void> _startListening() async {
     if (!_speechAvailable) {
@@ -851,7 +859,7 @@ class _DictationFabState extends State<_DictationFab> with TickerProviderStateMi
       _phase = _DictationPhase.listening;
       _liveTranscript = '';
       _finalTranscript = '';
-      _rawLevel = 0.0;
+       _rawLevelNotifier.value = 0.0; 
       _revealedWords = [];
       _revealIndex = 0;
     });
@@ -868,11 +876,9 @@ class _DictationFabState extends State<_DictationFab> with TickerProviderStateMi
         });
       },
       onSoundLevelChange: (level) {
-        if (_aborted || !mounted) return;
-        // Roher Wert direkt, KEIN Clamping hier — der SpectrumIndicator
-        // normalisiert adaptiv selbst. Werte kommen typisch -2..10.
-        setState(() => _rawLevel = level);
-      },
+  if (_aborted || !mounted) return;
+  _rawLevelNotifier.value = level;
+},
       listenFor: const Duration(seconds: 30),
       pauseFor: const Duration(seconds: 5),
       partialResults: true,
@@ -956,7 +962,7 @@ class _DictationFabState extends State<_DictationFab> with TickerProviderStateMi
       _finalTranscript = '';
       _revealedWords = [];
       _revealIndex = 0;
-      _rawLevel = 0.0;
+      _rawLevelNotifier.value = 0.0;
       _cancelDragX = 0.0;
       _isCancelling = false;
       _aborted = false;
@@ -966,7 +972,15 @@ class _DictationFabState extends State<_DictationFab> with TickerProviderStateMi
   void _onRevealComplete(String text) {
     if (_aborted) return;
     setState(() => _phase = _DictationPhase.done);
-    final parsed = SpokenTaskParser.parse(text);
+    final normalized = SpeechNormalizer.normalize(text);
+    final parsed = SpokenTaskParser.parse(normalized); 
+    // ── Sprach-Log ──────────────────────────────────────────────
+SpeechLog.record(
+  raw: text,
+  normalized: normalized,
+  parsedTitle: parsed.title,
+  hasDate: parsed.date != null,
+);
     Future.delayed(const Duration(milliseconds: 900), () {
       if (_aborted || !mounted) return;
       widget.onResult(parsed);
@@ -1001,7 +1015,7 @@ class _DictationFabState extends State<_DictationFab> with TickerProviderStateMi
       alignment: Alignment.bottomCenter,
       children: [
         // ── Spektrum-Blase: direkt über dem Mic-FAB ──
-        if (showBubbles)
+        if (showBubbles && _phase == _DictationPhase.listening)
           Positioned(
             bottom: 68,
             right: 0,
@@ -1248,7 +1262,7 @@ class _DictationFabState extends State<_DictationFab> with TickerProviderStateMi
                   offset: const Offset(0, 8)),
             ],
           ),
-          child: _SpectrumIndicator(skin: skin, rawLevel: _rawLevel, listenStartedAt: _listenStartedAt),
+          child: _SpectrumIndicator(skin: skin, rawLevelNotifier: _rawLevelNotifier, listenStartedAt: _listenStartedAt),
         ),
       ),
     );
@@ -1327,8 +1341,7 @@ class _DictationFabState extends State<_DictationFab> with TickerProviderStateMi
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
           child: Container(
-          constraints: const BoxConstraints(minHeight: 56),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          constraints: const BoxConstraints(minHeight: 56, minWidth: 88),
             decoration: BoxDecoration(
               color: skin.isLight
                   ? Colors.white.withValues(alpha: 0.85)
@@ -1375,11 +1388,11 @@ class _DictationFabState extends State<_DictationFab> with TickerProviderStateMi
 
 class _SpectrumIndicator extends StatefulWidget {
   final AppSkin skin;
-  final double rawLevel;          // ROHER Wert von onSoundLevelChange, z.B. -1.5..8.0
+  final ValueNotifier<double> rawLevelNotifier; // ← geändert
   final DateTime? listenStartedAt;
   const _SpectrumIndicator({
     required this.skin,
-    required this.rawLevel,
+    required this.rawLevelNotifier, // ← geändert
     this.listenStartedAt,
   });
 
@@ -1413,7 +1426,7 @@ class _SpectrumIndicatorState extends State<_SpectrumIndicator>
     if (!mounted) return;
     _idleTick += 0.055;
 
-    final raw = widget.rawLevel;
+    final raw = widget.rawLevelNotifier.value;
 
     // Adaptive Grenzen: Ceiling wächst schnell, schrumpft sehr langsam
     if (raw > _levelCeil) _levelCeil = raw * 1.05;
@@ -2210,6 +2223,7 @@ class _TaskEditSheetState extends State<_TaskEditSheet> {
   DateTime? _dueDate;
   bool _hasTime = false;
   bool _fristEnabled = true; // Steuert den FRIST-Switch im Sheet
+  bool _isUrgent = false;
 
   // Reminder-Auswahl: Liste der gewählten ReminderOption-IDs (max 3).
   List<String> _selectedReminderIds = [];
@@ -2220,28 +2234,30 @@ class _TaskEditSheetState extends State<_TaskEditSheet> {
   ReminderMode get _mode => _dueDate != null ? ReminderMode.beforeDeadline : ReminderMode.relative;
 
   @override
-  void initState() {
-    super.initState();
-    _titleCtrl = TextEditingController(text: widget.existingTask?.title ?? widget.initialTitle ?? '');
-    _notesCtrl = TextEditingController(text: widget.existingTask?.notes ?? '');
-    if (widget.existingTask != null) {
-  _dueDate = widget.existingTask!.dueDate;
-  _hasTime = widget.existingTask!.hasTime;
-} else if (widget.initialDate != null) {
-  _dueDate = widget.initialDate;
-  _hasTime = false;
-} else {
-  // Neue Aufgabe ohne Vorgabe → KEIN Datum vorbelegen
-  _dueDate = null;
-  _hasTime = false;
-}
-_fristEnabled = _dueDate != null;
-    _selectedReminderIds = List<String>.from(widget.existingTask?.reminderOptionIds ?? []);
-    _refreshQuickOptions();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_isEditing) FocusScope.of(context).requestFocus(_titleFocus);
-    });
+void initState() {
+  super.initState();
+  _titleCtrl = TextEditingController(text: widget.existingTask?.title ?? widget.initialTitle ?? '');
+  _notesCtrl = TextEditingController(text: widget.existingTask?.notes ?? '');
+  if (widget.existingTask != null) {
+    _dueDate = widget.existingTask!.dueDate;
+    _hasTime = widget.existingTask!.hasTime;
+    _isUrgent = widget.existingTask!.isUrgent; // ← NEU
+  } else if (widget.initialDate != null) {
+    _dueDate = widget.initialDate;
+    _hasTime = false;
+    _isUrgent = false;
+  } else {
+    _dueDate = null;
+    _hasTime = false;
+    _isUrgent = false;
   }
+  _fristEnabled = _dueDate != null;
+  _selectedReminderIds = List<String>.from(widget.existingTask?.reminderOptionIds ?? []);
+  _refreshQuickOptions();
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    if (!_isEditing) FocusScope.of(context).requestFocus(_titleFocus);
+  });
+}
 
   @override
   void dispose() {
@@ -2531,24 +2547,25 @@ _fristEnabled = _dueDate != null;
   }
 
   void _save() {
-    final title = _titleCtrl.text.trim();
-    if (title.isEmpty) return;
+  final title = _titleCtrl.text.trim();
+  if (title.isEmpty) return;
 
-    for (final id in _selectedReminderIds) {
-      ReminderManager.recordUsage(_mode, id);
-    }
-
-    final task = widget.existingTask ??
-        Task(id: DateTime.now().millisecondsSinceEpoch.toString(), title: title, createdAt: DateTime.now());
-    task.title = title;
-    task.dueDate = _dueDate;
-    task.hasTime = _dueDate != null && _hasTime;
-    task.notes = _notesCtrl.text.trim();
-    task.reminderOptionIds = List<String>.from(_selectedReminderIds);
-    task.reminderTimes = _computeReminderTimes();
-    widget.onSaved(task);
-    Navigator.pop(context);
+  for (final id in _selectedReminderIds) {
+    ReminderManager.recordUsage(_mode, id);
   }
+
+  final task = widget.existingTask ??
+      Task(id: DateTime.now().millisecondsSinceEpoch.toString(), title: title, createdAt: DateTime.now());
+  task.title = title;
+  task.dueDate = _dueDate;
+  task.hasTime = _dueDate != null && _hasTime;
+  task.notes = _notesCtrl.text.trim();
+  task.isUrgent = _isUrgent; // ← NEU
+  task.reminderOptionIds = List<String>.from(_selectedReminderIds);
+  task.reminderTimes = _computeReminderTimes();
+  widget.onSaved(task);
+  Navigator.pop(context);
+}
 
   @override
   Widget build(BuildContext context) {
@@ -2625,13 +2642,58 @@ _fristEnabled = _dueDate != null;
                     contentPadding: EdgeInsets.zero,
                   ),
                 ),
-
-                const SizedBox(height: 16),
+                                const SizedBox(height: 16),
                 Row(
-  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-  children: [
-    Expanded(child: _SectionLabel(label: 'FRIST', skin: skin)),
-    Transform.scale(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Row(
+                        children: [
+                          Text(
+                            'DRINGEND',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: _isUrgent
+                                  ? const Color(0xFFEF5B5B).withValues(alpha: 0.85)
+                                  : skin.surface(0.38),
+                              letterSpacing: 1.2,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Container(
+                              height: 0.5,
+                              color: _isUrgent
+                                  ? const Color(0xFFEF5B5B).withValues(alpha: 0.25)
+                                  : skin.surface(0.12),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Transform.scale(
+                      scale: 0.75,
+                      child: Switch(
+                        value: _isUrgent,
+                        onChanged: (v) {
+                          HapticFeedback.selectionClick();
+                          setState(() => _isUrgent = v);
+                        },
+                        activeThumbColor: const Color(0xFFEF5B5B),
+                        activeTrackColor: const Color(0xFFEF5B5B).withValues(alpha: 0.28),
+                        inactiveThumbColor: skin.surface(0.4),
+                        inactiveTrackColor: skin.surface(0.08),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(child: _SectionLabel(label: 'FRIST', skin: skin)),
+                    Transform.scale(
                       scale: 0.75,
                       child: Switch(
                         value: _fristEnabled,

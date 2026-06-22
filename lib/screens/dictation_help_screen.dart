@@ -2,6 +2,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../widgets/glass_kit.dart';
+import '../screens/speech_log_screen.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DICTATION HELP SCREEN v2
@@ -223,6 +224,68 @@ class DictationHelpScreen extends StatelessWidget {
                       _RefGroup('Umgangsspr.', ['halb drei', 'viertel nach 9', 'viertel vor 10', 'dreiviertel 10']),
                     ],
                   ),
+
+                  // ── Log-Button ──────────────────────────────────────────────
+                  const SizedBox(height: 24),
+
+                  GestureDetector(
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const SpeechLogScreen()),
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(14),
+                      child: BackdropFilter(
+                        filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                          decoration: BoxDecoration(
+                            color: skin.surface(0.05),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: skin.glassBorder),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 34,
+                                height: 34,
+                                decoration: BoxDecoration(
+                                  color: skin.primary.withValues(alpha: 0.10),
+                                  borderRadius: BorderRadius.circular(9),
+                                  border: Border.all(color: skin.primary.withValues(alpha: 0.22)),
+                                ),
+                                child: Icon(Icons.bar_chart_rounded, size: 17, color: skin.primary),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Sprach-Log anzeigen',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                        color: skin.textPrimary,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      'Alle Spracheingaben & Erkennungsrate',
+                                      style: TextStyle(fontSize: 11.5, color: skin.textMuted),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Icon(Icons.chevron_right_rounded, size: 18, color: skin.surface(0.30)),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 8),
                 ],
               ),
             ),

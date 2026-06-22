@@ -1,4 +1,6 @@
 import 'dart:ui';
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
@@ -28,10 +30,16 @@ import 'utils/cleanup.dart';
 import 'package:intl/intl.dart';
 import 'screens/tasks_screen.dart';
 import 'services/notification_service.dart';
+import 'services/auth_service.dart';
 
 void main() async {
   WidgetsBinding binding = WidgetsFlutterBinding.ensureInitialized();
   FlutterNativeSplash.preserve(widgetsBinding: binding);
+
+await Firebase.initializeApp(
+  options: DefaultFirebaseOptions.currentPlatform,
+);
+await AuthService.instance.init();
 
   // Querformat sperren
   await SystemChrome.setPreferredOrientations([
