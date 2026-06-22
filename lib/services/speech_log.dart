@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SPEECH LOG
@@ -13,8 +15,16 @@ import 'package:hive_flutter/hive_flutter.dart';
 //   - success:     hat der Normalizer das Muster erkannt? (normalized != raw)
 //   - timestamp:   wann es passiert ist
 //
-// Gespeichert in Hive-Box "speech_log" als JSON-Liste.
-// Max. 200 Einträge (älteste werden automatisch gelöscht).
+// Gespeichert in Hive-Box "speech_log" als JSON-Liste (lokal, für die
+// Statistik-Anzeige im SpeechLogScreen).
+//
+// NEU: Wenn ein Eintrag NICHT vollständig erkannt wurde (isFullSuccess ==
+// false), wird er zusätzlich automatisch nach Firestore (speech_logs)
+// hochgeladen — das ist die Grundlage für die spätere Gemini-Analyse +
+// lernende Regeln. Der Upload läuft im Hintergrund (fire-and-forget),
+// blockiert die UI nicht und schlägt niemals sichtbar fehl (z.B. wenn
+// kein Internet da ist — dann geht der Eintrag einfach nicht hoch, ohne
+// Fehlermeldung für den Nutzer).
 // ─────────────────────────────────────────────────────────────────────────────
 
 class SpeechLogEntry {
@@ -103,7 +113,7 @@ class SpeechLog {
     debugPrint('  DATUM:      ${hasDate ? "erkannt" : "nicht erkannt"}');
     debugPrint('────────────────────────────────');
 
-    // In Hive speichern
+    // In Hive speichern (lokal, für die Statistik-Anzeige)
     try {
       final box = Hive.box('einstellungen');
       final existing = _loadAll(box);
@@ -114,6 +124,34 @@ class SpeechLog {
       box.put(_dataKey, jsonEncode(existing.map((e) => e.toJson()).toList()));
     } catch (e) {
       debugPrint('SPEECH_LOG Fehler beim Speichern: $e');
+    }
+
+    // NEU: Bei unvollständiger Erkennung zusätzlich nach Firestore hochladen.
+    // Fire-and-forget — wir warten nicht auf das Ergebnis und zeigen dem
+    // Nutzer nie einen Fehler, falls z.B. kein Internet verfügbar ist.
+    if (!entry.isFullSuccess) {
+      _uploadToFirestore(entry);
+    }
+  }
+
+  static Future<void> _uploadToFirestore(SpeechLogEntry entry) async {
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      await FirebaseFirestore.instance.collection('speech_logs').add({
+        'rawText': entry.rawText,
+        'normalized': entry.normalized,
+        'parsedTitle': entry.parsedTitle,
+        'hasDate': entry.hasDate,
+        'normalizerHit': entry.normalizerHit,
+        'status': 'pending', // wird später von der Cloud Function bearbeitet
+        'userId': uid,
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+      debugPrint('SPEECH_LOG → Firestore Upload erfolgreich');
+    } catch (e) {
+      // Bewusst stumm nach außen — kein SnackBar, kein Crash, nur Debug-Log.
+      // Typische Gründe: kein Internet, Firestore Rules verweigern Schreiben.
+      debugPrint('SPEECH_LOG → Firestore Upload fehlgeschlagen: $e');
     }
   }
 
