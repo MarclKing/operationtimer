@@ -645,17 +645,28 @@ class _DictationFabState extends State<_DictationFab> with TickerProviderStateMi
   bool _speechAvailable = false;
 
   _DictationPhase _phase = _DictationPhase.idle;
-  String _liveTranscript = '';
-  String _finalTranscript = '';
-  List<String> _revealedWords = [];
-  int _revealIndex = 0;
-  Timer? _revealTimer;
+String _liveTranscript = '';
+String _finalTranscript = '';
+List<String> _revealedWords = [];
+int _revealIndex = 0;
+Timer? _revealTimer;
 
-  // Echter Pegel (0..1, geglättet) + Idle-Puls als Sockel, siehe Kommentar oben.
-  double _rawLevel = 0.0;
-  double _smoothedLevel = 0.0;
-  static const double _levelSmoothing = 0.35;
-  DateTime? _listenStartedAt;
+double _rawLevel = 0.0;
+double _smoothedLevel = 0.0;
+static const double _levelSmoothing = 0.35;
+DateTime? _listenStartedAt;
+
+// ── Abbruch-Geste ──
+bool _cancelDragActive = false;   // Finger bewegt sich während LongPress
+double _cancelDragX = 0.0;        // akkumulierter horizontaler Versatz
+bool _isCancelling = false;       // Abbruch-Animation läuft
+static const double _cancelThreshold = 48.0; // px nach links → Abbruch
+bool _showCancelHint = false;     // roter Hinweis sichtbar
+Timer? _cancelHintTimer;          // zeigt Hint nach kurzem Delay
+
+// Amplitude-Tracking: gleitende Max-Normalisierung damit auch leise
+// Geräte ein sichtbares Spektrum bekommen.
+double _levelMax = 0.12;          // dynamisch angepasst, startet niedrig
 
   late AnimationController _fabPulseCtrl;
   late AnimationController _idlePulseCtrl; // Sockel-Puls solange echte Werte fehlen
@@ -663,16 +674,34 @@ class _DictationFabState extends State<_DictationFab> with TickerProviderStateMi
   late Animation<double> _bubbleScale;
   late Animation<double> _bubbleOpacity;
 
-  @override
-  void initState() {
-    super.initState();
-    _fabPulseCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 900))..repeat(reverse: true);
-    _idlePulseCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 650))..repeat(reverse: true);
-    _bubbleCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 320));
-    _bubbleScale = CurvedAnimation(parent: _bubbleCtrl, curve: Curves.easeOutBack, reverseCurve: Curves.easeInBack);
-    _bubbleOpacity = CurvedAnimation(parent: _bubbleCtrl, curve: Curves.easeOut, reverseCurve: Curves.easeIn);
-    _initSpeech();
-  }
+  late AnimationController _cancelCtrl;
+late Animation<double> _cancelSlide;   // 0→1: Blase wischt nach links
+late Animation<double> _cancelFade;
+late AnimationController _cancelHintCtrl;
+late Animation<double> _cancelHintOpacity;
+
+@override
+void initState() {
+  super.initState();
+  _fabPulseCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 900))..repeat(reverse: true);
+  _idlePulseCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 650))..repeat(reverse: true);
+  _bubbleCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 320));
+  _bubbleScale = CurvedAnimation(parent: _bubbleCtrl, curve: Curves.easeOutBack, reverseCurve: Curves.easeInBack);
+  _bubbleOpacity = CurvedAnimation(parent: _bubbleCtrl, curve: Curves.easeOut, reverseCurve: Curves.easeIn);
+
+  // Cancel-Animation: Blase fliegt nach links + verblasst (220ms)
+  _cancelCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 220));
+  _cancelSlide = Tween<double>(begin: 0.0, end: -180.0).animate(
+      CurvedAnimation(parent: _cancelCtrl, curve: Curves.easeInCubic));
+  _cancelFade = Tween<double>(begin: 1.0, end: 0.0).animate(
+      CurvedAnimation(parent: _cancelCtrl, curve: const Interval(0.0, 0.7)));
+
+  // Hint-Einblende-Animation (Pfeil links + roter Badge)
+  _cancelHintCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 260));
+  _cancelHintOpacity = CurvedAnimation(parent: _cancelHintCtrl, curve: Curves.easeOut);
+
+  _initSpeech();
+}
 
   Future<void> _initSpeech() async {
     final available = await _speech.initialize(
@@ -696,13 +725,16 @@ class _DictationFabState extends State<_DictationFab> with TickerProviderStateMi
   }
 
   @override
-  void dispose() {
-    _revealTimer?.cancel();
-    _fabPulseCtrl.dispose();
-    _idlePulseCtrl.dispose();
-    _bubbleCtrl.dispose();
-    super.dispose();
-  }
+void dispose() {
+  _revealTimer?.cancel();
+  _cancelHintTimer?.cancel();
+  _fabPulseCtrl.dispose();
+  _idlePulseCtrl.dispose();
+  _bubbleCtrl.dispose();
+  _cancelCtrl.dispose();
+  _cancelHintCtrl.dispose();
+  super.dispose();
+}
 
   Future<void> _startListening() async {
     if (!_speechAvailable) {
@@ -731,6 +763,15 @@ class _DictationFabState extends State<_DictationFab> with TickerProviderStateMi
     });
     _bubbleCtrl.forward();
 
+// Hint nach 500ms einblenden
+    _cancelHintTimer?.cancel();
+    _cancelHintTimer = Timer(const Duration(milliseconds: 500), () {
+      if (mounted && _phase == _DictationPhase.listening) {
+        setState(() => _showCancelHint = true);
+        _cancelHintCtrl.forward();
+      }
+    });
+
     await _speech.listen(
       localeId: 'de_DE',
       onResult: (result) {
@@ -743,10 +784,15 @@ class _DictationFabState extends State<_DictationFab> with TickerProviderStateMi
       },
       onSoundLevelChange: (level) {
         if (!mounted) return;
-        // Rohwerte liegen je nach Plattform ungefähr zwischen -2 und 10 —
-        // defensiv clampen + normalisieren auf 0..1.
+        // Normalisiere auf 0..1, dann adaptiv skalieren:
+        // _levelMax passt sich nach oben an, damit auch leise Geräte
+        // ein sichtbares Spektrum bekommen. Langsames Decay verhindert
+        // dauerhaft hohe Decks bei einmaliger Lautstärke.
         final normalized = (level.clamp(-2.0, 10.0) + 2.0) / 12.0;
-        setState(() => _rawLevel = normalized);
+        _levelMax = (_levelMax * 0.97).clamp(0.08, 1.0);
+        if (normalized > _levelMax) _levelMax = normalized;
+        final scaled = (normalized / _levelMax).clamp(0.0, 1.0);
+        setState(() => _rawLevel = scaled);
       },
       listenFor: const Duration(seconds: 30),
       pauseFor: const Duration(seconds: 5),
@@ -758,6 +804,9 @@ class _DictationFabState extends State<_DictationFab> with TickerProviderStateMi
 
   Future<void> _finishListeningAndReveal() async {
     if (_phase != _DictationPhase.listening) return;
+    _cancelHintTimer?.cancel();
+    _cancelHintCtrl.reverse();
+    setState(() { _showCancelHint = false; _cancelDragActive = false; _cancelDragX = 0; });
     await _speech.stop();
     final text = (_finalTranscript.isNotEmpty ? _finalTranscript : _liveTranscript).trim();
 
@@ -793,6 +842,39 @@ class _DictationFabState extends State<_DictationFab> with TickerProviderStateMi
     });
   }
 
+  /// Bricht die laufende Aufnahme ohne Verarbeitung ab.
+  /// Animiert die Blase nach links weg, dann Reset.
+  Future<void> _cancelListening() async {
+    if (_isCancelling || _phase != _DictationPhase.listening) return;
+    _isCancelling = true;
+    HapticFeedback.heavyImpact();
+    _cancelHintTimer?.cancel();
+    await _speech.cancel();
+
+    // Blase nach links wegwischen
+    await _cancelCtrl.forward();
+
+    if (!mounted) return;
+    // Reset
+    _cancelCtrl.reset();
+    _bubbleCtrl.reverse();
+    setState(() {
+      _phase = _DictationPhase.idle;
+      _liveTranscript = '';
+      _finalTranscript = '';
+      _revealedWords = [];
+      _revealIndex = 0;
+      _rawLevel = 0.0;
+      _smoothedLevel = 0.0;
+      _levelMax = 0.12;
+      _cancelDragActive = false;
+      _cancelDragX = 0.0;
+      _isCancelling = false;
+      _showCancelHint = false;
+    });
+    _cancelHintCtrl.reset();
+  }
+
   void _onRevealComplete(String text) {
     setState(() => _phase = _DictationPhase.done);
     final parsed = SpokenTaskParser.parse(text);
@@ -825,18 +907,29 @@ class _DictationFabState extends State<_DictationFab> with TickerProviderStateMi
       children: [
         // ── Sprechblase ──
         AnimatedBuilder(
-          animation: _bubbleCtrl,
+          animation: Listenable.merge([_bubbleCtrl, _cancelCtrl]),
           builder: (context, child) {
-            if (_bubbleCtrl.value == 0 && _phase == _DictationPhase.idle) return const SizedBox.shrink();
+            if (_bubbleCtrl.value == 0 && _phase == _DictationPhase.idle && !_isCancelling) {
+              return const SizedBox.shrink();
+            }
+            // Cancel: Blase nach links schieben + ausblenden
+            final cancelOffset = _cancelSlide.value;
+            final cancelOpacity = _cancelFade.value;
             return Positioned(
               bottom: 70,
               right: -8,
-              child: Transform.scale(
-                alignment: Alignment.bottomRight,
-                scale: 0.85 + _bubbleScale.value * 0.15,
-                child: Opacity(
-                  opacity: _bubbleOpacity.value.clamp(0.0, 1.0),
-                  child: child,
+              child: Transform.translate(
+                offset: Offset(cancelOffset + _cancelDragX.clamp(-60.0, 0.0), 0),
+                child: Transform.scale(
+                  alignment: Alignment.bottomRight,
+                  scale: (0.85 + _bubbleScale.value * 0.15) *
+                      (1.0 - (_cancelDragX.clamp(-60.0, 0.0).abs() / 60.0) * 0.15),
+                  child: Opacity(
+                    opacity: (_bubbleOpacity.value * cancelOpacity *
+                            (1.0 - (_cancelDragX.clamp(-60.0, 0.0).abs() / 60.0) * 0.5))
+                        .clamp(0.0, 1.0),
+                    child: child,
+                  ),
                 ),
               ),
             );
@@ -868,8 +961,24 @@ class _DictationFabState extends State<_DictationFab> with TickerProviderStateMi
         // ── FAB ──
         GestureDetector(
           onLongPressStart: (_) => _startListening(),
-          onLongPressEnd: (_) => _finishListeningAndReveal(),
-          onLongPressCancel: () => _finishListeningAndReveal(),
+          onLongPressEnd: (_) {
+            if (!_isCancelling) _finishListeningAndReveal();
+          },
+          onLongPressCancel: () {
+            if (!_isCancelling) _finishListeningAndReveal();
+          },
+          // Wischen nach links während Halten → Abbrechen
+          onLongPressMoveUpdate: (details) {
+            if (_phase != _DictationPhase.listening || _isCancelling) return;
+            final dx = details.offsetFromOrigin.dx;
+            setState(() {
+              _cancelDragX = dx;
+              _cancelDragActive = dx < -8;
+            });
+            if (dx < -_cancelThreshold) {
+              _cancelListening();
+            }
+          },
           child: AnimatedBuilder(
             animation: _fabPulseCtrl,
             builder: (context, child) {
@@ -903,10 +1012,47 @@ class _DictationFabState extends State<_DictationFab> with TickerProviderStateMi
                         ),
                       ],
                     ),
-                    child: Icon(
-                      _isActive ? Icons.mic_rounded : Icons.mic_none_rounded,
-                      color: _isActive ? skin.onGradient : skin.textPrimary,
-                      size: 24,
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 160),
+                          child: Icon(
+                            _cancelDragActive
+                                ? Icons.close_rounded
+                                : (_isActive ? Icons.mic_rounded : Icons.mic_none_rounded),
+                            key: ValueKey(_cancelDragActive ? 'x' : (_isActive ? 'on' : 'off')),
+                            color: _cancelDragActive
+                                ? const Color(0xFFEF5B5B)
+                                : (_isActive ? skin.onGradient : skin.textPrimary),
+                            size: 24,
+                          ),
+                        ),
+                        // Roter Cancel-Hint: kleines Badge oben-links
+                        if (_showCancelHint || _cancelHintCtrl.value > 0)
+                          Positioned(
+                            top: 0,
+                            left: 0,
+                            child: FadeTransition(
+                              opacity: _cancelHintOpacity,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFEF5B5B),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: const [
+                                    Icon(Icons.arrow_back_rounded, size: 8, color: Colors.white),
+                                    SizedBox(width: 1),
+                                    Text('abbr.', style: TextStyle(color: Colors.white, fontSize: 6, fontWeight: FontWeight.w700)),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                   ),
                 ),
