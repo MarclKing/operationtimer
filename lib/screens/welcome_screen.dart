@@ -139,16 +139,6 @@ class _WelcomeSheetState extends State<_WelcomeSheet> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Container(
-                    width: 40,
-                    height: 4,
-                    margin: const EdgeInsets.only(bottom: 20),
-                    decoration: BoxDecoration(
-                      color: skin.surface(0.18),
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-
                   // ── Icon ──────────────────────────────────────────────────
                   Container(
                     width: 60,
@@ -348,15 +338,6 @@ class _RelationshipSheetState extends State<_RelationshipSheet> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Container(
-                  width: 40,
-                  height: 4,
-                  margin: const EdgeInsets.only(bottom: 20),
-                  decoration: BoxDecoration(
-                    color: skin.surface(0.18),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
 
                 // ── Icon ──────────────────────────────────────────────────
                 Container(

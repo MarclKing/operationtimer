@@ -44,6 +44,7 @@ class Task {
   List<DateTime> reminderTimes;
   List<String> reminderOptionIds;
   String notes;
+  bool isUrgent; // ← NEU
 
   Task({
     required this.id,
@@ -56,6 +57,7 @@ class Task {
     List<DateTime>? reminderTimes,
     List<String>? reminderOptionIds,
     this.notes = '',
+    this.isUrgent = false, // ← NEU
   })  : reminderTimes = reminderTimes ?? [],
         reminderOptionIds = reminderOptionIds ?? [];
 
@@ -82,35 +84,32 @@ class Task {
   }
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'title': title,
-        'dueDate': dueDate?.toIso8601String(),
-        'hasTime': hasTime,
-        'done': done,
-        'createdAt': createdAt.toIso8601String(),
-        'completedAt': completedAt?.toIso8601String(),
-        'reminderTimes': reminderTimes.map((d) => d.toIso8601String()).toList(),
-        'reminderOptionIds': reminderOptionIds,
-        'notes': notes,
-      };
+  'id': id,
+  'title': title,
+  'dueDate': dueDate?.toIso8601String(),
+  'hasTime': hasTime,
+  'done': done,
+  'createdAt': createdAt.toIso8601String(),
+  'completedAt': completedAt?.toIso8601String(),
+  'reminderTimes': reminderTimes.map((d) => d.toIso8601String()).toList(),
+  'reminderOptionIds': reminderOptionIds,
+  'notes': notes,
+  'isUrgent': isUrgent, // ← NEU
+};
 
   factory Task.fromJson(Map<String, dynamic> j) => Task(
-        id: j['id'] as String,
-        title: j['title'] as String,
-        dueDate: j['dueDate'] != null ? DateTime.tryParse(j['dueDate'] as String) : null,
-        hasTime: j['hasTime'] as bool? ?? false,
-        done: j['done'] as bool? ?? false,
-        createdAt: DateTime.tryParse(j['createdAt'] as String? ?? '') ?? DateTime.now(),
-        completedAt: j['completedAt'] != null ? DateTime.tryParse(j['completedAt'] as String) : null,
-        reminderTimes: (j['reminderTimes'] as List?)
-                ?.map((e) => DateTime.tryParse(e.toString()))
-                .whereType<DateTime>()
-                .toList() ??
-            [],
-        reminderOptionIds:
-            (j['reminderOptionIds'] as List?)?.map((e) => e.toString()).toList() ?? [],
-        notes: j['notes'] as String? ?? '',
-      );
+  id: j['id'] as String,
+  title: j['title'] as String,
+  dueDate: j['dueDate'] != null ? DateTime.tryParse(j['dueDate'] as String) : null,
+  hasTime: j['hasTime'] as bool? ?? false,
+  done: j['done'] as bool? ?? false,
+  createdAt: DateTime.tryParse(j['createdAt'] as String? ?? '') ?? DateTime.now(),
+  completedAt: j['completedAt'] != null ? DateTime.tryParse(j['completedAt'] as String) : null,
+  reminderTimes: (j['reminderTimes'] as List?)?.map((e) => DateTime.tryParse(e.toString())).whereType<DateTime>().toList() ?? [],
+  reminderOptionIds: (j['reminderOptionIds'] as List?)?.map((e) => e.toString()).toList() ?? [],
+  notes: j['notes'] as String? ?? '',
+  isUrgent: j['isUrgent'] as bool? ?? false, // ← NEU
+);
 }
 
 class TaskStore {
@@ -221,23 +220,29 @@ class TasksScreenState extends State<TasksScreen> with TickerProviderStateMixin 
     if (_openSwipedId != null) setState(() => _openSwipedId = null);
   }
 
-  List<Task> get _deadlineTasks {
-    final list = _tasks.where((t) => t.hasDeadline && !t.done).toList();
-    list.sort((a, b) => a.dueDate!.compareTo(b.dueDate!));
-    return list;
-  }
+  List<Task> get _urgentTasks {
+  final list = _tasks.where((t) => t.isUrgent && !t.done).toList();
+  list.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+  return list;
+}
 
-  List<Task> get _generalTasks {
-    final list = _tasks.where((t) => !t.hasDeadline && !t.done).toList();
-    list.sort((a, b) => a.createdAt.compareTo(b.createdAt));
-    return list;
-  }
+List<Task> get _deadlineTasks {
+  final list = _tasks.where((t) => t.hasDeadline && !t.done && !t.isUrgent).toList();
+  list.sort((a, b) => a.dueDate!.compareTo(b.dueDate!));
+  return list;
+}
 
-  List<Task> get _doneTasks {
-    final list = _tasks.where((t) => t.done).toList();
-    list.sort((a, b) => (b.completedAt ?? b.createdAt).compareTo(a.completedAt ?? a.createdAt));
-    return list;
-  }
+List<Task> get _generalTasks {
+  final list = _tasks.where((t) => !t.hasDeadline && !t.done && !t.isUrgent).toList();
+  list.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+  return list;
+}
+
+List<Task> get _doneTasks {
+  final list = _tasks.where((t) => t.done).toList();
+  list.sort((a, b) => (b.completedAt ?? b.createdAt).compareTo(a.completedAt ?? a.createdAt));
+  return list;
+}
 
   void _toggleDone(Task task) {
     HapticFeedback.lightImpact();
@@ -304,47 +309,50 @@ class TasksScreenState extends State<TasksScreen> with TickerProviderStateMixin 
   }
 
   void openQuickAdd({String? initialTitle, DateTime? initialDate}) {
-    final skin = AppTheme.of(context);
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (_) => Padding(
-        padding: EdgeInsets.only(top: MediaQuery.of(context).size.height * 0.08),
-        child: _TaskEditSheet(
-          skin: skin,
-          initialTitle: initialTitle,
-          initialDate: initialDate,
-          onSaved: (task) {
-            TaskStore.add(task);
-            _load();
-            _scheduleReminders(task);
-          },
-        ),
-      ),
-    );
-  }
-
-  void _editTaskFull(Task task) {
+    closeOverlays();
     final skin = AppTheme.of(context);
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       useSafeArea: false,
-      builder: (_) => Padding(
-        padding: EdgeInsets.only(top: MediaQuery.of(context).size.height * 0.08),
-        child: _TaskEditSheet(
-          skin: skin,
-          existingTask: task,
-          onSaved: (updated) {
-            TaskStore.update(updated);
-            _load();
-            NotificationService.instance.cancelTaskReminders(updated.id);
-            _scheduleReminders(updated);
-          },
-        ),
-      ),
+constraints: BoxConstraints(
+  maxHeight: MediaQuery.of(context).size.height * 0.92,
+),
+      builder: (_) => _TaskEditSheet(
+  skin: skin,
+  initialTitle: initialTitle,
+  initialDate: initialDate,
+  onSaved: (task) {
+    TaskStore.add(task);
+    _load();
+    _scheduleReminders(task);
+  },
+),
+    );
+  }
+
+  void _editTaskFull(Task task) {
+    closeOverlays();
+    final skin = AppTheme.of(context);
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      useSafeArea: false,
+constraints: BoxConstraints(
+  maxHeight: MediaQuery.of(context).size.height * 0.92,
+),
+      builder: (_) => _TaskEditSheet(
+  skin: skin,
+  existingTask: task,
+  onSaved: (updated) {
+    TaskStore.update(updated);
+    _load();
+    NotificationService.instance.cancelTaskReminders(updated.id);
+    _scheduleReminders(updated);
+  },
+),
     );
   }
 
@@ -364,20 +372,21 @@ class TasksScreenState extends State<TasksScreen> with TickerProviderStateMixin 
   /// geparst wurde. Legt die Aufgabe DIREKT an, ohne Rückfrage — die
   /// Bearbeitung danach läuft über das normale Inline-/Double-Tap-Edit.
   void _createTaskFromSpeech(ParsedSpokenTask parsed) {
-    final combined = parsed.combinedDateTime;
-    final task = Task(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-      title: parsed.title,
-      dueDate: combined,
-      hasTime: parsed.hasTime,
-      createdAt: DateTime.now(),
-    );
-    TaskStore.add(task);
-    _load();
-    HapticFeedback.mediumImpact();
-  }
+  final combined = parsed.combinedDateTime;
+  final task = Task(
+    id: DateTime.now().millisecondsSinceEpoch.toString(),
+    title: parsed.title,
+    dueDate: combined,
+    hasTime: parsed.hasTime,
+    createdAt: DateTime.now(),
+    isUrgent: parsed.isUrgent, // ← NEU
+  );
+  TaskStore.add(task);
+  _load();
+  HapticFeedback.mediumImpact();
+}
 
-  @override
+    @override
   Widget build(BuildContext context) {
     final skin = AppTheme.of(context);
     final bottomNavHeight = 70.0 + MediaQuery.of(context).padding.bottom;
@@ -431,6 +440,32 @@ class TasksScreenState extends State<TasksScreen> with TickerProviderStateMixin 
                               controller: _scrollController,
                               padding: const EdgeInsets.fromLTRB(24, 4, 24, 0),
                               children: [
+                                // ── NEU: DRINGEND-SEKTION GANZ OBEN ──
+                                if (_urgentTasks.isNotEmpty) ...[
+                                  _UrgentSectionHeader(skin: skin),
+                                  const SizedBox(height: 10),
+                                  ..._urgentTasks.map((t) {
+                                    _taskCardKeys.putIfAbsent(t.id, () => GlobalKey<_TaskCardState>());
+                                    return Padding(
+                                      padding: const EdgeInsets.only(bottom: 8),
+                                      child: _TaskCard(
+                                        key: _taskCardKeys[t.id],
+                                        task: t,
+                                        skin: skin,
+                                        externallyOpenKey: _openSwipedId,
+                                        onCardSwiped: _onCardSwiped,
+                                        onToggleDone: () => _toggleDone(t),
+                                        isInlineEditing: _inlineEditId == t.id,
+                                        onStartInlineEdit: () => _startInlineEdit(t.id),
+                                        onCommitInlineEdit: (v) => _commitInlineEdit(t, v),
+                                        onFullEdit: () => _editTaskFull(t),
+                                        onDelete: () => _deleteTaskWithAnimation(t),
+                                        isUrgent: true,
+                                      ),
+                                    );
+                                  }),
+                                  const SizedBox(height: 18),
+                                ],
                                 if (_deadlineTasks.isNotEmpty) ...[
                                   _SectionHeader(icon: Icons.event_outlined, label: 'MIT FRIST', skin: skin),
                                   const SizedBox(height: 10),
@@ -510,14 +545,12 @@ class TasksScreenState extends State<TasksScreen> with TickerProviderStateMixin 
                 ],
               ),
             ),
-
-            // ── Floating Action Buttons: Mikrofon (Diktieren) + Plus ──
-            // Design 1:1 aus fahrtenbuch_screen.dart übernommen (56×56,
-            // BorderRadius.circular(20), Glass-Blur, primary-Icon).
+            // ── Floating Action Buttons ──
             Positioned(
               right: 20,
               bottom: bottomNavHeight + 16,
               child: Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   _DictationFab(
                     skin: skin,
@@ -561,6 +594,38 @@ class _SectionHeader extends StatelessWidget {
   }
 }
 
+class _UrgentSectionHeader extends StatelessWidget {
+  final AppSkin skin;
+  const _UrgentSectionHeader({required this.skin});
+
+  static const _urgentColor = Color(0xFFEF5B5B);
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: _urgentColor.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: _urgentColor.withValues(alpha: 0.20)),
+      ),
+      child: Row(children: [
+        Icon(Icons.priority_high_rounded, size: 13, color: _urgentColor),
+        const SizedBox(width: 6),
+        Text(
+          'DRINGEND',
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            color: _urgentColor,
+            letterSpacing: 0.9,
+          ),
+        ),
+      ]),
+    );
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // TASKS FAB — identisches Design zum FAB in fahrtenbuch_screen.dart
 // ─────────────────────────────────────────────────────────────────────────────
@@ -578,6 +643,7 @@ class _TasksFab extends StatelessWidget {
         HapticFeedback.mediumImpact();
         onTap();
       },
+      behavior: HitTestBehavior.opaque,
       child: ClipRRect(
         borderRadius: BorderRadius.circular(20),
         child: BackdropFilter(
@@ -924,7 +990,7 @@ class _DictationFabState extends State<_DictationFab> with TickerProviderStateMi
   double get _cancelProgress =>
       (_cancelDragX.abs() / 80.0).clamp(0.0, 1.0);
 
-  @override
+    @override
   Widget build(BuildContext context) {
     final skin = widget.skin;
     final bool showBubbles =
@@ -944,7 +1010,6 @@ class _DictationFabState extends State<_DictationFab> with TickerProviderStateMi
               builder: (context, child) {
                 final exitOpacity = _exitFade.value;
                 final bubbleOp = (_bubbleOpacity.value * exitOpacity).clamp(0.0, 1.0);
-                // Beim Wischen: Blase gleitet leicht nach links mit
                 final dragProgress = _cancelProgress;
                 final slideX = -dragProgress * 40.0;
                 final shrink = _spectrumShrink.value * (1.0 - dragProgress * 0.2);
@@ -966,12 +1031,11 @@ class _DictationFabState extends State<_DictationFab> with TickerProviderStateMi
             ),
           ),
 
-        // ── Papierkorb-Blase: links neben dem Mic-FAB, auf FAB-Höhe ──
-        // Dauerhaft sichtbar sobald aktiv, wird beim Wischen voller/größer
+        // ── Papierkorb-Blase ──
         if (_isActive || _cancelAnimCtrl.value > 0)
           Positioned(
             bottom: 0,
-            right: 68, // links neben dem 56px-FAB mit 12px Abstand
+            right: 68,
             child: AnimatedBuilder(
               animation: _cancelAnimCtrl,
               builder: (context, _) {
@@ -1042,31 +1106,32 @@ class _DictationFabState extends State<_DictationFab> with TickerProviderStateMi
             ),
           ),
 
-        // ── Reveal-Blase (Processing / Revealing / Done) ──
+        // ── Reveal-Blase ──
         if (_phase == _DictationPhase.revealing ||
             _phase == _DictationPhase.done ||
             _phase == _DictationPhase.processing)
-          AnimatedBuilder(
-            animation: _bubbleCtrl,
-            builder: (context, child) {
-              return Positioned(
-                bottom: 68,
-                right: 0,
-                child: Transform.scale(
+          Positioned(
+            bottom: 68,
+            right: 0,
+            child: AnimatedBuilder(
+              animation: _bubbleCtrl,
+              builder: (context, child) {
+                return Transform.scale(
                   alignment: Alignment.bottomRight,
                   scale: 0.85 + _bubbleScale.value * 0.15,
                   child: Opacity(
                     opacity: _bubbleOpacity.value.clamp(0.0, 1.0),
                     child: child,
                   ),
-                ),
-              );
-            },
-            child: _buildRevealBubble(skin),
+                );
+              },
+              child: _buildRevealBubble(skin),
+            ),
           ),
 
         // ── FAB ──
         GestureDetector(
+          behavior: HitTestBehavior.opaque,
           onLongPressStart: (_) => _startListening(),
           onLongPressEnd: (_) {
             if (!_isCancelling) _finishListeningAndReveal();
@@ -1077,7 +1142,6 @@ class _DictationFabState extends State<_DictationFab> with TickerProviderStateMi
           onLongPressMoveUpdate: (details) {
             if (_phase != _DictationPhase.listening || _isCancelling) return;
             final dx = details.offsetFromOrigin.dx;
-            // Nur negative Werte (= nach links) zulassen — rechts/oben/unten ignorieren
             setState(() => _cancelDragX = dx < 0 ? dx : 0.0);
             if (dx < -80.0) _cancelListening();
           },
@@ -1244,7 +1308,7 @@ class _DictationFabState extends State<_DictationFab> with TickerProviderStateMi
     final isProcessing = _phase == _DictationPhase.processing;
     final isRevealing =
         _phase == _DictationPhase.revealing || _phase == _DictationPhase.done;
-    final double minWidth = 64;
+    final double minWidth = 88;
     final double maxWidth = 240;
     final double targetWidth = isRevealing
         ? math.min(
@@ -1263,7 +1327,8 @@ class _DictationFabState extends State<_DictationFab> with TickerProviderStateMi
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          constraints: const BoxConstraints(minHeight: 56),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             decoration: BoxDecoration(
               color: skin.isLight
                   ? Colors.white.withValues(alpha: 0.85)
@@ -1285,6 +1350,7 @@ class _DictationFabState extends State<_DictationFab> with TickerProviderStateMi
                     words: _revealedWords,
                     revealIndex: _revealIndex),
           ),
+          
         ),
       ),
     );
@@ -1481,6 +1547,7 @@ class _TaskCard extends StatefulWidget {
   final void Function(String newTitle) onCommitInlineEdit;
   final VoidCallback onFullEdit;
   final VoidCallback onDelete;
+  final bool isUrgent; // ← NEU
 
   const _TaskCard({
     super.key,
@@ -1494,6 +1561,7 @@ class _TaskCard extends StatefulWidget {
     required this.onCommitInlineEdit,
     required this.onFullEdit,
     required this.onDelete,
+    this.isUrgent = false, // ← NEU
   });
 
   @override
@@ -1694,9 +1762,20 @@ class _TaskCardState extends State<_TaskCard> with TickerProviderStateMixin, Swi
             overflow: TextOverflow.ellipsis,
           );
 
-    Widget cardInner = Row(
+        Widget cardInner = Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
+        // ── Dringend-Icon (nur wenn isUrgent) ──
+        if (widget.isUrgent) ...[
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: Icon(
+              Icons.priority_high_rounded,
+              size: 14,
+              color: const Color(0xFFEF5B5B).withValues(alpha: 0.85),
+            ),
+          ),
+        ],
         GestureDetector(
           onTap: widget.onToggleDone,
           behavior: HitTestBehavior.opaque,
@@ -1757,27 +1836,31 @@ class _TaskCardState extends State<_TaskCard> with TickerProviderStateMixin, Swi
     );
 
     Widget cardWidget = ClipRRect(
-      borderRadius: BorderRadius.circular(14),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-          decoration: BoxDecoration(
-            color: skin.isLight ? Colors.white.withValues(alpha: skin.glassOpacity) : skin.bgCard.withValues(alpha: skin.glassOpacity),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: widget.isInlineEditing ? skin.primary.withValues(alpha: 0.45) : skin.glassBorder,
-              width: widget.isInlineEditing ? 1.5 : 1.0,
-            ),
-            boxShadow: [
-              BoxShadow(color: skin.glassShadow, blurRadius: 24, spreadRadius: 0, offset: const Offset(0, 6)),
-              BoxShadow(color: skin.glassHighlight, blurRadius: 0, spreadRadius: -1, offset: const Offset(0, 1)),
-            ],
-          ),
-          child: cardInner,
+  borderRadius: BorderRadius.circular(14),
+  child: BackdropFilter(
+    filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+      decoration: BoxDecoration(
+        color: widget.isUrgent
+            ? const Color(0xFFEF5B5B).withValues(alpha: skin.isLight ? 0.04 : 0.07)
+            : (skin.isLight ? Colors.white.withValues(alpha: skin.glassOpacity) : skin.bgCard.withValues(alpha: skin.glassOpacity)),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: widget.isUrgent
+              ? const Color(0xFFEF5B5B).withValues(alpha: 0.45)
+              : (widget.isInlineEditing ? skin.primary.withValues(alpha: 0.45) : skin.glassBorder),
+          width: (widget.isUrgent || widget.isInlineEditing) ? 1.5 : 1.0,
         ),
+        boxShadow: [
+          BoxShadow(color: skin.glassShadow, blurRadius: 24, spreadRadius: 0, offset: const Offset(0, 6)),
+          BoxShadow(color: skin.glassHighlight, blurRadius: 0, spreadRadius: -1, offset: const Offset(0, 1)),
+        ],
       ),
-    );
+      child: cardInner,
+    ),
+  ),
+);
 
     return AnimatedBuilder(
       animation: _deleteAnimController,
@@ -2148,12 +2231,11 @@ class _TaskEditSheetState extends State<_TaskEditSheet> {
   _dueDate = widget.initialDate;
   _hasTime = false;
 } else {
-  // Neue Aufgabe ohne Vorgabe: aktuelles Datum, Uhrzeit auf nächste volle Stunde
-  final now = DateTime.now();
-  _dueDate = DateTime(now.year, now.month, now.day, now.hour + 1, 0);
-  _hasTime = true;
+  // Neue Aufgabe ohne Vorgabe → KEIN Datum vorbelegen
+  _dueDate = null;
+  _hasTime = false;
 }
-    _fristEnabled = _dueDate != null;
+_fristEnabled = _dueDate != null;
     _selectedReminderIds = List<String>.from(widget.existingTask?.reminderOptionIds ?? []);
     _refreshQuickOptions();
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -2472,7 +2554,10 @@ class _TaskEditSheetState extends State<_TaskEditSheet> {
   Widget build(BuildContext context) {
     final skin = widget.skin;
     return Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+  padding: EdgeInsets.only(
+    bottom: MediaQuery.of(context).viewInsets.bottom,
+    top: MediaQuery.of(context).padding.top + 12,
+  ),
       child: GlassSheet(
         skin: skin,
         child: NotificationListener<ScrollNotification>(
@@ -2543,10 +2628,10 @@ class _TaskEditSheetState extends State<_TaskEditSheet> {
 
                 const SizedBox(height: 16),
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    _SectionLabel(label: 'FRIST', skin: skin),
-                    Transform.scale(
+  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+  children: [
+    Expanded(child: _SectionLabel(label: 'FRIST', skin: skin)),
+    Transform.scale(
                       scale: 0.75,
                       child: Switch(
                         value: _fristEnabled,
@@ -2715,59 +2800,41 @@ class _ReminderQuickChipsState extends State<_ReminderQuickChips> {
       children: [
         SizedBox(
           height: 34,
-          // RawGestureDetector mit eigenem Team sorgt dafür, dass eine
-          // horizontale Drag-Geste, die HIER beginnt, immer von dieser
-          // Liste gewinnt — nicht vom äußeren vertikalen Sheet-Scroll.
-          child: RawGestureDetector(
-            gestures: {
-              HorizontalDragGestureRecognizer: GestureRecognizerFactoryWithHandlers<HorizontalDragGestureRecognizer>(
-                () => HorizontalDragGestureRecognizer(),
-                (instance) {
-                  instance.onUpdate = (details) {
-                    if (!_scrollCtrl.hasClients) return;
-                    final newOffset = (_scrollCtrl.offset - details.delta.dx)
-                        .clamp(0.0, _scrollCtrl.position.maxScrollExtent);
-                    _scrollCtrl.jumpTo(newOffset);
-                  };
-                },
-              ),
-            },
-            child: ListView.separated(
-              controller: _scrollCtrl,
-              scrollDirection: Axis.horizontal,
-              physics: const BouncingScrollPhysics(),
-              itemCount: widget.options.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 6),
-              itemBuilder: (context, i) {
-                final opt = widget.options[i];
-                final selected = widget.selectedIds.contains(opt.id);
-                return GestureDetector(
-                  onTap: () => widget.onToggle(opt.id),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 150),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: selected ? skin.primary.withValues(alpha: 0.15) : skin.surface(0.06),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: selected ? skin.primary.withValues(alpha: 0.45) : skin.glassBorder,
-                        width: selected ? 1.5 : 1.0,
-                      ),
+          child: ListView.separated(
+            controller: _scrollCtrl,
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            itemCount: widget.options.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 6),
+            itemBuilder: (context, i) {
+              final opt = widget.options[i];
+              final selected = widget.selectedIds.contains(opt.id);
+              return GestureDetector(
+                onTap: () => widget.onToggle(opt.id),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: selected ? skin.primary.withValues(alpha: 0.15) : skin.surface(0.06),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: selected ? skin.primary.withValues(alpha: 0.45) : skin.glassBorder,
+                      width: selected ? 1.5 : 1.0,
                     ),
-                    child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      if (selected) ...[
-                        Icon(Icons.check_rounded, size: 13, color: skin.primary),
-                        const SizedBox(width: 4),
-                      ],
-                      Text(
-                        opt.label,
-                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: selected ? skin.primary : skin.surface(0.5)),
-                      ),
-                    ]),
                   ),
-                );
-              },
-            ),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    if (selected) ...[
+                      Icon(Icons.check_rounded, size: 13, color: skin.primary),
+                      const SizedBox(width: 4),
+                    ],
+                    Text(
+                      opt.label,
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: selected ? skin.primary : skin.surface(0.5)),
+                    ),
+                  ]),
+                ),
+              );
+            },
           ),
         ),
       ],
