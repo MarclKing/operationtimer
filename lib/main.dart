@@ -17,6 +17,7 @@ import 'screens/export_hinweise_screen.dart';
 import 'screens/welcome_screen.dart';
 import 'screens/splash_screen.dart';
 import 'services/pdf_service.dart';
+import 'screens/dictation_help_screen.dart';
 import 'theme/app_theme.dart';
 import 'widgets/glass_kit.dart';
 import 'package:flutter/gestures.dart';
@@ -985,6 +986,20 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       _Divider(),
     ],
 
+        if (_currentPage == (_dienstplanEnabled ? 4 : 3)) ...[
+  _DropdownItem(
+    icon: Icons.mic_outlined,
+    label: 'Diktieren & Sprachbefehle',
+    onTap: () {
+      _closeMenu();
+      Navigator.push(
+        context,
+        CupertinoPageRoute(builder: (_) => const DictationHelpScreen()),
+      );
+    },
+  ),
+  _Divider(),
+],
     // IMMER UNTEN: Support
     _DropdownItem(
       icon: Icons.support_agent_outlined,

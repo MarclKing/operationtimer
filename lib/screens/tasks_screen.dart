@@ -645,68 +645,93 @@ class _DictationFabState extends State<_DictationFab> with TickerProviderStateMi
   bool _speechAvailable = false;
 
   _DictationPhase _phase = _DictationPhase.idle;
-String _liveTranscript = '';
-String _finalTranscript = '';
-List<String> _revealedWords = [];
-int _revealIndex = 0;
-Timer? _revealTimer;
+  String _liveTranscript = '';
+  String _finalTranscript = '';
+  List<String> _revealedWords = [];
+  int _revealIndex = 0;
+  Timer? _revealTimer;
 
-double _rawLevel = 0.0;
-double _smoothedLevel = 0.0;
-static const double _levelSmoothing = 0.35;
-DateTime? _listenStartedAt;
+  // ── Amplitude ──
+  // Rohwert direkt von onSoundLevelChange, KEIN externes Smoothing mehr —
+  // der SpectrumIndicator macht das selbst per Ticker (frame-synchron).
+  double _rawLevel = 0.0;
 
-// ── Abbruch-Geste ──
-bool _cancelDragActive = false;   // Finger bewegt sich während LongPress
-double _cancelDragX = 0.0;        // akkumulierter horizontaler Versatz
-bool _isCancelling = false;       // Abbruch-Animation läuft
-static const double _cancelThreshold = 48.0; // px nach links → Abbruch
-bool _showCancelHint = false;     // roter Hinweis sichtbar
-Timer? _cancelHintTimer;          // zeigt Hint nach kurzem Delay
+  // ── Abbruch-Logik ──
+  bool _aborted = false;          // gesetzt sobald Abbruch beginnt — blockt JEDEN anderen Pfad
+  bool _isCancelling = false;     // Cancel-Animation läuft gerade
+  double _cancelDragX = 0.0;     // horizontaler Versatz während LongPress
+  DateTime? _listenStartedAt;
 
-// Amplitude-Tracking: gleitende Max-Normalisierung damit auch leise
-// Geräte ein sichtbares Spektrum bekommen.
-double _levelMax = 0.12;          // dynamisch angepasst, startet niedrig
-
+  // ── Animations-Controller ──
   late AnimationController _fabPulseCtrl;
-  late AnimationController _idlePulseCtrl; // Sockel-Puls solange echte Werte fehlen
-  late AnimationController _bubbleCtrl;
+  late AnimationController _idlePulseCtrl;
+  late AnimationController _bubbleCtrl;       // Einblenden der Sprechblase
   late Animation<double> _bubbleScale;
   late Animation<double> _bubbleOpacity;
 
-  late AnimationController _cancelCtrl;
-late Animation<double> _cancelSlide;   // 0→1: Blase wischt nach links
-late Animation<double> _cancelFade;
-late AnimationController _cancelHintCtrl;
-late Animation<double> _cancelHintOpacity;
+  late AnimationController _cancelAnimCtrl;  // Schluck-Animation
+  // 0→1: Spektrum-Blase schrumpft in Papierkorb, dann beide faden weg
+  late Animation<double> _spectrumShrink;    // Spektrum-Blase skaliert zu Papierkorb hin
+  late Animation<double> _spectrumFade;
+  late Animation<double> _trashPulse;        // Papierkorb-Icon pulsiert kurz
+  late Animation<double> _exitFade;          // beide Blasen faden gemeinsam weg
 
-@override
-void initState() {
-  super.initState();
-  _fabPulseCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 900))..repeat(reverse: true);
-  _idlePulseCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 650))..repeat(reverse: true);
-  _bubbleCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 320));
-  _bubbleScale = CurvedAnimation(parent: _bubbleCtrl, curve: Curves.easeOutBack, reverseCurve: Curves.easeInBack);
-  _bubbleOpacity = CurvedAnimation(parent: _bubbleCtrl, curve: Curves.easeOut, reverseCurve: Curves.easeIn);
+  @override
+  void initState() {
+    super.initState();
+    _fabPulseCtrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 900))
+      ..repeat(reverse: true);
+    _idlePulseCtrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 650))
+      ..repeat(reverse: true);
+    _bubbleCtrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 320));
+    _bubbleScale = CurvedAnimation(
+        parent: _bubbleCtrl,
+        curve: Curves.easeOutBack,
+        reverseCurve: Curves.easeInBack);
+    _bubbleOpacity = CurvedAnimation(
+        parent: _bubbleCtrl,
+        curve: Curves.easeOut,
+        reverseCurve: Curves.easeIn);
 
-  // Cancel-Animation: Blase fliegt nach links + verblasst (220ms)
-  _cancelCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 220));
-  _cancelSlide = Tween<double>(begin: 0.0, end: -180.0).animate(
-      CurvedAnimation(parent: _cancelCtrl, curve: Curves.easeInCubic));
-  _cancelFade = Tween<double>(begin: 1.0, end: 0.0).animate(
-      CurvedAnimation(parent: _cancelCtrl, curve: const Interval(0.0, 0.7)));
+    // Cancel-Animation: 480ms Gesamt
+    // 0.00–0.50: Spektrum schrumpft + fliegt Richtung Papierkorb
+    // 0.30–0.65: Papierkorb pulsiert (Schluck-Effekt)
+    // 0.55–1.00: beide Blasen + FAB faden weg
+    _cancelAnimCtrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 480));
+    _spectrumShrink = Tween<double>(begin: 1.0, end: 0.0).animate(
+        CurvedAnimation(
+            parent: _cancelAnimCtrl,
+            curve: const Interval(0.0, 0.55, curve: Curves.easeInCubic)));
+    _spectrumFade = Tween<double>(begin: 1.0, end: 0.0).animate(
+        CurvedAnimation(
+            parent: _cancelAnimCtrl,
+            curve: const Interval(0.25, 0.55, curve: Curves.easeIn)));
+    _trashPulse = TweenSequence<double>([
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.35), weight: 40),
+      TweenSequenceItem(tween: Tween(begin: 1.35, end: 0.0), weight: 60),
+    ]).animate(CurvedAnimation(
+        parent: _cancelAnimCtrl,
+        curve: const Interval(0.30, 0.80, curve: Curves.easeInOut)));
+    _exitFade = Tween<double>(begin: 1.0, end: 0.0).animate(CurvedAnimation(
+        parent: _cancelAnimCtrl,
+        curve: const Interval(0.60, 1.0, curve: Curves.easeOut)));
 
-  // Hint-Einblende-Animation (Pfeil links + roter Badge)
-  _cancelHintCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 260));
-  _cancelHintOpacity = CurvedAnimation(parent: _cancelHintCtrl, curve: Curves.easeOut);
+    _cancelAnimCtrl.addListener(() {
+      if (mounted) setState(() {});
+    });
 
-  _initSpeech();
-}
+    _initSpeech();
+  }
 
   Future<void> _initSpeech() async {
     final available = await _speech.initialize(
       onStatus: _onSpeechStatus,
       onError: (err) {
+        if (_aborted) return;
         if (mounted) {
           setState(() => _phase = _DictationPhase.idle);
           _bubbleCtrl.reverse();
@@ -717,6 +742,7 @@ void initState() {
   }
 
   void _onSpeechStatus(String status) {
+    if (_aborted) return; // ← blockt jeden Callback nach Abbruch
     if (status == 'done' || status == 'notListening') {
       if (_phase == _DictationPhase.listening) {
         _finishListeningAndReveal();
@@ -725,74 +751,61 @@ void initState() {
   }
 
   @override
-void dispose() {
-  _revealTimer?.cancel();
-  _cancelHintTimer?.cancel();
-  _fabPulseCtrl.dispose();
-  _idlePulseCtrl.dispose();
-  _bubbleCtrl.dispose();
-  _cancelCtrl.dispose();
-  _cancelHintCtrl.dispose();
-  super.dispose();
-}
+  void dispose() {
+    _revealTimer?.cancel();
+    _fabPulseCtrl.dispose();
+    _idlePulseCtrl.dispose();
+    _bubbleCtrl.dispose();
+    _cancelAnimCtrl.dispose();
+    super.dispose();
+  }
 
   Future<void> _startListening() async {
     if (!_speechAvailable) {
       HapticFeedback.heavyImpact();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: const Text('🎙 Spracherkennung nicht verfügbar — Berechtigung in den Einstellungen prüfen.'),
+          content: const Text(
+              '🎙 Spracherkennung nicht verfügbar — Berechtigung prüfen.'),
           backgroundColor: widget.skin.bgCard,
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           margin: const EdgeInsets.fromLTRB(16, 0, 16, 100),
         ));
       }
       return;
     }
     HapticFeedback.mediumImpact();
+    _aborted = false;
+    _isCancelling = false;
+    _cancelDragX = 0.0;
     _listenStartedAt = DateTime.now();
     setState(() {
       _phase = _DictationPhase.listening;
       _liveTranscript = '';
       _finalTranscript = '';
       _rawLevel = 0.0;
-      _smoothedLevel = 0.0;
       _revealedWords = [];
       _revealIndex = 0;
     });
+    _cancelAnimCtrl.reset();
     _bubbleCtrl.forward();
-
-// Hint nach 500ms einblenden
-    _cancelHintTimer?.cancel();
-    _cancelHintTimer = Timer(const Duration(milliseconds: 500), () {
-      if (mounted && _phase == _DictationPhase.listening) {
-        setState(() => _showCancelHint = true);
-        _cancelHintCtrl.forward();
-      }
-    });
 
     await _speech.listen(
       localeId: 'de_DE',
       onResult: (result) {
-        if (mounted) {
-          setState(() {
-            _liveTranscript = result.recognizedWords;
-            if (result.finalResult) _finalTranscript = result.recognizedWords;
-          });
-        }
+        if (_aborted || !mounted) return;
+        setState(() {
+          _liveTranscript = result.recognizedWords;
+          if (result.finalResult) _finalTranscript = result.recognizedWords;
+        });
       },
       onSoundLevelChange: (level) {
-        if (!mounted) return;
-        // Normalisiere auf 0..1, dann adaptiv skalieren:
-        // _levelMax passt sich nach oben an, damit auch leise Geräte
-        // ein sichtbares Spektrum bekommen. Langsames Decay verhindert
-        // dauerhaft hohe Decks bei einmaliger Lautstärke.
-        final normalized = (level.clamp(-2.0, 10.0) + 2.0) / 12.0;
-        _levelMax = (_levelMax * 0.97).clamp(0.08, 1.0);
-        if (normalized > _levelMax) _levelMax = normalized;
-        final scaled = (normalized / _levelMax).clamp(0.0, 1.0);
-        setState(() => _rawLevel = scaled);
+        if (_aborted || !mounted) return;
+        // Roher Wert direkt, KEIN Clamping hier — der SpectrumIndicator
+        // normalisiert adaptiv selbst. Werte kommen typisch -2..10.
+        setState(() => _rawLevel = level);
       },
       listenFor: const Duration(seconds: 30),
       pauseFor: const Duration(seconds: 5),
@@ -803,13 +816,17 @@ void dispose() {
   }
 
   Future<void> _finishListeningAndReveal() async {
+    if (_aborted) return;
     if (_phase != _DictationPhase.listening) return;
-    _cancelHintTimer?.cancel();
-    _cancelHintCtrl.reverse();
-    setState(() { _showCancelHint = false; _cancelDragActive = false; _cancelDragX = 0; });
     await _speech.stop();
-    final text = (_finalTranscript.isNotEmpty ? _finalTranscript : _liveTranscript).trim();
+    if (_aborted) return; // nochmal prüfen, stop() kann Zeit brauchen
+    setState(() {
+      _cancelDragX = 0.0;
+    });
 
+    final text =
+        (_finalTranscript.isNotEmpty ? _finalTranscript : _liveTranscript)
+            .trim();
     if (text.isEmpty) {
       setState(() => _phase = _DictationPhase.idle);
       _bubbleCtrl.reverse();
@@ -817,11 +834,11 @@ void dispose() {
     }
 
     setState(() => _phase = _DictationPhase.processing);
-
     await Future.delayed(const Duration(milliseconds: 350));
-    if (!mounted) return;
+    if (_aborted || !mounted) return;
 
-    final words = text.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
+    final words =
+        text.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
     setState(() {
       _phase = _DictationPhase.revealing;
       _revealedWords = words;
@@ -829,8 +846,9 @@ void dispose() {
     });
 
     _revealTimer?.cancel();
-    _revealTimer = Timer.periodic(const Duration(milliseconds: 90), (timer) {
-      if (!mounted) {
+    _revealTimer =
+        Timer.periodic(const Duration(milliseconds: 90), (timer) {
+      if (_aborted || !mounted) {
         timer.cancel();
         return;
       }
@@ -842,22 +860,30 @@ void dispose() {
     });
   }
 
-  /// Bricht die laufende Aufnahme ohne Verarbeitung ab.
-  /// Animiert die Blase nach links weg, dann Reset.
+  /// Zuverlässiger Abbruch:
+  /// 1. _aborted sofort setzen → alle laufenden Callbacks ignorieren.
+  /// 2. STT stoppen.
+  /// 3. Schluck-Animation abspielen.
+  /// 4. Reset.
   Future<void> _cancelListening() async {
-    if (_isCancelling || _phase != _DictationPhase.listening) return;
+    if (_isCancelling) return;
+    if (_phase != _DictationPhase.listening) return;
+    _aborted = true;       // ← sofort, vor allem anderen
     _isCancelling = true;
     HapticFeedback.heavyImpact();
-    _cancelHintTimer?.cancel();
-    await _speech.cancel();
 
-    // Blase nach links wegwischen
-    await _cancelCtrl.forward();
+    _revealTimer?.cancel();
+    try {
+      await _speech.cancel();
+    } catch (_) {}
 
     if (!mounted) return;
-    // Reset
-    _cancelCtrl.reset();
-    _bubbleCtrl.reverse();
+    // Schluck-Animation
+    await _cancelAnimCtrl.forward();
+
+    if (!mounted) return;
+    _cancelAnimCtrl.reset();
+    _bubbleCtrl.reset();
     setState(() {
       _phase = _DictationPhase.idle;
       _liveTranscript = '';
@@ -865,24 +891,21 @@ void dispose() {
       _revealedWords = [];
       _revealIndex = 0;
       _rawLevel = 0.0;
-      _smoothedLevel = 0.0;
-      _levelMax = 0.12;
-      _cancelDragActive = false;
       _cancelDragX = 0.0;
       _isCancelling = false;
-      _showCancelHint = false;
+      _aborted = false;
     });
-    _cancelHintCtrl.reset();
   }
 
   void _onRevealComplete(String text) {
+    if (_aborted) return;
     setState(() => _phase = _DictationPhase.done);
     final parsed = SpokenTaskParser.parse(text);
     Future.delayed(const Duration(milliseconds: 900), () {
-      if (!mounted) return;
+      if (_aborted || !mounted) return;
       widget.onResult(parsed);
       _bubbleCtrl.reverse().then((_) {
-        if (mounted) {
+        if (!_aborted && mounted) {
           setState(() {
             _phase = _DictationPhase.idle;
             _liveTranscript = '';
@@ -897,66 +920,150 @@ void dispose() {
 
   bool get _isActive => _phase != _DictationPhase.idle;
 
+  // Wieviel Drag nach links ist passiert (0..1, geclampd)
+  double get _cancelProgress =>
+      (_cancelDragX.abs() / 80.0).clamp(0.0, 1.0);
+
   @override
   Widget build(BuildContext context) {
     final skin = widget.skin;
+    final bool showBubbles =
+        _isActive && !_isCancelling || _cancelAnimCtrl.value > 0;
 
     return Stack(
       clipBehavior: Clip.none,
       alignment: Alignment.bottomCenter,
       children: [
-        // ── Sprechblase ──
-        AnimatedBuilder(
-          animation: Listenable.merge([_bubbleCtrl, _cancelCtrl]),
-          builder: (context, child) {
-            if (_bubbleCtrl.value == 0 && _phase == _DictationPhase.idle && !_isCancelling) {
-              return const SizedBox.shrink();
-            }
-            // Cancel: Blase nach links schieben + ausblenden
-            final cancelOffset = _cancelSlide.value;
-            final cancelOpacity = _cancelFade.value;
-            return Positioned(
-              bottom: 70,
-              right: -8,
-              child: Transform.translate(
-                offset: Offset(cancelOffset + _cancelDragX.clamp(-60.0, 0.0), 0),
+        // ── Spektrum-Blase: direkt über dem Mic-FAB ──
+        if (showBubbles)
+          Positioned(
+            bottom: 68,
+            right: 0,
+            child: AnimatedBuilder(
+              animation: Listenable.merge([_bubbleCtrl, _cancelAnimCtrl]),
+              builder: (context, child) {
+                final exitOpacity = _exitFade.value;
+                final bubbleOp = (_bubbleOpacity.value * exitOpacity).clamp(0.0, 1.0);
+                // Beim Wischen: Blase gleitet leicht nach links mit
+                final dragProgress = _cancelProgress;
+                final slideX = -dragProgress * 40.0;
+                final shrink = _spectrumShrink.value * (1.0 - dragProgress * 0.2);
+                final fadeOp = _spectrumFade.value * (1.0 - dragProgress * 0.3);
+
+                return Transform.translate(
+                  offset: Offset(slideX, 0),
+                  child: Transform.scale(
+                    scale: (0.85 + _bubbleScale.value * 0.15) * shrink,
+                    alignment: Alignment.bottomRight,
+                    child: Opacity(
+                      opacity: (bubbleOp * fadeOp).clamp(0.0, 1.0),
+                      child: child,
+                    ),
+                  ),
+                );
+              },
+              child: _buildSpectrumBubble(skin),
+            ),
+          ),
+
+        // ── Papierkorb-Blase: links neben dem Mic-FAB, auf FAB-Höhe ──
+        // Dauerhaft sichtbar sobald aktiv, wird beim Wischen voller/größer
+        if (_isActive || _cancelAnimCtrl.value > 0)
+          Positioned(
+            bottom: 0,
+            right: 68, // links neben dem 56px-FAB mit 12px Abstand
+            child: AnimatedBuilder(
+              animation: _cancelAnimCtrl,
+              builder: (context, _) {
+                final dragProgress = _cancelProgress;
+                final trashScale = _isCancelling
+                    ? _trashPulse.value
+                    : (0.75 + dragProgress * 0.25);
+                final trashOpacity = _isCancelling
+                    ? _trashPulse.value.clamp(0.0, 1.0)
+                    : (0.28 + dragProgress * 0.72).clamp(0.0, 1.0);
+                final exitOp = _exitFade.value;
+
+                return Opacity(
+                  opacity: (trashOpacity * exitOp).clamp(0.0, 1.0),
+                  child: Transform.scale(
+                    scale: trashScale,
+                    alignment: Alignment.center,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(20),
+                      child: BackdropFilter(
+                        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                        child: Container(
+                          width: 56,
+                          height: 56,
+                          decoration: BoxDecoration(
+                            color: Color.lerp(
+                              skin.isLight
+                                  ? Colors.white.withValues(alpha: 0.55)
+                                  : Colors.black.withValues(alpha: 0.40),
+                              const Color(0xFFEF5B5B).withValues(alpha: 0.20),
+                              dragProgress,
+                            ),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: Color.lerp(
+                                skin.isLight
+                                    ? Colors.white.withValues(alpha: 0.45)
+                                    : Colors.white.withValues(alpha: 0.10),
+                                const Color(0xFFEF5B5B).withValues(alpha: 0.60),
+                                dragProgress,
+                              )!,
+                              width: 0.8 + dragProgress * 0.4,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFFEF5B5B)
+                                    .withValues(alpha: dragProgress * 0.30),
+                                blurRadius: 16,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: Icon(
+                            Icons.delete_outline_rounded,
+                            color: Color.lerp(
+                              skin.surface(0.25),
+                              const Color(0xFFEF5B5B),
+                              dragProgress,
+                            ),
+                            size: 22,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+
+        // ── Reveal-Blase (Processing / Revealing / Done) ──
+        if (_phase == _DictationPhase.revealing ||
+            _phase == _DictationPhase.done ||
+            _phase == _DictationPhase.processing)
+          AnimatedBuilder(
+            animation: _bubbleCtrl,
+            builder: (context, child) {
+              return Positioned(
+                bottom: 68,
+                right: 0,
                 child: Transform.scale(
                   alignment: Alignment.bottomRight,
-                  scale: (0.85 + _bubbleScale.value * 0.15) *
-                      (1.0 - (_cancelDragX.clamp(-60.0, 0.0).abs() / 60.0) * 0.15),
+                  scale: 0.85 + _bubbleScale.value * 0.15,
                   child: Opacity(
-                    opacity: (_bubbleOpacity.value * cancelOpacity *
-                            (1.0 - (_cancelDragX.clamp(-60.0, 0.0).abs() / 60.0) * 0.5))
-                        .clamp(0.0, 1.0),
+                    opacity: _bubbleOpacity.value.clamp(0.0, 1.0),
                     child: child,
                   ),
                 ),
-              ),
-            );
-          },
-          child: AnimatedBuilder(
-            animation: _idlePulseCtrl,
-            builder: (context, _) {
-              // Sockel-Puls: in den ersten ~350ms sorgt er allein für
-              // Bewegung; sobald echte Pegelwerte ankommen, dominieren sie
-              // (das Maximum aus beiden Quellen wird verwendet, kein
-              // einfaches Addieren, damit es bei lauten Tönen nicht "klippt").
-              final warmingUp = _listenStartedAt != null &&
-                  DateTime.now().difference(_listenStartedAt!) < const Duration(milliseconds: 450);
-              final idleComponent = warmingUp ? 0.18 + _idlePulseCtrl.value * 0.10 : 0.05 + _idlePulseCtrl.value * 0.04;
-              final effectiveRaw = math.max(_rawLevel, idleComponent);
-              _smoothedLevel = _smoothedLevel + (effectiveRaw - _smoothedLevel) * _levelSmoothing;
-
-              return _DictationBubble(
-                skin: skin,
-                phase: _phase,
-                level: _smoothedLevel,
-                revealedWords: _revealedWords,
-                revealIndex: _revealIndex,
               );
             },
+            child: _buildRevealBubble(skin),
           ),
-        ),
 
         // ── FAB ──
         GestureDetector(
@@ -967,92 +1074,83 @@ void dispose() {
           onLongPressCancel: () {
             if (!_isCancelling) _finishListeningAndReveal();
           },
-          // Wischen nach links während Halten → Abbrechen
           onLongPressMoveUpdate: (details) {
             if (_phase != _DictationPhase.listening || _isCancelling) return;
             final dx = details.offsetFromOrigin.dx;
-            setState(() {
-              _cancelDragX = dx;
-              _cancelDragActive = dx < -8;
-            });
-            if (dx < -_cancelThreshold) {
-              _cancelListening();
-            }
+            // Nur negative Werte (= nach links) zulassen — rechts/oben/unten ignorieren
+            setState(() => _cancelDragX = dx < 0 ? dx : 0.0);
+            if (dx < -80.0) _cancelListening();
           },
           child: AnimatedBuilder(
-            animation: _fabPulseCtrl,
-            builder: (context, child) {
-              final pulse = _phase == _DictationPhase.listening ? _fabPulseCtrl.value : 0.0;
-              return ClipRRect(
-                borderRadius: BorderRadius.circular(20),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                  child: Container(
-                    width: 56,
-                    height: 56,
-                    decoration: BoxDecoration(
-                      color: _isActive
-                          ? skin.primary.withValues(alpha: 0.85 + pulse * 0.15)
-                          : (skin.isLight ? Colors.white.withValues(alpha: 0.72) : Colors.black.withValues(alpha: 0.55)),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: _isActive
-                            ? Colors.white.withValues(alpha: 0.35)
-                            : (skin.isLight ? Colors.white.withValues(alpha: 0.55) : Colors.white.withValues(alpha: 0.12)),
-                        width: _isActive ? 1.2 : 0.8,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
+            animation: Listenable.merge([_fabPulseCtrl, _cancelAnimCtrl]),
+            builder: (context, _) {
+              final pulse = _phase == _DictationPhase.listening
+                  ? _fabPulseCtrl.value
+                  : 0.0;
+              final cancelProgress = _cancelProgress;
+              final fabColor = _isActive
+                  ? Color.lerp(
+                      skin.primary.withValues(alpha: 0.85 + pulse * 0.15),
+                      const Color(0xFFEF5B5B).withValues(alpha: 0.9),
+                      cancelProgress,
+                    )!
+                  : (skin.isLight
+                      ? Colors.white.withValues(alpha: 0.72)
+                      : Colors.black.withValues(alpha: 0.55));
+
+              return Opacity(
+                opacity: _exitFade.value,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(20),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                    child: Container(
+                      width: 56,
+                      height: 56,
+                      decoration: BoxDecoration(
+                        color: fabColor,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
                           color: _isActive
-                              ? skin.primaryWithAlpha(0.45 + pulse * 0.2)
-                              : Colors.black.withValues(alpha: skin.isLight ? 0.08 : 0.35),
-                          blurRadius: _isActive ? 20 + pulse * 10 : 24,
-                          spreadRadius: _isActive ? pulse * 2 : 0,
-                          offset: const Offset(0, 6),
+                              ? Colors.white.withValues(alpha: 0.35)
+                              : (skin.isLight
+                                  ? Colors.white.withValues(alpha: 0.55)
+                                  : Colors.white.withValues(alpha: 0.12)),
+                          width: _isActive ? 1.2 : 0.8,
                         ),
-                      ],
-                    ),
-                    child: Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 160),
-                          child: Icon(
-                            _cancelDragActive
-                                ? Icons.close_rounded
-                                : (_isActive ? Icons.mic_rounded : Icons.mic_none_rounded),
-                            key: ValueKey(_cancelDragActive ? 'x' : (_isActive ? 'on' : 'off')),
-                            color: _cancelDragActive
-                                ? const Color(0xFFEF5B5B)
-                                : (_isActive ? skin.onGradient : skin.textPrimary),
-                            size: 24,
+                        boxShadow: [
+                          BoxShadow(
+                            color: _isActive
+                                ? Color.lerp(
+                                    skin.primaryWithAlpha(0.45 + pulse * 0.2),
+                                    const Color(0xFFEF5B5B).withValues(alpha: 0.5),
+                                    cancelProgress,
+                                  )!
+                                : Colors.black.withValues(
+                                    alpha: skin.isLight ? 0.08 : 0.35),
+                            blurRadius: _isActive ? 20 + pulse * 10 : 24,
+                            spreadRadius: _isActive ? pulse * 2 : 0,
+                            offset: const Offset(0, 6),
                           ),
+                        ],
+                      ),
+                      child: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 180),
+                        child: Icon(
+                          cancelProgress > 0.35
+                              ? Icons.close_rounded
+                              : (_isActive
+                                  ? Icons.mic_rounded
+                                  : Icons.mic_none_rounded),
+                          key: ValueKey(cancelProgress > 0.35
+                              ? 'cancel'
+                              : (_isActive ? 'active' : 'idle')),
+                          color: cancelProgress > 0.35
+                              ? Colors.white
+                              : (_isActive ? skin.onGradient : skin.textPrimary),
+                          size: 24,
                         ),
-                        // Roter Cancel-Hint: kleines Badge oben-links
-                        if (_showCancelHint || _cancelHintCtrl.value > 0)
-                          Positioned(
-                            top: 0,
-                            left: 0,
-                            child: FadeTransition(
-                              opacity: _cancelHintOpacity,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFEF5B5B),
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: const [
-                                    Icon(Icons.arrow_back_rounded, size: 8, color: Colors.white),
-                                    SizedBox(width: 1),
-                                    Text('abbr.', style: TextStyle(color: Colors.white, fontSize: 6, fontWeight: FontWeight.w700)),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                      ],
+                      ),
                     ),
                   ),
                 ),
@@ -1063,34 +1161,96 @@ void dispose() {
       ],
     );
   }
-}
 
-/// Die dynamische Sprechblase über dem Mikro-FAB.
-class _DictationBubble extends StatelessWidget {
-  final AppSkin skin;
-  final _DictationPhase phase;
-  final double level;
-  final List<String> revealedWords;
-  final int revealIndex;
+  Widget _buildSpectrumBubble(AppSkin skin) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+        child: Container(
+          width: 88,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            color: skin.isLight
+                ? Colors.white.withValues(alpha: 0.85)
+                : skin.bgCard.withValues(alpha: 0.85),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+                color: skin.primary.withValues(alpha: 0.30), width: 1.0),
+            boxShadow: [
+              BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.20),
+                  blurRadius: 24,
+                  offset: const Offset(0, 8)),
+            ],
+          ),
+          child: _SpectrumIndicator(skin: skin, rawLevel: _rawLevel, listenStartedAt: _listenStartedAt),
+        ),
+      ),
+    );
+  }
 
-  const _DictationBubble({
-    required this.skin,
-    required this.phase,
-    required this.level,
-    required this.revealedWords,
-    required this.revealIndex,
-  });
+  Widget _buildTrashBubble(AppSkin skin, double dragProgress) {
+    // Papierkorb-Blase: wird mit zunehmendem Drag sichtbarer und größer.
+    // Beim Schlucken: pulsiert via _trashPulse.
+    final trashScale = _isCancelling
+        ? _trashPulse.value
+        : (0.7 + dragProgress * 0.3);
+    final trashOpacity = _isCancelling
+        ? _trashPulse.value.clamp(0.0, 1.0)
+        : dragProgress.clamp(0.05, 1.0); // minimal sichtbar als Hinweis
 
-  @override
-  Widget build(BuildContext context) {
-    final isListening = phase == _DictationPhase.listening;
-    final isProcessing = phase == _DictationPhase.processing;
-    final isRevealing = phase == _DictationPhase.revealing || phase == _DictationPhase.done;
+    return Transform.scale(
+      scale: trashScale,
+      alignment: Alignment.bottomRight,
+      child: Opacity(
+        opacity: trashOpacity,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(20),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+            child: Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                color: const Color(0xFFEF5B5B).withValues(alpha: 0.15 + dragProgress * 0.1),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                    color: const Color(0xFFEF5B5B)
+                        .withValues(alpha: 0.35 + dragProgress * 0.3),
+                    width: 1.2),
+                boxShadow: [
+                  BoxShadow(
+                      color: const Color(0xFFEF5B5B)
+                          .withValues(alpha: dragProgress * 0.25),
+                      blurRadius: 16,
+                      offset: const Offset(0, 4)),
+                ],
+              ),
+              child: Icon(
+                Icons.delete_outline_rounded,
+                color: const Color(0xFFEF5B5B)
+                    .withValues(alpha: 0.5 + dragProgress * 0.5),
+                size: 22,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 
+  Widget _buildRevealBubble(AppSkin skin) {
+    final isProcessing = _phase == _DictationPhase.processing;
+    final isRevealing =
+        _phase == _DictationPhase.revealing || _phase == _DictationPhase.done;
     final double minWidth = 64;
     final double maxWidth = 240;
     final double targetWidth = isRevealing
-        ? math.min(maxWidth, minWidth + (revealedWords.take(revealIndex).join(' ').length * 6.2))
+        ? math.min(
+            maxWidth,
+            minWidth +
+                (_revealedWords.take(_revealIndex).join(' ').length * 6.2))
         : minWidth;
 
     return AnimatedContainer(
@@ -1105,18 +1265,25 @@ class _DictationBubble extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             decoration: BoxDecoration(
-              color: skin.isLight ? Colors.white.withValues(alpha: 0.85) : skin.bgCard.withValues(alpha: 0.85),
+              color: skin.isLight
+                  ? Colors.white.withValues(alpha: 0.85)
+                  : skin.bgCard.withValues(alpha: 0.85),
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: skin.primary.withValues(alpha: 0.30), width: 1.0),
+              border: Border.all(
+                  color: skin.primary.withValues(alpha: 0.30), width: 1.0),
               boxShadow: [
-                BoxShadow(color: Colors.black.withValues(alpha: 0.20), blurRadius: 24, offset: const Offset(0, 8)),
+                BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.20),
+                    blurRadius: 24,
+                    offset: const Offset(0, 8)),
               ],
             ),
-            child: isListening
-                ? _SpectrumIndicator(skin: skin, level: level)
-                : isProcessing
-                    ? _ProcessingIndicator(skin: skin)
-                    : _RevealingText(skin: skin, words: revealedWords, revealIndex: revealIndex),
+            child: isProcessing
+                ? _ProcessingIndicator(skin: skin)
+                : _RevealingText(
+                    skin: skin,
+                    words: _revealedWords,
+                    revealIndex: _revealIndex),
           ),
         ),
       ),
@@ -1124,11 +1291,31 @@ class _DictationBubble extends StatelessWidget {
   }
 }
 
-/// Reines Pegel-Spektrum (5 vertikale Balken), KEINE Transkription.
+// ─────────────────────────────────────────────────────────────────────────────
+// SPECTRUM INDICATOR — vollständig überarbeitete Amplitudenerkennung
+//
+// Kernproblem vorher: Der externe rawLevel wurde auf 0..1 normalisiert,
+// bevor er hier ankam. Das führte dazu, dass bei typischen Pegel-Werten
+// (speech_to_text liefert -2..10, aber meist -1..4) nach Normalisierung
+// kaum Unterschied sichtbar war. Jetzt:
+//   - rawLevel ist der ROHE Wert direkt von onSoundLevelChange (-2..10+)
+//   - _levelFloor: adaptives Minimum (Hintergrundgeräusch), wird langsam
+//     nach oben korrigiert
+//   - _levelCeil: adaptives Maximum, passt sich nach oben an und fällt
+//     langsam ab → garantiert volle Ausschläge bei normalem Sprechen
+//   - Jeder Balken: eigene Phasenlage + asymmetrisches Smoothing
+//     (Attack schnell, Release langsam) → organisches, lebendiges Spektrum
+// ─────────────────────────────────────────────────────────────────────────────
+
 class _SpectrumIndicator extends StatefulWidget {
   final AppSkin skin;
-  final double level;
-  const _SpectrumIndicator({required this.skin, required this.level});
+  final double rawLevel;          // ROHER Wert von onSoundLevelChange, z.B. -1.5..8.0
+  final DateTime? listenStartedAt;
+  const _SpectrumIndicator({
+    required this.skin,
+    required this.rawLevel,
+    this.listenStartedAt,
+  });
 
   @override
   State<_SpectrumIndicator> createState() => _SpectrumIndicatorState();
@@ -1136,41 +1323,61 @@ class _SpectrumIndicator extends StatefulWidget {
 
 class _SpectrumIndicatorState extends State<_SpectrumIndicator>
     with SingleTickerProviderStateMixin {
-  late final List<double> _barOffsets;
-  // Pro-Balken geglätteter Level — damit jeder Balken unabhängig animiert
-  // und nicht alle synchron springen.
-  late final List<double> _smoothed;
-  late final Ticker _ticker;
-  static const double _smoothing = 0.28;
+  // Pro-Balken: geglätteter Wert, Phasenoffset, individuelle Zufallsstreuung
+  final List<double> _smoothed = List.generate(5, (_) => 0.08);
+  final List<double> _phaseOffset = [0.0, 0.72, 1.44, 0.36, 1.08];
+  // Jeder Balken reagiert leicht unterschiedlich auf den gleichen Pegel
+  final List<double> _sensitivityFactor = [0.85, 1.10, 1.25, 1.05, 0.90];
 
-  // Jeder Balken bekommt eine leicht unterschiedliche Phasenlage für den
-  // Idle-Puls, damit die Balken versetzt schwingen (organischer Effekt).
-  final List<double> _idlePhase = List.generate(5, (i) => i * 0.42);
   double _idleTick = 0.0;
+
+  // Adaptive Pegelgrenzen
+  double _levelFloor = -2.0;   // Hintergrundgeräusch-Baseline
+  double _levelCeil = 3.0;     // erwartete Maximalamplitude (wird angepasst)
+
+  late final Ticker _ticker;
 
   @override
   void initState() {
     super.initState();
-    _barOffsets = List.generate(5, (i) => (i - 2) * 0.10);
-    _smoothed = List.generate(5, (_) => 0.08);
-    _ticker = createTicker((_) => _tick())..start();
+    _ticker = createTicker(_onTick)..start();
   }
 
-  void _tick() {
+  void _onTick(Duration _) {
     if (!mounted) return;
-    _idleTick += 0.055; // ~60fps → ~3.3 Zyklen/s
+    _idleTick += 0.055;
+
+    final raw = widget.rawLevel;
+
+    // Adaptive Grenzen: Ceiling wächst schnell, schrumpft sehr langsam
+    if (raw > _levelCeil) _levelCeil = raw * 1.05;
+    _levelCeil = math.max(_levelCeil - 0.008, 2.0); // langsamer Decay, Minimum 2.0
+
+    // Floor: steigt langsam (Hintergrundgeräusch), fällt schnell
+    if (raw > _levelFloor + 0.5) _levelFloor = _levelFloor * 0.95 + raw * 0.05;
+    _levelFloor = math.max(_levelFloor - 0.002, -2.5);
+
+    // Normalisierter Wert 0..1
+    final range = (_levelCeil - _levelFloor).clamp(1.5, double.infinity);
+    final normalized = ((raw - _levelFloor) / range).clamp(0.0, 1.0);
+
+    final warmingUp = widget.listenStartedAt != null &&
+        DateTime.now().difference(widget.listenStartedAt!) < const Duration(milliseconds: 500);
+
     setState(() {
       for (var i = 0; i < 5; i++) {
-        // Idle-Puls: sehr leichte Bewegung, phasenverschoben pro Balken
-        final idleVal = 0.06 + math.sin(_idleTick + _idlePhase[i]) * 0.04;
-        // Echter Pegel mit Balken-Offset, Minimum = idleVal
-        // level wird verstärkt (×2.5), damit es bei typischen Mikrofon-
-        // Pegelwerten (0.1–0.4) deutlich sichtbar wird.
-        final boosted = (widget.level * 2.5 + _barOffsets[i]).clamp(0.0, 1.0);
-        final target = math.max(boosted, idleVal).clamp(0.06, 1.0);
-        // Asymmetrisches Smoothing: schnell hoch (Attack), langsam runter (Release)
-        final s = target > _smoothed[i] ? 0.55 : _smoothing;
-        _smoothed[i] = _smoothed[i] + (target - _smoothed[i]) * s;
+        // Idle-Puls (phasenverschoben)
+        final idle = warmingUp
+            ? 0.20 + math.sin(_idleTick + _phaseOffset[i]) * 0.12
+            : 0.05 + math.sin(_idleTick * 0.6 + _phaseOffset[i]) * 0.04;
+
+        // Echtpegel mit individueller Sensitivität
+        final boosted = (normalized * _sensitivityFactor[i]).clamp(0.0, 1.0);
+        final target = math.max(boosted, idle).clamp(0.04, 1.0);
+
+        // Asymmetrisches Smoothing: schnell rauf (0.65 Attack), langsam runter (0.18 Release)
+        final smooth = target > _smoothed[i] ? 0.65 : 0.18;
+        _smoothed[i] += (target - _smoothed[i]) * smooth;
       }
     });
   }
@@ -1186,18 +1393,18 @@ class _SpectrumIndicatorState extends State<_SpectrumIndicator>
     final skin = widget.skin;
     return SizedBox(
       height: 28,
-      width: 64,
+      width: 56,
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         crossAxisAlignment: CrossAxisAlignment.center,
         children: List.generate(5, (i) {
-          final v = _smoothed[i].clamp(0.06, 1.0);
-          final h = 6.0 + v * 22.0;
+          final v = _smoothed[i].clamp(0.04, 1.0);
+          final h = 4.0 + v * 24.0;
           return Container(
             width: 4,
             height: h,
             decoration: BoxDecoration(
-              color: skin.primary.withValues(alpha: 0.50 + v * 0.50),
+              color: skin.primary.withValues(alpha: 0.45 + v * 0.55),
               borderRadius: BorderRadius.circular(3),
             ),
           );
@@ -1215,12 +1422,14 @@ class _ProcessingIndicator extends StatelessWidget {
   Widget build(BuildContext context) {
     return SizedBox(
       height: 28,
-      width: 64,
+      width: 56,
       child: Center(
         child: SizedBox(
           width: 20,
           height: 20,
-          child: CircularProgressIndicator(strokeWidth: 2.2, valueColor: AlwaysStoppedAnimation(skin.primary)),
+          child: CircularProgressIndicator(
+              strokeWidth: 2.2,
+              valueColor: AlwaysStoppedAnimation(skin.primary)),
         ),
       ),
     );
@@ -1231,17 +1440,23 @@ class _RevealingText extends StatelessWidget {
   final AppSkin skin;
   final List<String> words;
   final int revealIndex;
-  const _RevealingText({required this.skin, required this.words, required this.revealIndex});
+  const _RevealingText(
+      {required this.skin, required this.words, required this.revealIndex});
 
   @override
   Widget build(BuildContext context) {
     final visibleWords = words.take(revealIndex).toList();
     return Text(
       visibleWords.isEmpty ? '…' : visibleWords.join(' '),
-      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: skin.textPrimary, height: 1.35),
+      style: TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+          color: skin.textPrimary,
+          height: 1.35),
     );
   }
 }
+
 // ─────────────────────────────────────────────────────────────────────────────
 // TASK CARD
 //
