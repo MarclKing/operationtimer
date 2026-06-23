@@ -10,8 +10,8 @@ import 'package:flutter/foundation.dart';
 class FahrtExportService {
   static int _cardIndex = 0;
 
-  static Future<void> exportFahrten(List<Fahrt> fahrten) async {
-    if (fahrten.isEmpty) return;
+  static Future<bool> exportFahrten(List<Fahrt> fahrten) async {
+    if (fahrten.isEmpty) return false;
 
     final html = _buildHtml(fahrten);
 
@@ -43,14 +43,17 @@ class FahrtExportService {
           text: emailText,
         ),
       );
+      return true;
     } catch (e) {
       debugPrint('❌ Export Fehler: $e');
       try {
         await SharePlus.instance.share(
           ShareParams(text: 'Fahrten-Export: $betreff\n${file.path}'),
         );
+        return true;
       } catch (e2) {
         debugPrint('❌ Fallback Fehler: $e2');
+        return false;
       }
     }
   }

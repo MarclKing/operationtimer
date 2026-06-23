@@ -35,7 +35,7 @@ class SpeechNormalizer {
   // ─────────────────────────────────────────────────────────────────────────
   static const String _dateTokens =
     // Wochentage mit "nächsten/übernächsten"
-    r'(?:(?<![a-zA-ZäöüßÄÖÜ])übernächsten?\s+)?(?:nächsten?\s+)?(?:montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag)'
+    r'(?:(?<![a-zA-ZäöüßÄÖÜ])übernächsten?\s+)?(?:nächsten?\s+)?(?:am\s+)?(?:montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag)'
     r'|(?<![a-zA-ZäöüßÄÖÜ])übermorgen(?![a-zA-ZäöüßÄÖÜ])'
     // "morgen früh" etc. — spezifisch VOR bloßem "morgen"
     r'|morgen\s+(?:früh|vormittag|mittag|nachmittag|abend|nacht)'
@@ -138,65 +138,105 @@ class SpeechNormalizer {
   // ─────────────────────────────────────────────────────────────────────────
 
   static String? _tryKernMuster(String text) {
-    // ── Füge-Varianten ────────────────────────────────────────────────────
-    // Erkennt alle Trigger-Varianten und normalisiert auf kanonische Form
-    final fuegeRx = RegExp(
-      r'^(?:füg(?:e)?|trag(?:e)?|ergänze?|add)\s+'
-      r'(?:(?:die|eine?|meine|den)\s+)?'
-      r'(?:aufgabe|task|todo|erinnerung|notiz|reminder|punkt)?\s*'
-      r'(?:(?:die|eine?)\s+)?'
-      r'(.+?)'
-      r'(?:\s+(?:hinzu|ein|hinzufügen|eintragen|dazu))?\s*$',
-      caseSensitive: false,
-    );
-    final fuegeM = fuegeRx.firstMatch(text);
-    if (fuegeM != null) {
-      final inner = fuegeM.group(1)!.trim();
-      if (inner.isNotEmpty) {
-        // Datum am Ende suchen und korrekt einbauen
-        return _buildFuegeAufgabe(inner);
-      }
-    }
 
-    // ── Erinnere-Varianten ────────────────────────────────────────────────
-    // "Erinnere mich [DATUM] an[:]  TITEL"
-    // "Erinnere mich an TITEL" (ohne Doppelpunkt — häufiger Sprachfehler)
-    final erinnereRx = RegExp(
-      r'^erinnere?\s+mich\s+(.+?)\s+an\s*:?\s*(.+)$',
-      caseSensitive: false,
-    );
-    final erinnereM = erinnereRx.firstMatch(text);
-    if (erinnereM != null) {
-      final between = erinnereM.group(1)!.trim(); // zwischen "mich" und "an"
-      final titel = erinnereM.group(2)!.trim();
-      if (titel.isNotEmpty) {
-        // "mich" allein → kein Datum
-        if (between == 'mich' || between.isEmpty) {
-          return 'Erinnere mich an: $titel';
-        }
-        if (_looksLikeDateOrEmpty(between)) {
-          return 'Erinnere mich $between an: $titel';
-        }
-        // between ist kein Datum → alles als Titel behandeln
-        return 'Erinnere mich an: $between $titel';
-      }
+  // ── Füge-Varianten ────────────────────────────────────────────────────
+  final fuegeRx = RegExp(
+    r'^(?:füg(?:e)?|trag(?:e)?|ergänze?|add)\s+'
+    r'(?:(?:die|eine?|meine|den)\s+)?'
+    r'(?:aufgabe|task|todo|erinnerung|notiz|reminder|punkt)?\s*'
+    r'(?:(?:die|eine?)\s+)?'
+    r'(.+?)'
+    r'(?:\s+(?:hinzu|ein|hinzufügen|eintragen|dazu))?\s*$',
+    caseSensitive: false,
+  );
+  final fuegeM = fuegeRx.firstMatch(text);
+  if (fuegeM != null) {
+    final inner = fuegeM.group(1)!.trim();
+    if (inner.isNotEmpty) {
+      return _buildFuegeAufgabe(inner);
     }
+  }
 
-    // Kurze Form: "Erinnere mich an X" (kein Datum möglich hier)
-    final erinnereSimpleRx = RegExp(
-      r'^erinnere?\s+mich\s+an\s*:?\s*(.+)$',
-      caseSensitive: false,
-    );
-    final erinnereSimpleM = erinnereSimpleRx.firstMatch(text);
-    if (erinnereSimpleM != null) {
-      final titel = erinnereSimpleM.group(1)!.trim();
-      if (titel.isNotEmpty) {
+  // ── "Erinnere mich [DATUM] daran [TITEL]" ────────────────────────────
+  // Muss VOR dem allgemeinen erinnereRx stehen, da "daran" sonst
+  // nicht als Trennmarker erkannt wird.
+  final daranNachDatumRx = RegExp(
+    r'^erinnere?\s+mich\s+(.+?)\s+daran\s+(?:den\s+|die\s+|das\s+)?(.+)$',
+    caseSensitive: false,
+  );
+  final daranNachM = daranNachDatumRx.firstMatch(text);
+  if (daranNachM != null) {
+    final dateWindow = daranNachM.group(1)!.trim();
+    var titel = _stripInfinitive(daranNachM.group(2)!.trim());
+    if (_looksLikeDateOrEmpty(dateWindow)) {
+      final datePart = dateWindow.isNotEmpty ? ' $dateWindow' : '';
+      return 'Erinnere mich$datePart an: $titel';
+    }
+    // dateWindow ist kein Datum → alles als Titel
+    return 'Erinnere mich an: $dateWindow $titel';
+  }
+
+  // ── "Erinnere mich daran [DATUM] an [TITEL]" ─────────────────────────
+final daranVorDatumRx = RegExp(
+  r'^erinnere?\s+mich\s+daran\s+(.+?)\s+an\s+(?:den\s+|die\s+|das\s+)?(.+?)(?:\s+zu\s+\w+en)?\s*$',
+  caseSensitive: false,
+);
+final daranVorM = daranVorDatumRx.firstMatch(text);
+if (daranVorM != null) {
+  final dateWindow = daranVorM.group(1)!.trim();
+  final titel = daranVorM.group(2)!.trim();
+  if (_looksLikeDateOrEmpty(dateWindow)) {
+    final datePart = dateWindow.isNotEmpty ? ' $dateWindow' : '';
+    return 'Erinnere mich$datePart an: $titel';
+  }
+}
+
+  // ── "Erinnere mich daran [TITEL]" — kein Datum ───────────────────────
+  final daranOhneDatumRx = RegExp(
+    r'^erinnere?\s+mich\s+daran\s+(?:den\s+|die\s+|das\s+)?(.+)$',
+    caseSensitive: false,
+  );
+  final daranOhneM = daranOhneDatumRx.firstMatch(text);
+  if (daranOhneM != null) {
+    final titel = _stripInfinitive(daranOhneM.group(1)!.trim());
+    return 'Erinnere mich an: $titel';
+  }
+
+  // ── Erinnere-Varianten ────────────────────────────────────────────────
+  final erinnereRx = RegExp(
+    r'^erinnere?\s+mich\s+(.+?)\s+an\s*:?\s*(.+)$',
+    caseSensitive: false,
+  );
+  final erinnereM = erinnereRx.firstMatch(text);
+  if (erinnereM != null) {
+    final between = erinnereM.group(1)!.trim();
+    final titel = erinnereM.group(2)!.trim();
+    if (titel.isNotEmpty) {
+      if (between == 'mich' || between.isEmpty) {
         return 'Erinnere mich an: $titel';
       }
+      if (_looksLikeDateOrEmpty(between)) {
+        return 'Erinnere mich $between an: $titel';
+      }
+      return 'Erinnere mich an: $between $titel';
     }
-
-    return null;
   }
+
+  // ── Kurze Form: "Erinnere mich an X" ─────────────────────────────────
+  final erinnereSimpleRx = RegExp(
+    r'^erinnere?\s+mich\s+an\s*:?\s*(.+)$',
+    caseSensitive: false,
+  );
+  final erinnereSimpleM = erinnereSimpleRx.firstMatch(text);
+  if (erinnereSimpleM != null) {
+    final titel = erinnereSimpleM.group(1)!.trim();
+    if (titel.isNotEmpty) {
+      return 'Erinnere mich an: $titel';
+    }
+  }
+
+  return null;
+}
 
   // ─────────────────────────────────────────────────────────────────────────
   // MUSTER 1: "Ich muss [noch/mal/unbedingt] TITEL [DATUM]"
@@ -394,10 +434,10 @@ class SpeechNormalizer {
 
   /// Füllwörter entfernen.
   static String _stripFillers(String text) {
-    return text
-      .replaceAll(RegExp(
-        r'\b(?:bitte|mal|eben|kurz|schnell|eigentlich|vielleicht|halt|'
-        r'einfach|irgendwie|doch|auch|wirklich|unbedingt|'
+  return text
+    .replaceAll(RegExp(
+      r'\b(?:bitte|mal|eben|kurz|schnell|eigentlich|vielleicht|halt|'
+      r'einfach|irgendwie|doch|auch|wirklich|unbedingt|'
         r'auf\s+jeden\s+fall|auf\s+keinen\s+fall|'
         r'einmal|nochmal|nochmals|ggf|gegebenenfalls)\b',
         caseSensitive: false,
@@ -409,6 +449,8 @@ class SpeechNormalizer {
   /// Baut "Füge die Aufgabe TITEL [für DATUM] hinzu".
   /// Sucht Datum am Anfang oder Ende des Rests.
   static String _buildFuegeAufgabe(String rest) {
+  // "für heute/morgen/..." am Anfang — "für" ist kein Datum, aber Präfix dazu
+  rest = rest.replaceFirst(RegExp(r'^für\s+', caseSensitive: false), '');
     // Datum am Anfang ("morgen früh Auto waschen")
     final dateStartRx = RegExp(
       '^($_dateTokens)(?:\\s+um\\s+\\d{1,2}(?::\\d{2})?\\s*uhr?)?\\s+(.+)\$',
@@ -437,7 +479,10 @@ class SpeechNormalizer {
       }
     }
 
-    return 'Füge die Aufgabe ${_stripInfinitive(rest)} hinzu';
+    final cleanRest = rest
+    .replaceFirst(RegExp(r'\s+zu\s+(?:meinen?|deinen?|unseren?)\s+\w+\s*$', caseSensitive: false), '')
+    .trim();
+return 'Füge die Aufgabe ${_stripInfinitive(cleanRest.isEmpty ? rest : cleanRest)} hinzu';
   }
 
   /// Prüft ob ein String wie ein Datum aussieht (oder leer ist).
@@ -456,16 +501,30 @@ class SpeechNormalizer {
 
   /// Entfernt Infinitiv-Konstruktionen am Ende für sauberere Titel.
   static String _stripInfinitive(String s) {
-    return s
-        .replaceFirst(
-          RegExp(
-            r'\s+(?:zu\s+)?(?:machen|erledigen|tun|fertig\s+machen|fertigmachen)\s*$',
-            caseSensitive: false,
-          ), '')
-        .replaceFirst(
-          RegExp(r'\s+an(?:zu)?rufen\s*$', caseSensitive: false),
-          ' anrufen',
-        )
-        .trim();
-  }
+  return s
+      // "Dienstplan zu schreiben" → "Dienstplan"
+      .replaceFirstMapped(
+      RegExp(r'(\w+\s+\w+)\s+zu\s+(\w+en)\s*$', caseSensitive: false),
+      (m) => '${m.group(1)!} ${m.group(2)!}',
+    )
+    // "Dienstplan zu schreiben" → "Dienstplan"  (einzelnes Wort vor "zu": Verb fällt weg)
+    .replaceFirstMapped(
+      RegExp(r'^(\w+)\s+zu\s+\w+en\s*$', caseSensitive: false),
+      (m) => m.group(1)!,
+    )
+      .replaceFirstMapped(
+        RegExp(r'\bmit(zu)(\w+en)\b', caseSensitive: false),
+        (m) => 'mit${m.group(2)}',
+      )
+      .replaceFirst(
+        RegExp(
+          r'\s+(?:zu\s+)?(?:machen|erledigen|tun|fertig\s+machen|fertigmachen)\s*$',
+          caseSensitive: false,
+        ), '')
+      .replaceFirst(
+        RegExp(r'\s+an(?:zu)?rufen\s*$', caseSensitive: false),
+        ' anrufen',
+      )
+      .trim();
+}
 }

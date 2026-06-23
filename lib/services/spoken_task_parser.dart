@@ -292,8 +292,12 @@ class SpokenTaskParser {
       dtw = _extractDateTimeFromWindow(dateTimeWindow);
     }
 
+    var cleanTitle = titleRaw
+        .replaceFirst(RegExp(r'^(?:meine[mnrs]?\s+|mein\s+)', caseSensitive: false), '')
+        .replaceFirst(RegExp(r'^(?:den\s+|die\s+|das\s+|der\s+)', caseSensitive: false), '');
+
     return _ParseResult(
-      title: _capitalizeFirst(titleRaw),
+      title: _capitalizeFirst(cleanTitle.isEmpty ? titleRaw : cleanTitle),
       date: dtw.date,
       time: dtw.time,
     );
@@ -482,12 +486,13 @@ class SpokenTaskParser {
     // 2f) "in X Tagen / Wochen / Monaten"
     if (date == null) {
       final inUnitRx = RegExp(
-        r'\bin\s+(\d{1,2})\s+(tagen?|wochen?|monaten?)\b',
-        caseSensitive: false,
-      );
+  r'\bin\s+(einer?|einem|\d{1,2})\s+(tagen?|wochen?|monaten?)\b',
+  caseSensitive: false,
+);
       final m = inUnitRx.firstMatch(w);
       if (m != null) {
-        final n = int.tryParse(m.group(1) ?? '');
+        final raw = m.group(1) ?? '';
+final n = int.tryParse(raw) ?? (raw.startsWith('eine') ? 1 : null);
         final unit = (m.group(2) ?? '').toLowerCase();
         if (n != null) {
           if (unit.startsWith('tag')) {

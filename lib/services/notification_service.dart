@@ -5,41 +5,41 @@ import 'package:timezone/data/latest.dart' as tz;
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
 import '../models/relationship_style.dart';
+import '../models/notification_phrases.dart' show WeatherCategory, categoryFor;
+import 'weather_service.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // NOTIFICATION SERVICE
 //
-// Änderungen gegenüber der Vorversion:
+// Aufbau:
 //
-// 1) BADGE-FIX: Vorher stand in der Task-Reminder-Notification ein fest
-//    codiertes `badgeNumber: 1`. iOS SETZT das Badge exakt auf den
-//    übergebenen Wert (zählt nicht selbst hoch) — da nirgends ein Reset
-//    auf 0 erfolgte, blieb die "1" für immer am App-Icon kleben, auch
-//    nachdem die Aufgabe erledigt war. Fix: `_refreshBadge()` zählt die
-//    tatsächlich relevanten offenen Items (aktuell: überfällige, nicht
-//    erledigte Aufgaben) und setzt das Badge GENAU darauf — aufgerufen bei
-//    init() und über `notifyTasksChanged()` von außen (tasks_screen.dart),
-//    sobald sich der Aufgaben-Status ändert.
+// 1) BADGE-MANAGEMENT: _refreshBadge() zählt überfällige, nicht erledigte
+//    Aufgaben und setzt das App-Icon-Badge exakt darauf — aufgerufen bei
+//    init() und über notifyTasksChanged() von außen (tasks_screen.dart).
 //
-// 2) STILABHÄNGIGE TEXTE: Jeder Notification-Case holt sich Titel/Body aus
-//    RelationshipTexts (relationship_style.dart) statt eigene Strings zu
-//    bauen — der Service selbst kennt keine Stil-Logik mehr.
+// 2) STILABHÄNGIGE TEXTE: Jeder Notification-Case holt Titel/Body/Subtitle
+//    aus RelationshipTexts (relationship_style.dart), die wiederum aus
+//    notification_phrases.dart zufällige Varianten zieht. Dieser Service
+//    kennt selbst keine Text-/Stil-Logik, nur WANN und WORAUS (Dienst,
+//    Wetter, Aufgaben-Zahlen) eine Notification besteht.
 //
-// 3) NEU — TAGESVORSCHAU: scheduleDailyOverview() plant eine täglich
-//    wiederkehrende Notification, die Dienst (aus dem Hive-Key
-//    schedule_<yyyy-MM>, identisch zu ScheduleScreenState.loadScheduleData)
-//    UND fällige Aufgaben (aus dem Hive-Key 'tasks') kombiniert anzeigt.
-//    Vollständig über DailyOverviewSettings (Hive) konfigurierbar, damit
-//    settings_screen.dart eigene Schalter dafür anbieten kann:
-//      - ein/aus
-//      - feste Uhrzeit ODER "bei App-Start einmal täglich prüfen"
-//      - nur senden wenn etwas anliegt, oder auch "nichts geplant"
-//      - zusätzliche Vorabend-Vorschau auf den nächsten Tag
+// 3) TAGESVORSCHAU: scheduleDailyOverview() plant eine täglich wiederkeh-
+//    rende Notification, die kombiniert: Dienst (Hive-Key schedule_<yyyy-MM>),
+//    Notiz-Vorhandensein (Hive-Key schedule_note_<dateKey>), Wetter
+//    (WeatherService) und fällige/offene Aufgaben (Hive-Key 'tasks').
+//    Konfigurierbar über DailyOverviewSettings (ein/aus, feste Uhrzeit vs.
+//    App-Start, nur wenn relevant, zusätzliche Vorabend-Vorschau).
+//
+// 4) DRINGEND (NEU): Aufgaben, die als dringend (isUrgent == true) markiert
+//    werden, erhalten GENAU EINE zusätzliche Erinnerung 24 Stunden nach der
+//    Markierung, falls bis dahin nicht erledigt — verwaltet über
+//    scheduleUrgentReminder()/cancelUrgentReminder(), aufgerufen von
+//    tasks_screen.dart bei Statusänderung. Bewusst einmalig, keine echte
+//    Wiederholung alle X Stunden (technisch ohne offene App nicht
+//    zuverlässig nativ umsetzbar, s. Kommentar an der Methode selbst).
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Liest/schreibt alle Einstellungen rund um die Tagesvorschau aus Hive.
-/// Eigene kleine Klasse, damit settings_screen.dart sauber dagegen
-/// programmieren kann, ohne überall einzelne Hive-Keys direkt anzufassen.
 class DailyOverviewSettings {
   static const _kEnabled = 'daily_overview_enabled';
   static const _kMode = 'daily_overview_mode'; // 'fixed_time' | 'app_start'
@@ -106,6 +106,11 @@ class NotificationService {
   static const int _dailyOverviewEveningId = 900002;
   static const int _badgeOnlyNotificationId = 900099;
 
+  // Basis-Offset für die "dringend, alle 6h" wiederkehrenden IDs — eigener
+  // Nummernraum, getrennt von den normalen Task-Remindern (_notificationId)
+  // und den Tagesvorschau-IDs oben.
+  static const int _urgentRecurringIdBase = 800000;
+
   Future<void> init() async {
     if (_initialized) return;
 
@@ -128,8 +133,7 @@ class NotificationService {
 
     _initialized = true;
 
-    // Badge beim Start IMMER auf den korrekten, aktuellen Stand bringen —
-    // behebt das Problem, dass eine alte "1" sonst ewig kleben bleibt.
+    // Badge beim Start IMMER auf den korrekten, aktuellen Stand bringen.
     await _refreshBadge();
 
     // Modus 'app_start': einmal pro Kalendertag die Tagesvorschau direkt
@@ -166,20 +170,27 @@ class NotificationService {
   RelationshipStyle get _style => RelationshipStyleStore.load();
   String get _fullName => (Hive.box('einstellungen').get('name', defaultValue: '') as String).trim();
 
+  NotificationDetails _detailsFor(NotificationCopy copy, {required int badgeNumber, bool active = true}) {
+    return NotificationDetails(
+      iOS: DarwinNotificationDetails(
+        subtitle: copy.subtitle,
+        sound: 'default',
+        badgeNumber: badgeNumber,
+        interruptionLevel: active ? InterruptionLevel.active : InterruptionLevel.passive,
+      ),
+    );
+  }
+
   // ── BADGE-MANAGEMENT ───────────────────────────────────────────────────────
 
   /// Setzt das App-Icon-Badge auf die Anzahl der aktuell wirklich
   /// relevanten Items — aktuell: überfällige, nicht erledigte Aufgaben.
-  /// Wird bei init() aufgerufen und sollte zusätzlich von außen über
-  /// notifyTasksChanged() getriggert werden, sobald sich der Aufgaben-
-  /// Status ändert (erledigt, gelöscht, neue Frist gesetzt, ...).
   Future<void> _refreshBadge() async {
     final count = _countOverdueOpenTasks();
     if (count <= 0) {
       // Eine "stille" Notification (kein Alert, kein Sound, nur Badge),
-      // die sofort wieder gecancelt wird — das ist der zuverlässigste Weg
-      // über flutter_local_notifications, das App-Icon-Badge explizit auf
-      // 0 zurückzusetzen (es gibt keine direkte "clearBadge()"-Methode).
+      // die sofort wieder gecancelt wird — zuverlässigster Weg über
+      // flutter_local_notifications, das Badge explizit auf 0 zu setzen.
       await _plugin.show(
         _badgeOnlyNotificationId,
         null,
@@ -195,9 +206,6 @@ class NotificationService {
       );
       await _plugin.cancel(_badgeOnlyNotificationId);
     }
-    // Ist count > 0, wird das Badge bereits durch die jeweils zuletzt
-    // angezeigte/geplante Notification (badgeNumber: count) korrekt
-    // gesetzt — siehe scheduleTaskReminder/showTaskOverdueNow unten.
   }
 
   int _countOverdueOpenTasks() {
@@ -222,8 +230,7 @@ class NotificationService {
 
   /// Liest die rohe Task-Liste direkt aus Hive (Key 'tasks', identisch zu
   /// TaskStore.loadAll() in tasks_screen.dart). Bewusst ohne Import von
-  /// tasks_screen.dart, um einen zyklischen Import zu vermeiden (dort wird
-  /// bereits dieser Service importiert).
+  /// tasks_screen.dart, um einen zyklischen Import zu vermeiden.
   List<Map<String, dynamic>> _loadTasksRaw() {
     final box = Hive.box('einstellungen');
     final raw = box.get('tasks');
@@ -244,10 +251,8 @@ class NotificationService {
   /// hält das Badge konsistent mit dem echten Zustand.
   Future<void> notifyTasksChanged() => _refreshBadge();
 
-  // ── TASK REMINDER (bestehender Mechanismus, jetzt stilabhängig) ──────────
+  // ── TASK REMINDER (bestehender Mechanismus, stilabhängig über Phrasen) ───
 
-  /// Erinnerung für einen Task planen — Text wird je nach gewähltem
-  /// RelationshipStyle aus relationship_style.dart gewählt.
   void scheduleTaskReminder({
     required String taskId,
     required int reminderIndex,
@@ -269,17 +274,7 @@ class NotificationService {
       copy.title,
       copy.body,
       tz.TZDateTime.from(reminderAt, tz.local),
-      NotificationDetails(
-        iOS: DarwinNotificationDetails(
-          sound: 'default',
-          // +1, weil diese Notification selbst beim Feuern ein weiteres
-          // (potenziell überfälliges) Item repräsentieren kann; der exakte
-          // Wert wird ohnehin beim nächsten App-Start über _refreshBadge()
-          // korrigiert, das hier ist nur die Anzeige zum Feuerzeitpunkt.
-          badgeNumber: _countOverdueOpenTasks() + 1,
-          interruptionLevel: InterruptionLevel.active,
-        ),
-      ),
+      _detailsFor(copy, badgeNumber: _countOverdueOpenTasks() + 1),
       androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
       uiLocalNotificationDateInterpretation:
           UILocalNotificationDateInterpretation.absoluteTime,
@@ -287,8 +282,6 @@ class NotificationService {
     );
   }
 
-  /// Direkt aufrufbar, falls eine Aufgabe HEUTE fällig ist (z.B. von einem
-  /// eigenen Scheduling-Aufruf in tasks_screen.dart, sobald due == heute).
   void scheduleTaskDueToday({
     required String taskId,
     required int reminderIndex,
@@ -306,18 +299,13 @@ class NotificationService {
       copy.title,
       copy.body,
       tz.TZDateTime.from(fireAt, tz.local),
-      const NotificationDetails(
-        iOS: DarwinNotificationDetails(sound: 'default', interruptionLevel: InterruptionLevel.active),
-      ),
+      _detailsFor(copy, badgeNumber: _countOverdueOpenTasks()),
       androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
       uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
       payload: taskId,
     );
   }
 
-  /// Sofortige (nicht geplante) Notification für eine überfällige Aufgabe —
-  /// z.B. nutzbar bei einer eigenen Prüfung, falls eine Aufgabe gerade erst
-  /// überfällig geworden ist.
   Future<void> showTaskOverdueNow({
     required String taskId,
     required String taskTitle,
@@ -331,13 +319,7 @@ class NotificationService {
       _notificationId(taskId, 99),
       copy.title,
       copy.body,
-      NotificationDetails(
-        iOS: DarwinNotificationDetails(
-          sound: 'default',
-          badgeNumber: _countOverdueOpenTasks(),
-          interruptionLevel: InterruptionLevel.active,
-        ),
-      ),
+      _detailsFor(copy, badgeNumber: _countOverdueOpenTasks()),
       payload: taskId,
     );
   }
@@ -346,7 +328,9 @@ class NotificationService {
     for (int i = 0; i < 10; i++) {
       cancelTaskReminder(taskId, i);
     }
-    // Badge nach dem Entfernen der Reminder gleich neu berechnen.
+    // Auch eine eventuell laufende Dringend-Erinnerung für diese Aufgabe
+    // stoppen — relevant, wenn die Aufgabe erledigt/gelöscht wird.
+    cancelUrgentReminder(taskId);
     _refreshBadge();
   }
 
@@ -358,67 +342,168 @@ class NotificationService {
     return (taskId.hashCode.abs() % 100000) * 10 + reminderIndex;
   }
 
-  // ── TAGESVORSCHAU (NEU) ───────────────────────────────────────────────────
+  // ── DRINGEND, EINMALIGE ERINNERUNG NACH 24H (NEU) ─────────────────────────
+  //
+  // Aufgaben, die als dringend markiert werden, erhalten GENAU EINE
+  // zusätzliche Erinnerung 24 Stunden nach der Markierung, falls sie bis
+  // dahin nicht erledigt wurde — unabhängig von eventuell zusätzlich
+  // gesetzten normalen Remindern. Bewusst einmalig (keine echte
+  // Wiederholung alle 6h): flutter_local_notifications/iOS unterstützen
+  // keine native "alle X Stunden, für immer"-Wiederholung ohne dass die
+  // App regelmäßig im Vorder- oder Hintergrund läuft, um neu zu planen.
+  // Eine einmalige 24h-Erinnerung ist die zuverlässige, einfache Lösung.
+
+  int _urgentRecurringId(String taskId) =>
+      _urgentRecurringIdBase + (taskId.hashCode.abs() % 100000);
+
+  /// Plant die einmalige Dringend-Erinnerung für 24h ab jetzt. Aufzurufen
+  /// von tasks_screen.dart, sobald eine Aufgabe als dringend markiert wird.
+  /// Erneuter Aufruf (z.B. bei Titel-Änderung) ersetzt automatisch den
+  /// bisherigen Termin (gleiche ID).
+  Future<void> scheduleUrgentReminder({
+    required String taskId,
+    required String taskTitle,
+  }) async {
+    final copy = RelationshipTexts.taskUrgentRecurring(
+      style: _style,
+      taskTitle: taskTitle,
+      fullName: _fullName,
+    );
+    final id = _urgentRecurringId(taskId);
+    final fireAt = DateTime.now().add(const Duration(hours: 24));
+
+    await _plugin.zonedSchedule(
+      id,
+      copy.title,
+      copy.body,
+      tz.TZDateTime.from(fireAt, tz.local),
+      _detailsFor(copy, badgeNumber: _countOverdueOpenTasks()),
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
+      payload: 'urgent:$taskId',
+    );
+  }
+
+  /// Stoppt die Dringend-Erinnerung für eine Aufgabe — aufzurufen, wenn die
+  /// Aufgabe nicht mehr dringend ist, erledigt oder gelöscht wurde.
+  void cancelUrgentReminder(String taskId) {
+    _plugin.cancel(_urgentRecurringId(taskId));
+  }
+
+  // ── TAGESVORSCHAU ──────────────────────────────────────────────────────────
 
   /// Liest den Schichtcode für einen bestimmten Tag direkt aus Hive —
   /// exakt derselbe Key wie in ScheduleScreenState.loadScheduleData():
   /// 'schedule_<yyyy-MM>' → Map<'yyyy-MM-dd', shiftCode>. 'X' (= frei/kein
-  /// Eintrag laut DienstplanParser) wird wie "kein Dienst" behandelt.
-  String? _shiftForDay(DateTime day) {
+  /// Eintrag laut DienstplanParser) wird als "frei" behandelt, kein Eintrag
+  /// als "kein Dienstplan vorhanden".
+  ({bool hasShift, bool isFree, String? code}) _shiftInfoForDay(DateTime day) {
     final box = Hive.box('einstellungen');
     final monthKey = DateFormat('yyyy-MM').format(day);
     final dayKey = DateFormat('yyyy-MM-dd').format(day);
     final raw = box.get('schedule_$monthKey');
     if (raw is Map) {
       final shift = raw[dayKey];
-      if (shift is String && shift.trim().isNotEmpty && shift.trim().toUpperCase() != 'X') {
-        return shift.trim();
+      if (shift is String && shift.trim().isNotEmpty) {
+        final trimmed = shift.trim();
+        if (trimmed.toUpperCase() == 'X') {
+          return (hasShift: true, isFree: true, code: null);
+        }
+        return (hasShift: true, isFree: false, code: trimmed);
       }
     }
-    return null;
+    return (hasShift: false, isFree: false, code: null);
   }
 
-  /// Zählt offene (nicht erledigte) Aufgaben mit Frist exakt an diesem Tag —
-  /// identische Logik zu TaskStore.hasOpenTaskOnDay() in tasks_screen.dart,
-  /// nur als Zähler statt bool und direkt auf dem Hive-Key 'tasks'.
-  int _openTaskCountForDay(DateTime day) {
+  /// true, wenn für diesen Tag eine Notiz hinterlegt ist (Telefonnummer
+  /// oder Text) — identische Hive-Konvention zu _NoteData in
+  /// schedule_screen.dart ('schedule_note_<dateKey>').
+  bool _hasNoteForDay(DateTime day) {
+    final box = Hive.box('einstellungen');
+    final dateKey = DateFormat('yyyy-MM-dd').format(day);
+    final raw = box.get('schedule_note_$dateKey');
+    if (raw is Map) {
+      final phone = (raw['phone'] ?? '') as String;
+      final text = (raw['text'] ?? '') as String;
+      return phone.trim().isNotEmpty || text.trim().isNotEmpty;
+    }
+    return false;
+  }
+
+  /// Liefert die Aufgaben-Kennzahlen für die Tagesvorschau eines Tages:
+  /// - Anzahl Aufgaben mit Frist GENAU an diesem Tag (dueTodayCount)
+  /// - Titel der einzigen solchen Aufgabe, falls dueTodayCount == 1
+  /// - Anzahl ANDERER offener Aufgaben (otherOpenCount) — alle nicht
+  ///   erledigten Aufgaben, die NICHT an diesem Tag fällig sind (egal ob
+  ///   sie eine Frist an einem anderen Tag haben oder gar keine Frist).
+  ({int dueTodayCount, String? dueTodayTaskTitle, int otherOpenCount}) _taskInfoForDay(DateTime day) {
     final tasks = _loadTasksRaw();
-    int count = 0;
+    int dueToday = 0;
+    String? dueTodayTitle;
+    int otherOpen = 0;
     for (final t in tasks) {
       final done = t['done'] as bool? ?? false;
       if (done) continue;
       final dueRaw = t['dueDate'] as String?;
-      if (dueRaw == null) continue;
-      final due = DateTime.tryParse(dueRaw);
-      if (due == null) continue;
-      if (due.year == day.year && due.month == day.month && due.day == day.day) count++;
+      final due = dueRaw != null ? DateTime.tryParse(dueRaw) : null;
+      final isDueToday = due != null && due.year == day.year && due.month == day.month && due.day == day.day;
+      if (isDueToday) {
+        dueToday++;
+        dueTodayTitle = t['title'] as String?;
+      } else {
+        otherOpen++;
+      }
     }
-    return count;
+    return (
+      dueTodayCount: dueToday,
+      dueTodayTaskTitle: dueToday == 1 ? dueTodayTitle : null,
+      otherOpenCount: otherOpen,
+    );
   }
 
-  /// Baut Titel+Body für die Tagesvorschau eines bestimmten Tages.
-  NotificationCopy _buildOverviewCopy({required DateTime day, required String dayLabel}) {
-    final shift = _shiftForDay(day);
-    final taskCount = _openTaskCountForDay(day);
+  /// Holt die aktuell gecachten Wetterdaten (kein aktiver Fetch hier, das
+  /// übernimmt der reguläre WeatherService-Aufruf z.B. beim App-Start im
+  /// Homescreen) und mappt sie auf eine WeatherCategory. Liefert null, wenn
+  /// keine (auch keine veralteten) Wetterdaten vorliegen.
+  ({WeatherCategory category, double tempC})? _currentWeatherInfo() {
+    final cached = WeatherService.instance.cached;
+    if (cached == null) return null;
+    final category = categoryFor(cached.weatherCode, cached.tempC);
+    return (category: category, tempC: cached.tempC);
+  }
+
+  /// Baut Titel+Subtitle+Body für die Tagesvorschau eines bestimmten Tages.
+  NotificationCopy _buildOverviewCopy({required DateTime day}) {
+    final shiftInfo = _shiftInfoForDay(day);
+    final hasNote = _hasNoteForDay(day);
+    final weather = _currentWeatherInfo();
+    final taskInfo = _taskInfoForDay(day);
+
     return RelationshipTexts.dailyOverview(
       style: _style,
       fullName: _fullName,
-      dayLabel: dayLabel,
-      shift: shift,
-      taskCount: taskCount,
+      hasShift: shiftInfo.hasShift,
+      isFree: shiftInfo.isFree,
+      shiftCode: shiftInfo.code,
+      hasNote: hasNote,
+      weatherCategory: weather?.category,
+      weatherTempC: weather?.tempC,
+      dueTodayCount: taskInfo.dueTodayCount,
+      dueTodayTaskTitle: taskInfo.dueTodayTaskTitle,
+      otherOpenCount: taskInfo.otherOpenCount,
     );
   }
 
   bool _dayHasRelevantContent(DateTime day) {
-    return _shiftForDay(day) != null || _openTaskCountForDay(day) > 0;
+    final shiftInfo = _shiftInfoForDay(day);
+    final taskInfo = _taskInfoForDay(day);
+    return (shiftInfo.hasShift && !shiftInfo.isFree) || taskInfo.dueTodayCount > 0;
   }
 
   /// Plant die wiederkehrende Tagesvorschau (Modus 'fixed_time'). Plant
   /// IMMER neu (cancel + reschedule), damit Änderungen an Uhrzeit/Optionen
-  /// aus den Settings sofort wirksam werden, und damit der Inhalt (Dienst +
-  /// Aufgaben-Anzahl) bei jedem App-Start mit den aktuellen Daten neu
-  /// befüllt wird. Nutzt `matchDateTimeComponents: DateTimeComponents.time`
-  /// für die tägliche Wiederholung durch das Betriebssystem.
+  /// aus den Settings sofort wirksam werden, und damit der Inhalt bei jedem
+  /// App-Start mit den aktuellen Daten neu befüllt wird.
   Future<void> scheduleDailyOverview() async {
     await _plugin.cancel(_dailyOverviewMorningId);
     await _plugin.cancel(_dailyOverviewEveningId);
@@ -432,13 +517,11 @@ class NotificationService {
 
     // ── Morgen-Vorschau für HEUTE ──
     if (!DailyOverviewSettings.onlyIfRelevant || _dayHasRelevantContent(today)) {
-      final copy = _buildOverviewCopy(day: today, dayLabel: 'heute');
+      final copy = _buildOverviewCopy(day: today);
       var fireTime = DateTime(
         now.year, now.month, now.day,
         DailyOverviewSettings.hour, DailyOverviewSettings.minute,
       );
-      // Falls die Zeit heute schon vorbei ist, für den Erstlauf auf morgen
-      // verschieben — die tägliche Wiederholung übernimmt danach automatisch.
       if (fireTime.isBefore(now)) fireTime = fireTime.add(const Duration(days: 1));
 
       await _plugin.zonedSchedule(
@@ -446,9 +529,7 @@ class NotificationService {
         copy.title,
         copy.body,
         tz.TZDateTime.from(fireTime, tz.local),
-        const NotificationDetails(
-          iOS: DarwinNotificationDetails(sound: 'default', interruptionLevel: InterruptionLevel.active),
-        ),
+        _detailsFor(copy, badgeNumber: _countOverdueOpenTasks()),
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
         uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
         matchDateTimeComponents: DateTimeComponents.time,
@@ -460,7 +541,7 @@ class NotificationService {
     if (DailyOverviewSettings.eveningPreviewEnabled) {
       final tomorrow = today.add(const Duration(days: 1));
       if (!DailyOverviewSettings.onlyIfRelevant || _dayHasRelevantContent(tomorrow)) {
-        final copy = _buildOverviewCopy(day: tomorrow, dayLabel: 'morgen');
+        final copy = _buildOverviewCopy(day: tomorrow);
         var fireTime = DateTime(
           now.year, now.month, now.day,
           DailyOverviewSettings.eveningHour, DailyOverviewSettings.eveningMinute,
@@ -472,9 +553,7 @@ class NotificationService {
           copy.title,
           copy.body,
           tz.TZDateTime.from(fireTime, tz.local),
-          const NotificationDetails(
-            iOS: DarwinNotificationDetails(sound: 'default', interruptionLevel: InterruptionLevel.active),
-          ),
+          _detailsFor(copy, badgeNumber: _countOverdueOpenTasks()),
           androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
           uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
           matchDateTimeComponents: DateTimeComponents.time,
@@ -485,34 +564,30 @@ class NotificationService {
   }
 
   /// Modus 'app_start': wird in init() aufgerufen. Zeigt höchstens einmal
-  /// pro Kalendertag eine sofortige Notification mit der Tagesvorschau,
-  /// sobald die App geöffnet wird — keine feste Uhrzeit nötig.
+  /// pro Kalendertag eine sofortige Notification mit der Tagesvorschau.
   Future<void> _maybeShowAppStartOverview() async {
     if (!DailyOverviewSettings.enabled || DailyOverviewSettings.mode != 'app_start') return;
 
     final todayStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
-    if (DailyOverviewSettings.lastAppStartCheckDate == todayStr) return; // heute schon gezeigt
+    if (DailyOverviewSettings.lastAppStartCheckDate == todayStr) return;
     DailyOverviewSettings.lastAppStartCheckDate = todayStr;
 
     final today = DateTime.now();
     final dayOnly = DateTime(today.year, today.month, today.day);
     if (DailyOverviewSettings.onlyIfRelevant && !_dayHasRelevantContent(dayOnly)) return;
 
-    final copy = _buildOverviewCopy(day: dayOnly, dayLabel: 'heute');
+    final copy = _buildOverviewCopy(day: dayOnly);
     await _plugin.show(
       _dailyOverviewMorningId,
       copy.title,
       copy.body,
-      const NotificationDetails(
-        iOS: DarwinNotificationDetails(sound: 'default', interruptionLevel: InterruptionLevel.active),
-      ),
+      _detailsFor(copy, badgeNumber: _countOverdueOpenTasks()),
       payload: 'daily_overview',
     );
   }
 
   /// Von den Settings aufzurufen, nachdem der Nutzer irgendeine
-  /// Tagesvorschau-Option geändert hat — sorgt dafür, dass alles
-  /// (Scheduling oder Deaktivierung) sofort konsistent ist.
+  /// Tagesvorschau-Option geändert hat.
   Future<void> applyDailyOverviewSettingsChanged() async {
     if (DailyOverviewSettings.mode == 'fixed_time') {
       await scheduleDailyOverview();

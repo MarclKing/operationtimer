@@ -278,7 +278,7 @@ void _removeFromLocalLog(String firestoreId) {
               filter: ImageFilter.blur(
                   sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
               child: Container(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 decoration: BoxDecoration(
                   color: skin.primary
                       .withValues(alpha: skin.isLight ? 0.06 : 0.10),
@@ -288,12 +288,12 @@ void _removeFromLocalLog(String firestoreId) {
                 ),
                 child: Row(children: [
                   Container(
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
-                      color: skin.primary.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
+  width: 32,
+  height: 32,
+  decoration: BoxDecoration(
+    color: skin.primary.withValues(alpha: 0.12),
+    borderRadius: BorderRadius.circular(10),
+  ),
                     child: Icon(Icons.inbox_outlined,
                         size: 20, color: skin.primary),
                   ),
@@ -303,17 +303,17 @@ void _removeFromLocalLog(String firestoreId) {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          '${docs.length} offene Eingaben',
-                          style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700,
-                              color: skin.textPrimary),
-                        ),
+  '${docs.length} offene Eingaben',
+  style: TextStyle(
+      fontSize: 14,
+      fontWeight: FontWeight.w700,
+      color: skin.textPrimary),
+),
                         Text(
-                          'Warten auf Analyse',
-                          style: TextStyle(
-                              fontSize: 11.5, color: skin.textMuted),
-                        ),
+  'Warten auf Analyse',
+  style: TextStyle(
+      fontSize: 11, color: skin.textMuted),
+),
                       ],
                     ),
                   ),

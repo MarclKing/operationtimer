@@ -1,25 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../theme/app_theme.dart';
-
-// ─────────────────────────────────────────────────────────────────────────────
-// LIQUID GLASS DESIGN SYSTEM — zentrale Quelle für alle Screens
-//
-// Vorher war diese Extension + alle Widgets unten in 6+ Dateien dupliziert
-// (home_screen.dart, fahrtenbuch_screen.dart, month_screen.dart,
-//  schedule_screen.dart, pdf_service.dart, main.dart).
-// Jetzt: einmal hier definiert, überall importiert.
-//
-// WICHTIG beim Umstellen der bestehenden Screens:
-//   1. Lokale "extension _AppSkinGlass on AppSkin { ... }" entfernen
-//   2. Lokale private Klassen (_GlassSheet, _SheetHandle, _GlassPrimaryButton,
-//      _GlassSecondaryButton/_GlassButton, _GlassSurface, _GlassIconBadge,
-//      _GlassStatCard) entfernen
-//   3. import '../widgets/glass_kit.dart'; hinzufügen
-//   4. Aufrufstellen anpassen: _GlassSheet → GlassSheet, _SheetHandle →
-//      SheetHandle, _GlassPrimaryButton → GlassPrimaryButton, usw.
-//      (einfaches Such-&-Ersetzen, da Konstruktor-Parameter identisch sind)
-// ─────────────────────────────────────────────────────────────────────────────
 
 extension AppSkinGlass on AppSkin {
   double get glassBlur => isLight ? 18.0 : 22.0;
@@ -32,8 +14,7 @@ extension AppSkinGlass on AppSkin {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GLASS SURFACE — die zentrale Glas-Karte (entspricht der bisherigen
-// GlassSurface aus home_screen.dart bzw. den lokalen _GlassSurface-Klassen)
+// GLASS SURFACE
 // ─────────────────────────────────────────────────────────────────────────────
 
 class GlassSurface extends StatelessWidget {
@@ -94,9 +75,7 @@ class GlassSurface extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GLASS SHEET — Bottom-Sheet-Wrapper
-// (vorher: _GlassSheet in home_screen.dart/fahrtenbuch_screen.dart,
-//  _GlassBottomSheet in month_screen.dart/schedule_screen.dart — identisch)
+// GLASS SHEET
 // ─────────────────────────────────────────────────────────────────────────────
 
 class GlassSheet extends StatelessWidget {
@@ -123,12 +102,10 @@ class GlassSheet extends StatelessWidget {
   }
 }
 
-/// Alias, falls an Aufrufstellen bisher `_GlassBottomSheet` verwendet wurde.
-/// Entspricht 1:1 [GlassSheet] — vermeidet Übersetzungsfehler beim Umstellen.
 typedef GlassBottomSheet = GlassSheet;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SHEET HANDLE — der kleine Balken oben im Bottom-Sheet
+// SHEET HANDLE
 // ─────────────────────────────────────────────────────────────────────────────
 
 class SheetHandle extends StatelessWidget {
@@ -147,7 +124,7 @@ class SheetHandle extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GLASS PRIMARY BUTTON — der hervorgehobene Aktions-Button
+// GLASS PRIMARY BUTTON
 // ─────────────────────────────────────────────────────────────────────────────
 
 class GlassPrimaryButton extends StatelessWidget {
@@ -206,8 +183,6 @@ class GlassPrimaryButton extends StatelessWidget {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GLASS SECONDARY BUTTON
-// (vorher: _GlassSecondaryButton in fahrtenbuch_/month_/schedule_screen.dart;
-//  _GlassButton in home_screen.dart hatte denselben Look, nur anderer Name)
 // ─────────────────────────────────────────────────────────────────────────────
 
 class GlassSecondaryButton extends StatelessWidget {
@@ -237,11 +212,10 @@ class GlassSecondaryButton extends StatelessWidget {
   }
 }
 
-/// Alias für Aufrufstellen, die bisher `_GlassButton(...)` aus home_screen.dart nutzten.
 typedef GlassButton = GlassSecondaryButton;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GLASS ICON BADGE — kleines Icon ohne Rahmen (z. B. Datums-Pfeile, Edit-Stift)
+// GLASS ICON BADGE
 // ─────────────────────────────────────────────────────────────────────────────
 
 class GlassIconBadge extends StatelessWidget {
@@ -264,7 +238,7 @@ class GlassIconBadge extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GLASS STAT CARD — die kleinen Statistik-Kacheln oben in den Listen-Screens
+// GLASS STAT CARD
 // ─────────────────────────────────────────────────────────────────────────────
 
 class GlassStatCard extends StatelessWidget {
@@ -300,13 +274,10 @@ class GlassStatCard extends StatelessWidget {
   }
 }
 
-/// Alias, da fahrtenbuch_screen.dart die identische Karte `_StatCard` nannte.
 typedef StatCard = GlassStatCard;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// FADING LIST VIEW — Verlaufender Schatten am Listenende (vor Bottom-Nav)
-// (vorher 1:1 dupliziert in fahrtenbuch_screen.dart, month_screen.dart,
-//  schedule_screen.dart)
+// FADING LIST VIEW
 // ─────────────────────────────────────────────────────────────────────────────
 
 class FadingListView extends StatelessWidget {
@@ -330,6 +301,497 @@ class FadingListView extends StatelessWidget {
       },
       blendMode: BlendMode.dstIn,
       child: child,
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GLASS SEGMENTED CONTROL
+// Ersetzt den alten manuellen Row-Segmented-Picker (z.B. "Erledigte Aufgaben")
+// Verwendung:
+//   GlassSegmentedControl<String>(
+//     value: _taskAutoDelete,
+//     items: [
+//       GlassSegmentItem(value: 'never', label: 'Nie'),
+//       GlassSegmentItem(value: '1d',    label: '1T'),
+//       GlassSegmentItem(value: '2d',    label: '2T'),
+//       GlassSegmentItem(value: '1w',    label: '1W'),
+//       GlassSegmentItem(value: '1m',    label: '1M'),
+//     ],
+//     onChanged: (v) { setState(() => _taskAutoDelete = v); box.put('task_auto_delete', v); },
+//   )
+// ─────────────────────────────────────────────────────────────────────────────
+
+class GlassSegmentItem<T> {
+  final T value;
+  final String label;
+  const GlassSegmentItem({required this.value, required this.label});
+}
+
+class GlassSegmentedControl<T> extends StatelessWidget {
+  final T value;
+  final List<GlassSegmentItem<T>> items;
+  final ValueChanged<T> onChanged;
+
+  const GlassSegmentedControl({
+    super.key,
+    required this.value,
+    required this.items,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final skin = AppTheme.of(context);
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(14),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        child: Container(
+          padding: const EdgeInsets.all(4),
+          decoration: BoxDecoration(
+            color: skin.isLight
+                ? Colors.white.withValues(alpha: 0.45)
+                : Colors.white.withValues(alpha: 0.06),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: skin.glassBorder),
+          ),
+          child: Row(
+            children: items.map((item) {
+              final isSelected = item.value == value;
+              return Expanded(
+                child: GestureDetector(
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    onChanged(item.value);
+                  },
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? (skin.isLight
+                              ? Colors.white.withValues(alpha: 0.80)
+                              : Colors.white.withValues(alpha: 0.14))
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(10),
+                      border: isSelected ? Border.all(color: skin.glassBorder) : null,
+                    ),
+                    child: Center(
+                      child: Text(
+                        item.label,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: isSelected ? FontWeight.w700 : FontWeight.w400,
+                          color: isSelected ? skin.primary : skin.surface(0.45),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GLASS DROPDOWN — Apple-style Overlay Popup
+// ─────────────────────────────────────────────────────────────────────────────
+
+class GlassDropdownItem<T> {
+  final T value;
+  final String label;
+  final IconData? icon;
+  const GlassDropdownItem({required this.value, required this.label, this.icon});
+}
+
+class GlassDropdownButton<T> extends StatefulWidget {
+  final T value;
+  final List<GlassDropdownItem<T>> items;
+  final ValueChanged<T> onChanged;
+  final String label;
+  final String? subtitle;
+  final IconData? icon;
+  final Color? iconBg;
+  final String Function(T) displayBuilder;
+  final bool isLast;
+
+  const GlassDropdownButton({
+    super.key,
+    required this.value,
+    required this.items,
+    required this.onChanged,
+    required this.label,
+    required this.displayBuilder,
+    this.subtitle,
+    this.icon,
+    this.iconBg,
+    this.isLast = false,
+  });
+
+  @override
+  State<GlassDropdownButton<T>> createState() => _GlassDropdownButtonState<T>();
+}
+
+class _GlassDropdownButtonState<T> extends State<GlassDropdownButton<T>>
+    with SingleTickerProviderStateMixin {
+  OverlayEntry? _overlayEntry;
+  final _triggerKey = GlobalKey();
+  bool _open = false;
+  late AnimationController _animCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _animCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 200),
+    );
+  }
+
+  @override
+  void dispose() {
+    _removeOverlay();
+    _animCtrl.dispose();
+    super.dispose();
+  }
+
+  void _removeOverlay() {
+    _overlayEntry?.remove();
+    _overlayEntry = null;
+  }
+
+  Future<void> _close() async {
+    await _animCtrl.reverse();
+    _removeOverlay();
+    if (mounted) setState(() => _open = false);
+  }
+
+  void _openOverlay() {
+    final box = _triggerKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null) return;
+    final overlay = Overlay.of(context);
+    final size = box.size;
+    final offset = box.localToGlobal(Offset.zero);
+    final screenHeight = MediaQuery.of(context).size.height;
+
+    const popupMaxWidth = 260.0;
+    const popupMinWidth = 160.0;
+
+    final rightEdge = offset.dx + size.width;
+    double popupLeft = rightEdge - popupMaxWidth;
+    if (popupLeft < 16) popupLeft = 16;
+
+    double popupTop = offset.dy + size.height * 0.5 - 8;
+    final estimatedHeight = widget.items.length * 48.0 + 16;
+    if (popupTop + estimatedHeight > screenHeight - 32) {
+      popupTop = screenHeight - estimatedHeight - 32;
+    }
+    if (popupTop < 60) popupTop = 60;
+
+    _animCtrl.value = 0;
+    setState(() => _open = true);
+
+    _overlayEntry = OverlayEntry(
+      builder: (_) => _DropdownOverlay<T>(
+        animCtrl: _animCtrl,
+        items: widget.items,
+        currentValue: widget.value,
+        left: popupLeft,
+        top: popupTop,
+        maxWidth: popupMaxWidth,
+        minWidth: popupMinWidth,
+        onSelect: (val) {
+          HapticFeedback.selectionClick();
+          widget.onChanged(val);
+          _close();
+        },
+        onDismiss: _close,
+      ),
+    );
+
+    overlay.insert(_overlayEntry!);
+    _animCtrl.forward();
+  }
+
+  void _toggle() {
+    if (_open) {
+      _close();
+    } else {
+      _openOverlay();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final skin = AppTheme.of(context);
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        GestureDetector(
+          key: _triggerKey,
+          onTap: _toggle,
+          behavior: HitTestBehavior.opaque,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Row(
+              children: [
+                if (widget.icon != null) ...[
+                  Container(
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      color: widget.iconBg ?? skin.primary,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(widget.icon, color: Colors.white, size: 18),
+                  ),
+                  const SizedBox(width: 14),
+                ],
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        widget.label,
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500,
+                          color: skin.textPrimary,
+                        ),
+                      ),
+                      if (widget.subtitle != null) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          widget.subtitle!,
+                          style: TextStyle(fontSize: 12, color: skin.textMuted),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                Text(
+                  widget.displayBuilder(widget.value),
+                  style: TextStyle(fontSize: 15, color: skin.textMuted),
+                ),
+                const SizedBox(width: 4),
+                AnimatedRotation(
+                  turns: _open ? 0.25 : 0.0,
+                  duration: const Duration(milliseconds: 200),
+                  child: Icon(
+                    Icons.chevron_right_rounded,
+                    size: 18,
+                    color: skin.surface(0.28),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (!widget.isLast)
+          Padding(
+            padding: EdgeInsets.only(left: widget.icon != null ? 60.0 : 14.0),
+            child: Divider(
+              height: 0.5,
+              color: skin.isLight
+                  ? Colors.white.withValues(alpha: 0.55)
+                  : Colors.white.withValues(alpha: 0.16),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// OVERLAY POPUP — FIX: Material() wrapper verhindert gelbe Unterstreichungen
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _DropdownOverlay<T> extends StatefulWidget {
+  final AnimationController animCtrl;
+  final List<GlassDropdownItem<T>> items;
+  final T currentValue;
+  final double left;
+  final double top;
+  final double maxWidth;
+  final double minWidth;
+  final ValueChanged<T> onSelect;
+  final VoidCallback onDismiss;
+
+  const _DropdownOverlay({
+    required this.animCtrl,
+    required this.items,
+    required this.currentValue,
+    required this.left,
+    required this.top,
+    required this.maxWidth,
+    required this.minWidth,
+    required this.onSelect,
+    required this.onDismiss,
+  });
+
+  @override
+  State<_DropdownOverlay<T>> createState() => _DropdownOverlayState<T>();
+}
+
+class _DropdownOverlayState<T> extends State<_DropdownOverlay<T>> {
+  @override
+  Widget build(BuildContext context) {
+    final skin = AppTheme.of(context);
+
+    final scaleAnim = CurvedAnimation(
+      parent: widget.animCtrl,
+      curve: Curves.easeOutBack,
+      reverseCurve: Curves.easeInCubic,
+    );
+    final fadeAnim = CurvedAnimation(
+      parent: widget.animCtrl,
+      curve: Curves.easeOut,
+      reverseCurve: Curves.easeIn,
+    );
+
+    return Stack(
+      children: [
+        // Dismiss-Fläche
+        Positioned.fill(
+          child: GestureDetector(
+            onTap: widget.onDismiss,
+            behavior: HitTestBehavior.translucent,
+            child: const SizedBox.expand(),
+          ),
+        ),
+
+        // Popup
+        Positioned(
+          left: widget.left,
+          top: widget.top,
+          child: AnimatedBuilder(
+            animation: widget.animCtrl,
+            builder: (_, child) => Transform.scale(
+              scale: 0.88 + scaleAnim.value * 0.12,
+              alignment: Alignment.topRight,
+              child: Opacity(
+                opacity: fadeAnim.value.clamp(0.0, 1.0),
+                child: child,
+              ),
+            ),
+            // ── FIX: Material() wrapper ──────────────────────────────────
+            // Ohne Material-Ancestor zeigt Flutter alle Texte im Overlay
+            // mit gelben Debug-Unterstreichungen (DefaultTextStyle-Fallback).
+            child: Material(
+              color: Colors.transparent,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  minWidth: widget.minWidth,
+                  maxWidth: widget.maxWidth,
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(14),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 28, sigmaY: 28),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: skin.isLight
+                            ? Colors.white.withValues(alpha: 0.94)
+                            : const Color(0xFF2A2A2E).withValues(alpha: 0.97),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: skin.isLight
+                              ? Colors.white.withValues(alpha: 0.55)
+                              : Colors.white.withValues(alpha: 0.12),
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.28),
+                            blurRadius: 32,
+                            offset: const Offset(0, 8),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: widget.items.asMap().entries.map((entry) {
+                          final i = entry.key;
+                          final item = entry.value;
+                          final isSelected = item.value == widget.currentValue;
+                          final isLast = i == widget.items.length - 1;
+
+                          return Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              GestureDetector(
+                                onTap: () => widget.onSelect(item.value),
+                                behavior: HitTestBehavior.opaque,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 13,
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      SizedBox(
+                                        width: 22,
+                                        child: isSelected
+                                            ? Icon(
+                                                Icons.check_rounded,
+                                                size: 16,
+                                                color: skin.primary,
+                                              )
+                                            : null,
+                                      ),
+                                      if (item.icon != null) ...[
+                                        Icon(
+                                          item.icon,
+                                          size: 16,
+                                          color: isSelected
+                                              ? skin.primary
+                                              : skin.surface(0.45),
+                                        ),
+                                        const SizedBox(width: 8),
+                                      ],
+                                      Text(
+                                        item.label,
+                                        style: TextStyle(
+                                          fontSize: 15,
+                                          fontWeight: isSelected
+                                              ? FontWeight.w600
+                                              : FontWeight.w400,
+                                          color: isSelected
+                                              ? skin.primary
+                                              : skin.textPrimary,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              if (!isLast)
+                                Container(
+                                  height: 0.4,
+                                  margin: const EdgeInsets.only(left: 38),
+                                  color: skin.isLight
+                                      ? Colors.black.withValues(alpha: 0.08)
+                                      : Colors.white.withValues(alpha: 0.08),
+                                ),
+                            ],
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

@@ -2010,20 +2010,24 @@ class _DayCardState extends State<_DayCard> with TickerProviderStateMixin {
         }),
                 Expanded(child: shiftContent),
         if (widget.entry != null && widget.entry!.shift.isNotEmpty) ...[
-          if (hasEvent) ...[
-            Icon(Icons.flag_rounded, size: 11, color: widget.isChrome ? const Color(0xFFFFB347).withValues(alpha: 0.75) : const Color(0xFFFFB347)),
-            const SizedBox(width: 5),
-          ],
-          if (widget.hasTask) ...[
-            Icon(
-              Icons.task_alt_rounded,
-              size: 11,
-              color: widget.isChrome ? const Color(0xFFCCCCCC).withValues(alpha: 0.85) : skin.primary.withValues(alpha: 0.7),
-            ),
-            const SizedBox(width: 5),
-          ],
-          _isBirthdayDay ? const SizedBox(width: 7, height: 7) : _DayDot(day: widget.day, skin: skin, isChrome: widget.isChrome, isChanged: widget.isChanged),
-        ],
+  _isBirthdayDay
+      ? const SizedBox(width: 7, height: 7)
+      : _DayDot(day: widget.day, skin: skin, isChrome: widget.isChrome, isChanged: widget.isChanged),
+  if (hasEvent) ...[
+    const SizedBox(width: 5),
+    Icon(Icons.flag_rounded, size: 11,
+        color: widget.isChrome
+            ? const Color(0xFFFFB347).withValues(alpha: 0.75)
+            : const Color(0xFFFFB347)),
+  ],
+  if (widget.hasTask) ...[
+    const SizedBox(width: 5),
+    Icon(Icons.task_alt_rounded, size: 11,
+        color: widget.isChrome
+            ? const Color(0xFFCCCCCC).withValues(alpha: 0.85)
+            : skin.primary.withValues(alpha: 0.7)),
+  ],
+],
       ],
     );
 

@@ -243,6 +243,88 @@ final testCases = <TestCase>[
     expectedDateOffsetDays: 1,
     note: '"daran" nach Datum bricht Erinnere-Muster',
   ),
+
+  // ── Neue Fälle aus Sprach-Log 2026-06-23 ──────────────────────────────────
+
+  // "daran"-Varianten — Normalizer kennt das Muster nicht
+  TestCase(
+    input: 'Erinnere mich morgen daran das Auto zu waschen',
+    expectedTitleContains: 'Auto waschen',
+    expectedDateOffsetDays: 1,
+    note: '"daran" nach Datum — Normalizer-Bug',
+  ),
+  TestCase(
+    input: 'Erinnere mich morgen Mittag daran den Autoschlüssel zu übergeben',
+    expectedTitleContains: 'Autoschlüssel übergeben',
+    expectedDateOffsetDays: 1,
+    expectedHour: 12,
+    expectedMinute: 0,
+    note: '"daran" nach Datum+Uhrzeit',
+  ),
+  TestCase(
+    input: 'Erinnere mich morgen daran den Duden mitzunehmen',
+    expectedTitleContains: 'Duden mitnehmen',
+    expectedDateOffsetDays: 1,
+    note: '"daran" + Infinitiv mit "mit-"',
+  ),
+  TestCase(
+    input: 'Erinnere mich daran morgen an meinen Schlüssel zu denken',
+    expectedTitleContains: 'Schlüssel',
+    expectedDateOffsetDays: 1,
+    note: '"daran" VOR Datum — andere Wortstellung',
+  ),
+  TestCase(
+    input: 'Erinnere mich daran die Wäsche zu waschen',
+    expectedTitleContains: 'Wäsche',
+    expectDateNull: true,
+    note: '"daran" ohne Datum',
+  ),
+
+  // "Erinner" statt "Erinnere" — Spracherkennungsvariante
+  TestCase(
+    input: 'Erinner mich am Freitag an Blumen für Carina',
+    expectedTitleContains: 'Blumen für Carina',
+    note: '"Erinner" ohne -e am Ende — Datum variiert je Wochentag',
+  ),
+  TestCase(
+    input: 'Erinner mich am Mittwoch an meine Karte',
+    expectedTitleContains: 'Karte',
+    note: '"Erinner" + Possessivpronomen im Titel — Datum variiert je Wochentag',
+  ),
+
+  // Possessivpronomen im Titel — sollen rausgefiltert werden
+  TestCase(
+    input: 'Erinnere mich morgen an meinen grünen Anzug',
+    expectedTitleContains: 'Grünen Anzug',
+    expectedDateOffsetDays: 1,
+    note: '"meinen" soll aus Titel entfernt werden',
+  ),
+  TestCase(
+    input: 'Erinnere mich morgen an mein Haustier',
+    expectedTitleContains: 'Haustier',
+    expectedDateOffsetDays: 1,
+    note: '"mein" soll aus Titel entfernt werden',
+  ),
+  TestCase(
+    input: 'Erinnere mich morgen an meinen Schlüssel',
+    expectedTitleContains: 'Schlüssel',
+    expectedDateOffsetDays: 1,
+    note: '"meinen" soll aus Titel entfernt werden',
+  ),
+  TestCase(
+    input: 'Erinnere mich übermorgen an meinen PC',
+    expectedTitleContains: 'PC',
+    expectedDateOffsetDays: 2,
+    note: '"meinen" soll aus Titel entfernt werden',
+  ),
+
+  // "mit Frist" nach "hinzu" — falsche Reihenfolge
+  TestCase(
+    input: 'Füge die Aufgabe Sportschuhe mit Frist in einer Woche hinzu',
+    expectedTitleContains: 'Sportschuhe',
+    expectedDateOffsetDays: 7,
+    note: '"in einer Woche" als Datum — RelativDatum-Variante',
+  ),
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────

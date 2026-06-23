@@ -205,14 +205,15 @@ class TasksScreenState extends State<TasksScreen> with TickerProviderStateMixin 
   }
 
   void closeOverlays() {
-    if (_inlineEditId != null) {
-      final id = _inlineEditId!;
-      final cardKey = _taskCardKeys[id];
-      cardKey?.currentState?.commitInlineEditNow();
-      setState(() => _inlineEditId = null);
-    }
-    if (_openSwipedId != null) setState(() => _openSwipedId = null);
+  FocusManager.instance.primaryFocus?.unfocus();
+  if (_inlineEditId != null) {
+    final id = _inlineEditId!;
+    final cardKey = _taskCardKeys[id];
+    cardKey?.currentState?.commitInlineEditNow();
+    setState(() => _inlineEditId = null);
   }
+  if (_openSwipedId != null) setState(() => _openSwipedId = null);
+}
 
   List<Task> get _urgentTasks {
     final list = _tasks.where((t) => t.isUrgent && !t.done).toList();
@@ -238,7 +239,7 @@ class TasksScreenState extends State<TasksScreen> with TickerProviderStateMixin 
     return list;
   }
 
-  void _toggleDone(Task task) {
+    void _toggleDone(Task task) {
     HapticFeedback.lightImpact();
     setState(() {
       task.done = !task.done;
@@ -248,6 +249,7 @@ class TasksScreenState extends State<TasksScreen> with TickerProviderStateMixin 
     if (task.done && task.hasReminder) {
       NotificationService.instance.cancelTaskReminders(task.id);
     }
+    _syncUrgentReminder(task); // NEU
   }
 
   void _deleteTaskWithAnimation(Task task) {
@@ -321,10 +323,11 @@ class TasksScreenState extends State<TasksScreen> with TickerProviderStateMixin 
         skin: skin,
         initialTitle: initialTitle,
         initialDate: initialDate,
-        onSaved: (task) {
+                onSaved: (task) {
           TaskStore.add(task);
           _load();
           _scheduleReminders(task);
+          _syncUrgentReminder(task); // NEU
         },
       ),
     );
@@ -346,7 +349,7 @@ class TasksScreenState extends State<TasksScreen> with TickerProviderStateMixin 
       builder: (_) => _TaskEditSheet(
         skin: skin,
         existingTask: task,
-        onSaved: (updated) {
+                onSaved: (updated) {
           TaskStore.update(updated);
           if (updated.title != titleBefore || updated.dueDate != dueBefore) {
             SpeechLog.markEdited(updated.id, updated.createdAt);
@@ -354,6 +357,7 @@ class TasksScreenState extends State<TasksScreen> with TickerProviderStateMixin 
           _load();
           NotificationService.instance.cancelTaskReminders(updated.id);
           _scheduleReminders(updated);
+          _syncUrgentReminder(updated); // NEU
         },
       ),
     );
@@ -371,9 +375,26 @@ class TasksScreenState extends State<TasksScreen> with TickerProviderStateMixin 
     }
   }
 
+    // NEU ─────────────────────────────────────────────────────────────────────
+  /// Zentrale Stelle, die nach JEDER Änderung an einer Aufgabe aufgerufen
+  /// wird (Anlegen, Bearbeiten, Erledigt-Toggle, Diktat) und dafür sorgt,
+  /// dass die einmalige 24h-Dringend-Erinnerung konsistent mit dem
+  /// tatsächlichen Zustand bleibt: läuft nur, wenn die Aufgabe aktuell als
+  /// dringend markiert UND nicht erledigt ist.
+  void _syncUrgentReminder(Task task) {
+    if (task.isUrgent && !task.done) {
+      NotificationService.instance.scheduleUrgentReminder(
+        taskId: task.id,
+        taskTitle: task.title,
+      );
+    } else {
+      NotificationService.instance.cancelUrgentReminder(task.id);
+    }
+  }
+
   // ── Diktier-Flow ────────────────────────────────────────────────────────────
 
-  void _saveTaskFromSpeech(ParsedSpokenTask parsed, String logRef) {
+    void _saveTaskFromSpeech(ParsedSpokenTask parsed, String logRef) {
     final combined = parsed.combinedDateTime;
     final task = Task(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
@@ -387,6 +408,7 @@ class TasksScreenState extends State<TasksScreen> with TickerProviderStateMixin 
     SpeechLog.linkLastEntryToTask(logRef, task.id);
     _load();
     HapticFeedback.mediumImpact();
+    _syncUrgentReminder(task); // NEU
   }
 
   bool _isLikelyDuplicate(ParsedSpokenTask parsed) {
@@ -449,15 +471,12 @@ class TasksScreenState extends State<TasksScreen> with TickerProviderStateMixin 
         skin: skin,
         existingTask: draft,
         isReviewMode: true,
-        onSaved: (finalTask) {
+                onSaved: (finalTask) {
           if (_isLikelyDuplicate(parsed)) {
             HapticFeedback.lightImpact();
           }
           TaskStore.add(finalTask);
           SpeechLog.linkLastEntryToTask(logRef, finalTask.id);
-          // Falls der Nutzer im Review-Sheet Titel/Datum geändert hat,
-          // zählt das direkt als "wasEdited" — ist ja exakt das Signal,
-          // dass die automatische Erkennung nicht ausgereicht hätte.
           final titleChanged = finalTask.title.trim() != parsed.title.trim();
           final dateChanged = finalTask.dueDate != parsed.combinedDateTime;
           if (titleChanged || dateChanged) {
@@ -465,6 +484,7 @@ class TasksScreenState extends State<TasksScreen> with TickerProviderStateMixin 
           }
           _load();
           _scheduleReminders(finalTask);
+          _syncUrgentReminder(finalTask); // NEU
         },
       ),
     );
@@ -479,13 +499,14 @@ class TasksScreenState extends State<TasksScreen> with TickerProviderStateMixin 
       backgroundColor: skin.bgBase,
       body: GestureDetector(
         onTap: () {
-          if (_inlineEditId != null) {
-            _taskCardKeys[_inlineEditId]?.currentState?.commitInlineEditNow();
-            setState(() => _inlineEditId = null);
-          }
-          if (_openSwipedId != null) setState(() => _openSwipedId = null);
-        },
-        behavior: HitTestBehavior.translucent,
+  FocusManager.instance.primaryFocus?.unfocus();
+  if (_inlineEditId != null) {
+    _taskCardKeys[_inlineEditId]?.currentState?.commitInlineEditNow();
+    setState(() => _inlineEditId = null);
+  }
+  if (_openSwipedId != null) setState(() => _openSwipedId = null);
+},
+behavior: HitTestBehavior.translucent,
         child: Stack(
           children: [
             SafeArea(
@@ -1094,10 +1115,13 @@ class _TaskCardState extends State<_TaskCard> with TickerProviderStateMixin, Swi
         onHorizontalDragUpdate: widget.isInlineEditing ? null : _onPanUpdate,
         onHorizontalDragEnd: widget.isInlineEditing ? null : _onPanEnd,
         onVerticalDragUpdate: widget.isInlineEditing
-            ? (d) {
-                if (d.delta.dy > 6) commitInlineEditNow();
-              }
-            : null,
+    ? (d) {
+        if (d.delta.dy > 6) {
+          FocusManager.instance.primaryFocus?.unfocus();
+          commitInlineEditNow();
+        }
+      }
+    : null,
         onTap: _handleTap,
         onDoubleTap: _handleDoubleTap,
         child: ClipRect(

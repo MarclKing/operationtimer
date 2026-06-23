@@ -572,17 +572,45 @@ _selectionBarAnim = CurvedAnimation(
 }
 
   Future<void> _exportSelected() async {
-    final fahrten = _getFahrtenForMonth().where((f) => _selectedIds.contains(f.id)).toList();
-    if (fahrten.isEmpty) return;
-    _exitSelectionMode();
-    await FahrtExportService.exportFahrten(fahrten);
+  final fahrten = _getFahrtenForMonth().where((f) => _selectedIds.contains(f.id)).toList();
+  if (fahrten.isEmpty) return;
+  _exitSelectionMode();
+  final success = await FahrtExportService.exportFahrten(fahrten);
+  if (success == true) {
+    for (final f in fahrten) {
+      _saveFahrt(Fahrt(
+        id: f.id, datum: f.datum, kmStart: f.kmStart, kmEnd: f.kmEnd,
+        kennzeichen: f.kennzeichen, getanktLiter: f.getanktLiter,
+        fotoStartPath: f.fotoStartPath, fotoEndPath: f.fotoEndPath,
+        uebertragen: true,  // ← automatisch eingetragen
+        abfahrtZeit: f.abfahrtZeit, ankunftDatum: f.ankunftDatum,
+        ankunftZeit: f.ankunftZeit, fahrtTyp: f.fahrtTyp,
+        sonderWegerecht: f.sonderWegerecht, autoGewaschen: f.autoGewaschen,
+        stromKwh: f.stromKwh, adblueKwh: f.adblueKwh, fahrtZiel: f.fahrtZiel,
+      ));
+    }
   }
+}
 
   Future<void> _exportAll() async {
-    final fahrten = _getFahrtenForMonth();
-    if (fahrten.isEmpty) return;
-    await FahrtExportService.exportFahrten(fahrten);
+  final fahrten = _getFahrtenForMonth();
+  if (fahrten.isEmpty) return;
+  final success = await FahrtExportService.exportFahrten(fahrten);
+  if (success == true) {
+    for (final f in fahrten) {
+      _saveFahrt(Fahrt(
+        id: f.id, datum: f.datum, kmStart: f.kmStart, kmEnd: f.kmEnd,
+        kennzeichen: f.kennzeichen, getanktLiter: f.getanktLiter,
+        fotoStartPath: f.fotoStartPath, fotoEndPath: f.fotoEndPath,
+        uebertragen: true,
+        abfahrtZeit: f.abfahrtZeit, ankunftDatum: f.ankunftDatum,
+        ankunftZeit: f.ankunftZeit, fahrtTyp: f.fahrtTyp,
+        sonderWegerecht: f.sonderWegerecht, autoGewaschen: f.autoGewaschen,
+        stromKwh: f.stromKwh, adblueKwh: f.adblueKwh, fahrtZiel: f.fahrtZiel,
+      ));
+    }
   }
+}
 
   void closeOverlays() {
   if (_openSwipedFahrtId != null) {
