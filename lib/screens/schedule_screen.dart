@@ -17,6 +17,7 @@ import '../widgets/glass_dialogs.dart';
 import 'package:archive/archive.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'tasks_screen.dart' show TaskStore;
+import '../services/sync_service.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Entfernt: extension _AppSkinGlass   → jetzt AppSkinGlass in glass_kit.dart
@@ -2261,6 +2262,7 @@ class _DienstplanUploadSheetState extends State<DienstplanUploadSheet> {
         if (changed.isNotEmpty) { final existing = _ChangedDays.load(monthKey); _ChangedDays.save(monthKey, {...existing, ...changed}); }
       }
       settingsBox.put('schedule_$monthKey', newData);
+      SyncService.instance.pushScheduleMonth(monthKey);
       try {
         final List<int> bytesForColleagues = _selectedFileBytes ?? [];
         if (bytesForColleagues.isNotEmpty) {

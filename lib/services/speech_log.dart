@@ -34,19 +34,32 @@ class SpeechLogEntry {
   final bool hasDate;
   final bool normalizerHit; // true wenn Normalizer ein Muster erkannt hat
   final DateTime timestamp;
+  String? taskId; // verknüpft den Log-Eintrag mit dem erzeugten Task — nicht final, wird nachträglich gesetzt
+  final bool wentToReview; // true = needsReview hat angeschlagen
+  bool wasEdited; // nicht final — wird nachträglich gesetzt, siehe markEdited()
+  int? editedWithinSeconds; // wie schnell nach Erstellung die Änderung kam
 
-  const SpeechLogEntry({
+  SpeechLogEntry({
     required this.rawText,
     required this.normalized,
     required this.parsedTitle,
     required this.hasDate,
     required this.normalizerHit,
     required this.timestamp,
+    this.taskId,
+    this.wentToReview = false,
+    this.wasEdited = false,
+    this.editedWithinSeconds,
   });
 
   /// true = System hat alles erkannt (Normalizer + Parser haben Datum/Muster gefunden)
   /// false = irgendwas wurde nicht erkannt → interessant zum Analysieren
   bool get isFullSuccess => normalizerHit && hasDate;
+
+  /// Wortanzahl des Originaltexts — Basis für die Schwellwert-Kalibrierung.
+  int get wordCount => rawText.trim().isEmpty
+      ? 0
+      : rawText.trim().split(RegExp(r'\s+')).length;
 
   /// Kurze Status-Beschreibung für die UI
   String get statusLabel {
@@ -63,6 +76,10 @@ class SpeechLogEntry {
     'hasDate': hasDate,
     'normalizerHit': normalizerHit,
     'timestamp': timestamp.toIso8601String(),
+    'taskId': taskId,
+    'wentToReview': wentToReview,
+    'wasEdited': wasEdited,
+    'editedWithinSeconds': editedWithinSeconds,
   };
 
   factory SpeechLogEntry.fromJson(Map<String, dynamic> j) => SpeechLogEntry(
@@ -72,6 +89,10 @@ class SpeechLogEntry {
     hasDate: j['hasDate'] as bool? ?? false,
     normalizerHit: j['normalizerHit'] as bool? ?? false,
     timestamp: DateTime.tryParse(j['timestamp'] as String? ?? '') ?? DateTime.now(),
+    taskId: j['taskId'] as String?,
+    wentToReview: j['wentToReview'] as bool? ?? false,
+    wasEdited: j['wasEdited'] as bool? ?? false,
+    editedWithinSeconds: j['editedWithinSeconds'] as int?,
   );
 }
 
@@ -83,13 +104,18 @@ class SpeechLog {
   static const _maxEntries = 200;
 
   /// Einen neuen Eintrag speichern. Wird von _onRevealComplete aufgerufen.
-  static void record({
+  /// Gibt die generierte Eintrags-ID (= timestamp in Millisekunden) zurück,
+  /// damit der Aufrufer sie via setTaskId() mit dem erzeugten Task verknüpfen
+  /// kann, sobald die Task-ID feststeht.
+  static String record({
     required String raw,
     required String normalized,
     required String parsedTitle,
     required bool hasDate,
+    bool wentToReview = false,
   }) {
     final normalizerHit = normalized != raw;
+    final now = DateTime.now();
 
     final entry = SpeechLogEntry(
       rawText: raw,
@@ -97,7 +123,8 @@ class SpeechLog {
       parsedTitle: parsedTitle,
       hasDate: hasDate,
       normalizerHit: normalizerHit,
-      timestamp: DateTime.now(),
+      timestamp: now,
+      wentToReview: wentToReview,
     );
 
     // Debug-Output für die Entwicklungskonsole
@@ -131,6 +158,30 @@ class SpeechLog {
     // Nutzer nie einen Fehler, falls z.B. kein Internet verfügbar ist.
     if (!entry.isFullSuccess) {
       _uploadToFirestore(entry);
+    }
+
+    // Rückgabewert: Zeitstempel in ms als simple, eindeutige Referenz auf
+    // diesen Log-Eintrag — der Aufrufer nutzt das, um per setTaskId() später
+    // die Task-ID nachzutragen.
+    return now.millisecondsSinceEpoch.toString();
+  }
+
+  /// Trägt nachträglich die Task-ID in den zuletzt erstellten Log-Eintrag
+  /// ein. Wird direkt nach TaskStore.add() aufgerufen, weil die Task-ID erst
+  /// dort entsteht (record() lief vorher und kennt sie noch nicht).
+  static void linkLastEntryToTask(String logRefMs, String taskId) {
+    try {
+      final box = Hive.box('einstellungen');
+      final entries = _loadAll(box);
+      final refTimestamp = int.tryParse(logRefMs);
+      if (refTimestamp == null) return;
+      final idx = entries.indexWhere(
+          (e) => e.timestamp.millisecondsSinceEpoch == refTimestamp);
+      if (idx == -1) return;
+      entries[idx].taskId = taskId; // hmm — siehe Hinweis unten
+      box.put(_dataKey, jsonEncode(entries.map((e) => e.toJson()).toList()));
+    } catch (e) {
+      debugPrint('SPEECH_LOG linkLastEntryToTask Fehler: $e');
     }
   }
 
@@ -186,6 +237,63 @@ class SpeechLog {
     } catch (_) {}
   }
 
+/// Markiert den Log-Eintrag, der zu [taskId] gehört, als "wurde bearbeitet".
+  /// Wird von TasksScreenState aufgerufen, sobald ein Task verändert/gelöscht
+  /// wird (siehe tasks_screen.dart → _commitInlineEdit, _editTaskFull,
+  /// _deleteTaskImmediate). Wirkt nur, wenn die Bearbeitung innerhalb eines
+  /// kurzen Zeitfensters nach Erstellung passiert — spätere, normale Edits
+  /// (Wochen später) sagen nichts über die Erkennungsqualität aus.
+  static const _editWindowSeconds = 300; // 5 Minuten
+
+  static void markEdited(String taskId, DateTime taskCreatedAt) {
+    final secondsSinceCreation =
+        DateTime.now().difference(taskCreatedAt).inSeconds;
+    if (secondsSinceCreation > _editWindowSeconds) return;
+
+    try {
+      final box = Hive.box('einstellungen');
+      final entries = _loadAll(box);
+      final idx = entries.indexWhere((e) => e.taskId == taskId);
+      if (idx == -1) return;
+      entries[idx].wasEdited = true;
+      entries[idx].editedWithinSeconds = secondsSinceCreation;
+      box.put(_dataKey, jsonEncode(entries.map((e) => e.toJson()).toList()));
+    } catch (e) {
+      debugPrint('SPEECH_LOG markEdited Fehler: $e');
+    }
+  }
+
+  /// Berechnet den Median der Wortanzahl getrennt für "wurde bearbeitet"
+  /// vs. "blieb unverändert". Die Mitte zwischen beiden Werten ist ein guter
+  /// Kandidat für die wordCount-Schwellen in _onRevealComplete.
+  ///
+  /// Gibt null zurück, wenn zu wenig Daten vorhanden sind (siehe minSamples),
+  /// damit man nicht versehentlich Schwellen aus 2-3 Einträgen ableitet.
+  static MedianCalibrationResult? calibrateWordCountThreshold({int minSamples = 8}) {
+    final entries = loadAll().where((e) => e.taskId != null).toList();
+    final edited = entries.where((e) => e.wasEdited).map((e) => e.wordCount).toList()..sort();
+    final clean = entries.where((e) => !e.wasEdited).map((e) => e.wordCount).toList()..sort();
+
+    if (edited.length < minSamples || clean.length < minSamples) return null;
+
+    double median(List<int> xs) {
+      final mid = xs.length ~/ 2;
+      if (xs.length % 2 == 1) return xs[mid].toDouble();
+      return (xs[mid - 1] + xs[mid]) / 2.0;
+    }
+
+    final editedMedian = median(edited);
+    final cleanMedian = median(clean);
+
+    return MedianCalibrationResult(
+      editedMedianWordCount: editedMedian,
+      cleanMedianWordCount: cleanMedian,
+      suggestedThreshold: ((editedMedian + cleanMedian) / 2).round(),
+      editedSampleCount: edited.length,
+      cleanSampleCount: clean.length,
+    );
+  }
+
   /// Statistiken für die Übersicht im Log-Screen.
   static Map<String, int> stats() {
     final entries = loadAll();
@@ -200,4 +308,27 @@ class SpeechLog {
       'noDate': noDate,
     };
   }
+}
+
+/// Ergebnis der Median-Kalibrierung — siehe SpeechLog.calibrateWordCountThreshold().
+class MedianCalibrationResult {
+  final double editedMedianWordCount;
+  final double cleanMedianWordCount;
+  final int suggestedThreshold;
+  final int editedSampleCount;
+  final int cleanSampleCount;
+
+  const MedianCalibrationResult({
+    required this.editedMedianWordCount,
+    required this.cleanMedianWordCount,
+    required this.suggestedThreshold,
+    required this.editedSampleCount,
+    required this.cleanSampleCount,
+  });
+
+  @override
+  String toString() =>
+      'Median (bearbeitet): $editedMedianWordCount Wörter (n=$editedSampleCount)\n'
+      'Median (unverändert): $cleanMedianWordCount Wörter (n=$cleanSampleCount)\n'
+      '→ Vorschlag für wordCount-Schwelle: $suggestedThreshold';
 }

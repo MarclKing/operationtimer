@@ -31,15 +31,13 @@ import 'package:intl/intl.dart';
 import 'screens/tasks_screen.dart';
 import 'services/notification_service.dart';
 import 'services/auth_service.dart';
+import 'screens/admin_rules_screen.dart';
+import 'services/rule_engine.dart';
+import 'services/sync_service.dart';
 
 void main() async {
   WidgetsBinding binding = WidgetsFlutterBinding.ensureInitialized();
   FlutterNativeSplash.preserve(widgetsBinding: binding);
-
-await Firebase.initializeApp(
-  options: DefaultFirebaseOptions.currentPlatform,
-);
-await AuthService.instance.init();
 
   // Querformat sperren
   await SystemChrome.setPreferredOrientations([
@@ -47,17 +45,30 @@ await AuthService.instance.init();
     DeviceOrientation.portraitDown,
   ]);
 
+  // Hive MUSS vor Services initialisiert werden, die darauf zugreifen
   await Hive.initFlutter();
   await Hive.openBox('arbeitszeiten');
   await Hive.openBox('einstellungen');
 
+  // Erst danach Services initialisieren
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+  await AuthService.instance.init();
+  await SyncService.instance.init();
+  await RuleEngine.instance.init();
+
   await NotificationService.instance.init();
-  
+
   _migrateOldEntries();
   await runAutoCleanup();
   await initializeDateFormatting('de', null);
 
-  FlutterNativeSplash.remove();
+  try {
+    FlutterNativeSplash.remove();
+  } catch (e) {
+    debugPrint('⚠️  FlutterNativeSplash.remove() fehlgeschlagen (im Web normal): $e');
+  }
 
   runApp(const MyApp());
 }
@@ -327,18 +338,24 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       }
     });
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _homeKey.currentState?.onOverlayStateChanged = () {
-        _homeOverlayActive.value = _homeKey.currentState?.isOverlayOpen ?? false;
-      };
-    });
+    // onOverlayStateChanged wurde entfernt - nicht mehr benötigt
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) maybeShowWelcomeDialog(context);
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
-    NotificationService.instance.requestPermissions();
-  });
+      NotificationService.instance.requestPermissions();
+    });
+
+    // ── NEU: Review-Callback für Homescreen ──
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _homeKey.currentState?.onReviewFromHomescreen = (parsed, logRef) {
+        _tasksKey.currentState?.openQuickAdd(
+          initialTitle: parsed.title,
+          initialDate: parsed.combinedDateTime,
+        );
+      };
+    });
   }
 
   @override
@@ -685,19 +702,19 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     );
   }
 
-    void _goToPage(int index) {
+  void _goToPage(int index) {
     FocusManager.instance.primaryFocus?.unfocus();
     _closeMenu();
     _homeKey.currentState?.closeOverlays();
     _scheduleKey.currentState?.closeOverlays();
     _monthKey.currentState?.closeAllRows();
     _fahrtenbuchKey.currentState?.closeOverlays();
-    
+
     // NEU: Wenn wir zum Schedule-Tab (Index 2) wechseln, Task-Marker aktualisieren
     if (index == 2 && _dienstplanEnabled) {
       _scheduleKey.currentState?.refreshTaskMarkers();
     }
-    
+
     _animateToPage(index);
   }
 
@@ -711,7 +728,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     }
   }
 
-    void _selectTab(int index) {
+  void _selectTab(int index) {
     if (index == _currentPage) {
       switch (index) {
         case 1:
@@ -729,12 +746,12 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       }
       return;
     }
-    
+
     // NEU: Wenn wir zum Schedule-Tab (Index 2) wechseln, Task-Marker aktualisieren
     if (index == 2 && _dienstplanEnabled) {
       _scheduleKey.currentState?.refreshTaskMarkers();
     }
-    
+
     _goToPage(index);
   }
 
@@ -754,7 +771,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     _slideCtrl.value = newVal;
   }
 
-    void _onDragEnd(DragEndDetails d) {
+  void _onDragEnd(DragEndDetails d) {
     if (!_isDragging) return;
     _isDragging = false;
     _dayCardDragging.value = false;
@@ -776,7 +793,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       _scheduleKey.currentState?.closeOverlays();
       _monthKey.currentState?.closeAllRows();
       _fahrtenbuchKey.currentState?.closeOverlays();
-      
+
       // NEU: Wenn wir zum Schedule-Tab (Index 2) wechseln, Task-Marker aktualisieren
       if (targetPage == 2 && _dienstplanEnabled) {
         _scheduleKey.currentState?.refreshTaskMarkers();
@@ -792,32 +809,40 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   }
 
   List<Widget> _buildPages() => [
-        HomeScreen(
-          key: _homeKey,
-          selectedDate: _sharedDate,
-          onDateChanged: (d) => setState(() => _sharedDate = d),
-          onNavigateToMonth: () => _goToPage(1),
-        ),
-        MonthScreen(
-          key: _monthKey,
-          selectedMonth: _sharedMonth,
-          onMonthChanged: (m) => setState(() => _sharedMonth = m),
-          onNavigateToHome: () => _goToPage(0),
-        ),
-        if (_dienstplanEnabled)
-          ScheduleScreen(
-            key: _scheduleKey,
-            onNavigateToHome: () => _goToPage(0),
-            onNavigateToMonth: () => _goToPage(1),
-            onMonthChanged: (m) => setState(() => _scheduleViewMonth = m),
-            dayCardDragging: _dayCardDragging,
-          ),
-        FahrtenbuchScreen(
-          key: _fahrtenbuchKey,
-          onDraftChanged: () => setState(() {}),
-        ),
-        TasksScreen(key: _tasksKey),
-      ];
+    HomeScreen(
+      key: _homeKey,
+      selectedDate: _sharedDate,
+      onDateChanged: (d) => setState(() => _sharedDate = d),
+      onNavigateToMonth: () => _goToPage(1),
+      onNavigateToFahrtenbuch: () => _goToPage(_dienstplanEnabled ? 3 : 2),
+      onNavigateToFahrtenbuchNeueFahrt: () async {        // NEU
+        await _animateToPage(_dienstplanEnabled ? 3 : 2);
+        await Future.delayed(const Duration(milliseconds: 500));
+        if (!mounted) return;
+        _fahrtenbuchKey.currentState?.triggerKmStartScan();
+      },
+      onNavigateToTasks: () => _goToPage(_dienstplanEnabled ? 4 : 3),
+    ),
+    MonthScreen(
+      key: _monthKey,
+      selectedMonth: _sharedMonth,
+      onMonthChanged: (m) => setState(() => _sharedMonth = m),
+      onNavigateToHome: () => _goToPage(0),
+    ),
+    if (_dienstplanEnabled)
+      ScheduleScreen(
+        key: _scheduleKey,
+        onNavigateToHome: () => _goToPage(0),
+        onNavigateToMonth: () => _goToPage(1),
+        onMonthChanged: (m) => setState(() => _scheduleViewMonth = m),
+        dayCardDragging: _dayCardDragging,
+      ),
+    FahrtenbuchScreen(
+      key: _fahrtenbuchKey,
+      onDraftChanged: () => setState(() {}),
+    ),
+    TasksScreen(key: _tasksKey),
+  ];
 
   void _toggleMenu() {
     setState(() {
@@ -932,93 +957,94 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                                 boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.25), blurRadius: 24, offset: const Offset(0, 8))],
                               ),
                               child: Column(
-  mainAxisSize: MainAxisSize.min,
-  children: [
-    // IMMER OBEN: Einstellungen
-    _DropdownItem(
-      icon: Icons.settings_outlined,
-      label: 'Einstellungen',
-      onTap: () {
-        _closeMenu();
-        Navigator.push(context, CupertinoPageRoute(builder: (_) => const SettingsScreen()));
-      },
-    ),
-    _Divider(),
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  // IMMER OBEN: Einstellungen
+                                  _DropdownItem(
+                                    icon: Icons.settings_outlined,
+                                    label: 'Einstellungen',
+                                    onTap: () {
+                                      _closeMenu();
+                                      Navigator.push(context, CupertinoPageRoute(builder: (_) => const SettingsScreen()));
+                                    },
+                                  ),
+                                  _Divider(),
 
-    // DYNAMISCHE EINTRÄGE je nach aktiver Seite
-    if (_isOnFahrtenbuchPage && _currentPage != (_dienstplanEnabled ? 4 : 3)) ...[
-      _DropdownItem(
-        icon: Icons.directions_car_outlined,
-        label: 'Fahrzeuge verwalten',
-        onTap: () {
-          _closeMenu();
-          _showKfzVerwaltung(context);
-        },
-      ),
-      _Divider(),
-      _DropdownItem(
-        icon: Icons.upload_outlined,
-        label: 'Exportanleitung',
-        onTap: () {
-          _closeMenu();
-          Navigator.push(
-            context,
-            CupertinoPageRoute(
-              builder: (_) => const ExportHinweiseScreen(),
-            ),
-          );
-        },
-      ),
-      _Divider(),
-    ],
-    if (_isOnSchedulePage && !_isOnFahrtenbuchPage) ...[
-      _DropdownItem(
-        icon: Icons.upload_file_outlined,
-        label: 'Dienstplan importieren',
-        onTap: () {
-          _closeMenu();
-          _showUploadSheet(context, skin);
-        },
-      ),
-      _Divider(),
-    ],
-    if (_currentPage == 1) ...[
-      _DropdownItem(
-        icon: Icons.picture_as_pdf_outlined,
-        label: 'Zeiten exportieren',
-        onTap: () {
-          _closeMenu();
-          PdfService.showMonthPickerAndExport(context);
-        },
-      ),
-      _Divider(),
-    ],
+                                  // DYNAMISCHE EINTRÄGE je nach aktiver Seite
+                                  if (_isOnFahrtenbuchPage && _currentPage != (_dienstplanEnabled ? 4 : 3)) ...[
+                                    _DropdownItem(
+                                      icon: Icons.directions_car_outlined,
+                                      label: 'Fahrzeuge verwalten',
+                                      onTap: () {
+                                        _closeMenu();
+                                        _showKfzVerwaltung(context);
+                                      },
+                                    ),
+                                    _Divider(),
+                                    _DropdownItem(
+                                      icon: Icons.upload_outlined,
+                                      label: 'Exportanleitung',
+                                      onTap: () {
+                                        _closeMenu();
+                                        Navigator.push(
+                                          context,
+                                          CupertinoPageRoute(
+                                            builder: (_) => const ExportHinweiseScreen(),
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                    _Divider(),
+                                  ],
+                                  if (_isOnSchedulePage && !_isOnFahrtenbuchPage) ...[
+                                    _DropdownItem(
+                                      icon: Icons.upload_file_outlined,
+                                      label: 'Dienstplan importieren',
+                                      onTap: () {
+                                        _closeMenu();
+                                        _showUploadSheet(context, skin);
+                                      },
+                                    ),
+                                    _Divider(),
+                                  ],
+                                  if (_currentPage == 1) ...[
+                                    _DropdownItem(
+                                      icon: Icons.picture_as_pdf_outlined,
+                                      label: 'Zeiten exportieren',
+                                      onTap: () {
+                                        _closeMenu();
+                                        PdfService.showMonthPickerAndExport(context);
+                                      },
+                                    ),
+                                    _Divider(),
+                                  ],
 
-        if (_currentPage == (_dienstplanEnabled ? 4 : 3)) ...[
-  _DropdownItem(
-    icon: Icons.mic_outlined,
-    label: 'Diktieren & Sprachbefehle',
-    onTap: () {
-      _closeMenu();
-      Navigator.push(
-        context,
-        CupertinoPageRoute(builder: (_) => const DictationHelpScreen()),
-      );
-    },
-  ),
-  _Divider(),
-],
-    // IMMER UNTEN: Support
-    _DropdownItem(
-      icon: Icons.support_agent_outlined,
-      label: 'Support',
-      onTap: () {
-        _closeMenu();
-        Navigator.push(context, CupertinoPageRoute(builder: (_) => const SupportScreen()));
-      },
-    ),
-  ],
-),
+                                  if (_currentPage == (_dienstplanEnabled ? 4 : 3)) ...[
+                                    _DropdownItem(
+                                      icon: Icons.mic_outlined,
+                                      label: 'Sprachbefehle & Hilfe',
+                                      onTap: () {
+                                        _closeMenu();
+                                        Navigator.push(
+                                          context,
+                                          CupertinoPageRoute(builder: (_) => const DictationHelpScreen()),
+                                        );
+                                      },
+                                    ),
+                                    _Divider(),
+                                  ],
+
+                                  // IMMER UNTEN: Support
+                                  _DropdownItem(
+                                    icon: Icons.support_agent_outlined,
+                                    label: 'Support',
+                                    onTap: () {
+                                      _closeMenu();
+                                      Navigator.push(context, CupertinoPageRoute(builder: (_) => const SupportScreen()));
+                                    },
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         ),
@@ -1040,7 +1066,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                     children: [
                       const SizedBox(width: 40),
                       const Spacer(),
-                     if (_isOnFahrtenbuchPage)
+                      if (_isOnFahrtenbuchPage)
                         GestureDetector(
                           onTap: _onPlusPressed,
                           child: SizedBox(
@@ -1443,7 +1469,6 @@ class _GlassBottomNavState extends State<_GlassBottomNav>
   int _lastIndex = 0;
   double _stretchDirection = 0;
 
-  // NEU
   bool _isDraggingNav = false;
   double _dragStartX = 0;
   int _dragStartIndex = 0;
@@ -1598,7 +1623,6 @@ class _GlassBottomNavState extends State<_GlassBottomNav>
       ),
     );
 
-    // NEU: RawGestureDetector statt GestureDetector
     return RawGestureDetector(
       behavior: HitTestBehavior.opaque,
       gestures: {

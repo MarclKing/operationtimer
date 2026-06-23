@@ -8,6 +8,12 @@ import '../models/relationship_style.dart';
 import '../services/notification_service.dart';
 import '../screens/welcome_screen.dart' show RelationshipOptionCard;
 import '../widgets/glass_pickers.dart' show IOSTimePicker;
+import '../screens/dictation_help_screen.dart';
+import '../screens/speech_log_screen.dart';
+import '../screens/admin_rules_screen.dart';
+import '../services/auth_service.dart';
+import 'package:share_plus/share_plus.dart';
+import '../services/sync_token_service.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // LIQUID GLASS EXTENSION
@@ -56,20 +62,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   children: [
                     // ── Profil-Banner (Apple-ID-artig) ────────────────────
                     _SettingsTileGroup(skin: skin, children: [
-                      _SettingsTile(
-                        skin: skin,
-                        icon: Icons.person_rounded,
-                        iconBg: const Color(0xFF5B8DEF),
-                        label: name.isEmpty ? 'Profil' : name,
-                        subtitle: name.isEmpty
-                            ? 'Name & Dienstplan-Name'
-                            : 'Profil & Dienstplan-Name',
-                        onTap: () => Navigator.push(
-                            context,
-                            CupertinoPageRoute(
-                                builder: (_) => const _ProfileSettingsScreen())),
-                      ),
-                    ]),
+  _SettingsTile(
+    skin: skin,
+    icon: Icons.person_rounded,
+    iconBg: const Color(0xFF5B8DEF),
+    label: name.isEmpty ? 'Profil' : name,
+    subtitle: name.isEmpty ? 'Name & Dienstplan-Name' : 'Profil & Dienstplan-Name',
+    isLast: true,
+    onTap: () => Navigator.push(
+        context,
+        CupertinoPageRoute(
+            builder: (_) => _ProfileSettingsScreen())), // const + doppeltes ))
+  ),
+]),
                     const SizedBox(height: 24),
 
                     // ── Hauptgruppe ────────────────────────────────────────
@@ -79,6 +84,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         icon: Icons.notifications_rounded,
                         iconBg: const Color(0xFFEF5B5B),
                         label: 'Benachrichtigungen',
+                        subtitle: 'Erinnerungen & Warnungen',
                         onTap: () => Navigator.push(
                             context,
                             CupertinoPageRoute(
@@ -87,9 +93,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                       _SettingsTile(
                         skin: skin,
+                        icon: Icons.dashboard_rounded,
+                        iconBg: const Color(0xFF5B8DEF),
+                        label: 'Startbildschirm',
+                        subtitle: 'Wetter · Kacheln · Layout',
+                        onTap: () => Navigator.push(
+                            context,
+                            CupertinoPageRoute(
+                                builder: (_) =>
+                                    const _HomescreenSettingsScreen())),
+                      ),
+                      _SettingsTile(
+                        skin: skin,
                         icon: Icons.access_time_filled_rounded,
                         iconBg: const Color(0xFF2D6CFF),
                         label: 'Arbeitszeiterfassung',
+                        subtitle: 'Zeiten & Pausen',
                         onTap: () => Navigator.push(
                             context,
                             CupertinoPageRoute(
@@ -101,6 +120,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         icon: Icons.calendar_month_rounded,
                         iconBg: const Color(0xFFFFB347),
                         label: 'Dienstplan',
+                        subtitle: 'Schichten & Notizen',
                         onTap: () => Navigator.push(
                             context,
                             CupertinoPageRoute(
@@ -108,22 +128,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                     const _ScheduleSettingsScreen())),
                       ),
                       _SettingsTile(
+  skin: skin,
+  icon: Icons.task_alt_rounded,
+  iconBg: const Color(0xFF3DD68C),
+  label: 'Aufgaben & Diktieren',
+  subtitle: 'Sprach-Log · Analyse · Lernfunktion',
+  onTap: () => Navigator.push(
+      context,
+      CupertinoPageRoute(
+          builder: (_) => const _TasksDictationSettingsScreen())),
+),
+                      _SettingsTile(
                         skin: skin,
                         icon: Icons.folder_rounded,
                         iconBg: const Color(0xFF8B8B9E),
                         label: 'Datenverwaltung',
+                        subtitle: 'Sync & Backup',
                         onTap: () => Navigator.push(
                             context,
                             CupertinoPageRoute(
                                 builder: (_) =>
                                     const _DataManagementSettingsScreen())),
                       ),
-                      _SettingsTile(
+                                            _SettingsTile(
                         skin: skin,
                         icon: Icons.palette_rounded,
                         iconBg: const Color(0xFF3DD6C8),
                         label: 'Design',
-                        isLast: true,
+                        subtitle: 'Farbscheme & Layout',
+                        isLast: false,  // ← geändert von true auf false
                         onTap: () => Navigator.push(
                             context,
                             CupertinoPageRoute(
@@ -134,7 +167,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
                     const SizedBox(height: 40),
                     Center(
-                      child: Text('OpTimes v1.3.0',
+                      child: Text('OpTimes v1.4.0',
                           style:
                               TextStyle(fontSize: 12, color: skin.textHint)),
                     ),
@@ -668,194 +701,693 @@ class _TiSkinPicker extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// UNTERMENÜ: PROFIL
+// SYNC TOKEN CARD — ausgelagerter Widget für Übersichtlichkeit
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _SyncTokenCard extends StatelessWidget {
+  final AppSkin skin;
+  final String? syncToken;
+  final bool isGenerating;
+  final bool isLinking;
+  final bool showTokenInput;
+  final TextEditingController tokenInputController;
+  final String? linkFeedback;
+  final bool linkSuccess;
+  final VoidCallback onGenerate;
+  final VoidCallback onCopy;
+  final VoidCallback onShare;
+  final VoidCallback onToggleInput;
+  final VoidCallback onLink;
+  final VoidCallback onUnlink;
+
+  const _SyncTokenCard({
+    required this.skin,
+    required this.syncToken,
+    required this.isGenerating,
+    required this.isLinking,
+    required this.showTokenInput,
+    required this.tokenInputController,
+    required this.linkFeedback,
+    required this.linkSuccess,
+    required this.onGenerate,
+    required this.onCopy,
+    required this.onShare,
+    required this.onToggleInput,
+    required this.onLink,
+    required this.onUnlink,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: skin.isLight
+                ? Colors.white.withValues(alpha: skin.glassOpacity)
+                : skin.bgCard.withValues(alpha: skin.glassOpacity),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: skin.glassBorder, width: 1.0),
+            boxShadow: [
+              BoxShadow(color: skin.glassShadow, blurRadius: 24, offset: const Offset(0, 6)),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Header
+              Row(
+                children: [
+                  Icon(Icons.sync_rounded, size: 18, color: skin.primary),
+                  const SizedBox(width: 8),
+                  Text('Sync-Token',
+                      style: TextStyle(
+                          fontSize: 15, fontWeight: FontWeight.w700, color: skin.textPrimary)),
+                  const Spacer(),
+                  if (syncToken != null)
+                    GestureDetector(
+                      onTap: onUnlink,
+                      child: Text('Trennen',
+                          style: TextStyle(
+                              fontSize: 12,
+                              color: skin.deleteColor,
+                              fontWeight: FontWeight.w600)),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Text(
+                syncToken == null
+                    ? 'Generiere einen Token, um deine Daten auf mehreren Geräten zu synchronisieren. Gib denselben Token auf einem anderen Gerät ein.'
+                    : 'Dein Sync-Token. Gib ihn auf einem anderen Gerät ein, um die Daten zu synchronisieren.',
+                style: TextStyle(fontSize: 13, color: skin.textMuted, height: 1.5),
+              ),
+              const SizedBox(height: 16),
+
+              if (syncToken == null) ...[
+                // ── Kein Token — zwei Optionen ─────────────────────────────
+
+                // Neuen generieren
+                GestureDetector(
+                  onTap: isGenerating ? null : onGenerate,
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    decoration: BoxDecoration(
+                      color: skin.primary.withValues(alpha: skin.isLight ? 0.10 : 0.18),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                          color: skin.primary.withValues(alpha: skin.isLight ? 0.25 : 0.40)),
+                    ),
+                    child: Center(
+                      child: isGenerating
+                          ? SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2, color: skin.primary))
+                          : Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.add_circle_outline_rounded,
+                                    size: 16,
+                                    color: skin.primary.withValues(
+                                        alpha: skin.isLight ? 0.85 : 0.90)),
+                                const SizedBox(width: 7),
+                                Text('Neuen Token generieren',
+                                    style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w700,
+                                        color: skin.primary.withValues(
+                                            alpha: skin.isLight ? 0.85 : 0.90))),
+                              ],
+                            ),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 10),
+
+                // Bestehenden verknüpfen
+                GestureDetector(
+                  onTap: onToggleInput,
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    decoration: BoxDecoration(
+                      color: skin.isLight
+                          ? Colors.white.withValues(alpha: 0.60)
+                          : Colors.white.withValues(alpha: 0.06),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: skin.glassBorder),
+                    ),
+                    child: Center(
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.link_rounded, size: 16, color: skin.textMuted),
+                          const SizedBox(width: 7),
+                          Text('Token verknüpfen',
+                              style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: skin.textPrimary)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+
+                // Token-Eingabe (aufklappbar)
+                AnimatedCrossFade(
+                  duration: const Duration(milliseconds: 240),
+                  crossFadeState: showTokenInput
+                      ? CrossFadeState.showSecond
+                      : CrossFadeState.showFirst,
+                  firstChild: const SizedBox.shrink(),
+                  secondChild: Column(
+                    children: [
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: skin.surface(0.05),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: skin.borderSubtle),
+                        ),
+                        child: TextField(
+                          controller: tokenInputController,
+                          autofocus: showTokenInput,
+                          style: TextStyle(
+                            color: skin.textPrimary,
+                            fontSize: 14,
+                            fontFamily: 'monospace',
+                            letterSpacing: 0.5,
+                          ),
+                          decoration: InputDecoration(
+                            hintText: 'Token eingeben (22 Zeichen)',
+                            hintStyle: TextStyle(color: skin.textHint, fontSize: 13),
+                            border: InputBorder.none,
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                          ),
+                          onSubmitted: (_) => onLink(),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      GestureDetector(
+                        onTap: isLinking ? null : onLink,
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(vertical: 13),
+                          decoration: BoxDecoration(
+                            color: skin.primary.withValues(
+                                alpha: skin.isLight ? 0.10 : 0.18),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                                color: skin.primary.withValues(
+                                    alpha: skin.isLight ? 0.25 : 0.40)),
+                          ),
+                          child: Center(
+                            child: isLinking
+                                ? SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2, color: skin.primary))
+                                : Text('Verknüpfen',
+                                    style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w700,
+                                        color: skin.primary.withValues(
+                                            alpha:
+                                                skin.isLight ? 0.85 : 0.90))),
+                          ),
+                        ),
+                      ),
+                      if (linkFeedback != null) ...[
+                        const SizedBox(height: 10),
+                        _FeedbackBadge(
+                            skin: skin,
+                            message: linkFeedback!,
+                            isSuccess: linkSuccess),
+                      ],
+                    ],
+                  ),
+                ),
+              ] else ...[
+                // ── Token vorhanden — anzeigen + Aktionen ──────────────────
+
+                // Token-Anzeige
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: skin.isLight
+                        ? Colors.white.withValues(alpha: 0.60)
+                        : Colors.white.withValues(alpha: 0.06),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: skin.glassBorder),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.vpn_key_rounded,
+                          size: 16,
+                          color: skin.primary.withValues(alpha: 0.7)),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          syncToken!,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontFamily: 'monospace',
+                            letterSpacing: 0.8,
+                            color: skin.textPrimary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 12),
+
+                // Aktions-Row: Kopieren + Teilen
+                Row(
+                  children: [
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: onCopy,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          decoration: BoxDecoration(
+                            color: skin.isLight
+                                ? Colors.white.withValues(alpha: 0.60)
+                                : Colors.white.withValues(alpha: 0.06),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: skin.glassBorder),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.copy_rounded, size: 15, color: skin.textMuted),
+                              const SizedBox(width: 6),
+                              Text('Kopieren',
+                                  style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      color: skin.textPrimary)),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: onShare,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          decoration: BoxDecoration(
+                            color: skin.primary.withValues(
+                                alpha: skin.isLight ? 0.10 : 0.18),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                                color: skin.primary.withValues(
+                                    alpha: skin.isLight ? 0.25 : 0.40)),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.ios_share_rounded,
+                                  size: 15,
+                                  color: skin.primary.withValues(
+                                      alpha: skin.isLight ? 0.85 : 0.90)),
+                              const SizedBox(width: 6),
+                              Text('Teilen',
+                                  style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w700,
+                                      color: skin.primary.withValues(
+                                          alpha: skin.isLight ? 0.85 : 0.90))),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+
+                // Weiteres Gerät verknüpfen (aufklappbar)
+                const SizedBox(height: 10),
+                GestureDetector(
+                  onTap: onToggleInput,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        showTokenInput
+                            ? Icons.keyboard_arrow_up_rounded
+                            : Icons.add_link_rounded,
+                        size: 15,
+                        color: skin.textMuted,
+                      ),
+                      const SizedBox(width: 5),
+                      Text(
+                        showTokenInput ? 'Schließen' : 'Anderen Token eingeben',
+                        style: TextStyle(
+                            fontSize: 12,
+                            color: skin.textMuted,
+                            fontWeight: FontWeight.w500),
+                      ),
+                    ],
+                  ),
+                ),
+
+                AnimatedCrossFade(
+                  duration: const Duration(milliseconds: 240),
+                  crossFadeState: showTokenInput
+                      ? CrossFadeState.showSecond
+                      : CrossFadeState.showFirst,
+                  firstChild: const SizedBox.shrink(),
+                  secondChild: Column(
+                    children: [
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: skin.surface(0.05),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: skin.borderSubtle),
+                        ),
+                        child: TextField(
+                          controller: tokenInputController,
+                          autofocus: showTokenInput,
+                          style: TextStyle(
+                            color: skin.textPrimary,
+                            fontSize: 14,
+                            fontFamily: 'monospace',
+                            letterSpacing: 0.5,
+                          ),
+                          decoration: InputDecoration(
+                            hintText: 'Token eingeben (22 Zeichen)',
+                            hintStyle: TextStyle(color: skin.textHint, fontSize: 13),
+                            border: InputBorder.none,
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                          ),
+                          onSubmitted: (_) => onLink(),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      GestureDetector(
+                        onTap: isLinking ? null : onLink,
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(vertical: 13),
+                          decoration: BoxDecoration(
+                            color: skin.primary.withValues(
+                                alpha: skin.isLight ? 0.10 : 0.18),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                                color: skin.primary.withValues(
+                                    alpha: skin.isLight ? 0.25 : 0.40)),
+                          ),
+                          child: Center(
+                            child: isLinking
+                                ? SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2, color: skin.primary))
+                                : Text('Verknüpfen',
+                                    style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w700,
+                                        color: skin.primary.withValues(
+                                            alpha:
+                                                skin.isLight ? 0.85 : 0.90))),
+                          ),
+                        ),
+                      ),
+                      if (linkFeedback != null) ...[
+                        const SizedBox(height: 10),
+                        _FeedbackBadge(
+                            skin: skin,
+                            message: linkFeedback!,
+                            isSuccess: linkSuccess),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Kleines Feedback-Badge (Erfolg / Fehler) ──────────────────────────────────
+
+class _FeedbackBadge extends StatelessWidget {
+  final AppSkin skin;
+  final String message;
+  final bool isSuccess;
+
+  const _FeedbackBadge(
+      {required this.skin, required this.message, required this.isSuccess});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = isSuccess ? const Color(0xFF3DD68C) : skin.deleteColor;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            isSuccess ? Icons.check_circle_outline_rounded : Icons.error_outline_rounded,
+            size: 15,
+            color: color,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(message,
+                style: TextStyle(
+                    fontSize: 12, color: color.withValues(alpha: 0.85), height: 1.4)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UNTERMENÜ: PROFIL (mit Sync-Token)
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _ProfileSettingsScreen extends StatefulWidget {
   const _ProfileSettingsScreen();
 
   @override
-  State<_ProfileSettingsScreen> createState() =>
-      _ProfileSettingsScreenState();
+  State<_ProfileSettingsScreen> createState() => _ProfileSettingsScreenState();
 }
 
 class _ProfileSettingsScreenState extends State<_ProfileSettingsScreen> {
-  final _nameController = TextEditingController();
-  final _scheduleNameController = TextEditingController();
+  late TextEditingController _nameController;
+  late TextEditingController _tokenInputController;
+
+  String? _syncToken;
+  bool _isGenerating = false;
+  bool _isLinking = false;
+  bool _showTokenInput = false;
+  String? _linkFeedback;
+  bool _linkSuccess = false;
 
   @override
   void initState() {
     super.initState();
     final box = Hive.box('einstellungen');
-    _nameController.text = box.get('name', defaultValue: '');
-    _scheduleNameController.text =
-        box.get('dienstplan_name', defaultValue: '');
+    final name = box.get('name', defaultValue: '') as String;
+    _nameController = TextEditingController(text: name);
+    _tokenInputController = TextEditingController();
+    _loadToken();
+  }
+
+  Future<void> _loadToken() async {
+    final token = SyncTokenService.instance.localToken; 
+    if (mounted) setState(() => _syncToken = token);
   }
 
   @override
   void dispose() {
     _nameController.dispose();
-    _scheduleNameController.dispose();
+    _tokenInputController.dispose();
     super.dispose();
   }
 
-  void _dismissKeyboard() => FocusScope.of(context).unfocus();
-
-  String _capitalizeEachWord(String text) {
-    if (text.isEmpty) return text;
-    return text
-        .split(' ')
-        .map((w) => w.isEmpty
-            ? w
-            : w[0].toUpperCase() + w.substring(1).toLowerCase())
-        .join(' ');
-  }
-
-  void _onNameChanged(String value) {
-    final cursor = _nameController.selection.baseOffset;
-    final formatted = _capitalizeEachWord(value);
-    if (formatted != value) {
-      _nameController.value = TextEditingValue(
-        text: formatted,
-        selection: TextSelection.collapsed(
-          offset:
-              cursor > formatted.length ? formatted.length : cursor,
-        ),
-      );
+  Future<void> _generateToken() async {
+    setState(() => _isGenerating = true);
+    try {
+      final token = await SyncTokenService.instance.generateAndRegister();
+      if (mounted) setState(() { _syncToken = token; _isGenerating = false; });
+    } catch (e) {
+      if (mounted) setState(() => _isGenerating = false);
     }
   }
 
-  void _autoSaveName() {
-    final box = Hive.box('einstellungen');
-    final formatted = _capitalizeEachWord(_nameController.text);
-    _nameController.text = formatted;
-    final existingName =
-        box.get('name', defaultValue: '') as String;
-    final isNew = existingName.isEmpty;
-    if (formatted == existingName) return;
-    box.put('name', formatted);
-    final skin = AppTheme.of(context);
-    final message = isNew ? 'Name gespeichert ✓' : 'Name geändert ✓';
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(message),
-      backgroundColor: skin.primary == Colors.white
-          ? const Color(0xFF3DD6C8)
-          : skin.primary,
-      behavior: SnackBarBehavior.floating,
-      shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 100),
-      duration: const Duration(milliseconds: 1500),
-    ));
+  Future<void> _linkToken() async {
+    final input = _tokenInputController.text.trim();
+    if (input.isEmpty) return;
+    setState(() { _isLinking = true; _linkFeedback = null; });
+    try {
+      final result = await SyncTokenService.instance.linkExistingToken(input);
+      if (mounted) {
+        setState(() {
+          _isLinking = false;
+          _linkSuccess = result.isSuccess;
+_linkFeedback = result.userMessage;
+if (result.isSuccess) {
+            _syncToken = input;
+            _showTokenInput = false;
+            _tokenInputController.clear();
+          }
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLinking = false;
+          _linkSuccess = false;
+          _linkFeedback = 'Fehler beim Verknüpfen. Bitte versuche es erneut.';
+        });
+      }
+    }
   }
 
-  void _autoSaveScheduleName() {
-    final box = Hive.box('einstellungen');
-    final trimmed = _scheduleNameController.text.trim();
-    box.put('dienstplan_name', trimmed);
+  Future<void> _unlinkToken() async {
+    await SyncTokenService.instance.unlinkToken();
+    if (mounted) {
+      setState(() {
+        _syncToken = null;
+        _showTokenInput = false;
+        _tokenInputController.clear();
+        _linkFeedback = null;
+      });
+    }
+  }
+
+  void _copyToken() {
+    if (_syncToken == null) return;
+    Clipboard.setData(ClipboardData(text: _syncToken!));
+    HapticFeedback.lightImpact();
+    setState(() {
+      _linkSuccess = true;
+      _linkFeedback = 'Token kopiert!';
+    });
+    Future.delayed(const Duration(seconds: 2), () {
+      if (mounted) setState(() => _linkFeedback = null);
+    });
+  }
+
+  void _shareToken() {
+    if (_syncToken == null) return;
+    Share.share(
+      'Mein OpTimes Sync-Token: $_syncToken\n\nGib diesen Token in OpTimes unter Einstellungen → Profil → Geräte-Synchronisation ein, um unsere Daten zu synchronisieren.',
+      subject: 'OpTimes Sync-Token',
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final skin = AppTheme.of(context);
+    final box = Hive.box('einstellungen');
+
     return Scaffold(
       backgroundColor: skin.bgBase,
       body: SafeArea(
-        child: GestureDetector(
-          onTap: _dismissKeyboard,
-          child: Column(
-            children: [
-              _SettingsHeader(
-                  title: 'Profil',
-                  onBack: () => Navigator.pop(context)),
-              Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _TiCard(
-                        skin: skin,
-                        child: Column(
-                          crossAxisAlignment:
-                              CrossAxisAlignment.start,
-                          children: [
-                            _TiCardHeader(
-                                skin: skin,
-                                icon: Icons.person_outline_rounded,
-                                label: 'Benutzername'),
-                            const SizedBox(height: 12),
-                            Text(
-                              'Vor- und Nachname — erscheint in der Begrüßung, im PDF und für die Dienstplan-Erkennung.',
-                              style: TextStyle(
-                                  fontSize: 13,
-                                  color: skin.textMuted,
-                                  height: 1.5),
-                            ),
-                            const SizedBox(height: 14),
-                            Focus(
-                              onFocusChange: (hasFocus) {
-                                if (!hasFocus) _autoSaveName();
-                              },
-                              child: _TiTextField(
-                                skin: skin,
-                                controller: _nameController,
-                                hint: 'z.B. Max Mustermann',
-                                onChanged: _onNameChanged,
-                                onSubmitted: (_) {
-                                  _dismissKeyboard();
-                                  _autoSaveName();
-                                },
-                              ),
-                            ),
-                          ],
-                        ),
+        child: Column(
+          children: [
+            _SettingsHeader(title: 'Profil', onBack: () => Navigator.pop(context)),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // ── Name ──────────────────────────────────────────────
+                    const _SectionHeader(label: 'Persönliche Daten'),
+                    _TiCard(
+                      skin: skin,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _TiCardHeader(
+                              skin: skin,
+                              icon: Icons.person_outline_rounded,
+                              label: 'Name'),
+                          const SizedBox(height: 12),
+                          Text(
+                            'Dein Name wird in Benachrichtigungen und im Dienstplan verwendet.',
+                            style: TextStyle(fontSize: 13, color: skin.textMuted, height: 1.5),
+                          ),
+                          const SizedBox(height: 12),
+                          _TiTextField(
+                            skin: skin,
+                            controller: _nameController,
+                            hint: 'Vor- und Nachname',
+                            onChanged: (v) => box.put('name', v.trim()),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 16),
-                      _TiCard(
-                        skin: skin,
-                        child: Column(
-                          crossAxisAlignment:
-                              CrossAxisAlignment.start,
-                          children: [
-                            _TiCardHeader(
-                                skin: skin,
-                                icon: Icons.badge_outlined,
-                                label: 'Dienstplan-Name'),
-                            const SizedBox(height: 12),
-                            Text(
-                              'Nur ausfüllen, falls dein Name im Dienstplan-PDF anders geschrieben ist (z.B. Spitzname, Kürzel).',
-                              style: TextStyle(
-                                  fontSize: 13,
-                                  color: skin.textMuted,
-                                  height: 1.5),
-                            ),
-                            const SizedBox(height: 14),
-                            Focus(
-                              onFocusChange: (hasFocus) {
-                                if (!hasFocus)
-                                  _autoSaveScheduleName();
-                              },
-                              child: _TiTextField(
-                                skin: skin,
-                                controller:
-                                    _scheduleNameController,
-                                hint: 'optional',
-                                onSubmitted: (_) {
-                                  _dismissKeyboard();
-                                  _autoSaveScheduleName();
-                                },
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
+                    ),
+
+                    const SizedBox(height: 24),
+
+                    // ── Sync-Token ────────────────────────────────────────
+                    const _SectionHeader(label: 'Geräte-Synchronisation'),
+                    _SyncTokenCard(
+                      skin: skin,
+                      syncToken: _syncToken,
+                      isGenerating: _isGenerating,
+                      isLinking: _isLinking,
+                      showTokenInput: _showTokenInput,
+                      tokenInputController: _tokenInputController,
+                      linkFeedback: _linkFeedback,
+                      linkSuccess: _linkSuccess,
+                      onGenerate: _generateToken,
+                      onCopy: _copyToken,
+                      onShare: _shareToken,
+                      onToggleInput: () => setState(() {
+                        _showTokenInput = !_showTokenInput;
+                        _linkFeedback = null;
+                      }),
+                      onLink: _linkToken,
+                      onUnlink: _unlinkToken,
+                    ),
+
+                    const SizedBox(height: 8),
+                    const _SectionFootnote(
+                      text:
+                          'Der Sync-Token ist dein persönlicher Schlüssel. Teile ihn nur mit Geräten, die du selbst verwendest. Wer den Token kennt, hat Lesezugriff auf deine Daten.',
+                    ),
+                  ],
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -2391,11 +2923,235 @@ class _DesignSettingsScreenState
                                   height: 1.5)),
                           const SizedBox(height: 16),
                           _TiSkinPicker(
-                              activeSkin: _activeSkin,
-                              onSelect: _setSkin),
+              activeSkin: _activeSkin,
+              onSelect: _setSkin),
+        ],
+      ),
+    ),
+  ],
+),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UNTERMENÜ: AUFGABEN & DIKTIEREN
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _TasksDictationSettingsScreen extends StatelessWidget {
+  const _TasksDictationSettingsScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    final skin = AppTheme.of(context);
+    return Scaffold(
+      backgroundColor: skin.bgBase,
+      body: SafeArea(
+        child: Column(
+          children: [
+            _SettingsHeader(
+                title: 'Aufgaben & Diktieren',
+                onBack: () => Navigator.pop(context)),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _SettingsTileGroup(skin: skin, children: [
+                      _SettingsTile(
+                        skin: skin,
+                        icon: Icons.mic_outlined,
+                        iconBg: const Color(0xFF2D6CFF),
+                        label: 'Sprachbefehle & Hilfe',
+                        subtitle: 'Muster, Beispiele und Tipps',
+                        onTap: () => Navigator.push(
+                            context,
+                            CupertinoPageRoute(
+                                builder: (_) => const DictationHelpScreen())),
+                      ),
+                      _SettingsTile(
+                        skin: skin,
+                        icon: Icons.bar_chart_rounded,
+                        iconBg: const Color(0xFF5B9EF5),
+                        label: 'Sprach-Log',
+                        subtitle: 'Alle Diktiereingaben & Erkennungsrate',
+                        onTap: () => Navigator.push(
+                            context,
+                            CupertinoPageRoute(
+                                builder: (_) => const SpeechLogScreen())),
+                      ),
+                      if (AuthService.instance.isAdmin)
+                        _SettingsTile(
+                          skin: skin,
+                          icon: Icons.auto_awesome_outlined,
+                          iconBg: const Color(0xFF8B5CF6),
+                          label: 'Sprach-Analyse',
+                          subtitle: 'Eingaben analysieren · Regeln lernen',
+                          isLast: true,
+                          onTap: () => Navigator.push(
+                              context,
+                              CupertinoPageRoute(
+                                  builder: (_) => const AdminRulesScreen())),
+                        )
+                      else
+                        const SizedBox.shrink(),
+                    ]),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UNTERMENÜ: HOMESCREEN
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _HomescreenSettingsScreen extends StatefulWidget {
+  const _HomescreenSettingsScreen();
+
+  @override
+  State<_HomescreenSettingsScreen> createState() =>
+      _HomescreenSettingsScreenState();
+}
+
+class _HomescreenSettingsScreenState
+    extends State<_HomescreenSettingsScreen> {
+  bool _weatherBig = false;
+  String _taskAddMode = 'dictate'; // 'dictate' | 'sheet'
+  String _weatherCity = '';
+  late TextEditingController _cityCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    final box = Hive.box('einstellungen');
+    _weatherBig = box.get('homescreen_weather_big', defaultValue: false) as bool;
+    _taskAddMode = box.get('homescreen_task_add_mode', defaultValue: 'dictate') as String;
+    _weatherCity = box.get('weather_city', defaultValue: '') as String;
+    _cityCtrl = TextEditingController(text: _weatherCity);
+  }
+
+  @override
+  void dispose() {
+    _cityCtrl.dispose();
+    super.dispose();
+  }
+
+  void _set(String key, dynamic value) =>
+      Hive.box('einstellungen').put(key, value);
+
+  @override
+  Widget build(BuildContext context) {
+    final skin = AppTheme.of(context);
+    return Scaffold(
+      backgroundColor: skin.bgBase,
+      body: SafeArea(
+        child: Column(
+          children: [
+            _SettingsHeader(
+                title: 'Startbildschirm', onBack: () => Navigator.pop(context)),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // ── Wetter ────────────────────────────────────────
+                    const _SectionHeader(label: 'Wetter'),
+                    _SettingsTileGroup(skin: skin, children: [
+                      _SettingsSwitchTile(
+                        skin: skin,
+                        icon: Icons.wb_sunny_outlined,
+                        iconBg: const Color(0xFFFFB347),
+                        label: 'Wetter als große Kachel',
+                        subtitle: 'Aus: kompakter Chip oben rechts',
+                        value: _weatherBig,
+                        onChanged: (v) {
+                          setState(() => _weatherBig = v);
+                          _set('homescreen_weather_big', v);
+                        },
+                        isLast: true,
+                      ),
+                    ]),
+                    const SizedBox(height: 12),
+                    _TiCard(
+                      skin: skin,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _TiCardHeader(
+                              skin: skin,
+                              icon: Icons.location_on_outlined,
+                              label: 'Standort / Stadt'),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Trage deine Stadt ein, damit das Wetter stimmt.',
+                            style: TextStyle(fontSize: 13, color: skin.textMuted, height: 1.5),
+                          ),
+                          const SizedBox(height: 12),
+                          _TiTextField(
+                            skin: skin,
+                            controller: _cityCtrl,
+                            hint: 'z.B. Berlin',
+                            onChanged: (v) => _set('weather_city', v.trim()),
+                          ),
                         ],
                       ),
                     ),
+                    const _SectionFootnote(
+  text: 'Das Wetter wird automatisch per GPS-Standort geladen. '
+      'Falls der Standortzugriff verweigert wird, '
+      'wird die eingetragene Stadt als Fallback verwendet.',
+),
+
+                    const SizedBox(height: 24),
+
+                    // ── Aufgabe hinzufügen ────────────────────────────
+                    const _SectionHeader(label: 'Aufgabe hinzufügen'),
+                    _SettingsTileGroup(skin: skin, children: [
+                      _SettingsSwitchTile(
+                        skin: skin,
+                        icon: Icons.mic_outlined,
+                        iconBg: const Color(0xFF3DD68C),
+                        label: 'Diktieren & direkt speichern',
+                        subtitle: 'Gedrückt halten → direkt diktieren',
+                        value: _taskAddMode == 'dictate',
+                        onChanged: (v) {
+                          final mode = v ? 'dictate' : 'sheet';
+                          setState(() => _taskAddMode = mode);
+                          _set('homescreen_task_add_mode', mode);
+                        },
+                      ),
+                      _SettingsSwitchTile(
+                        skin: skin,
+                        icon: Icons.edit_note_rounded,
+                        iconBg: const Color(0xFF5B8DEF),
+                        label: 'Neues Aufgaben-Fenster öffnen',
+                        subtitle: 'Tippt auf Aufgaben-Tab und öffnet Sheet',
+                        value: _taskAddMode == 'sheet',
+                        isLast: true,
+                        onChanged: (v) {
+                          final mode = v ? 'sheet' : 'dictate';
+                          setState(() => _taskAddMode = mode);
+                          _set('homescreen_task_add_mode', mode);
+                        },
+                      ),
+                    ]),
+                    const _SectionFootnote(
+                        text: 'Im Diktier-Modus öffnet ein langer Druck '
+                            'auf die Aufgaben-Kachel direkt das Mikrofon. '
+                            'Im Sheet-Modus wirst du zum Aufgaben-Tab weitergeleitet.'),
                   ],
                 ),
               ),

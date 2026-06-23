@@ -12,6 +12,7 @@ import '../widgets/glass_kit.dart';
 import '../widgets/glass_pickers.dart';
 import '../services/night_shift_helper.dart';
 import '../services/pdf_service.dart';
+import '../services/sync_service.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MonthScreen
@@ -430,6 +431,8 @@ class MonthScreenState extends State<MonthScreen> with TickerProviderStateMixin 
     if (result == SaveResult.saved || result == SaveResult.splitSaved) {
       await _saveAnimController.forward();
       await _saveAnimController.reverse();
+
+      await SyncService.instance.pushArbeitszeit(_dateKey);
 
       final isToday =
           _dateKey == DateFormat('yyyy-MM-dd').format(DateTime.now());

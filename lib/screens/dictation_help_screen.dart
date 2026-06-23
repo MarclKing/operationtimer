@@ -2,17 +2,18 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../widgets/glass_kit.dart';
-import '../screens/speech_log_screen.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DICTATION HELP SCREEN v2
-// Zeigt nur die 2 unterstützten Eingabe-Muster + Dringend-Flag.
+// DICTATION HELP SCREEN v3
+// Zeigt alle unterstützten Eingabe-Muster + Lern-Hinweis oben.
+// Speech-Log-Button wurde entfernt (jetzt in Einstellungen → Aufgaben).
 // ─────────────────────────────────────────────────────────────────────────────
 
 class DictationHelpScreen extends StatelessWidget {
   const DictationHelpScreen({super.key});
 
   static const _urgentRed = Color(0xFFEF5B5B);
+  static const _learnGreen = Color(0xFF3DD68C);
 
   @override
   Widget build(BuildContext context) {
@@ -57,7 +58,7 @@ class DictationHelpScreen extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.only(left: 74, bottom: 16),
               child: Text(
-                '2 Muster · immer zuverlässig erkannt',
+                'Muster · Datum · Dringend · Selbstlernend',
                 style: TextStyle(fontSize: 12.5, color: skin.textMuted),
               ),
             ),
@@ -68,19 +69,23 @@ class DictationHelpScreen extends StatelessWidget {
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 60),
                 children: [
 
-                  // ── Muster 1 ──────────────────────────────────────────────
+                  // ── NEU: Lern-Banner ──────────────────────────────────────
+                  _LearnBanner(skin: skin),
+                  const SizedBox(height: 20),
+
+                  // ── Muster 1 ─────────────────────────────────────────────
                   _PatternBlock(
                     skin: skin,
                     number: '1',
                     label: 'AUFGABE HINZUFÜGEN',
                     icon: Icons.add_task_outlined,
-                    // Die Satzbau-Vorlage mit farbigen Bausteinen
                     template: [
                       _Segment('Füge die Aufgabe ', SegmentType.command),
                       _Segment('Titel', SegmentType.task),
                       _Segment(' hinzu', SegmentType.command),
                     ],
-                    templateNote: 'Statt „Füge die Aufgabe" auch: Trage, Ergänze, Neue Aufgabe:, Todo:',
+                    templateNote:
+                        'Statt „Füge die Aufgabe" auch: Trage, Ergänze, Neue Aufgabe:, Todo:',
                     variants: [
                       _Variant(
                         input: 'Füge die Aufgabe Marcel schreiben hinzu',
@@ -100,7 +105,8 @@ class DictationHelpScreen extends StatelessWidget {
                     ],
                     deadlineBlock: _PatternDeadlineBlock(
                       skin: skin,
-                      intro: 'Optional: Frist anhängen — mit einem dieser zwei Schlüsselwörter:',
+                      intro:
+                          'Optional: Frist anhängen — mit einem dieser zwei Schlüsselwörter:',
                       templates: [
                         [
                           _Segment('Füge die Aufgabe ', SegmentType.command),
@@ -119,12 +125,14 @@ class DictationHelpScreen extends StatelessWidget {
                       ],
                       variants: [
                         _Variant(
-                          input: 'Füge die Aufgabe Marcel schreiben mit Frist 23.10. 15 Uhr hinzu',
+                          input:
+                              'Füge die Aufgabe Marcel schreiben mit Frist 23.10. 15 Uhr hinzu',
                           output: 'Marcel schreiben',
                           date: '23.10. · 15:00',
                         ),
                         _Variant(
-                          input: 'Füge die Aufgabe Dienstplan erstellen für morgen 9 Uhr hinzu',
+                          input:
+                              'Füge die Aufgabe Dienstplan erstellen für morgen 9 Uhr hinzu',
                           output: 'Dienstplan erstellen',
                           date: 'morgen · 09:00',
                         ),
@@ -139,7 +147,7 @@ class DictationHelpScreen extends StatelessWidget {
 
                   const SizedBox(height: 16),
 
-                  // ── Muster 2 ──────────────────────────────────────────────
+                  // ── Muster 2 ─────────────────────────────────────────────
                   _PatternBlock(
                     skin: skin,
                     number: '2',
@@ -149,7 +157,8 @@ class DictationHelpScreen extends StatelessWidget {
                       _Segment('Erinnere mich an: ', SegmentType.command),
                       _Segment('Titel', SegmentType.task),
                     ],
-                    templateNote: 'Alles nach „an:" wird 1:1 als Aufgabentitel übernommen.',
+                    templateNote:
+                        'Alles nach „an:" wird 1:1 als Aufgabentitel übernommen.',
                     variants: [
                       _Variant(
                         input: 'Erinnere mich an: Auto waschen',
@@ -164,7 +173,8 @@ class DictationHelpScreen extends StatelessWidget {
                     ],
                     deadlineBlock: _PatternDeadlineBlock(
                       skin: skin,
-                      intro: 'Optional: Datum & Uhrzeit zwischen „mich" und „an:" einfügen:',
+                      intro:
+                          'Optional: Datum & Uhrzeit zwischen „mich" und „an:" einfügen:',
                       templates: [
                         [
                           _Segment('Erinnere mich ', SegmentType.command),
@@ -175,17 +185,20 @@ class DictationHelpScreen extends StatelessWidget {
                       ],
                       variants: [
                         _Variant(
-                          input: 'Erinnere mich am 23.10. um 18:30 Uhr an: Auto waschen',
+                          input:
+                              'Erinnere mich am 23.10. um 18:30 Uhr an: Auto waschen',
                           output: 'Auto waschen',
                           date: '23.10. · 18:30',
                         ),
                         _Variant(
-                          input: 'Erinnere mich morgen um 9 Uhr an: Zahnarzt',
+                          input:
+                              'Erinnere mich morgen um 9 Uhr an: Zahnarzt',
                           output: 'Zahnarzt',
                           date: 'morgen · 09:00',
                         ),
                         _Variant(
-                          input: 'Erinnere mich am Freitag an: Reisepass verlängern',
+                          input:
+                              'Erinnere mich am Freitag an: Reisepass verlängern',
                           output: 'Reisepass verlängern',
                           date: 'Freitag',
                         ),
@@ -195,7 +208,12 @@ class DictationHelpScreen extends StatelessWidget {
 
                   const SizedBox(height: 16),
 
-                  // ── Dringend ──────────────────────────────────────────────
+                  // ── Muster 3: Natürliche Sprache ─────────────────────────
+                  _NaturalLanguageBlock(skin: skin),
+
+                  const SizedBox(height: 16),
+
+                  // ── Dringend ─────────────────────────────────────────────
                   _UrgentBlock(skin: skin),
 
                   const SizedBox(height: 16),
@@ -206,10 +224,22 @@ class DictationHelpScreen extends StatelessWidget {
                     icon: Icons.calendar_today_outlined,
                     title: 'Datum-Formate',
                     groups: [
-                      _RefGroup('Relativ', ['morgen', 'übermorgen', 'heute', 'nächste Woche']),
-                      _RefGroup('Wochentag', ['Montag … Sonntag', 'nächsten Dienstag']),
-                      _RefGroup('Exakt', ['23.10.', '15. März', '15.3.2026']),
-                      _RefGroup('Abstand', ['in 3 Tagen', 'in 2 Wochen']),
+                      _RefGroup('Relativ', [
+                        'morgen',
+                        'übermorgen',
+                        'heute',
+                        'nächste Woche'
+                      ]),
+                      _RefGroup('Wochentag', [
+                        'Montag … Sonntag',
+                        'nächsten Dienstag'
+                      ]),
+                      _RefGroup(
+                          'Exakt', ['23.10.', '15. März', '15.3.2026']),
+                      _RefGroup('Abstand', [
+                        'in 3 Tagen',
+                        'in 2 Wochen'
+                      ]),
                     ],
                   ),
 
@@ -220,70 +250,21 @@ class DictationHelpScreen extends StatelessWidget {
                     icon: Icons.access_time_rounded,
                     title: 'Uhrzeit-Formate',
                     groups: [
-                      _RefGroup('Standard', ['15 Uhr', '15:30 Uhr', 'um 9']),
-                      _RefGroup('Umgangsspr.', ['halb drei', 'viertel nach 9', 'viertel vor 10', 'dreiviertel 10']),
+                      _RefGroup(
+                          'Standard', ['15 Uhr', '15:30 Uhr', 'um 9']),
+                      _RefGroup('Umgangsspr.', [
+                        'halb drei',
+                        'viertel nach 9',
+                        'viertel vor 10',
+                        'dreiviertel 10'
+                      ]),
                     ],
                   ),
 
-                  // ── Log-Button ──────────────────────────────────────────────
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 10),
 
-                  GestureDetector(
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const SpeechLogScreen()),
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(14),
-                      child: BackdropFilter(
-                        filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                          decoration: BoxDecoration(
-                            color: skin.surface(0.05),
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: skin.glassBorder),
-                          ),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 34,
-                                height: 34,
-                                decoration: BoxDecoration(
-                                  color: skin.primary.withValues(alpha: 0.10),
-                                  borderRadius: BorderRadius.circular(9),
-                                  border: Border.all(color: skin.primary.withValues(alpha: 0.22)),
-                                ),
-                                child: Icon(Icons.bar_chart_rounded, size: 17, color: skin.primary),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Sprach-Log anzeigen',
-                                      style: TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w600,
-                                        color: skin.textPrimary,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      'Alle Spracheingaben & Erkennungsrate',
-                                      style: TextStyle(fontSize: 11.5, color: skin.textMuted),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              Icon(Icons.chevron_right_rounded, size: 18, color: skin.surface(0.30)),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
+                  // ── Natürliche Sprache Tipp ───────────────────────────────
+                  _NaturalTipCard(skin: skin),
 
                   const SizedBox(height: 8),
                 ],
@@ -297,7 +278,401 @@ class DictationHelpScreen extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Segment-Typen für die farbige Satzbau-Vorlage
+// LEARN BANNER — prominent oben, erklärt das Selbstlernen
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _LearnBanner extends StatelessWidget {
+  final AppSkin skin;
+  const _LearnBanner({required this.skin});
+
+  static const _green = Color(0xFF3DD68C);
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(18),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: _green.withValues(alpha: skin.isLight ? 0.07 : 0.11),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: _green.withValues(alpha: 0.30)),
+            boxShadow: [
+              BoxShadow(
+                color: _green.withValues(alpha: 0.08),
+                blurRadius: 20,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: _green.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: _green.withValues(alpha: 0.30)),
+                    ),
+                    child: const Center(
+                      child: Icon(Icons.auto_awesome_rounded,
+                          size: 18, color: _green),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Lernt automatisch dazu',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: _green,
+                            letterSpacing: 0.1,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Spracherkennung passt sich an dich an',
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            color: _green.withValues(alpha: 0.70),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Container(
+                height: 0.5,
+                color: _green.withValues(alpha: 0.20),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Die Diktierfunktion merkt sich, welche Formulierungen du verwendest. Sätze, die nicht sofort erkannt werden, werden sicher analysiert — so lernt die App mit der Zeit deine persönliche Ausdrucksweise und erkennt sie beim nächsten Mal direkt.',
+                style: TextStyle(
+                  fontSize: 12.5,
+                  color: skin.textPrimary.withValues(alpha: 0.75),
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  _LearnChip(label: '🎙 Einfach diktieren', green: _green, skin: skin),
+                  const SizedBox(width: 6),
+                  _LearnChip(label: '🧠 App lernt mit', green: _green, skin: skin),
+                  const SizedBox(width: 6),
+                  _LearnChip(label: '✓ Wird besser', green: _green, skin: skin),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LearnChip extends StatelessWidget {
+  final String label;
+  final Color green;
+  final AppSkin skin;
+  const _LearnChip({required this.label, required this.green, required this.skin});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: green.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: green.withValues(alpha: 0.22)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 10.5,
+          fontWeight: FontWeight.w600,
+          color: green.withValues(alpha: 0.85),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// NATÜRLICHE SPRACHE BLOCK — Muster 3
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _NaturalLanguageBlock extends StatelessWidget {
+  final AppSkin skin;
+  const _NaturalLanguageBlock({required this.skin});
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(18),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
+        child: Container(
+          decoration: BoxDecoration(
+            color: skin.isLight
+                ? Colors.white.withValues(alpha: skin.glassOpacity)
+                : skin.bgCard.withValues(alpha: skin.glassOpacity),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: skin.glassBorder),
+            boxShadow: [
+              BoxShadow(color: skin.glassShadow, blurRadius: 20, offset: const Offset(0, 5))
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 28,
+                      height: 28,
+                      decoration: BoxDecoration(
+                        color: skin.primary.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: skin.primary.withValues(alpha: 0.25)),
+                      ),
+                      child: Center(
+                        child: Text(
+                          '3',
+                          style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800,
+                              color: skin.primary),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Icon(Icons.auto_fix_high_outlined, size: 13, color: skin.primary),
+                    const SizedBox(width: 6),
+                    Text(
+                      'NATÜRLICHE SPRACHE',
+                      style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          color: skin.primary,
+                          letterSpacing: 1.0),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF3DD68C).withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(
+                            color: const Color(0xFF3DD68C).withValues(alpha: 0.30)),
+                      ),
+                      child: Text(
+                        'LERNEND',
+                        style: TextStyle(
+                            fontSize: 8.5,
+                            fontWeight: FontWeight.w700,
+                            color: const Color(0xFF3DD68C),
+                            letterSpacing: 0.8),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
+                child: Text(
+                  'Formulierungen die nicht Muster 1 oder 2 entsprechen, werden automatisch analysiert und der App beigebracht. Einfach natürlich sprechen — die Erkennung verbessert sich mit der Zeit.',
+                  style: TextStyle(
+                      fontSize: 12, color: skin.surface(0.45), height: 1.45),
+                ),
+              ),
+              Container(
+                  height: 0.5,
+                  margin: const EdgeInsets.symmetric(horizontal: 16),
+                  color: skin.surface(0.08)),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+                child: Text(
+                  'WIRD AUTOMATISCH ERKANNT',
+                  style: TextStyle(
+                      fontSize: 9,
+                      fontWeight: FontWeight.w700,
+                      color: skin.surface(0.32),
+                      letterSpacing: 1.1),
+                ),
+              ),
+              _NaturalVariant(
+                  skin: skin,
+                  input: 'Ich muss noch Zahnarzt anrufen',
+                  output: 'Zahnarzt anrufen'),
+              _NaturalVariant(
+                  skin: skin,
+                  input: 'Nicht vergessen: Reisepass verlängern',
+                  output: 'Reisepass verlängern'),
+              _NaturalVariant(
+                  skin: skin,
+                  input: 'Morgen früh Auto waschen',
+                  output: 'Auto waschen',
+                  date: 'morgen'),
+              _NaturalVariant(
+                  skin: skin,
+                  input: 'Kannst du mich an das Meeting erinnern',
+                  output: 'Meeting'),
+              const SizedBox(height: 10),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _NaturalVariant extends StatelessWidget {
+  final AppSkin skin;
+  final String input;
+  final String output;
+  final String? date;
+  const _NaturalVariant(
+      {required this.skin,
+      required this.input,
+      required this.output,
+      this.date});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.mic_none_rounded, size: 12, color: skin.surface(0.30)),
+          const SizedBox(width: 7),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '„$input"',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontStyle: FontStyle.italic,
+                    color: skin.textPrimary.withValues(alpha: 0.70),
+                    height: 1.35,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Row(children: [
+                  Icon(Icons.arrow_forward_rounded,
+                      size: 10, color: skin.primary.withValues(alpha: 0.5)),
+                  const SizedBox(width: 5),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: skin.primary.withValues(alpha: 0.09),
+                      borderRadius: BorderRadius.circular(6),
+                      border:
+                          Border.all(color: skin.primary.withValues(alpha: 0.22)),
+                    ),
+                    child: Text(output,
+                        style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w600,
+                            color: skin.primary)),
+                  ),
+                  if (date != null) ...[
+                    const SizedBox(width: 5),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 7, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF5B9EF5).withValues(alpha: 0.10),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(
+                            color: const Color(0xFF5B9EF5).withValues(alpha: 0.28)),
+                      ),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        Icon(Icons.schedule_outlined,
+                            size: 10, color: const Color(0xFF3B7ED4)),
+                        const SizedBox(width: 3),
+                        Text(date!,
+                            style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF3B7ED4))),
+                      ]),
+                    ),
+                  ],
+                ]),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _NaturalTipCard extends StatelessWidget {
+  final AppSkin skin;
+  const _NaturalTipCard({required this.skin});
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
+        child: Container(
+          padding: const EdgeInsets.all(13),
+          decoration: BoxDecoration(
+            color: skin.primary.withValues(alpha: skin.isLight ? 0.05 : 0.08),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: skin.primary.withValues(alpha: 0.18)),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.lightbulb_outline_rounded,
+                  size: 15, color: skin.primary.withValues(alpha: 0.70)),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Text(
+                  'Tipp: Sprich einfach so, wie du es einem Assistenten sagen würdest. Je mehr du die Diktierfunktion nutzt, desto besser wird die Erkennung für deine Formulierungen.',
+                  style: TextStyle(
+                      fontSize: 12,
+                      color: skin.textMuted,
+                      height: 1.5),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Ab hier: alle bisherigen Hilfsklassen bleiben identisch erhalten
+// (Segment-Typen, _Variant, _PatternDeadlineBlock, _PatternBlock,
+//  _DeadlineSection, _TemplateRow, _VariantRow, _UrgentBlock,
+//  _UrgentVariantRow, _ReferenceCard, _RefGroup)
 // ─────────────────────────────────────────────────────────────────────────────
 
 enum SegmentType { command, task, datetime, keyword }
@@ -308,20 +683,12 @@ class _Segment {
   const _Segment(this.text, this.type);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Variant (Beispieleingabe → Ergebnis)
-// ─────────────────────────────────────────────────────────────────────────────
-
 class _Variant {
   final String input;
   final String output;
   final String? date;
   const _Variant({required this.input, required this.output, this.date});
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Deadline-Unterblock innerhalb eines Musters
-// ─────────────────────────────────────────────────────────────────────────────
 
 class _PatternDeadlineBlock {
   final AppSkin skin;
@@ -335,10 +702,6 @@ class _PatternDeadlineBlock {
     required this.variants,
   });
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// PATTERN BLOCK — Haupt-Muster-Karte
-// ─────────────────────────────────────────────────────────────────────────────
 
 class _PatternBlock extends StatefulWidget {
   final AppSkin skin;
@@ -371,7 +734,6 @@ class _PatternBlockState extends State<_PatternBlock> {
   @override
   Widget build(BuildContext context) {
     final skin = widget.skin;
-
     return ClipRRect(
       borderRadius: BorderRadius.circular(18),
       child: BackdropFilter(
@@ -383,88 +745,78 @@ class _PatternBlockState extends State<_PatternBlock> {
                 : skin.bgCard.withValues(alpha: skin.glassOpacity),
             borderRadius: BorderRadius.circular(18),
             border: Border.all(color: skin.glassBorder),
-            boxShadow: [BoxShadow(color: skin.glassShadow, blurRadius: 20, offset: const Offset(0, 5))],
+            boxShadow: [
+              BoxShadow(
+                  color: skin.glassShadow,
+                  blurRadius: 20,
+                  offset: const Offset(0, 5))
+            ],
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-
-              // ── Header ──
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                child: Row(
-                  children: [
-                    // Nummer-Badge
-                    Container(
-                      width: 28,
-                      height: 28,
-                      decoration: BoxDecoration(
-                        color: skin.primary.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: skin.primary.withValues(alpha: 0.25)),
-                      ),
-                      child: Center(
-                        child: Text(
-                          widget.number,
+                child: Row(children: [
+                  Container(
+                    width: 28,
+                    height: 28,
+                    decoration: BoxDecoration(
+                      color: skin.primary.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                          color: skin.primary.withValues(alpha: 0.25)),
+                    ),
+                    child: Center(
+                      child: Text(widget.number,
                           style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w800,
-                            color: skin.primary,
-                          ),
-                        ),
-                      ),
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800,
+                              color: skin.primary)),
                     ),
-                    const SizedBox(width: 10),
-                    Icon(widget.icon, size: 13, color: skin.primary),
-                    const SizedBox(width: 6),
-                    Text(
-                      widget.label,
+                  ),
+                  const SizedBox(width: 10),
+                  Icon(widget.icon, size: 13, color: skin.primary),
+                  const SizedBox(width: 6),
+                  Text(widget.label,
                       style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        color: skin.primary,
-                        letterSpacing: 1.0,
-                      ),
-                    ),
-                  ],
-                ),
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          color: skin.primary,
+                          letterSpacing: 1.0)),
+                ]),
               ),
-
-              // ── Satzbau-Vorlage ──
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
                 child: _TemplateRow(skin: skin, segments: widget.template),
               ),
-
-              // ── Hinweis unter Vorlage ──
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 5, 16, 12),
-                child: Text(
-                  widget.templateNote,
-                  style: TextStyle(fontSize: 11, color: skin.surface(0.38), height: 1.4),
-                ),
+                child: Text(widget.templateNote,
+                    style: TextStyle(
+                        fontSize: 11, color: skin.surface(0.38), height: 1.4)),
               ),
-
-              // ── Divider ──
-              Container(height: 0.5, margin: const EdgeInsets.symmetric(horizontal: 16), color: skin.surface(0.08)),
-
-              // ── Beispiele (ohne Datum) ──
+              Container(
+                  height: 0.5,
+                  margin: const EdgeInsets.symmetric(horizontal: 16),
+                  color: skin.surface(0.08)),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-                child: Text(
-                  'BEISPIELE',
-                  style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: skin.surface(0.32), letterSpacing: 1.1),
-                ),
+                child: Text('BEISPIELE',
+                    style: TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w700,
+                        color: skin.surface(0.32),
+                        letterSpacing: 1.1)),
               ),
               ...widget.variants.map((v) => _VariantRow(skin: skin, variant: v)),
               const SizedBox(height: 8),
-
-              // ── Frist-Toggle ──
               GestureDetector(
                 onTap: () => setState(() => _showDeadline = !_showDeadline),
                 child: Container(
                   margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
                   decoration: BoxDecoration(
                     color: _showDeadline
                         ? skin.primary.withValues(alpha: 0.08)
@@ -476,37 +828,37 @@ class _PatternBlockState extends State<_PatternBlock> {
                           : skin.surface(0.10),
                     ),
                   ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.calendar_today_outlined,
+                  child: Row(children: [
+                    Icon(Icons.calendar_today_outlined,
                         size: 13,
-                        color: _showDeadline ? skin.primary : skin.surface(0.4),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'Mit Frist / Datum',
-                          style: TextStyle(
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w600,
-                            color: _showDeadline ? skin.primary : skin.surface(0.45),
-                          ),
-                        ),
-                      ),
-                      Icon(
-                        _showDeadline ? Icons.expand_less_rounded : Icons.expand_more_rounded,
+                        color: _showDeadline
+                            ? skin.primary
+                            : skin.surface(0.4)),
+                    const SizedBox(width: 8),
+                    Expanded(
+                        child: Text('Mit Frist / Datum',
+                            style: TextStyle(
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w600,
+                                color: _showDeadline
+                                    ? skin.primary
+                                    : skin.surface(0.45)))),
+                    Icon(
+                        _showDeadline
+                            ? Icons.expand_less_rounded
+                            : Icons.expand_more_rounded,
                         size: 16,
-                        color: _showDeadline ? skin.primary : skin.surface(0.3),
-                      ),
-                    ],
-                  ),
+                        color: _showDeadline
+                            ? skin.primary
+                            : skin.surface(0.3)),
+                  ]),
                 ),
               ),
-
-              // ── Frist-Block (ausgeklappt) ──
               if (_showDeadline) ...[
-                Container(height: 0.5, margin: const EdgeInsets.symmetric(horizontal: 16), color: skin.surface(0.08)),
+                Container(
+                    height: 0.5,
+                    margin: const EdgeInsets.symmetric(horizontal: 16),
+                    color: skin.surface(0.08)),
                 _DeadlineSection(skin: skin, block: widget.deadlineBlock),
               ],
             ],
@@ -516,10 +868,6 @@ class _PatternBlockState extends State<_PatternBlock> {
     );
   }
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Frist-Sektion (ausgeklappt)
-// ─────────────────────────────────────────────────────────────────────────────
 
 class _DeadlineSection extends StatelessWidget {
   final AppSkin skin;
@@ -533,20 +881,21 @@ class _DeadlineSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            block.intro,
-            style: TextStyle(fontSize: 12, color: skin.surface(0.45), height: 1.4),
-          ),
+          Text(block.intro,
+              style: TextStyle(
+                  fontSize: 12, color: skin.surface(0.45), height: 1.4)),
           const SizedBox(height: 10),
           ...block.templates.map((segs) => Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: _TemplateRow(skin: skin, segments: segs),
-          )),
+                padding: const EdgeInsets.only(bottom: 8),
+                child: _TemplateRow(skin: skin, segments: segs),
+              )),
           const SizedBox(height: 6),
-          Text(
-            'BEISPIELE',
-            style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: skin.surface(0.32), letterSpacing: 1.1),
-          ),
+          Text('BEISPIELE',
+              style: TextStyle(
+                  fontSize: 9,
+                  fontWeight: FontWeight.w700,
+                  color: skin.surface(0.32),
+                  letterSpacing: 1.1)),
           const SizedBox(height: 6),
           ...block.variants.map((v) => _VariantRow(skin: skin, variant: v)),
         ],
@@ -554,10 +903,6 @@ class _DeadlineSection extends StatelessWidget {
     );
   }
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Template Row — farbige Satzbau-Bausteine
-// ─────────────────────────────────────────────────────────────────────────────
 
 class _TemplateRow extends StatelessWidget {
   final AppSkin skin;
@@ -610,7 +955,8 @@ class _TemplateRow extends StatelessWidget {
       runSpacing: 5,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: segments.map((seg) {
-        final isPlaceholder = seg.type == SegmentType.task || seg.type == SegmentType.datetime;
+        final isPlaceholder =
+            seg.type == SegmentType.task || seg.type == SegmentType.datetime;
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           decoration: BoxDecoration(
@@ -622,9 +968,11 @@ class _TemplateRow extends StatelessWidget {
             seg.text.trim(),
             style: TextStyle(
               fontSize: 13,
-              fontWeight: isPlaceholder ? FontWeight.w700 : FontWeight.w500,
+              fontWeight:
+                  isPlaceholder ? FontWeight.w700 : FontWeight.w500,
               color: _textColor(seg, skin),
-              fontStyle: isPlaceholder ? FontStyle.italic : FontStyle.normal,
+              fontStyle:
+                  isPlaceholder ? FontStyle.italic : FontStyle.normal,
             ),
           ),
         );
@@ -632,10 +980,6 @@ class _TemplateRow extends StatelessWidget {
     );
   }
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Variant Row — Eingabe → Ergebnis
-// ─────────────────────────────────────────────────────────────────────────────
 
 class _VariantRow extends StatelessWidget {
   final AppSkin skin;
@@ -665,55 +1009,51 @@ class _VariantRow extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Icon(Icons.arrow_forward_rounded, size: 10, color: skin.primary.withValues(alpha: 0.5)),
-                    const SizedBox(width: 5),
-                    // Titel-Chip
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: skin.primary.withValues(alpha: 0.09),
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(color: skin.primary.withValues(alpha: 0.22)),
-                      ),
-                      child: Text(
-                        variant.output,
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: skin.primary,
-                        ),
-                      ),
+                Row(children: [
+                  Icon(Icons.arrow_forward_rounded,
+                      size: 10,
+                      color: skin.primary.withValues(alpha: 0.5)),
+                  const SizedBox(width: 5),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 7, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: skin.primary.withValues(alpha: 0.09),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(
+                          color: skin.primary.withValues(alpha: 0.22)),
                     ),
-                    if (variant.date != null) ...[
-                      const SizedBox(width: 5),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF5B9EF5).withValues(alpha: 0.10),
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: const Color(0xFF5B9EF5).withValues(alpha: 0.28)),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.schedule_outlined, size: 10, color: const Color(0xFF3B7ED4)),
-                            const SizedBox(width: 3),
-                            Text(
-                              variant.date!,
-                              style: const TextStyle(
+                    child: Text(variant.output,
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: skin.primary)),
+                  ),
+                  if (variant.date != null) ...[
+                    const SizedBox(width: 5),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 7, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF5B9EF5).withValues(alpha: 0.10),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(
+                            color: const Color(0xFF5B9EF5)
+                                .withValues(alpha: 0.28)),
+                      ),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        Icon(Icons.schedule_outlined,
+                            size: 10, color: const Color(0xFF3B7ED4)),
+                        const SizedBox(width: 3),
+                        Text(variant.date!,
+                            style: const TextStyle(
                                 fontSize: 11.5,
                                 fontWeight: FontWeight.w600,
-                                color: Color(0xFF3B7ED4),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
+                                color: Color(0xFF3B7ED4))),
+                      ]),
+                    ),
                   ],
-                ),
+                ]),
               ],
             ),
           ),
@@ -722,10 +1062,6 @@ class _VariantRow extends StatelessWidget {
     );
   }
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// URGENT BLOCK
-// ─────────────────────────────────────────────────────────────────────────────
 
 class _UrgentBlock extends StatelessWidget {
   final AppSkin skin;
@@ -748,65 +1084,58 @@ class _UrgentBlock extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 28,
-                      height: 28,
-                      decoration: BoxDecoration(
-                        color: _red.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: _red.withValues(alpha: 0.28)),
-                      ),
-                      child: const Center(
-                        child: Icon(Icons.priority_high_rounded, size: 15, color: _red),
-                      ),
+                child: Row(children: [
+                  Container(
+                    width: 28,
+                    height: 28,
+                    decoration: BoxDecoration(
+                      color: _red.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(8),
+                      border:
+                          Border.all(color: _red.withValues(alpha: 0.28)),
                     ),
-                    const SizedBox(width: 10),
-                    Text(
-                      'DRINGEND',
+                    child: const Center(
+                      child: Icon(Icons.priority_high_rounded,
+                          size: 15, color: _red),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Text('DRINGEND',
                       style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        color: _red,
-                        letterSpacing: 1.1,
-                      ),
-                    ),
-                  ],
-                ),
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          color: _red,
+                          letterSpacing: 1.1)),
+                ]),
               ),
-
-              // Erklärung
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
                 child: Text(
                   'Das Wort „dringend" irgendwo im Satz markiert die Aufgabe als dringend — sie erscheint dann ganz oben in der Liste, optisch abgehoben.',
-                  style: TextStyle(fontSize: 12.5, color: skin.textMuted, height: 1.45),
+                  style: TextStyle(
+                      fontSize: 12.5, color: skin.textMuted, height: 1.45),
                 ),
               ),
-
-              Container(height: 0.5, margin: const EdgeInsets.symmetric(horizontal: 16), color: _red.withValues(alpha: 0.15)),
-
-              // Beispiele
+              Container(
+                  height: 0.5,
+                  margin: const EdgeInsets.symmetric(horizontal: 16),
+                  color: _red.withValues(alpha: 0.15)),
               const SizedBox(height: 10),
               _UrgentVariantRow(
-                skin: skin,
-                input: 'Dringend: Reisepass verlängern',
-                output: 'Reisepass verlängern',
-              ),
+                  skin: skin,
+                  input: 'Dringend: Reisepass verlängern',
+                  output: 'Reisepass verlängern'),
               _UrgentVariantRow(
-                skin: skin,
-                input: 'Füge die Aufgabe dringend Angebot schreiben hinzu',
-                output: 'Angebot schreiben',
-              ),
+                  skin: skin,
+                  input:
+                      'Füge die Aufgabe dringend Angebot schreiben hinzu',
+                  output: 'Angebot schreiben'),
               _UrgentVariantRow(
-                skin: skin,
-                input: 'Erinnere mich dringend an: Arzttermin',
-                output: 'Arzttermin',
-              ),
+                  skin: skin,
+                  input: 'Erinnere mich dringend an: Arzttermin',
+                  output: 'Arzttermin'),
               const SizedBox(height: 14),
             ],
           ),
@@ -820,7 +1149,8 @@ class _UrgentVariantRow extends StatelessWidget {
   final AppSkin skin;
   final String input;
   final String output;
-  const _UrgentVariantRow({required this.skin, required this.input, required this.output});
+  const _UrgentVariantRow(
+      {required this.skin, required this.input, required this.output});
 
   static const _red = Color(0xFFEF5B5B);
 
@@ -837,45 +1167,38 @@ class _UrgentVariantRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  '„$input"',
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    fontStyle: FontStyle.italic,
-                    color: skin.textPrimary.withValues(alpha: 0.75),
-                    height: 1.35,
-                  ),
-                ),
+                Text('„$input"',
+                    style: TextStyle(
+                        fontSize: 12.5,
+                        fontStyle: FontStyle.italic,
+                        color: skin.textPrimary.withValues(alpha: 0.75),
+                        height: 1.35)),
                 const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Icon(Icons.arrow_forward_rounded, size: 10, color: _red.withValues(alpha: 0.5)),
-                    const SizedBox(width: 5),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: _red.withValues(alpha: 0.09),
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(color: _red.withValues(alpha: 0.28)),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.priority_high_rounded, size: 10, color: _red),
-                          const SizedBox(width: 3),
-                          Text(
-                            output,
-                            style: const TextStyle(
+                Row(children: [
+                  Icon(Icons.arrow_forward_rounded,
+                      size: 10, color: _red.withValues(alpha: 0.5)),
+                  const SizedBox(width: 5),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 7, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: _red.withValues(alpha: 0.09),
+                      borderRadius: BorderRadius.circular(6),
+                      border:
+                          Border.all(color: _red.withValues(alpha: 0.28)),
+                    ),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(Icons.priority_high_rounded,
+                          size: 10, color: _red),
+                      const SizedBox(width: 3),
+                      Text(output,
+                          style: const TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w600,
-                              color: _red,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
+                              color: _red)),
+                    ]),
+                  ),
+                ]),
               ],
             ),
           ),
@@ -884,10 +1207,6 @@ class _UrgentVariantRow extends StatelessWidget {
     );
   }
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// REFERENCE CARD — kompakte Datum/Zeit-Übersicht
-// ─────────────────────────────────────────────────────────────────────────────
 
 class _RefGroup {
   final String label;
@@ -926,60 +1245,59 @@ class _ReferenceCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(children: [
-                Icon(icon, size: 13, color: skin.primary.withValues(alpha: 0.70)),
+                Icon(icon,
+                    size: 13,
+                    color: skin.primary.withValues(alpha: 0.70)),
                 const SizedBox(width: 7),
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: skin.textPrimary,
-                  ),
-                ),
+                Text(title,
+                    style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: skin.textPrimary)),
               ]),
               const SizedBox(height: 10),
               ...groups.map((g) => Padding(
-                padding: const EdgeInsets.only(bottom: 7),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SizedBox(
-                      width: 72,
-                      child: Text(
-                        g.label,
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                          color: skin.surface(0.35),
-                          letterSpacing: 0.3,
+                    padding: const EdgeInsets.only(bottom: 7),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SizedBox(
+                          width: 72,
+                          child: Text(g.label,
+                              style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                  color: skin.surface(0.35),
+                                  letterSpacing: 0.3)),
                         ),
-                      ),
-                    ),
-                    Expanded(
-                      child: Wrap(
-                        spacing: 5,
-                        runSpacing: 5,
-                        children: g.items.map((item) => Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: skin.surface(0.06),
-                            borderRadius: BorderRadius.circular(6),
-                            border: Border.all(color: skin.glassBorder, width: 0.8),
+                        Expanded(
+                          child: Wrap(
+                            spacing: 5,
+                            runSpacing: 5,
+                            children: g.items
+                                .map((item) => Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 7, vertical: 3),
+                                      decoration: BoxDecoration(
+                                        color: skin.surface(0.06),
+                                        borderRadius:
+                                            BorderRadius.circular(6),
+                                        border: Border.all(
+                                            color: skin.glassBorder,
+                                            width: 0.8),
+                                      ),
+                                      child: Text(item,
+                                          style: TextStyle(
+                                              fontSize: 11,
+                                              color: skin.textMuted,
+                                              fontWeight: FontWeight.w500)),
+                                    ))
+                                .toList(),
                           ),
-                          child: Text(
-                            item,
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: skin.textMuted,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        )).toList(),
-                      ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-              )),
+                  )),
             ],
           ),
         ),

@@ -10,6 +10,7 @@ import 'package:intl/intl.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import '../theme/app_theme.dart';
 import '../widgets/glass_kit.dart';
+import '../widgets/dictation_fab.dart';
 import '../widgets/glass_pickers.dart';
 import '../widgets/glass_dialogs.dart';
 import '../widgets/swipe_animation_mixin.dart';
@@ -17,22 +18,14 @@ import '../services/notification_service.dart';
 import '../services/spoken_task_parser.dart';
 import '../services/reminder_manager.dart';
 import '../services/speech_normalizer.dart';
-import '../services/speech_log.dart'; // Pfad ggf. anpassen
+import '../services/speech_log.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/scheduler.dart';
+import '../services/rule_engine.dart';
 
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TASK MODEL
-//
-// reminderTimes: bis zu 3 konkrete Zeitpunkte (DateTime), zu denen erinnert
-// werden soll. Werden aus ReminderOption (Duration) + Bezugspunkt berechnet:
-//   - ohne Deadline: Bezugspunkt = "jetzt" (Erstellungszeitpunkt)
-//   - mit Deadline:  Bezugspunkt = dueDate, Reminder = dueDate - duration
-// reminderOptionIds: die IDs der gewählten ReminderOption — werden separat
-// gespeichert, damit beim Bearbeiten die ursprüngliche Auswahl (z. B. "1 Tag
-// vorher") wieder vorbelegt werden kann, statt nur den rohen DateTime zu
-// haben (aus dem sich die Auswahl nicht mehr eindeutig rekonstruieren lässt).
 // ─────────────────────────────────────────────────────────────────────────────
 
 class Task {
@@ -46,7 +39,7 @@ class Task {
   List<DateTime> reminderTimes;
   List<String> reminderOptionIds;
   String notes;
-  bool isUrgent; // ← NEU
+  bool isUrgent;
 
   Task({
     required this.id,
@@ -59,7 +52,7 @@ class Task {
     List<DateTime>? reminderTimes,
     List<String>? reminderOptionIds,
     this.notes = '',
-    this.isUrgent = false, // ← NEU
+    this.isUrgent = false,
   })  : reminderTimes = reminderTimes ?? [],
         reminderOptionIds = reminderOptionIds ?? [];
 
@@ -86,32 +79,32 @@ class Task {
   }
 
   Map<String, dynamic> toJson() => {
-  'id': id,
-  'title': title,
-  'dueDate': dueDate?.toIso8601String(),
-  'hasTime': hasTime,
-  'done': done,
-  'createdAt': createdAt.toIso8601String(),
-  'completedAt': completedAt?.toIso8601String(),
-  'reminderTimes': reminderTimes.map((d) => d.toIso8601String()).toList(),
-  'reminderOptionIds': reminderOptionIds,
-  'notes': notes,
-  'isUrgent': isUrgent, // ← NEU
-};
+    'id': id,
+    'title': title,
+    'dueDate': dueDate?.toIso8601String(),
+    'hasTime': hasTime,
+    'done': done,
+    'createdAt': createdAt.toIso8601String(),
+    'completedAt': completedAt?.toIso8601String(),
+    'reminderTimes': reminderTimes.map((d) => d.toIso8601String()).toList(),
+    'reminderOptionIds': reminderOptionIds,
+    'notes': notes,
+    'isUrgent': isUrgent,
+  };
 
   factory Task.fromJson(Map<String, dynamic> j) => Task(
-  id: j['id'] as String,
-  title: j['title'] as String,
-  dueDate: j['dueDate'] != null ? DateTime.tryParse(j['dueDate'] as String) : null,
-  hasTime: j['hasTime'] as bool? ?? false,
-  done: j['done'] as bool? ?? false,
-  createdAt: DateTime.tryParse(j['createdAt'] as String? ?? '') ?? DateTime.now(),
-  completedAt: j['completedAt'] != null ? DateTime.tryParse(j['completedAt'] as String) : null,
-  reminderTimes: (j['reminderTimes'] as List?)?.map((e) => DateTime.tryParse(e.toString())).whereType<DateTime>().toList() ?? [],
-  reminderOptionIds: (j['reminderOptionIds'] as List?)?.map((e) => e.toString()).toList() ?? [],
-  notes: j['notes'] as String? ?? '',
-  isUrgent: j['isUrgent'] as bool? ?? false, // ← NEU
-);
+    id: j['id'] as String,
+    title: j['title'] as String,
+    dueDate: j['dueDate'] != null ? DateTime.tryParse(j['dueDate'] as String) : null,
+    hasTime: j['hasTime'] as bool? ?? false,
+    done: j['done'] as bool? ?? false,
+    createdAt: DateTime.tryParse(j['createdAt'] as String? ?? '') ?? DateTime.now(),
+    completedAt: j['completedAt'] != null ? DateTime.tryParse(j['completedAt'] as String) : null,
+    reminderTimes: (j['reminderTimes'] as List?)?.map((e) => DateTime.tryParse(e.toString())).whereType<DateTime>().toList() ?? [],
+    reminderOptionIds: (j['reminderOptionIds'] as List?)?.map((e) => e.toString()).toList() ?? [],
+    notes: j['notes'] as String? ?? '',
+    isUrgent: j['isUrgent'] as bool? ?? false,
+  );
 }
 
 class TaskStore {
@@ -157,10 +150,6 @@ class TaskStore {
     saveAll(all);
   }
 
-  /// Für schedule_screen.dart: liefert alle offenen Aufgaben mit Deadline am
-  /// angegebenen Kalendertag, damit dort ein kleines Hinweis-Icon angezeigt
-  /// werden kann (nur an Tagen mit hinterlegtem Dienstplan-Eintrag relevant —
-  /// das Filtern danach übernimmt schedule_screen.dart selbst).
   static bool hasOpenTaskOnDay(DateTime day) {
     final all = loadAll();
     return all.any((t) =>
@@ -171,6 +160,7 @@ class TaskStore {
         t.dueDate!.day == day.day);
   }
 }
+
 // ─────────────────────────────────────────────────────────────────────────────
 // TASKS SCREEN
 // ─────────────────────────────────────────────────────────────────────────────
@@ -203,11 +193,10 @@ class TasksScreenState extends State<TasksScreen> with TickerProviderStateMixin 
   }
 
   void _load() => setState(() {
-  _tasks = TaskStore.loadAll();
-  // Keys bereinigen damit Flutter die Karten korrekt neu zuordnet
-  final loadedIds = _tasks.map((t) => t.id).toSet();
-  _taskCardKeys.removeWhere((id, _) => !loadedIds.contains(id));
-});
+    _tasks = TaskStore.loadAll();
+    final loadedIds = _tasks.map((t) => t.id).toSet();
+    _taskCardKeys.removeWhere((id, _) => !loadedIds.contains(id));
+  });
 
   void scrollToTop() {
     if (_scrollController.hasClients) {
@@ -215,8 +204,6 @@ class TasksScreenState extends State<TasksScreen> with TickerProviderStateMixin 
     }
   }
 
-  /// Wird von main.dart bei Tab-Wechsel aufgerufen, damit offene Swipes und
-  /// ein laufendes Inline-Edit (samt Speichern) korrekt geschlossen werden.
   void closeOverlays() {
     if (_inlineEditId != null) {
       final id = _inlineEditId!;
@@ -228,28 +215,28 @@ class TasksScreenState extends State<TasksScreen> with TickerProviderStateMixin 
   }
 
   List<Task> get _urgentTasks {
-  final list = _tasks.where((t) => t.isUrgent && !t.done).toList();
-  list.sort((a, b) => a.createdAt.compareTo(b.createdAt));
-  return list;
-}
+    final list = _tasks.where((t) => t.isUrgent && !t.done).toList();
+    list.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    return list;
+  }
 
-List<Task> get _deadlineTasks {
-  final list = _tasks.where((t) => t.hasDeadline && !t.done && !t.isUrgent).toList();
-  list.sort((a, b) => a.dueDate!.compareTo(b.dueDate!));
-  return list;
-}
+  List<Task> get _deadlineTasks {
+    final list = _tasks.where((t) => t.hasDeadline && !t.done && !t.isUrgent).toList();
+    list.sort((a, b) => a.dueDate!.compareTo(b.dueDate!));
+    return list;
+  }
 
-List<Task> get _generalTasks {
-  final list = _tasks.where((t) => !t.hasDeadline && !t.done && !t.isUrgent).toList();
-  list.sort((a, b) => a.createdAt.compareTo(b.createdAt));
-  return list;
-}
+  List<Task> get _generalTasks {
+    final list = _tasks.where((t) => !t.hasDeadline && !t.done && !t.isUrgent).toList();
+    list.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    return list;
+  }
 
-List<Task> get _doneTasks {
-  final list = _tasks.where((t) => t.done).toList();
-  list.sort((a, b) => (b.completedAt ?? b.createdAt).compareTo(a.completedAt ?? a.createdAt));
-  return list;
-}
+  List<Task> get _doneTasks {
+    final list = _tasks.where((t) => t.done).toList();
+    list.sort((a, b) => (b.completedAt ?? b.createdAt).compareTo(a.completedAt ?? a.createdAt));
+    return list;
+  }
 
   void _toggleDone(Task task) {
     HapticFeedback.lightImpact();
@@ -275,7 +262,6 @@ List<Task> get _doneTasks {
     }
   }
 
-  // Swipe-Löschen löscht jetzt SOFORT, ohne Bestätigungsdialog.
   void _deleteTaskImmediate(Task task) {
     setState(() {
       _tasks.removeWhere((t) => t.id == task.id);
@@ -283,6 +269,9 @@ List<Task> get _doneTasks {
       if (_inlineEditId == task.id) _inlineEditId = null;
     });
     TaskStore.delete(task.id);
+    // Löschung kurz nach Diktat = starkes Signal, dass die Erkennung
+    // komplett danebenlag (Nutzer wollte den Task gar nicht so).
+    SpeechLog.markEdited(task.id, task.createdAt);
     NotificationService.instance.cancelTaskReminders(task.id);
   }
 
@@ -291,8 +280,6 @@ List<Task> get _doneTasks {
   void _startInlineEdit(String id) {
     if (_inlineEditId == id) return;
     HapticFeedback.selectionClick();
-    // Falls eine andere Karte noch im Inline-Edit war, deren Eingabe zuerst
-    // sauber übernehmen, bevor die neue startet.
     if (_inlineEditId != null) {
       _taskCardKeys[_inlineEditId]?.currentState?.commitInlineEditNow();
     }
@@ -304,14 +291,18 @@ List<Task> get _doneTasks {
 
   void _commitInlineEdit(Task task, String newTitle) {
     final trimmed = newTitle.trim();
+    final titleActuallyChanged = trimmed.isNotEmpty && trimmed != task.title;
     setState(() {
       _inlineEditId = null;
-      if (trimmed.isNotEmpty && trimmed != task.title) {
+      if (titleActuallyChanged) {
         task.title = trimmed;
       }
     });
     if (trimmed.isNotEmpty) {
       TaskStore.update(task);
+      if (titleActuallyChanged) {
+        SpeechLog.markEdited(task.id, task.createdAt);
+      }
     }
   }
 
@@ -323,43 +314,48 @@ List<Task> get _doneTasks {
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       useSafeArea: false,
-constraints: BoxConstraints(
-  maxHeight: MediaQuery.of(context).size.height * 0.92,
-),
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.92,
+      ),
       builder: (_) => _TaskEditSheet(
-  skin: skin,
-  initialTitle: initialTitle,
-  initialDate: initialDate,
-  onSaved: (task) {
-    TaskStore.add(task);
-    _load();
-    _scheduleReminders(task);
-  },
-),
+        skin: skin,
+        initialTitle: initialTitle,
+        initialDate: initialDate,
+        onSaved: (task) {
+          TaskStore.add(task);
+          _load();
+          _scheduleReminders(task);
+        },
+      ),
     );
   }
 
   void _editTaskFull(Task task) {
     closeOverlays();
     final skin = AppTheme.of(context);
+    final titleBefore = task.title;
+    final dueBefore = task.dueDate;
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       useSafeArea: false,
-constraints: BoxConstraints(
-  maxHeight: MediaQuery.of(context).size.height * 0.92,
-),
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.92,
+      ),
       builder: (_) => _TaskEditSheet(
-  skin: skin,
-  existingTask: task,
-  onSaved: (updated) {
-    TaskStore.update(updated);
-    _load();
-    NotificationService.instance.cancelTaskReminders(updated.id);
-    _scheduleReminders(updated);
-  },
-),
+        skin: skin,
+        existingTask: task,
+        onSaved: (updated) {
+          TaskStore.update(updated);
+          if (updated.title != titleBefore || updated.dueDate != dueBefore) {
+            SpeechLog.markEdited(updated.id, updated.createdAt);
+          }
+          _load();
+          NotificationService.instance.cancelTaskReminders(updated.id);
+          _scheduleReminders(updated);
+        },
+      ),
     );
   }
 
@@ -375,25 +371,105 @@ constraints: BoxConstraints(
     }
   }
 
-  /// Wird vom Diktier-Flow aufgerufen, nachdem der Text transkribiert und
-  /// geparst wurde. Legt die Aufgabe DIREKT an, ohne Rückfrage — die
-  /// Bearbeitung danach läuft über das normale Inline-/Double-Tap-Edit.
-  void _createTaskFromSpeech(ParsedSpokenTask parsed) {
-  final combined = parsed.combinedDateTime;
-  final task = Task(
-    id: DateTime.now().millisecondsSinceEpoch.toString(),
-    title: parsed.title,
-    dueDate: combined,
-    hasTime: parsed.hasTime,
-    createdAt: DateTime.now(),
-    isUrgent: parsed.isUrgent,
-  );
-  TaskStore.add(task);
-  _load(); // lädt neu + setState
-  HapticFeedback.mediumImpact();
-}
+  // ── Diktier-Flow ────────────────────────────────────────────────────────────
 
-    @override
+  void _saveTaskFromSpeech(ParsedSpokenTask parsed, String logRef) {
+    final combined = parsed.combinedDateTime;
+    final task = Task(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      title: parsed.title,
+      dueDate: combined,
+      hasTime: parsed.hasTime,
+      createdAt: DateTime.now(),
+      isUrgent: parsed.isUrgent,
+    );
+    TaskStore.add(task);
+    SpeechLog.linkLastEntryToTask(logRef, task.id);
+    _load();
+    HapticFeedback.mediumImpact();
+  }
+
+  bool _isLikelyDuplicate(ParsedSpokenTask parsed) {
+    final newNorm = RuleEngine.normalizeForCompare(parsed.title);
+    if (newNorm.isEmpty) return false;
+    final newDate = parsed.combinedDateTime;
+
+    return _tasks.any((t) {
+      if (t.done) return false;
+      final sameTitle = RuleEngine.normalizeForCompare(t.title) == newNorm;
+      if (!sameTitle) return false;
+      if (newDate == null && t.dueDate == null) return true;
+      if (newDate == null || t.dueDate == null) return false;
+      return newDate.year == t.dueDate!.year &&
+          newDate.month == t.dueDate!.month &&
+          newDate.day == t.dueDate!.day;
+    });
+  }
+
+  void _createTaskFromSpeech(ParsedSpokenTask parsed, String logRef) {
+    if (_isLikelyDuplicate(parsed)) {
+      HapticFeedback.heavyImpact();
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: const Text('⚠️ Ähnliche Aufgabe existiert bereits — trotzdem als neue Aufgabe?'),
+        backgroundColor: AppTheme.of(context).bgCard,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        margin: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+        action: SnackBarAction(
+          label: 'Trotzdem anlegen',
+          onPressed: () => _saveTaskFromSpeech(parsed, logRef),
+        ),
+        duration: const Duration(seconds: 4),
+      ));
+      return;
+    }
+    _saveTaskFromSpeech(parsed, logRef);
+  }
+
+  void _reviewTaskFromSpeech(ParsedSpokenTask parsed, String logRef) {
+    closeOverlays();
+    final skin = AppTheme.of(context);
+    final draft = Task(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      title: parsed.title,
+      dueDate: parsed.combinedDateTime,
+      hasTime: parsed.hasTime,
+      createdAt: DateTime.now(),
+      isUrgent: parsed.isUrgent,
+    );
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      useSafeArea: false,
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.92,
+      ),
+      builder: (_) => _TaskEditSheet(
+        skin: skin,
+        existingTask: draft,
+        isReviewMode: true,
+        onSaved: (finalTask) {
+          if (_isLikelyDuplicate(parsed)) {
+            HapticFeedback.lightImpact();
+          }
+          TaskStore.add(finalTask);
+          SpeechLog.linkLastEntryToTask(logRef, finalTask.id);
+          // Falls der Nutzer im Review-Sheet Titel/Datum geändert hat,
+          // zählt das direkt als "wasEdited" — ist ja exakt das Signal,
+          // dass die automatische Erkennung nicht ausgereicht hätte.
+          final titleChanged = finalTask.title.trim() != parsed.title.trim();
+          final dateChanged = finalTask.dueDate != parsed.combinedDateTime;
+          if (titleChanged || dateChanged) {
+            SpeechLog.markEdited(finalTask.id, finalTask.createdAt);
+          }
+          _load();
+          _scheduleReminders(finalTask);
+        },
+      ),
+    );
+  }
+  @override
   Widget build(BuildContext context) {
     final skin = AppTheme.of(context);
     final bottomNavHeight = 70.0 + MediaQuery.of(context).padding.bottom;
@@ -447,7 +523,6 @@ constraints: BoxConstraints(
                               controller: _scrollController,
                               padding: const EdgeInsets.fromLTRB(24, 4, 24, 0),
                               children: [
-                                // ── NEU: DRINGEND-SEKTION GANZ OBEN ──
                                 if (_urgentTasks.isNotEmpty) ...[
                                   _UrgentSectionHeader(skin: skin),
                                   const SizedBox(height: 10),
@@ -559,10 +634,11 @@ constraints: BoxConstraints(
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  _DictationFab(
-                    skin: skin,
-                    onResult: _createTaskFromSpeech,
-                  ),
+                  DictationFab(
+  skin: skin,
+  onResult: _createTaskFromSpeech,
+  onNeedsReview: _reviewTaskFromSpeech,
+),
                   const SizedBox(width: 12),
                   _TasksFab(
                     skin: skin,
@@ -634,7 +710,7 @@ class _UrgentSectionHeader extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TASKS FAB — identisches Design zum FAB in fahrtenbuch_screen.dart
+// TASKS FAB
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _TasksFab extends StatelessWidget {
@@ -680,873 +756,9 @@ class _TasksFab extends StatelessWidget {
     );
   }
 }
-// ─────────────────────────────────────────────────────────────────────────────
-// DICTATION FAB + Sprechblase
-//
-// Verhalten:
-//   - Press-and-hold (onLongPressStart) → startet stt.listen(), Icon wechselt
-//     in "aktiviert"-Optik, eine Sprechblase erscheint dynamisch darüber.
-//   - Während des Haltens: KEINE Transkription sichtbar, nur ein
-//     Pegel-Spektrum aus echten Amplitudenwerten (onSoundLevelChange).
-//   - Loslassen → stt.stop(), die Blase wächst animiert und enthüllt den
-//     erkannten Text Wort-für-Wort, danach SpokenTaskParser.parse() →
-//     Aufgabe wird direkt angelegt.
-//
-// FIX gegenüber der Vorversion: onSoundLevelChange liefert auf manchen
-// Android-/iOS-Versionen für die ersten ~200-400ms keine Werte oder bleibt
-// bei 0.0, bis die Engine "warmgelaufen" ist. Das führte dazu, dass die
-// Balken die ganze Zeit über flach blieben. Fix: ein leichter Idle-Pulse
-// läuft immer mit (sehr kleine Amplitude), echte Pegelwerte werden additiv
-// draufgerechnet — die Blase wirkt dadurch von der ersten Millisekunde an
-// "lebendig", auch bevor echte Werte ankommen, und reagiert danach sauber
-// auf die tatsächliche Lautstärke.
-// ─────────────────────────────────────────────────────────────────────────────
-
-enum _DictationPhase { idle, listening, processing, revealing, done }
-
-class _DictationFab extends StatefulWidget {
-  final AppSkin skin;
-  final void Function(ParsedSpokenTask parsed) onResult;
-  const _DictationFab({required this.skin, required this.onResult});
-
-  @override
-  State<_DictationFab> createState() => _DictationFabState();
-}
-
-class _DictationFabState extends State<_DictationFab> with TickerProviderStateMixin {
-  final stt.SpeechToText _speech = stt.SpeechToText();
-  bool _speechAvailable = false;
-
-  _DictationPhase _phase = _DictationPhase.idle;
-  String _liveTranscript = '';
-  String _finalTranscript = '';
-  List<String> _revealedWords = [];
-  int _revealIndex = 0;
-  Timer? _revealTimer;
-
-  // ── Amplitude ──
-  // Rohwert direkt von onSoundLevelChange, KEIN externes Smoothing mehr —
-  // der SpectrumIndicator macht das selbst per Ticker (frame-synchron).
-  final ValueNotifier<double> _rawLevelNotifier = ValueNotifier(0.0);
-
-  // ── Abbruch-Logik ──
-  bool _aborted = false;          // gesetzt sobald Abbruch beginnt — blockt JEDEN anderen Pfad
-  bool _isCancelling = false;     // Cancel-Animation läuft gerade
-  double _cancelDragX = 0.0;     // horizontaler Versatz während LongPress
-  DateTime? _listenStartedAt;
-
-  // ── Animations-Controller ──
-  late AnimationController _fabPulseCtrl;
-  late AnimationController _idlePulseCtrl;
-  late AnimationController _bubbleCtrl;       // Einblenden der Sprechblase
-  late Animation<double> _bubbleScale;
-  late Animation<double> _bubbleOpacity;
-
-  late AnimationController _cancelAnimCtrl;  // Schluck-Animation
-  // 0→1: Spektrum-Blase schrumpft in Papierkorb, dann beide faden weg
-  late Animation<double> _spectrumShrink;    // Spektrum-Blase skaliert zu Papierkorb hin
-  late Animation<double> _spectrumFade;
-  late Animation<double> _trashPulse;        // Papierkorb-Icon pulsiert kurz
-  late Animation<double> _exitFade;          // beide Blasen faden gemeinsam weg
-
-  @override
-  void initState() {
-    super.initState();
-    _fabPulseCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 900))
-      ..repeat(reverse: true);
-    _idlePulseCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 650))
-      ..repeat(reverse: true);
-    _bubbleCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 320));
-    _bubbleScale = CurvedAnimation(
-        parent: _bubbleCtrl,
-        curve: Curves.easeOutBack,
-        reverseCurve: Curves.easeInBack);
-    _bubbleOpacity = CurvedAnimation(
-        parent: _bubbleCtrl,
-        curve: Curves.easeOut,
-        reverseCurve: Curves.easeIn);
-
-    // Cancel-Animation: 480ms Gesamt
-    // 0.00–0.50: Spektrum schrumpft + fliegt Richtung Papierkorb
-    // 0.30–0.65: Papierkorb pulsiert (Schluck-Effekt)
-    // 0.55–1.00: beide Blasen + FAB faden weg
-    _cancelAnimCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 480));
-    _spectrumShrink = Tween<double>(begin: 1.0, end: 0.0).animate(
-        CurvedAnimation(
-            parent: _cancelAnimCtrl,
-            curve: const Interval(0.0, 0.55, curve: Curves.easeInCubic)));
-    _spectrumFade = Tween<double>(begin: 1.0, end: 0.0).animate(
-        CurvedAnimation(
-            parent: _cancelAnimCtrl,
-            curve: const Interval(0.25, 0.55, curve: Curves.easeIn)));
-    _trashPulse = TweenSequence<double>([
-      TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.35), weight: 40),
-      TweenSequenceItem(tween: Tween(begin: 1.35, end: 0.0), weight: 60),
-    ]).animate(CurvedAnimation(
-        parent: _cancelAnimCtrl,
-        curve: const Interval(0.30, 0.80, curve: Curves.easeInOut)));
-    _exitFade = Tween<double>(begin: 1.0, end: 0.0).animate(CurvedAnimation(
-        parent: _cancelAnimCtrl,
-        curve: const Interval(0.60, 1.0, curve: Curves.easeOut)));
-
-    _cancelAnimCtrl.addListener(() {
-      if (mounted) setState(() {});
-    });
-
-    _initSpeech();
-  }
-
-  Future<void> _initSpeech() async {
-    final available = await _speech.initialize(
-      onStatus: _onSpeechStatus,
-      onError: (err) {
-        if (_aborted) return;
-        if (mounted) {
-          setState(() => _phase = _DictationPhase.idle);
-          _bubbleCtrl.reverse();
-        }
-      },
-    );
-    if (mounted) setState(() => _speechAvailable = available);
-  }
-
-  void _onSpeechStatus(String status) {
-    if (_aborted) return; // ← blockt jeden Callback nach Abbruch
-    if (status == 'done' || status == 'notListening') {
-      if (_phase == _DictationPhase.listening) {
-        _finishListeningAndReveal();
-      }
-    }
-  }
-
-  @override
-void dispose() {
-  _revealTimer?.cancel();
-  _fabPulseCtrl.dispose();
-  _idlePulseCtrl.dispose();
-  _bubbleCtrl.dispose();
-  _cancelAnimCtrl.dispose();
-  _rawLevelNotifier.dispose(); // ← NEU
-  super.dispose();
-}
-
-  Future<void> _startListening() async {
-    if (!_speechAvailable) {
-      HapticFeedback.heavyImpact();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: const Text(
-              '🎙 Spracherkennung nicht verfügbar — Berechtigung prüfen.'),
-          backgroundColor: widget.skin.bgCard,
-          behavior: SnackBarBehavior.floating,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          margin: const EdgeInsets.fromLTRB(16, 0, 16, 100),
-        ));
-      }
-      return;
-    }
-    HapticFeedback.mediumImpact();
-    _aborted = false;
-    _isCancelling = false;
-    _cancelDragX = 0.0;
-    _listenStartedAt = DateTime.now();
-    setState(() {
-      _phase = _DictationPhase.listening;
-      _liveTranscript = '';
-      _finalTranscript = '';
-       _rawLevelNotifier.value = 0.0; 
-      _revealedWords = [];
-      _revealIndex = 0;
-    });
-    _cancelAnimCtrl.reset();
-    _bubbleCtrl.forward();
-
-    await _speech.listen(
-      localeId: 'de_DE',
-      onResult: (result) {
-        if (_aborted || !mounted) return;
-        setState(() {
-          _liveTranscript = result.recognizedWords;
-          if (result.finalResult) _finalTranscript = result.recognizedWords;
-        });
-      },
-      onSoundLevelChange: (level) {
-  if (_aborted || !mounted) return;
-  _rawLevelNotifier.value = level;
-},
-      listenFor: const Duration(seconds: 30),
-      pauseFor: const Duration(seconds: 5),
-      partialResults: true,
-      cancelOnError: true,
-      listenMode: stt.ListenMode.confirmation,
-    );
-  }
-
-  Future<void> _finishListeningAndReveal() async {
-    if (_aborted) return;
-    if (_phase != _DictationPhase.listening) return;
-    await _speech.stop();
-    if (_aborted) return; // nochmal prüfen, stop() kann Zeit brauchen
-    setState(() {
-      _cancelDragX = 0.0;
-    });
-
-    final text =
-        (_finalTranscript.isNotEmpty ? _finalTranscript : _liveTranscript)
-            .trim();
-    if (text.isEmpty) {
-      setState(() => _phase = _DictationPhase.idle);
-      _bubbleCtrl.reverse();
-      return;
-    }
-
-    setState(() => _phase = _DictationPhase.processing);
-    await Future.delayed(const Duration(milliseconds: 350));
-    if (_aborted || !mounted) return;
-
-    final words =
-        text.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
-    setState(() {
-      _phase = _DictationPhase.revealing;
-      _revealedWords = words;
-      _revealIndex = 0;
-    });
-
-    _revealTimer?.cancel();
-    _revealTimer =
-        Timer.periodic(const Duration(milliseconds: 90), (timer) {
-      if (_aborted || !mounted) {
-        timer.cancel();
-        return;
-      }
-      setState(() => _revealIndex++);
-      if (_revealIndex >= _revealedWords.length) {
-        timer.cancel();
-        _onRevealComplete(text);
-      }
-    });
-  }
-
-  /// Zuverlässiger Abbruch:
-  /// 1. _aborted sofort setzen → alle laufenden Callbacks ignorieren.
-  /// 2. STT stoppen.
-  /// 3. Schluck-Animation abspielen.
-  /// 4. Reset.
-  Future<void> _cancelListening() async {
-    if (_isCancelling) return;
-    if (_phase != _DictationPhase.listening) return;
-    _aborted = true;       // ← sofort, vor allem anderen
-    _isCancelling = true;
-    HapticFeedback.heavyImpact();
-
-    _revealTimer?.cancel();
-    try {
-      await _speech.cancel();
-    } catch (_) {}
-
-    if (!mounted) return;
-    // Schluck-Animation
-    await _cancelAnimCtrl.forward();
-
-    if (!mounted) return;
-    _cancelAnimCtrl.reset();
-    _bubbleCtrl.reset();
-    setState(() {
-      _phase = _DictationPhase.idle;
-      _liveTranscript = '';
-      _finalTranscript = '';
-      _revealedWords = [];
-      _revealIndex = 0;
-      _rawLevelNotifier.value = 0.0;
-      _cancelDragX = 0.0;
-      _isCancelling = false;
-      _aborted = false;
-    });
-  }
-
-  void _onRevealComplete(String text) {
-    if (_aborted) return;
-    setState(() => _phase = _DictationPhase.done);
-    final normalized = SpeechNormalizer.normalize(text);
-    final parsed = SpokenTaskParser.parse(normalized); 
-    // ── Sprach-Log ──────────────────────────────────────────────
-SpeechLog.record(
-  raw: text,
-  normalized: normalized,
-  parsedTitle: parsed.title,
-  hasDate: parsed.date != null,
-);
-    Future.delayed(const Duration(milliseconds: 900), () {
-      if (_aborted || !mounted) return;
-      widget.onResult(parsed);
-      _bubbleCtrl.reverse().then((_) {
-        if (!_aborted && mounted) {
-          setState(() {
-            _phase = _DictationPhase.idle;
-            _liveTranscript = '';
-            _finalTranscript = '';
-            _revealedWords = [];
-            _revealIndex = 0;
-          });
-        }
-      });
-    });
-  }
-
-  bool get _isActive => _phase != _DictationPhase.idle;
-
-  // Wieviel Drag nach links ist passiert (0..1, geclampd)
-  double get _cancelProgress =>
-      (_cancelDragX.abs() / 80.0).clamp(0.0, 1.0);
-
-    @override
-  Widget build(BuildContext context) {
-    final skin = widget.skin;
-    final bool showBubbles =
-        _isActive && !_isCancelling || _cancelAnimCtrl.value > 0;
-
-    return Stack(
-      clipBehavior: Clip.none,
-      alignment: Alignment.bottomCenter,
-      children: [
-        // ── Spektrum-Blase: direkt über dem Mic-FAB ──
-        if (showBubbles && _phase == _DictationPhase.listening)
-          Positioned(
-            bottom: 68,
-            right: 0,
-            child: AnimatedBuilder(
-              animation: Listenable.merge([_bubbleCtrl, _cancelAnimCtrl]),
-              builder: (context, child) {
-                final exitOpacity = _exitFade.value;
-                final bubbleOp = (_bubbleOpacity.value * exitOpacity).clamp(0.0, 1.0);
-                final dragProgress = _cancelProgress;
-                final slideX = -dragProgress * 40.0;
-                final shrink = _spectrumShrink.value * (1.0 - dragProgress * 0.2);
-                final fadeOp = _spectrumFade.value * (1.0 - dragProgress * 0.3);
-
-                return Transform.translate(
-                  offset: Offset(slideX, 0),
-                  child: Transform.scale(
-                    scale: (0.85 + _bubbleScale.value * 0.15) * shrink,
-                    alignment: Alignment.bottomRight,
-                    child: Opacity(
-                      opacity: (bubbleOp * fadeOp).clamp(0.0, 1.0),
-                      child: child,
-                    ),
-                  ),
-                );
-              },
-              child: _buildSpectrumBubble(skin),
-            ),
-          ),
-
-        // ── Papierkorb-Blase ──
-        if (_isActive || _cancelAnimCtrl.value > 0)
-          Positioned(
-            bottom: 0,
-            right: 68,
-            child: AnimatedBuilder(
-              animation: _cancelAnimCtrl,
-              builder: (context, _) {
-                final dragProgress = _cancelProgress;
-                final trashScale = _isCancelling
-                    ? _trashPulse.value
-                    : (0.75 + dragProgress * 0.25);
-                final trashOpacity = _isCancelling
-                    ? _trashPulse.value.clamp(0.0, 1.0)
-                    : (0.28 + dragProgress * 0.72).clamp(0.0, 1.0);
-                final exitOp = _exitFade.value;
-
-                return Opacity(
-                  opacity: (trashOpacity * exitOp).clamp(0.0, 1.0),
-                  child: Transform.scale(
-                    scale: trashScale,
-                    alignment: Alignment.center,
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(20),
-                      child: BackdropFilter(
-                        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                        child: Container(
-                          width: 56,
-                          height: 56,
-                          decoration: BoxDecoration(
-                            color: Color.lerp(
-                              skin.isLight
-                                  ? Colors.white.withValues(alpha: 0.55)
-                                  : Colors.black.withValues(alpha: 0.40),
-                              const Color(0xFFEF5B5B).withValues(alpha: 0.20),
-                              dragProgress,
-                            ),
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                              color: Color.lerp(
-                                skin.isLight
-                                    ? Colors.white.withValues(alpha: 0.45)
-                                    : Colors.white.withValues(alpha: 0.10),
-                                const Color(0xFFEF5B5B).withValues(alpha: 0.60),
-                                dragProgress,
-                              )!,
-                              width: 0.8 + dragProgress * 0.4,
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: const Color(0xFFEF5B5B)
-                                    .withValues(alpha: dragProgress * 0.30),
-                                blurRadius: 16,
-                                offset: const Offset(0, 4),
-                              ),
-                            ],
-                          ),
-                          child: Icon(
-                            Icons.delete_outline_rounded,
-                            color: Color.lerp(
-                              skin.surface(0.25),
-                              const Color(0xFFEF5B5B),
-                              dragProgress,
-                            ),
-                            size: 22,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-
-        // ── Reveal-Blase ──
-        if (_phase == _DictationPhase.revealing ||
-            _phase == _DictationPhase.done ||
-            _phase == _DictationPhase.processing)
-          Positioned(
-            bottom: 68,
-            right: 0,
-            child: AnimatedBuilder(
-              animation: _bubbleCtrl,
-              builder: (context, child) {
-                return Transform.scale(
-                  alignment: Alignment.bottomRight,
-                  scale: 0.85 + _bubbleScale.value * 0.15,
-                  child: Opacity(
-                    opacity: _bubbleOpacity.value.clamp(0.0, 1.0),
-                    child: child,
-                  ),
-                );
-              },
-              child: _buildRevealBubble(skin),
-            ),
-          ),
-
-        // ── FAB ──
-        GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onLongPressStart: (_) => _startListening(),
-          onLongPressEnd: (_) {
-            if (!_isCancelling) _finishListeningAndReveal();
-          },
-          onLongPressCancel: () {
-            if (!_isCancelling) _finishListeningAndReveal();
-          },
-          onLongPressMoveUpdate: (details) {
-            if (_phase != _DictationPhase.listening || _isCancelling) return;
-            final dx = details.offsetFromOrigin.dx;
-            setState(() => _cancelDragX = dx < 0 ? dx : 0.0);
-            if (dx < -80.0) _cancelListening();
-          },
-          child: AnimatedBuilder(
-            animation: Listenable.merge([_fabPulseCtrl, _cancelAnimCtrl]),
-            builder: (context, _) {
-              final pulse = _phase == _DictationPhase.listening
-                  ? _fabPulseCtrl.value
-                  : 0.0;
-              final cancelProgress = _cancelProgress;
-              final fabColor = _isActive
-                  ? Color.lerp(
-                      skin.primary.withValues(alpha: 0.85 + pulse * 0.15),
-                      const Color(0xFFEF5B5B).withValues(alpha: 0.9),
-                      cancelProgress,
-                    )!
-                  : (skin.isLight
-                      ? Colors.white.withValues(alpha: 0.72)
-                      : Colors.black.withValues(alpha: 0.55));
-
-              return Opacity(
-                opacity: _exitFade.value,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(20),
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                    child: Container(
-                      width: 56,
-                      height: 56,
-                      decoration: BoxDecoration(
-                        color: fabColor,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: _isActive
-                              ? Colors.white.withValues(alpha: 0.35)
-                              : (skin.isLight
-                                  ? Colors.white.withValues(alpha: 0.55)
-                                  : Colors.white.withValues(alpha: 0.12)),
-                          width: _isActive ? 1.2 : 0.8,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: _isActive
-                                ? Color.lerp(
-                                    skin.primaryWithAlpha(0.45 + pulse * 0.2),
-                                    const Color(0xFFEF5B5B).withValues(alpha: 0.5),
-                                    cancelProgress,
-                                  )!
-                                : Colors.black.withValues(
-                                    alpha: skin.isLight ? 0.08 : 0.35),
-                            blurRadius: _isActive ? 20 + pulse * 10 : 24,
-                            spreadRadius: _isActive ? pulse * 2 : 0,
-                            offset: const Offset(0, 6),
-                          ),
-                        ],
-                      ),
-                      child: AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 180),
-                        child: Icon(
-                          cancelProgress > 0.35
-                              ? Icons.close_rounded
-                              : (_isActive
-                                  ? Icons.mic_rounded
-                                  : Icons.mic_none_rounded),
-                          key: ValueKey(cancelProgress > 0.35
-                              ? 'cancel'
-                              : (_isActive ? 'active' : 'idle')),
-                          color: cancelProgress > 0.35
-                              ? Colors.white
-                              : (_isActive ? skin.onGradient : skin.textPrimary),
-                          size: 24,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSpectrumBubble(AppSkin skin) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(20),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
-        child: Container(
-          width: 88,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          decoration: BoxDecoration(
-            color: skin.isLight
-                ? Colors.white.withValues(alpha: 0.85)
-                : skin.bgCard.withValues(alpha: 0.85),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-                color: skin.primary.withValues(alpha: 0.30), width: 1.0),
-            boxShadow: [
-              BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.20),
-                  blurRadius: 24,
-                  offset: const Offset(0, 8)),
-            ],
-          ),
-          child: _SpectrumIndicator(skin: skin, rawLevelNotifier: _rawLevelNotifier, listenStartedAt: _listenStartedAt),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTrashBubble(AppSkin skin, double dragProgress) {
-    // Papierkorb-Blase: wird mit zunehmendem Drag sichtbarer und größer.
-    // Beim Schlucken: pulsiert via _trashPulse.
-    final trashScale = _isCancelling
-        ? _trashPulse.value
-        : (0.7 + dragProgress * 0.3);
-    final trashOpacity = _isCancelling
-        ? _trashPulse.value.clamp(0.0, 1.0)
-        : dragProgress.clamp(0.05, 1.0); // minimal sichtbar als Hinweis
-
-    return Transform.scale(
-      scale: trashScale,
-      alignment: Alignment.bottomRight,
-      child: Opacity(
-        opacity: trashOpacity,
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(20),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
-            child: Container(
-              width: 56,
-              height: 56,
-              decoration: BoxDecoration(
-                color: const Color(0xFFEF5B5B).withValues(alpha: 0.15 + dragProgress * 0.1),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                    color: const Color(0xFFEF5B5B)
-                        .withValues(alpha: 0.35 + dragProgress * 0.3),
-                    width: 1.2),
-                boxShadow: [
-                  BoxShadow(
-                      color: const Color(0xFFEF5B5B)
-                          .withValues(alpha: dragProgress * 0.25),
-                      blurRadius: 16,
-                      offset: const Offset(0, 4)),
-                ],
-              ),
-              child: Icon(
-                Icons.delete_outline_rounded,
-                color: const Color(0xFFEF5B5B)
-                    .withValues(alpha: 0.5 + dragProgress * 0.5),
-                size: 22,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildRevealBubble(AppSkin skin) {
-    final isProcessing = _phase == _DictationPhase.processing;
-    final isRevealing =
-        _phase == _DictationPhase.revealing || _phase == _DictationPhase.done;
-    final double minWidth = 88;
-    final double maxWidth = 240;
-    final double targetWidth = isRevealing
-        ? math.min(
-            maxWidth,
-            minWidth +
-                (_revealedWords.take(_revealIndex).join(' ').length * 6.2))
-        : minWidth;
-
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 260),
-      curve: Curves.easeOutCubic,
-      constraints: BoxConstraints(minWidth: minWidth, maxWidth: maxWidth),
-      width: targetWidth.clamp(minWidth, maxWidth),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
-          child: Container(
-          constraints: const BoxConstraints(minHeight: 56, minWidth: 88),
-            decoration: BoxDecoration(
-              color: skin.isLight
-                  ? Colors.white.withValues(alpha: 0.85)
-                  : skin.bgCard.withValues(alpha: 0.85),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                  color: skin.primary.withValues(alpha: 0.30), width: 1.0),
-              boxShadow: [
-                BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.20),
-                    blurRadius: 24,
-                    offset: const Offset(0, 8)),
-              ],
-            ),
-            child: isProcessing
-                ? _ProcessingIndicator(skin: skin)
-                : _RevealingText(
-                    skin: skin,
-                    words: _revealedWords,
-                    revealIndex: _revealIndex),
-          ),
-          
-        ),
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// SPECTRUM INDICATOR — vollständig überarbeitete Amplitudenerkennung
-//
-// Kernproblem vorher: Der externe rawLevel wurde auf 0..1 normalisiert,
-// bevor er hier ankam. Das führte dazu, dass bei typischen Pegel-Werten
-// (speech_to_text liefert -2..10, aber meist -1..4) nach Normalisierung
-// kaum Unterschied sichtbar war. Jetzt:
-//   - rawLevel ist der ROHE Wert direkt von onSoundLevelChange (-2..10+)
-//   - _levelFloor: adaptives Minimum (Hintergrundgeräusch), wird langsam
-//     nach oben korrigiert
-//   - _levelCeil: adaptives Maximum, passt sich nach oben an und fällt
-//     langsam ab → garantiert volle Ausschläge bei normalem Sprechen
-//   - Jeder Balken: eigene Phasenlage + asymmetrisches Smoothing
-//     (Attack schnell, Release langsam) → organisches, lebendiges Spektrum
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _SpectrumIndicator extends StatefulWidget {
-  final AppSkin skin;
-  final ValueNotifier<double> rawLevelNotifier; // ← geändert
-  final DateTime? listenStartedAt;
-  const _SpectrumIndicator({
-    required this.skin,
-    required this.rawLevelNotifier, // ← geändert
-    this.listenStartedAt,
-  });
-
-  @override
-  State<_SpectrumIndicator> createState() => _SpectrumIndicatorState();
-}
-
-class _SpectrumIndicatorState extends State<_SpectrumIndicator>
-    with SingleTickerProviderStateMixin {
-  // Pro-Balken: geglätteter Wert, Phasenoffset, individuelle Zufallsstreuung
-  final List<double> _smoothed = List.generate(5, (_) => 0.08);
-  final List<double> _phaseOffset = [0.0, 0.72, 1.44, 0.36, 1.08];
-  // Jeder Balken reagiert leicht unterschiedlich auf den gleichen Pegel
-  final List<double> _sensitivityFactor = [0.85, 1.10, 1.25, 1.05, 0.90];
-
-  double _idleTick = 0.0;
-
-  // Adaptive Pegelgrenzen
-  double _levelFloor = -2.0;   // Hintergrundgeräusch-Baseline
-  double _levelCeil = 3.0;     // erwartete Maximalamplitude (wird angepasst)
-
-  late final Ticker _ticker;
-
-  @override
-  void initState() {
-    super.initState();
-    _ticker = createTicker(_onTick)..start();
-  }
-
-  void _onTick(Duration _) {
-    if (!mounted) return;
-    _idleTick += 0.055;
-
-    final raw = widget.rawLevelNotifier.value;
-
-    // Adaptive Grenzen: Ceiling wächst schnell, schrumpft sehr langsam
-    if (raw > _levelCeil) _levelCeil = raw * 1.05;
-    _levelCeil = math.max(_levelCeil - 0.008, 2.0); // langsamer Decay, Minimum 2.0
-
-    // Floor: steigt langsam (Hintergrundgeräusch), fällt schnell
-    if (raw > _levelFloor + 0.5) _levelFloor = _levelFloor * 0.95 + raw * 0.05;
-    _levelFloor = math.max(_levelFloor - 0.002, -2.5);
-
-    // Normalisierter Wert 0..1
-    final range = (_levelCeil - _levelFloor).clamp(1.5, double.infinity);
-    final normalized = ((raw - _levelFloor) / range).clamp(0.0, 1.0);
-
-    final warmingUp = widget.listenStartedAt != null &&
-        DateTime.now().difference(widget.listenStartedAt!) < const Duration(milliseconds: 500);
-
-    setState(() {
-      for (var i = 0; i < 5; i++) {
-        // Idle-Puls (phasenverschoben)
-        final idle = warmingUp
-            ? 0.20 + math.sin(_idleTick + _phaseOffset[i]) * 0.12
-            : 0.05 + math.sin(_idleTick * 0.6 + _phaseOffset[i]) * 0.04;
-
-        // Echtpegel mit individueller Sensitivität
-        final boosted = (normalized * _sensitivityFactor[i]).clamp(0.0, 1.0);
-        final target = math.max(boosted, idle).clamp(0.04, 1.0);
-
-        // Asymmetrisches Smoothing: schnell rauf (0.65 Attack), langsam runter (0.18 Release)
-        final smooth = target > _smoothed[i] ? 0.65 : 0.18;
-        _smoothed[i] += (target - _smoothed[i]) * smooth;
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _ticker.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final skin = widget.skin;
-    return SizedBox(
-      height: 28,
-      width: 56,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: List.generate(5, (i) {
-          final v = _smoothed[i].clamp(0.04, 1.0);
-          final h = 4.0 + v * 24.0;
-          return Container(
-            width: 4,
-            height: h,
-            decoration: BoxDecoration(
-              color: skin.primary.withValues(alpha: 0.45 + v * 0.55),
-              borderRadius: BorderRadius.circular(3),
-            ),
-          );
-        }),
-      ),
-    );
-  }
-}
-
-class _ProcessingIndicator extends StatelessWidget {
-  final AppSkin skin;
-  const _ProcessingIndicator({required this.skin});
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 28,
-      width: 56,
-      child: Center(
-        child: SizedBox(
-          width: 20,
-          height: 20,
-          child: CircularProgressIndicator(
-              strokeWidth: 2.2,
-              valueColor: AlwaysStoppedAnimation(skin.primary)),
-        ),
-      ),
-    );
-  }
-}
-
-class _RevealingText extends StatelessWidget {
-  final AppSkin skin;
-  final List<String> words;
-  final int revealIndex;
-  const _RevealingText(
-      {required this.skin, required this.words, required this.revealIndex});
-
-  @override
-  Widget build(BuildContext context) {
-    final visibleWords = words.take(revealIndex).toList();
-    return Text(
-      visibleWords.isEmpty ? '…' : visibleWords.join(' '),
-      style: TextStyle(
-          fontSize: 14,
-          fontWeight: FontWeight.w600,
-          color: skin.textPrimary,
-          height: 1.35),
-    );
-  }
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TASK CARD
-//
-// Fixes gegenüber v2:
-//   1) Swipe → Löschen passiert SOFORT (kein confirmDeleteDialog mehr).
-//   2) Inline-Edit speichert garantiert: zusätzlich zum Fokus-Listener gibt
-//      es jetzt commitInlineEditNow(), das von außen (Tab-Wechsel, Tippen
-//      außerhalb, Wischen) zuverlässig aufgerufen werden kann — der reine
-//      Fokus-Listener allein war nicht robust genug, wenn der Fokuswechsel
-//      durch Navigator/Tab-Switch nicht synchron feuert.
-//   3) Reminder-Icon (Glocke) in der Kachel, analog zum Notiz-Icon.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _TaskCard extends StatefulWidget {
@@ -1560,7 +772,7 @@ class _TaskCard extends StatefulWidget {
   final void Function(String newTitle) onCommitInlineEdit;
   final VoidCallback onFullEdit;
   final VoidCallback onDelete;
-  final bool isUrgent; // ← NEU
+  final bool isUrgent;
 
   const _TaskCard({
     super.key,
@@ -1574,7 +786,7 @@ class _TaskCard extends StatefulWidget {
     required this.onCommitInlineEdit,
     required this.onFullEdit,
     required this.onDelete,
-    this.isUrgent = false, // ← NEU
+    this.isUrgent = false,
   });
 
   @override
@@ -1591,7 +803,7 @@ class _TaskCardState extends State<_TaskCard> with TickerProviderStateMixin, Swi
 
   late TextEditingController _inlineCtrl;
   late FocusNode _inlineFocus;
-  bool _committing = false; // Schutz gegen doppeltes Commit (Fokus-Listener + expliziter Call)
+  bool _committing = false;
 
   late AnimationController _deleteAnimController;
   late Animation<double> _slideOutAnim, _fadeOutAnim, _heightCollapseAnim;
@@ -1655,9 +867,6 @@ class _TaskCardState extends State<_TaskCard> with TickerProviderStateMixin, Swi
     _deleteAnimController.forward().then((_) => onDone());
   }
 
-  /// Öffentlich, damit der Parent (Tab-Wechsel, Tippen außerhalb, Wischen)
-  /// das Übernehmen garantiert anstoßen kann — unabhängig davon, ob der
-  /// FocusNode-Listener rechtzeitig feuert.
   void commitInlineEditNow() {
     if (_committing) return;
     _committing = true;
@@ -1706,7 +915,6 @@ class _TaskCardState extends State<_TaskCard> with TickerProviderStateMixin, Swi
     widget.onCardSwiped(null);
   }
 
-  // Sofortiges Löschen beim Tap auf den Lösch-Bereich — kein Dialog mehr.
   void _onDeleteAreaTap() {
     _close();
     HapticFeedback.mediumImpact();
@@ -1775,10 +983,9 @@ class _TaskCardState extends State<_TaskCard> with TickerProviderStateMixin, Swi
             overflow: TextOverflow.ellipsis,
           );
 
-        Widget cardInner = Row(
+    Widget cardInner = Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        // ── Dringend-Icon (nur wenn isUrgent) ──
         if (widget.isUrgent) ...[
           Padding(
             padding: const EdgeInsets.only(right: 8),
@@ -1824,13 +1031,10 @@ class _TaskCardState extends State<_TaskCard> with TickerProviderStateMixin, Swi
                       style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: dueColor),
                     ),
                   ],
-                  // Reminder-Icon: nur Glocke, keine Zeitpunkte sichtbar —
-                  // die konkreten Zeiten sieht man erst im Edit-Sheet.
                   if (task.hasReminder) ...[
                     if (task.hasDeadline) const SizedBox(width: 8),
                     Icon(Icons.notifications_active_outlined, size: 12, color: skin.primary.withValues(alpha: 0.55)),
                   ],
-                  // Notiz-Icon: nur Symbol, kein Text — analog schedule_screen.dart
                   if (task.hasNotes) ...[
                     if (task.hasDeadline || task.hasReminder) const SizedBox(width: 8),
                     Icon(Icons.sticky_note_2_outlined, size: 12, color: skin.primary.withValues(alpha: 0.55)),
@@ -1849,31 +1053,31 @@ class _TaskCardState extends State<_TaskCard> with TickerProviderStateMixin, Swi
     );
 
     Widget cardWidget = ClipRRect(
-  borderRadius: BorderRadius.circular(14),
-  child: BackdropFilter(
-    filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
-    child: Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-      decoration: BoxDecoration(
-        color: widget.isUrgent
-            ? const Color(0xFFEF5B5B).withValues(alpha: skin.isLight ? 0.04 : 0.07)
-            : (skin.isLight ? Colors.white.withValues(alpha: skin.glassOpacity) : skin.bgCard.withValues(alpha: skin.glassOpacity)),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: widget.isUrgent
-              ? const Color(0xFFEF5B5B).withValues(alpha: 0.45)
-              : (widget.isInlineEditing ? skin.primary.withValues(alpha: 0.45) : skin.glassBorder),
-          width: (widget.isUrgent || widget.isInlineEditing) ? 1.5 : 1.0,
+      borderRadius: BorderRadius.circular(14),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+          decoration: BoxDecoration(
+            color: widget.isUrgent
+                ? const Color(0xFFEF5B5B).withValues(alpha: skin.isLight ? 0.04 : 0.07)
+                : (skin.isLight ? Colors.white.withValues(alpha: skin.glassOpacity) : skin.bgCard.withValues(alpha: skin.glassOpacity)),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: widget.isUrgent
+                  ? const Color(0xFFEF5B5B).withValues(alpha: 0.45)
+                  : (widget.isInlineEditing ? skin.primary.withValues(alpha: 0.45) : skin.glassBorder),
+              width: (widget.isUrgent || widget.isInlineEditing) ? 1.5 : 1.0,
+            ),
+            boxShadow: [
+              BoxShadow(color: skin.glassShadow, blurRadius: 24, spreadRadius: 0, offset: const Offset(0, 6)),
+              BoxShadow(color: skin.glassHighlight, blurRadius: 0, spreadRadius: -1, offset: const Offset(0, 1)),
+            ],
+          ),
+          child: cardInner,
         ),
-        boxShadow: [
-          BoxShadow(color: skin.glassShadow, blurRadius: 24, spreadRadius: 0, offset: const Offset(0, 6)),
-          BoxShadow(color: skin.glassHighlight, blurRadius: 0, spreadRadius: -1, offset: const Offset(0, 1)),
-        ],
       ),
-      child: cardInner,
-    ),
-  ),
-);
+    );
 
     return AnimatedBuilder(
       animation: _deleteAnimController,
@@ -1891,7 +1095,6 @@ class _TaskCardState extends State<_TaskCard> with TickerProviderStateMixin, Swi
         onHorizontalDragEnd: widget.isInlineEditing ? null : _onPanEnd,
         onVerticalDragUpdate: widget.isInlineEditing
             ? (d) {
-                // Wischen nach unten schließt + übernimmt den Inline-Edit.
                 if (d.delta.dy > 6) commitInlineEditNow();
               }
             : null,
@@ -1937,36 +1140,17 @@ class _TaskCardState extends State<_TaskCard> with TickerProviderStateMixin, Swi
     );
   }
 }
+
 // ─────────────────────────────────────────────────────────────────────────────
 // TASK EDIT SHEET
-//
-// Fixes/Erweiterungen gegenüber v2:
-//   - Lösch-Kachel komplett entfernt (Löschen geht jetzt nur noch über den
-//     Swipe in der Liste).
-//   - Reminder-System: Quick-Chips (MRU-sortiert, analog zu den
-//     FahrtTyp-Quick-Chips in fahrtenbuch_screen.dart) + "weitere…"-Chip,
-//     der den Vollbild-Picker mit Suche und Mehrfachauswahl (max. 3) öffnet.
-// ─────────────────────────────────────────────────────────────────────────────
-// TASK ZEIT BLOCK — Datum- und Uhrzeit-Kachel für das Edit-Sheet.
-//
-// Angelehnt an _ZeitBlock aus fahrtenbuch_screen.dart, aber schlanker:
-//   - kein "ABFAHRT/ANKUNFT"-Doppelblock, sondern zwei eigenständige Kacheln
-//     (Datum, Uhrzeit) nebeneinander, da Tasks nur einen Zeitpunkt brauchen.
-//   - Tap → öffnet den jeweiligen Picker (showSingleDatePicker / IOSTimePicker).
-//   - Datums-Kachel: horizontales Wischen ändert den Tag direkt (±1 pro
-//     Schwellwert), ohne Sheet — exakt wie bei _ZeitBlock.
-//   - Uhrzeit-Kachel: vertikales Wischen ändert die Minute direkt (±1 pro
-//     Schwellwert), ohne Sheet.
-//   - Beide bleiben dauerhaft sichtbar (kein Ein-/Ausblenden je nach Status),
-//     damit Datum und Uhrzeit jederzeit per Wischen einstellbar sind.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _TaskDateTile extends StatefulWidget {
   final AppSkin skin;
-  final DateTime? date; // null = noch kein Datum gesetzt
+  final DateTime? date;
   final VoidCallback onTap;
   final VoidCallback onDoubleTap;
-  final ValueChanged<int> onSwipeDay; // delta in Tagen
+  final ValueChanged<int> onSwipeDay;
 
   const _TaskDateTile({
     required this.skin,
@@ -2016,9 +1200,7 @@ class _TaskDateTileState extends State<_TaskDateTile> {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
             decoration: BoxDecoration(
-              color: hasDate
-                  ? skin.primary.withValues(alpha: skin.isLight ? 0.08 : 0.14)
-                  : (skin.isLight ? Colors.white.withValues(alpha: skin.glassOpacity) : skin.bgCard.withValues(alpha: skin.glassOpacity)),
+              color: hasDate ? skin.primary.withValues(alpha: skin.isLight ? 0.08 : 0.14) : (skin.isLight ? Colors.white.withValues(alpha: skin.glassOpacity) : skin.bgCard.withValues(alpha: skin.glassOpacity)),
               borderRadius: BorderRadius.circular(14),
               border: Border.all(
                 color: hasDate ? skin.primary.withValues(alpha: 0.32) : skin.glassBorder,
@@ -2093,7 +1275,7 @@ class _TaskTimeTileState extends State<_TaskTimeTile> {
         onVerticalDragStart: widget.enabled && hasTime ? (_) => _vAccum = 0 : null,
         onVerticalDragUpdate: widget.enabled && hasTime
             ? (d) {
-                _vAccum += -d.delta.dy; // hoch = mehr Minuten
+                _vAccum += -d.delta.dy;
                 while (_vAccum >= _pxPerMin) {
                   _vAccum -= _pxPerMin;
                   widget.onSwipeMinute(1);
@@ -2113,9 +1295,7 @@ class _TaskTimeTileState extends State<_TaskTimeTile> {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
               decoration: BoxDecoration(
-                color: hasTime
-                    ? skin.primary.withValues(alpha: skin.isLight ? 0.08 : 0.14)
-                    : (skin.isLight ? Colors.white.withValues(alpha: skin.glassOpacity) : skin.bgCard.withValues(alpha: skin.glassOpacity)),
+                color: hasTime ? skin.primary.withValues(alpha: skin.isLight ? 0.08 : 0.14) : (skin.isLight ? Colors.white.withValues(alpha: skin.glassOpacity) : skin.bgCard.withValues(alpha: skin.glassOpacity)),
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(
                   color: hasTime ? skin.primary.withValues(alpha: 0.32) : skin.glassBorder,
@@ -2152,13 +1332,6 @@ class _TaskTimeTileState extends State<_TaskTimeTile> {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SHEET HANDLE BAR — Tap ODER nach unten wischen schließt das Sheet.
-// Statisch (kein Live-Tracking/Transform) — analog zur Handle-Bar in
-// fahrtenbuch_screen.dart: onVerticalDragEnd prüft nur die Geschwindigkeit
-// beim Loslassen. Großzügige Hitbox: volle Breite, viel vertikaler Puffer.
-// ─────────────────────────────────────────────────────────────────────────────
-
 class _SheetHandleBar extends StatelessWidget {
   final AppSkin skin;
   const _SheetHandleBar({required this.skin});
@@ -2182,26 +1355,12 @@ class _SheetHandleBar extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// TASK EDIT SHEET — v3
-//
-// Änderungen gegenüber v2 (auf expliziten Wunsch):
-//   1) Datum + Uhrzeit sind jetzt zwei dauerhaft sichtbare Kacheln
-//      (_TaskDateTile / _TaskTimeTile) statt Chips. Tap öffnet den
-//      jeweiligen Picker; zusätzlich: horizontales Wischen auf der
-//      Datums-Kachel ändert den Tag direkt, vertikales Wischen auf der
-//      Uhrzeit-Kachel ändert die Minute direkt — ohne Sheet zu öffnen.
-//   2) Reminder-Auswahl ist jetzt NUR noch die durchslidbare Chip-Reihe mit
-//      ALLEN Optionen des Modus (MRU-sortiert). Kein Vollbild-Picker-Sheet
-//      mehr, kein "weitere…"-Chip mehr — _ReminderPickerSheet wird in
-//      diesem Screen nicht mehr verwendet.
-// ─────────────────────────────────────────────────────────────────────────────
-
 class _TaskEditSheet extends StatefulWidget {
   final AppSkin skin;
   final String? initialTitle;
   final DateTime? initialDate;
   final Task? existingTask;
+  final bool isReviewMode;
   final void Function(Task task) onSaved;
 
   const _TaskEditSheet({
@@ -2209,6 +1368,7 @@ class _TaskEditSheet extends StatefulWidget {
     this.initialTitle,
     this.initialDate,
     this.existingTask,
+    this.isReviewMode = false,
     required this.onSaved,
   });
 
@@ -2222,10 +1382,9 @@ class _TaskEditSheetState extends State<_TaskEditSheet> {
   final _titleFocus = FocusNode();
   DateTime? _dueDate;
   bool _hasTime = false;
-  bool _fristEnabled = true; // Steuert den FRIST-Switch im Sheet
+  bool _fristEnabled = true;
   bool _isUrgent = false;
 
-  // Reminder-Auswahl: Liste der gewählten ReminderOption-IDs (max 3).
   List<String> _selectedReminderIds = [];
   List<ReminderOption> _quickOptions = [];
 
@@ -2234,30 +1393,30 @@ class _TaskEditSheetState extends State<_TaskEditSheet> {
   ReminderMode get _mode => _dueDate != null ? ReminderMode.beforeDeadline : ReminderMode.relative;
 
   @override
-void initState() {
-  super.initState();
-  _titleCtrl = TextEditingController(text: widget.existingTask?.title ?? widget.initialTitle ?? '');
-  _notesCtrl = TextEditingController(text: widget.existingTask?.notes ?? '');
-  if (widget.existingTask != null) {
-    _dueDate = widget.existingTask!.dueDate;
-    _hasTime = widget.existingTask!.hasTime;
-    _isUrgent = widget.existingTask!.isUrgent; // ← NEU
-  } else if (widget.initialDate != null) {
-    _dueDate = widget.initialDate;
-    _hasTime = false;
-    _isUrgent = false;
-  } else {
-    _dueDate = null;
-    _hasTime = false;
-    _isUrgent = false;
+  void initState() {
+    super.initState();
+    _titleCtrl = TextEditingController(text: widget.existingTask?.title ?? widget.initialTitle ?? '');
+    _notesCtrl = TextEditingController(text: widget.existingTask?.notes ?? '');
+    if (widget.existingTask != null) {
+      _dueDate = widget.existingTask!.dueDate;
+      _hasTime = widget.existingTask!.hasTime;
+      _isUrgent = widget.existingTask!.isUrgent;
+    } else if (widget.initialDate != null) {
+      _dueDate = widget.initialDate;
+      _hasTime = false;
+      _isUrgent = false;
+    } else {
+      _dueDate = null;
+      _hasTime = false;
+      _isUrgent = false;
+    }
+    _fristEnabled = _dueDate != null;
+    _selectedReminderIds = List<String>.from(widget.existingTask?.reminderOptionIds ?? []);
+    _refreshQuickOptions();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_isEditing) FocusScope.of(context).requestFocus(_titleFocus);
+    });
   }
-  _fristEnabled = _dueDate != null;
-  _selectedReminderIds = List<String>.from(widget.existingTask?.reminderOptionIds ?? []);
-  _refreshQuickOptions();
-  WidgetsBinding.instance.addPostFrameCallback((_) {
-    if (!_isEditing) FocusScope.of(context).requestFocus(_titleFocus);
-  });
-}
 
   @override
   void dispose() {
@@ -2270,8 +1429,6 @@ void initState() {
   void _refreshQuickOptions() {
     _quickOptions = ReminderManager.getSorted(_mode);
   }
-
-  // ── Datum ──
 
   Future<void> _pickDate() async {
     final skin = widget.skin;
@@ -2292,10 +1449,6 @@ void initState() {
     }
   }
 
-  // Horizontales Wischen auf der Datums-Kachel: Tag direkt verschieben.
-  // Falls noch gar kein Datum gesetzt war, greift das nicht (Kachel ist in
-  // diesem Fall noch nicht swipe-aktiv, siehe _TaskDateTile.enabled-Logik
-  // über die hasDate-Prüfung).
   void _swipeDate(int deltaDays) {
     if (_dueDate == null) return;
     setState(() {
@@ -2303,14 +1456,11 @@ void initState() {
     });
   }
 
-// Doppeltipp Datum: intelligent löschen/wiederherstellen
   void _doubleTapDate() {
     HapticFeedback.mediumImpact();
     if (_dueDate != null) {
-      // Datum vorhanden → beides löschen (Datum + Uhrzeit) → Frist aus
       _clearDate();
     } else {
-      // Datum leer → aktuelles Datum setzen, KEINE Uhrzeit → Frist an
       final now = DateTime.now();
       setState(() {
         _dueDate = DateTime(now.year, now.month, now.day, 0, 0);
@@ -2320,23 +1470,18 @@ void initState() {
     }
   }
 
-  // Doppeltipp Uhrzeit: intelligent löschen/wiederherstellen
   void _doubleTapTime() {
     HapticFeedback.mediumImpact();
     if (_hasTime && _dueDate != null) {
-      // Uhrzeit vorhanden → nur Uhrzeit löschen, Datum bleibt
       setState(() => _hasTime = false);
     } else if (!_hasTime && _dueDate != null) {
-      // Nur Datum, keine Uhrzeit → Datum+Uhrzeit auf jetzt setzen
       final now = DateTime.now();
       setState(() {
-        _dueDate = DateTime(_dueDate!.year, _dueDate!.month, _dueDate!.day,
-            now.hour + 1, 0);
+        _dueDate = DateTime(_dueDate!.year, _dueDate!.month, _dueDate!.day, now.hour + 1, 0);
         _hasTime = true;
         _fristEnabled = true;
       });
     } else {
-      // Gar nichts gesetzt → aktuelles Datum + nächste volle Stunde
       final now = DateTime.now();
       setState(() {
         _dueDate = DateTime(now.year, now.month, now.day, now.hour + 1, 0);
@@ -2346,9 +1491,8 @@ void initState() {
     }
   }
 
-  // ── Uhrzeit ──
   Future<void> _pickTime() async {
-    if (_dueDate == null) return; // Uhrzeit ergibt ohne Datum keinen Sinn
+    if (_dueDate == null) return;
     final skin = widget.skin;
     final base = _dueDate!;
     showModalBottomSheet(
@@ -2369,7 +1513,6 @@ void initState() {
     );
   }
 
-  // Vertikales Wischen auf der Uhrzeit-Kachel: Minute direkt verschieben.
   void _swipeTime(int deltaMinutes) {
     if (_dueDate == null || !_hasTime) return;
     setState(() {
@@ -2387,16 +1530,9 @@ void initState() {
     if (hadDeadlineBefore) await _onDeadlineModeChanged();
   }
 
-  // ── Frist Switch ──
-
-  /// Zentrale Methode zum Ein-/Ausschalten der Frist — wird vom Switch
-  /// aufgerufen. Doppeltipp-Handler (Datum/Uhrzeit) pflegen _fristEnabled
-  /// direkt mit, sodass Switch und Doppeltipp immer denselben Zustand
-  /// erzeugen und nie auseinanderlaufen können.
   Future<void> _setFristEnabled(bool enabled) async {
     if (enabled == _fristEnabled) return;
     if (!enabled) {
-      // Frist aus → Datum/Uhrzeit komplett entfernen (= "ohne Frist").
       final hadDeadlineBefore = _dueDate != null;
       setState(() {
         _fristEnabled = false;
@@ -2405,7 +1541,6 @@ void initState() {
       });
       if (hadDeadlineBefore) await _onDeadlineModeChanged();
     } else {
-      // Frist an → Datum auf heute, Uhrzeit auf nächste volle Stunde.
       final hadDeadlineBefore = _dueDate != null;
       final now = DateTime.now();
       setState(() {
@@ -2417,10 +1552,6 @@ void initState() {
     }
   }
 
-  /// Wird aufgerufen, sobald sich der Deadline-Status (vorhanden ↔ keine)
-  /// ändert — NICHT bei reiner Uhrzeit-Vergabe (die ändert den Modus nicht,
-  /// da Reminder-Berechnung sich nur am Datum orientiert). Setzt alle
-  /// Reminder zurück und zeigt einen reinen Hinweis-Dialog.
   Future<void> _onDeadlineModeChanged() async {
     final hadReminders = _selectedReminderIds.isNotEmpty;
     setState(() {
@@ -2508,8 +1639,6 @@ void initState() {
     );
   }
 
-  // ── Reminder ──
-
   void _toggleReminderOption(String id) {
     setState(() {
       if (_selectedReminderIds.contains(id)) {
@@ -2532,7 +1661,6 @@ void initState() {
     });
   }
 
-  /// Berechnet die konkreten Reminder-DateTimes aus den gewählten Optionen.
   List<DateTime> _computeReminderTimes() {
     final options = ReminderManager.optionsFor(_mode);
     final base = _mode == ReminderMode.beforeDeadline ? _dueDate! : DateTime.now();
@@ -2547,34 +1675,34 @@ void initState() {
   }
 
   void _save() {
-  final title = _titleCtrl.text.trim();
-  if (title.isEmpty) return;
+    final title = _titleCtrl.text.trim();
+    if (title.isEmpty) return;
 
-  for (final id in _selectedReminderIds) {
-    ReminderManager.recordUsage(_mode, id);
+    for (final id in _selectedReminderIds) {
+      ReminderManager.recordUsage(_mode, id);
+    }
+
+    final task = widget.existingTask ??
+        Task(id: DateTime.now().millisecondsSinceEpoch.toString(), title: title, createdAt: DateTime.now());
+    task.title = title;
+    task.dueDate = _dueDate;
+    task.hasTime = _dueDate != null && _hasTime;
+    task.notes = _notesCtrl.text.trim();
+    task.isUrgent = _isUrgent;
+    task.reminderOptionIds = List<String>.from(_selectedReminderIds);
+    task.reminderTimes = _computeReminderTimes();
+    widget.onSaved(task);
+    Navigator.pop(context);
   }
-
-  final task = widget.existingTask ??
-      Task(id: DateTime.now().millisecondsSinceEpoch.toString(), title: title, createdAt: DateTime.now());
-  task.title = title;
-  task.dueDate = _dueDate;
-  task.hasTime = _dueDate != null && _hasTime;
-  task.notes = _notesCtrl.text.trim();
-  task.isUrgent = _isUrgent; // ← NEU
-  task.reminderOptionIds = List<String>.from(_selectedReminderIds);
-  task.reminderTimes = _computeReminderTimes();
-  widget.onSaved(task);
-  Navigator.pop(context);
-}
 
   @override
   Widget build(BuildContext context) {
     final skin = widget.skin;
     return Padding(
-  padding: EdgeInsets.only(
-    bottom: MediaQuery.of(context).viewInsets.bottom,
-    top: MediaQuery.of(context).padding.top + 12,
-  ),
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+        top: MediaQuery.of(context).padding.top + 12,
+      ),
       child: GlassSheet(
         skin: skin,
         child: NotificationListener<ScrollNotification>(
@@ -2592,183 +1720,197 @@ void initState() {
             },
             child: SingleChildScrollView(
               physics: const BouncingScrollPhysics(),
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(20, 4, 20, 20 + MediaQuery.of(context).padding.bottom),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _SheetHandleBar(skin: skin),
-                const SizedBox(height: 4),
-                Row(children: [
-                  Icon(Icons.task_alt_outlined, size: 18, color: skin.primary),
-                  const SizedBox(width: 8),
-                  Text(_isEditing ? 'Aufgabe bearbeiten' : 'Neue Aufgabe',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: skin.textPrimary)),
-                ]),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: _titleCtrl,
-                  focusNode: _titleFocus,
-                  autofocus: !_isEditing,
-                  maxLines: 3,
-                  minLines: 1,
-                  textCapitalization: TextCapitalization.sentences,
-                  style: TextStyle(color: skin.textPrimary, fontSize: 17, fontWeight: FontWeight.w500),
-                  decoration: InputDecoration(
-                    hintText: 'Titel',
-                    hintStyle: TextStyle(color: skin.surface(0.22), fontSize: 17),
-                    border: InputBorder.none,
-                    isDense: true,
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                  onSubmitted: (_) => _save(),
-                ),
-
-                const SizedBox(height: 14),
-                Container(height: 0.6, color: skin.surface(0.10)),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: _notesCtrl,
-                  maxLines: 4,
-                  minLines: 1,
-                  textCapitalization: TextCapitalization.sentences,
-                  style: TextStyle(color: skin.textPrimary, fontSize: 14, fontWeight: FontWeight.w500, height: 1.4),
-                  decoration: InputDecoration(
-                    hintText: 'Notiz hinzufügen…',
-                    hintStyle: TextStyle(color: skin.surface(0.26), fontSize: 14),
-                    border: InputBorder.none,
-                    isDense: true,
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                ),
-                                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(20, 4, 20, 20 + MediaQuery.of(context).padding.bottom),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: Row(
-                        children: [
-                          Text(
-                            'DRINGEND',
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w700,
-                              color: _isUrgent
-                                  ? const Color(0xFFEF5B5B).withValues(alpha: 0.85)
-                                  : skin.surface(0.38),
-                              letterSpacing: 1.2,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Container(
-                              height: 0.5,
-                              color: _isUrgent
-                                  ? const Color(0xFFEF5B5B).withValues(alpha: 0.25)
-                                  : skin.surface(0.12),
-                            ),
-                          ),
-                        ],
+                    _SheetHandleBar(skin: skin),
+                    const SizedBox(height: 4),
+                    Row(children: [
+                      Icon(
+                        widget.isReviewMode ? Icons.mic_outlined : Icons.task_alt_outlined,
+                        size: 18,
+                        color: skin.primary,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        widget.isReviewMode
+                            ? 'Erkannt — bitte prüfen'
+                            : (_isEditing ? 'Aufgabe bearbeiten' : 'Neue Aufgabe'),
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: skin.textPrimary),
+                      ),
+                    ]),
+                    if (widget.isReviewMode) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        'Diktat wurde automatisch erkannt — Titel und Datum ggf. anpassen.',
+                        style: TextStyle(fontSize: 11.5, color: skin.textMuted),
+                      ),
+                    ],
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: _titleCtrl,
+                      focusNode: _titleFocus,
+                      autofocus: !_isEditing,
+                      maxLines: 3,
+                      minLines: 1,
+                      textCapitalization: TextCapitalization.sentences,
+                      style: TextStyle(color: skin.textPrimary, fontSize: 17, fontWeight: FontWeight.w500),
+                      decoration: InputDecoration(
+                        hintText: 'Titel',
+                        hintStyle: TextStyle(color: skin.surface(0.22), fontSize: 17),
+                        border: InputBorder.none,
+                        isDense: true,
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                      onSubmitted: (_) => _save(),
+                    ),
+
+                    const SizedBox(height: 14),
+                    Container(height: 0.6, color: skin.surface(0.10)),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: _notesCtrl,
+                      maxLines: 4,
+                      minLines: 1,
+                      textCapitalization: TextCapitalization.sentences,
+                      style: TextStyle(color: skin.textPrimary, fontSize: 14, fontWeight: FontWeight.w500, height: 1.4),
+                      decoration: InputDecoration(
+                        hintText: 'Notiz hinzufügen…',
+                        hintStyle: TextStyle(color: skin.surface(0.26), fontSize: 14),
+                        border: InputBorder.none,
+                        isDense: true,
+                        contentPadding: EdgeInsets.zero,
                       ),
                     ),
-                    Transform.scale(
-                      scale: 0.75,
-                      child: Switch(
-                        value: _isUrgent,
-                        onChanged: (v) {
-                          HapticFeedback.selectionClick();
-                          setState(() => _isUrgent = v);
-                        },
-                        activeThumbColor: const Color(0xFFEF5B5B),
-                        activeTrackColor: const Color(0xFFEF5B5B).withValues(alpha: 0.28),
-                        inactiveThumbColor: skin.surface(0.4),
-                        inactiveTrackColor: skin.surface(0.08),
+
+                    const SizedBox(height: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Row(
+                            children: [
+                              Text(
+                                'DRINGEND',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                  color: _isUrgent ? const Color(0xFFEF5B5B).withValues(alpha: 0.85) : skin.surface(0.38),
+                                  letterSpacing: 1.2,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Container(
+                                  height: 0.5,
+                                  color: _isUrgent ? const Color(0xFFEF5B5B).withValues(alpha: 0.25) : skin.surface(0.12),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Transform.scale(
+                          scale: 0.75,
+                          child: Switch(
+                            value: _isUrgent,
+                            onChanged: (v) {
+                              HapticFeedback.selectionClick();
+                              setState(() => _isUrgent = v);
+                            },
+                            activeThumbColor: const Color(0xFFEF5B5B),
+                            activeTrackColor: const Color(0xFFEF5B5B).withValues(alpha: 0.28),
+                            inactiveThumbColor: skin.surface(0.4),
+                            inactiveTrackColor: skin.surface(0.08),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(child: _SectionLabel(label: 'FRIST', skin: skin)),
+                        Transform.scale(
+                          scale: 0.75,
+                          child: Switch(
+                            value: _fristEnabled,
+                            onChanged: (v) => _setFristEnabled(v),
+                            activeThumbColor: skin.primary,
+                            activeTrackColor: skin.primary.withValues(alpha: 0.28),
+                            inactiveThumbColor: skin.surface(0.4),
+                            inactiveTrackColor: skin.surface(0.08),
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (_fristEnabled) ...[
+                      const SizedBox(height: 8),
+                      Row(children: [
+                        Expanded(
+                          child: _TaskDateTile(
+                            skin: skin,
+                            date: _dueDate,
+                            onTap: _pickDate,
+                            onDoubleTap: _doubleTapDate,
+                            onSwipeDay: _swipeDate,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: _TaskTimeTile(
+                            skin: skin,
+                            enabled: _dueDate != null,
+                            time: (_dueDate != null && _hasTime) ? TimeOfDay(hour: _dueDate!.hour, minute: _dueDate!.minute) : null,
+                            onTap: _pickTime,
+                            onDoubleTap: _doubleTapTime,
+                            onSwipeMinute: _swipeTime,
+                          ),
+                        ),
+                      ]),
+                      const SizedBox(height: 6),
+                      Text('Wischen · Tippen · Doppeltippen', style: TextStyle(fontSize: 10, color: skin.surface(0.28))),
+                    ],
+                    const SizedBox(height: 16),
+                    _SectionLabel(label: 'HINWEISEN', skin: skin),
+                    const SizedBox(height: 8),
+                    Text(
+                      _dueDate == null
+                          ? 'Wann möchtest du erinnert werden?'
+                          : 'Wie weit vor der Frist möchtest du erinnert werden?',
+                      style: TextStyle(fontSize: 12, color: skin.surface(0.4)),
+                    ),
+                    const SizedBox(height: 10),
+                    _ReminderQuickChips(
+                      skin: skin,
+                      options: _quickOptions,
+                      selectedIds: _selectedReminderIds,
+                      onToggle: _toggleReminderOption,
+                    ),
+                    if (_selectedReminderIds.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        '${_selectedReminderIds.length} von ${ReminderManager.maxSelectable} Erinnerungen gewählt',
+                        style: TextStyle(fontSize: 10.5, color: skin.surface(0.32)),
                       ),
+                    ],
+
+                    const SizedBox(height: 22),
+                    GlassPrimaryButton(
+                      skin: skin,
+                      label: widget.isReviewMode
+                          ? 'Übernehmen'
+                          : (_isEditing ? 'Speichern' : 'Hinzufügen'),
+                      icon: Icons.check_circle_outline,
+                      large: true,
+                      onTap: _save,
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(child: _SectionLabel(label: 'FRIST', skin: skin)),
-                    Transform.scale(
-                      scale: 0.75,
-                      child: Switch(
-                        value: _fristEnabled,
-                        onChanged: (v) => _setFristEnabled(v),
-                        activeThumbColor: skin.primary,
-                        activeTrackColor: skin.primary.withValues(alpha: 0.28),
-                        inactiveThumbColor: skin.surface(0.4),
-                        inactiveTrackColor: skin.surface(0.08),
-                      ),
-                    ),
-                  ],
-                ),
-                if (_fristEnabled) ...[
-                  const SizedBox(height: 8),
-                  Row(children: [
-                    Expanded(
-                      child: _TaskDateTile(
-                        skin: skin,
-                        date: _dueDate,
-                        onTap: _pickDate,
-                        onDoubleTap: _doubleTapDate,
-                        onSwipeDay: _swipeDate,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: _TaskTimeTile(
-                        skin: skin,
-                        enabled: _dueDate != null,
-                        time: (_dueDate != null && _hasTime) ? TimeOfDay(hour: _dueDate!.hour, minute: _dueDate!.minute) : null,
-                        onTap: _pickTime,
-                        onDoubleTap: _doubleTapTime,
-                        onSwipeMinute: _swipeTime,
-                      ),
-                    ),
-                  ]),
-                  const SizedBox(height: 6),
-                  Text('Wischen · Tippen · Doppeltippen', style: TextStyle(fontSize: 10, color: skin.surface(0.28))),
-                ],
-                const SizedBox(height: 16),
-                _SectionLabel(label: 'HINWEISEN', skin: skin),
-                const SizedBox(height: 8),
-                Text(
-                  _dueDate == null
-                      ? 'Wann möchtest du erinnert werden?'
-                      : 'Wie weit vor der Frist möchtest du erinnert werden?',
-                  style: TextStyle(fontSize: 12, color: skin.surface(0.4)),
-                ),
-                const SizedBox(height: 10),
-                _ReminderQuickChips(
-                  skin: skin,
-                  options: _quickOptions,
-                  selectedIds: _selectedReminderIds,
-                  onToggle: _toggleReminderOption,
-                ),
-                if (_selectedReminderIds.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    '${_selectedReminderIds.length} von ${ReminderManager.maxSelectable} Erinnerungen gewählt',
-                    style: TextStyle(fontSize: 10.5, color: skin.surface(0.32)),
-                  ),
-                ],
-
-                const SizedBox(height: 22),
-                GlassPrimaryButton(
-                  skin: skin,
-                  label: _isEditing ? 'Speichern' : 'Hinzufügen',
-                  icon: Icons.check_circle_outline,
-                  large: true,
-                  onTap: _save,
-                ),
-              ],
+              ),
             ),
-          ),
-        ),
           ),
         ),
       ),
@@ -2777,27 +1919,12 @@ void initState() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// REMINDER QUICK CHIPS — v3
-//
-// Fixes gegenüber v2:
-//   1) Horizontales Wischen funktionierte nicht zuverlässig, weil die Reihe
-//      in einem vertikalen SingleChildScrollView (dem restlichen Sheet)
-//      eingebettet ist. Flutters Gesture-Arena entscheidet bei sehr kurzen
-//      Wischbewegungen manchmal zugunsten des äußeren (vertikalen) Scrollers,
-//      bevor die innere horizontale ListView "gewinnt" — vor allem, wenn man
-//      nah am oberen/unteren Rand der Chip-Reihe ansetzt. Fix: die Reihe
-//      bekommt einen EIGENEN ScrollController (statt implizitem), und wir
-//      umschließen sie mit RawGestureDetector + HorizontalDragGestureRecognizer
-//      mit eigenem GestureArenaTeam, damit horizontale Bewegungen innerhalb
-//      dieser Zeile IMMER zuerst an die Chip-Reihe gehen, nie an das äußere
-//      Sheet-Scrolling.
-//   2) Neuer Fortschrittsanzeiger darunter: ein schlanker Balken zeigt, wie
-//      weit man in der Liste ist und wie viel noch kommt.
+// REMINDER QUICK CHIPS
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _ReminderQuickChips extends StatefulWidget {
   final AppSkin skin;
-  final List<ReminderOption> options; // bereits MRU-sortiert (ReminderManager.getSorted)
+  final List<ReminderOption> options;
   final List<String> selectedIds;
   final void Function(String id) onToggle;
 
@@ -2814,15 +1941,13 @@ class _ReminderQuickChips extends StatefulWidget {
 
 class _ReminderQuickChipsState extends State<_ReminderQuickChips> {
   final ScrollController _scrollCtrl = ScrollController();
-  double _progress = 0.0; // 0 = ganz links, 1 = ganz rechts
-  double _visibleFraction = 1.0; // Anteil der Liste, der sichtbar ist
+  double _progress = 0.0;
+  double _visibleFraction = 1.0;
 
   @override
   void initState() {
     super.initState();
     _scrollCtrl.addListener(_updateProgress);
-    // Nach dem ersten Layout einmal berechnen, damit die Anzeige sofort
-    // korrekt ist (auch wenn noch nicht gescrollt wurde).
     WidgetsBinding.instance.addPostFrameCallback((_) => _updateProgress());
   }
 

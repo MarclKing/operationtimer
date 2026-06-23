@@ -15,6 +15,7 @@ import '../widgets/swipe_animation_mixin.dart';
 import 'km_scanner_screen.dart';
 import 'fuel_scanner_screen.dart';
 import '../services/fahrt_export_service.dart';
+import '../services/sync_service.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // FAHRT MODEL
@@ -811,6 +812,7 @@ _selectionBarAnim = CurvedAnimation(
     box.put('fahrten_$monthKey', existing.map((f) => f.toMap()).toList());
     if (fahrt.kennzeichen.isNotEmpty && fahrt.kmEnd > 0) {
       KmMemory.save(fahrt.kennzeichen, fahrt.kmEnd);
+      SyncService.instance.pushFahrtenMonth(monthKey);
     }
     setState(() {});
   }

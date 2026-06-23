@@ -134,6 +134,8 @@
 		<string>Kilometerfoto aus der Galerie auswählen</string>
 		<key>NSPhotoLibraryAddUsageDescription</key>
 		<string>Fotos in der Galerie speichern</string>
+		<key>NSLocationWhenInUseUsageDescription</key>
+		<string>Für die Wetteranzeige auf dem Homescreen</string>
 		<key>UIStatusBarHidden</key>
 		<false/>
 	</dict>
