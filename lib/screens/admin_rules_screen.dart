@@ -8,6 +8,7 @@ import '../widgets/swipe_animation_mixin.dart';
 import '../services/auth_service.dart';
 import '../services/speech_log.dart';
 import 'dart:convert';
+import 'package:hive_flutter/hive_flutter.dart';
 
 class AdminRulesScreen extends StatefulWidget {
   const AdminRulesScreen({super.key});
@@ -82,471 +83,126 @@ class _AdminRulesScreenState extends State<AdminRulesScreen>
   }
 
   Future<void> _deleteSingle(String docId) async {
-    HapticFeedback.mediumImpact();
-    await FirebaseFirestore.instance
-        .collection('speech_logs')
-        .doc(docId)
-        .delete();
+  HapticFeedback.mediumImpact();
+  final docSnap = await FirebaseFirestore.instance
+      .collection('speech_logs')
+      .doc(docId)
+      .get();
+  if (docSnap.exists) {
+    final rawText = (docSnap.data()?['rawText'] as String?) ?? '';
+    _removeFromLocalLog(rawText);
   }
+  await FirebaseFirestore.instance
+      .collection('speech_logs')
+      .doc(docId)
+      .delete();
+  if (mounted) setState(() {});
+}
 
-  Future<void> _deleteSelected(List<QueryDocumentSnapshot> docs) async {
-    if (_selectedIds.isEmpty) return;
-    HapticFeedback.mediumImpact();
-    final batch = FirebaseFirestore.instance.batch();
-    for (final id in _selectedIds) {
-      batch.delete(
-          FirebaseFirestore.instance.collection('speech_logs').doc(id));
-    }
-    await batch.commit();
-    _exitSelectionMode();
+Future<void> _deleteSelected(List<QueryDocumentSnapshot> docs) async {
+  if (_selectedIds.isEmpty) return;
+  HapticFeedback.mediumImpact();
+  final batch = FirebaseFirestore.instance.batch();
+  for (final id in List<String>.from(_selectedIds)) {
+    try {
+      final doc = docs.firstWhere((d) => d.id == id);
+      final rawText = ((doc.data() as Map<String, dynamic>)['rawText'] as String?) ?? '';
+      _removeFromLocalLog(rawText);
+    } catch (_) {}
+    batch.delete(FirebaseFirestore.instance.collection('speech_logs').doc(id));
   }
+  await batch.commit();
+  _exitSelectionMode();
+}
+
+void _removeFromLocalLog(String rawText) {
+  if (rawText.isEmpty) return;
+  try {
+    final box = Hive.box('einstellungen');
+    final raw = box.get('entries'); // ← 'entries' ist der korrekte Key aus SpeechLog
+    if (raw is! String || raw.isEmpty) return;
+    final decoded = jsonDecode(raw) as List;
+    final filtered = decoded.where((e) {
+      final map = Map<String, dynamic>.from(e as Map);
+      return (map['rawText'] as String? ?? '') != rawText;
+    }).toList();
+    box.put('entries', jsonEncode(filtered));
+  } catch (e) {
+    debugPrint('AdminRules: lokales Log löschen fehlgeschlagen: $e');
+  }
+}
 
   @override
   Widget build(BuildContext context) {
-    final skin = AppTheme.of(context);
+  final skin = AppTheme.of(context);
 
-    if (!AuthService.instance.isAdmin) {
-      return Scaffold(
-        backgroundColor: skin.bgBase,
-        body: Center(
-          child:
-              Text('Kein Zugriff', style: TextStyle(color: skin.textMuted)),
-        ),
-      );
-    }
-
+  if (!AuthService.instance.isAdmin) {
     return Scaffold(
       backgroundColor: skin.bgBase,
-      body: SafeArea(
-        child: GestureDetector(
-          behavior: HitTestBehavior.translucent,
-          onTap: () {
-            if (_selectionMode) _exitSelectionMode();
-            if (_openSwipedId != null) setState(() => _openSwipedId = null);
-          },
-          child: Column(
-            children: [
-              // ── Header ────────────────────────────────────────────────────
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
-                child: Row(
-                  children: [
-                    GestureDetector(
-                      onTap: () => Navigator.pop(context),
-                      child: const SizedBox(
-                        width: 42,
-                        height: 42,
-                        child: Center(
-                            child:
-                                Icon(Icons.arrow_back_ios_new, size: 18)),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'Sprach-Analyse',
-                        style: TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.w700,
-                          color: skin.textPrimary,
-                          letterSpacing: -0.5,
-                        ),
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 9, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF8B5CF6)
-                            .withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                            color: const Color(0xFF8B5CF6)
-                                .withValues(alpha: 0.30)),
-                      ),
-                      child: const Text(
-                        'ADMIN',
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF8B5CF6),
-                          letterSpacing: 0.8,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.only(left: 74, bottom: 16),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    'Spracheingaben analysieren · Regeln lernen',
-                    style:
-                        TextStyle(fontSize: 12.5, color: skin.textMuted),
-                  ),
-                ),
-              ),
-
-              // ── Stream ────────────────────────────────────────────────────
-              Expanded(
-                child: StreamBuilder<QuerySnapshot>(
-                  stream: FirebaseFirestore.instance
-                      .collection('speech_logs')
-                      .where('status', isEqualTo: 'pending')
-                      .orderBy('timestamp', descending: true)
-                      .snapshots(),
-                  builder: (context, snapshot) {
-                    if (snapshot.hasError) {
-                      return Center(
-                        child: Text('Fehler: ${snapshot.error}',
-                            style:
-                                TextStyle(color: skin.deleteColor)),
-                      );
-                    }
-                    if (!snapshot.hasData) {
-                      return Center(
-                          child: CircularProgressIndicator(
-                              color: skin.primary));
-                    }
-                    final docs = snapshot.data!.docs;
-
-                    return FadingListView(
-                      fadeFromBottom: 80,
-                      child: ListView(
-                        padding:
-                            const EdgeInsets.fromLTRB(20, 0, 20, 120),
-                        children: [
-                          // ── Status-Kachel ──────────────────────────
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(16),
-                            child: BackdropFilter(
-                              filter: ImageFilter.blur(
-                                  sigmaX: skin.glassBlur,
-                                  sigmaY: skin.glassBlur),
-                              child: Container(
-                                padding: const EdgeInsets.all(16),
-                                decoration: BoxDecoration(
-                                  color: skin.primary.withValues(
-                                      alpha:
-                                          skin.isLight ? 0.06 : 0.10),
-                                  borderRadius:
-                                      BorderRadius.circular(16),
-                                  border: Border.all(
-                                      color: skin.primary
-                                          .withValues(alpha: 0.22)),
-                                ),
-                                child: Row(children: [
-                                  Container(
-                                    width: 38,
-                                    height: 38,
-                                    decoration: BoxDecoration(
-                                      color: skin.primary
-                                          .withValues(alpha: 0.12),
-                                      borderRadius:
-                                          BorderRadius.circular(10),
-                                    ),
-                                    child: Icon(Icons.inbox_outlined,
-                                        size: 20,
-                                        color: skin.primary),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          '${docs.length} offene Eingaben',
-                                          style: TextStyle(
-                                              fontSize: 15,
-                                              fontWeight:
-                                                  FontWeight.w700,
-                                              color:
-                                                  skin.textPrimary),
-                                        ),
-                                        Text(
-                                          'Warten auf Analyse',
-                                          style: TextStyle(
-                                              fontSize: 11.5,
-                                              color: skin.textMuted),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ]),
-                              ),
-                            ),
-                          ),
-
-                          const SizedBox(height: 14),
-
-                          // ── Aktions-Buttons ────────────────────────
-                          if (docs.isNotEmpty)
-                            GestureDetector(
-                              onTap: () => _generateAndCopyPrompt(
-                                  context, docs, skin),
-                              child: ClipRRect(
-                                borderRadius:
-                                    BorderRadius.circular(14),
-                                child: BackdropFilter(
-                                  filter: ImageFilter.blur(
-                                      sigmaX: skin.glassBlur,
-                                      sigmaY: skin.glassBlur),
-                                  child: Container(
-                                    padding:
-                                        const EdgeInsets.symmetric(
-                                            vertical: 14),
-                                    decoration: BoxDecoration(
-                                      color: skin.primary.withValues(
-                                          alpha: skin.isLight
-                                              ? 0.10
-                                              : 0.18),
-                                      borderRadius:
-                                          BorderRadius.circular(14),
-                                      border: Border.all(
-                                          color: skin.primary
-                                              .withValues(alpha: 0.35),
-                                          width: 1.3),
-                                    ),
-                                    child: Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      children: [
-                                        Icon(
-                                            Icons
-                                                .auto_awesome_outlined,
-                                            size: 18,
-                                            color: skin.primary),
-                                        const SizedBox(width: 8),
-                                        Text(
-                                          'Analyse-Prompt erstellen & kopieren',
-                                          style: TextStyle(
-                                              fontSize: 14,
-                                              fontWeight:
-                                                  FontWeight.w700,
-                                              color: skin.primary),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-
-                          const SizedBox(height: 10),
-
-                          GestureDetector(
-                            onTap: () => _openAnswerImportSheet(
-                                context, skin, docs),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(14),
-                              child: BackdropFilter(
-                                filter: ImageFilter.blur(
-                                    sigmaX: skin.glassBlur,
-                                    sigmaY: skin.glassBlur),
-                                child: Container(
-                                  padding:
-                                      const EdgeInsets.symmetric(
-                                          vertical: 13),
-                                  decoration: BoxDecoration(
-                                    color: skin.isLight
-                                        ? Colors.white.withValues(
-                                            alpha: skin.glassOpacity)
-                                        : skin.bgCard.withValues(
-                                            alpha: skin.glassOpacity),
-                                    borderRadius:
-                                        BorderRadius.circular(14),
-                                    border: Border.all(
-                                        color: skin.glassBorder),
-                                  ),
-                                  child: Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.center,
-                                    children: [
-                                      Icon(
-                                          Icons
-                                              .content_paste_go_outlined,
-                                          size: 17,
-                                          color: skin.textPrimary),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        'KI-Antwort einfügen',
-                                        style: TextStyle(
-                                            fontSize: 13.5,
-                                            fontWeight: FontWeight.w600,
-                                            color: skin.textPrimary),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-
-                          const SizedBox(height: 24),
-
-                          // ── Offene Eingaben ────────────────────────
-                          if (docs.isEmpty)
-                            Padding(
-                              padding: const EdgeInsets.symmetric(
-                                  vertical: 24),
-                              child: Center(
-                                child: Column(children: [
-                                  Icon(Icons.check_circle_outline,
-                                      size: 40,
-                                      color: skin.surface(0.18)),
-                                  const SizedBox(height: 10),
-                                  Text('Alles abgearbeitet',
-                                      style: TextStyle(
-                                          color: skin.surface(0.32),
-                                          fontSize: 14)),
-                                ]),
-                              ),
-                            )
-                          else ...[
-                            // Header-Zeile
-                            Padding(
-                              padding:
-                                  const EdgeInsets.only(bottom: 10),
-                              child: Row(children: [
-                                Text('OFFENE EINGABEN',
-                                    style: TextStyle(
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w700,
-                                        color: skin.surface(0.35),
-                                        letterSpacing: 1.1)),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                    child: Container(
-                                        height: 0.5,
-                                        color: skin.surface(0.12))),
-                                const SizedBox(width: 8),
-                                // Auswählen-Button (wie Fahrtenbuch)
-                                GestureDetector(
-                                  onTap: () {
-                                    if (_selectionMode) {
-                                      _exitSelectionMode();
-                                    } else {
-                                      HapticFeedback.selectionClick();
-                                      setState(
-                                          () => _selectionMode = true);
-                                      _selectionBarCtrl.forward();
-                                    }
-                                  },
-                                  child: AnimatedContainer(
-                                    duration: const Duration(
-                                        milliseconds: 200),
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 10, vertical: 4),
-                                    decoration: BoxDecoration(
-                                      color: _selectionMode
-                                          ? skin.deleteColor
-                                              .withValues(alpha: 0.12)
-                                          : skin.surface(0.06),
-                                      borderRadius:
-                                          BorderRadius.circular(8),
-                                      border: Border.all(
-                                        color: _selectionMode
-                                            ? skin.deleteColor
-                                                .withValues(alpha: 0.30)
-                                            : skin.glassBorder,
-                                      ),
-                                    ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(
-                                          _selectionMode
-                                              ? Icons.close_rounded
-                                              : Icons.checklist_rounded,
-                                          size: 13,
-                                          color: _selectionMode
-                                              ? skin.deleteColor
-                                              : skin.textMuted,
-                                        ),
-                                        const SizedBox(width: 4),
-                                        Text(
-                                          _selectionMode
-                                              ? 'Abbrechen'
-                                              : 'Auswählen',
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.w600,
-                                            color: _selectionMode
-                                                ? skin.deleteColor
-                                                : skin.textMuted,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ]),
-                            ),
-
-                            // Log-Einträge
-                            ...docs.map((doc) {
-                              final data =
-                                  doc.data() as Map<String, dynamic>;
-                              return _LogItem(
-                                key: ValueKey(doc.id),
-                                skin: skin,
-                                text: data['rawText'] as String? ?? '',
-                                isSelected:
-                                    _selectedIds.contains(doc.id),
-                                selectionMode: _selectionMode,
-                                isOpen: _openSwipedId == doc.id,
-                                onSwiped: (id) => setState(
-                                    () => _openSwipedId = id),
-                                onLongPress: () =>
-                                    _enterSelectionMode(doc.id),
-                                onSelectTap: () =>
-                                    _toggleSelection(doc.id),
-                                onDelete: () =>
-                                    _deleteSingle(doc.id),
-                              );
-                            }),
-
-                            const SizedBox(height: 20),
-                          ],
-
-                          // ── Wie funktioniert das? ──────────────────
-                          _HowItWorksCard(skin: skin),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-
-      // ── Floating Selection Bar (wie Fahrtenbuch Export-Button) ───────────
-      bottomNavigationBar: AnimatedBuilder(
-        animation: _selectionBarAnim,
-        builder: (context, _) {
-          if (_selectionBarAnim.value == 0) return const SizedBox.shrink();
-          return Padding(
-            padding: EdgeInsets.fromLTRB(
-                20, 0, 20, MediaQuery.of(context).padding.bottom + 16),
-            child: _SelectionBar(
-              skin: skin,
-              animation: _selectionBarAnim,
-              selectedCount: _selectedIds.length,
-              totalCount: 0, // wird unten via StreamBuilder gesetzt
-              onSelectAll: () {}, // Platzhalter, wird unten überschrieben
-              onDelete: () {},
-              onExit: _exitSelectionMode,
-            ),
-          );
-        },
+      body: Center(
+        child: Text('Kein Zugriff', style: TextStyle(color: skin.textMuted)),
       ),
     );
   }
+
+  return Scaffold(
+    backgroundColor: skin.bgBase,
+    body: SafeArea(
+      child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTap: () {
+          if (_selectionMode) _exitSelectionMode();
+          if (_openSwipedId != null) setState(() => _openSwipedId = null);
+        },
+        child: Column(
+          children: [
+            // Header
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
+              child: Row(
+                children: [
+                  GestureDetector(
+                    onTap: () => Navigator.pop(context),
+                    child: const SizedBox(
+                      width: 42, height: 42,
+                      child: Center(child: Icon(Icons.arrow_back_ios_new, size: 18)),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text('Sprach-Analyse',
+                      style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700,
+                          color: skin.textPrimary, letterSpacing: -0.5)),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF8B5CF6).withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFF8B5CF6).withValues(alpha: 0.30)),
+                    ),
+                    child: const Text('ADMIN',
+                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700,
+                          color: Color(0xFF8B5CF6), letterSpacing: 0.8)),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(left: 74, bottom: 16),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text('Spracheingaben analysieren · Regeln lernen',
+                    style: TextStyle(fontSize: 12.5, color: skin.textMuted)),
+              ),
+            ),
+            Expanded(child: _buildBody(context, skin)),
+          ],
+        ),
+      ),
+    ),
+  );
+}
 
   // ── Selection Bar mit echten docs ─────────────────────────────────────────
   // Da wir docs aus dem StreamBuilder brauchen, bauen wir den Scaffold anders.

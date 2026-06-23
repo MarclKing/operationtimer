@@ -147,7 +147,40 @@ class DictationFabState extends State<DictationFab> with TickerProviderStateMixi
     }
   }
 
+  /// Öffentliche Methode zum Starten des Diktats (wird von außen aufgerufen)
   void startListening() => _startListening();
+
+  /// Öffentliche Methode zum Stoppen des Diktats (wird von außen aufgerufen)
+  void stopListening() {
+    if (_phase != DictationPhase.listening) return;
+    if (_aborted) return;
+    
+    // Abort setzen, damit der normale Flow nicht weiterläuft
+    _aborted = true;
+    
+    try {
+      _speech.stop();
+    } catch (_) {}
+    
+    if (mounted) {
+      // Animations zurücksetzen
+      _cancelAnimCtrl.reset();
+      _bubbleCtrl.reset();
+      
+      setState(() {
+        _phase = DictationPhase.idle;
+        _liveTranscript = '';
+        _finalTranscript = '';
+        _revealedWords = [];
+        _revealIndex = 0;
+        _rawLevelNotifier.value = 0.0;
+        _cancelDragX = 0.0;
+        _isCancelling = false;
+        _aborted = false;
+      });
+      widget.onListeningEnd?.call();
+    }
+  }
 
   @override
   void dispose() {

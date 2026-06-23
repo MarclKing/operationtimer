@@ -14,6 +14,7 @@ import '../screens/admin_rules_screen.dart';
 import '../services/auth_service.dart';
 import 'package:share_plus/share_plus.dart';
 import '../services/sync_token_service.dart';
+import '../services/weather_service.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // LIQUID GLASS EXTENSION
@@ -978,69 +979,91 @@ class _SyncTokenCard extends StatelessWidget {
 
                 // Aktions-Row: Kopieren + Teilen
                 Row(
-                  children: [
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: onCopy,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          decoration: BoxDecoration(
-                            color: skin.isLight
-                                ? Colors.white.withValues(alpha: 0.60)
-                                : Colors.white.withValues(alpha: 0.06),
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: skin.glassBorder),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.copy_rounded, size: 15, color: skin.textMuted),
-                              const SizedBox(width: 6),
-                              Text('Kopieren',
-                                  style: TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w600,
-                                      color: skin.textPrimary)),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: onShare,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          decoration: BoxDecoration(
-                            color: skin.primary.withValues(
-                                alpha: skin.isLight ? 0.10 : 0.18),
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(
-                                color: skin.primary.withValues(
-                                    alpha: skin.isLight ? 0.25 : 0.40)),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.ios_share_rounded,
-                                  size: 15,
-                                  color: skin.primary.withValues(
-                                      alpha: skin.isLight ? 0.85 : 0.90)),
-                              const SizedBox(width: 6),
-                              Text('Teilen',
-                                  style: TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w700,
-                                      color: skin.primary.withValues(
-                                          alpha: skin.isLight ? 0.85 : 0.90))),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
+  children: [
+    Expanded(
+      child: GestureDetector(
+        onTap: onCopy,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            color: (linkFeedback != null && linkSuccess)
+                ? const Color(0xFF3DD68C).withValues(alpha: 0.12)
+                : (skin.isLight
+                    ? Colors.white.withValues(alpha: 0.60)
+                    : Colors.white.withValues(alpha: 0.06)),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: (linkFeedback != null && linkSuccess)
+                  ? const Color(0xFF3DD68C).withValues(alpha: 0.4)
+                  : skin.glassBorder,
+            ),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                (linkFeedback != null && linkSuccess)
+                    ? Icons.check_rounded
+                    : Icons.copy_rounded,
+                size: 15,
+                color: (linkFeedback != null && linkSuccess)
+                    ? const Color(0xFF3DD68C)
+                    : skin.textMuted,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                (linkFeedback != null && linkSuccess)
+                    ? 'Kopiert!'
+                    : 'Kopieren',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: (linkFeedback != null && linkSuccess)
+                      ? const Color(0xFF3DD68C)
+                      : skin.textPrimary,
                 ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+    const SizedBox(width: 10),
+    Expanded(
+      child: GestureDetector(
+        onTap: onShare,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            color: skin.primary.withValues(
+                alpha: skin.isLight ? 0.10 : 0.18),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+                color: skin.primary.withValues(
+                    alpha: skin.isLight ? 0.25 : 0.40)),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.ios_share_rounded,
+                  size: 15,
+                  color: skin.primary
+                      .withValues(alpha: skin.isLight ? 0.85 : 0.90)),
+              const SizedBox(width: 6),
+              Text('Teilen',
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: skin.primary.withValues(
+                          alpha: skin.isLight ? 0.85 : 0.90))),
+            ],
+          ),
+        ),
+      ),
+    ),
+  ],
+),
 
                 // Weiteres Gerät verknüpfen (aufklappbar)
                 const SizedBox(height: 10),
@@ -1290,17 +1313,17 @@ if (result.isSuccess) {
   }
 
   void _copyToken() {
-    if (_syncToken == null) return;
-    Clipboard.setData(ClipboardData(text: _syncToken!));
-    HapticFeedback.lightImpact();
-    setState(() {
-      _linkSuccess = true;
-      _linkFeedback = 'Token kopiert!';
-    });
-    Future.delayed(const Duration(seconds: 2), () {
-      if (mounted) setState(() => _linkFeedback = null);
-    });
-  }
+  if (_syncToken == null) return;
+  Clipboard.setData(ClipboardData(text: _syncToken!));
+  HapticFeedback.lightImpact();
+  setState(() {
+    _linkSuccess = true;
+    _linkFeedback = '✓ Token kopiert!';
+  });
+  Future.delayed(const Duration(seconds: 2), () {
+    if (mounted) setState(() => _linkFeedback = null);
+  });
+}
 
   void _shareToken() {
     if (_syncToken == null) return;
@@ -2368,485 +2391,217 @@ class _ScheduleSettingsScreenState
 
 class _DataManagementSettingsScreen extends StatefulWidget {
   const _DataManagementSettingsScreen();
-
   @override
-  State<_DataManagementSettingsScreen> createState() =>
-      _DataManagementSettingsScreenState();
+  State<_DataManagementSettingsScreen> createState() => _DataManagementSettingsScreenState();
 }
 
-class _DataManagementSettingsScreenState
-    extends State<_DataManagementSettingsScreen> {
-  int _deleteAfterMonths = 3;
-  String _taskAutoDelete = 'never';
+class _DataManagementSettingsScreenState extends State<_DataManagementSettingsScreen> {
+  // Getrennte Regler für jeden Bereich
+  int _zeitDeleteMonths = 3;
+  int _dienstplanDeleteMonths = 3;
+  int _fahrtenbuchDeleteMonths = 3;
+  String _taskAutoDelete = '1d'; // Standard: 1 Tag
 
   @override
   void initState() {
     super.initState();
     final box = Hive.box('einstellungen');
-    _deleteAfterMonths =
-        box.get('deleteAfterMonths', defaultValue: 3);
-    _taskAutoDelete =
-        box.get('task_auto_delete', defaultValue: 'never') as String;
+    _zeitDeleteMonths = box.get('deleteAfterMonths_zeit', defaultValue: 3) as int;
+    _dienstplanDeleteMonths = box.get('deleteAfterMonths_dienstplan', defaultValue: 3) as int;
+    _fahrtenbuchDeleteMonths = box.get('deleteAfterMonths_fahrtenbuch', defaultValue: 3) as int;
+    _taskAutoDelete = box.get('task_auto_delete', defaultValue: '1d') as String;
   }
 
-  String _taskAutoDeleteLabel(String key) {
-    switch (key) {
-      case '1d':
-        return '1 Tag';
-      case '2d':
-        return '2 Tagen';
-      case '1w':
-        return '1 Woche';
-      case '1m':
-        return '1 Monat';
-      default:
-        return '';
-    }
-  }
-
-  void _autoDeleteOldEntries() {
-    final now = DateTime.now();
-    final cutoffMonth =
-        DateTime(now.year, now.month - _deleteAfterMonths);
-
-    final zeitBox = Hive.box('arbeitszeiten');
-    final zeitKeysToDelete = zeitBox.keys.where((key) {
-      try {
-        final date = DateTime.parse(key.toString());
-        final entryMonth = DateTime(date.year, date.month);
-        return entryMonth.isBefore(cutoffMonth);
-      } catch (_) {
-        return false;
-      }
-    }).toList();
-    for (final key in zeitKeysToDelete) {
-      zeitBox.delete(key);
-    }
-
-    final settingsBox = Hive.box('einstellungen');
-    final scheduleKeysToDelete = settingsBox.keys.where((key) {
-      final k = key.toString();
-      if (!k.startsWith('schedule_')) return false;
-      try {
-        final monthStr = k.substring('schedule_'.length);
-        final parts = monthStr.split('-');
-        if (parts.length < 2) return false;
-        final entryMonth = DateTime(
-            int.parse(parts[0]), int.parse(parts[1]));
-        return entryMonth.isBefore(cutoffMonth);
-      } catch (_) {
-        return false;
-      }
-    }).toList();
-    for (final key in scheduleKeysToDelete) {
-      settingsBox.delete(key);
-    }
-
-    final noteKeysToDelete = settingsBox.keys.where((key) {
-      final k = key.toString();
-      if (!k.startsWith('schedule_note_')) return false;
-      try {
-        final dateStr =
-            k.substring('schedule_note_'.length);
-        final date = DateTime.parse(dateStr);
-        final entryMonth = DateTime(date.year, date.month);
-        return entryMonth.isBefore(cutoffMonth);
-      } catch (_) {
-        return false;
-      }
-    }).toList();
-    for (final key in noteKeysToDelete) {
-      settingsBox.delete(key);
-    }
-
-    final fahrtKeys = settingsBox.keys.where((key) {
-      final k = key.toString();
-      if (!k.startsWith('fahrten_')) return false;
-      try {
-        final monthStr = k.substring('fahrten_'.length);
-        final parts = monthStr.split('-');
-        if (parts.length < 2) return false;
-        final entryMonth = DateTime(
-            int.parse(parts[0]), int.parse(parts[1]));
-        return entryMonth.isBefore(cutoffMonth);
-      } catch (_) {
-        return false;
-      }
-    }).toList();
-    for (final key in fahrtKeys) {
-      settingsBox.delete(key);
-    }
+  Widget _buildMonthPicker({
+    required String label,
+    required int value,
+    required ValueChanged<int> onChanged,
+  }) {
+    final skin = AppTheme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: TextStyle(fontSize: 12, color: skin.textMuted, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 8),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(14),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+            child: Container(
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: skin.isLight ? Colors.white.withValues(alpha: 0.45) : Colors.white.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: skin.glassBorder),
+              ),
+              child: Row(
+                children: [1, 3, 6, 12].map((months) {
+                  final isSelected = value == months;
+                  return Expanded(
+                    child: GestureDetector(
+                      onTap: () => onChanged(months),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? (skin.isLight ? Colors.white.withValues(alpha: 0.80) : Colors.white.withValues(alpha: 0.14))
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(10),
+                          border: isSelected ? Border.all(color: skin.glassBorder) : null,
+                        ),
+                        child: Center(child: Text('$months M',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: isSelected ? FontWeight.w700 : FontWeight.w400,
+                              color: isSelected ? skin.primary : skin.surface(0.45),
+                            ))),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final skin = AppTheme.of(context);
-    final monthLabel =
-        '$_deleteAfterMonths Monat${_deleteAfterMonths > 1 ? 'en' : ''}';
+    final box = Hive.box('einstellungen');
 
     return Scaffold(
       backgroundColor: skin.bgBase,
       body: SafeArea(
         child: Column(
           children: [
-            _SettingsHeader(
-                title: 'Datenverwaltung',
-                onBack: () => Navigator.pop(context)),
+            _SettingsHeader(title: 'Datenverwaltung', onBack: () => Navigator.pop(context)),
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // ── Zeiten / Dienstplan / Fahrtenbuch ─────────────
-                    _TiCard(
-                      skin: skin,
-                      child: Column(
-                        crossAxisAlignment:
-                            CrossAxisAlignment.start,
-                        children: [
-                          _TiCardHeader(
-                              skin: skin,
-                              icon: Icons.delete_outline_rounded,
-                              label: 'Zeiten & Dienstplan'),
-                          const SizedBox(height: 12),
-                          Text(
-                              'Alte Daten nach diesem Zeitraum automatisch löschen:',
-                              style: TextStyle(
-                                  fontSize: 13,
-                                  color: skin.textMuted)),
-                          const SizedBox(height: 14),
-                          ClipRRect(
-                            borderRadius:
-                                BorderRadius.circular(14),
-                            child: BackdropFilter(
-                              filter: ImageFilter.blur(
-                                  sigmaX: 10, sigmaY: 10),
-                              child: Container(
-                                padding: const EdgeInsets.all(4),
-                                decoration: BoxDecoration(
-                                  color: skin.isLight
-                                      ? Colors.white.withValues(
-                                          alpha: 0.45)
-                                      : Colors.white.withValues(
-                                          alpha: 0.06),
-                                  borderRadius:
-                                      BorderRadius.circular(14),
-                                  border: Border.all(
-                                      color: skin.glassBorder),
-                                ),
-                                child: Row(
-                                  children: [1, 3, 6, 12]
-                                      .map((months) {
-                                    final isSelected =
-                                        _deleteAfterMonths ==
-                                            months;
-                                    return Expanded(
-                                      child: GestureDetector(
-                                        onTap: () {
-                                          setState(() =>
-                                              _deleteAfterMonths =
-                                                  months);
-                                          Hive.box('einstellungen')
-                                              .put(
-                                                  'deleteAfterMonths',
-                                                  months);
-                                          _autoDeleteOldEntries();
-                                        },
-                                        child: AnimatedContainer(
-                                          duration: const Duration(
-                                              milliseconds: 200),
-                                          padding: const EdgeInsets
-                                              .symmetric(
-                                              vertical: 10),
-                                          decoration:
-                                              BoxDecoration(
-                                            color: isSelected
-                                                ? (skin.isLight
-                                                    ? Colors.white
-                                                        .withValues(
-                                                            alpha:
-                                                                0.80)
-                                                    : Colors.white
-                                                        .withValues(
-                                                            alpha:
-                                                                0.14))
-                                                : Colors
-                                                    .transparent,
-                                            borderRadius:
-                                                BorderRadius
-                                                    .circular(10),
-                                            border: isSelected
-                                                ? Border.all(
-                                                    color: skin
-                                                        .glassBorder,
-                                                    width: 1.0)
-                                                : null,
-                                            boxShadow: isSelected
-                                                ? [
-                                                    BoxShadow(
-                                                        color: skin
-                                                            .glassShadow,
-                                                        blurRadius:
-                                                            8,
-                                                        offset:
-                                                            const Offset(
-                                                                0,
-                                                                2))
-                                                  ]
-                                                : null,
-                                          ),
-                                          child: Center(
-                                            child: Text(
-                                                '$months M',
-                                                style: TextStyle(
-                                                    fontSize: 13,
-                                                    fontWeight: isSelected
-                                                        ? FontWeight
-                                                            .w700
-                                                        : FontWeight
-                                                            .w400,
-                                                    color: isSelected
-                                                        ? skin.primary
-                                                        : skin.surface(
-                                                            0.45))),
-                                          ),
-                                        ),
-                                      ),
-                                    );
-                                  }).toList(),
-                                ),
+                    // ── Zeiterfassung ──
+                    _TiCard(skin: skin, child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _TiCardHeader(skin: skin, icon: Icons.access_time_outlined, label: 'Zeiterfassung'),
+                        const SizedBox(height: 14),
+                        _buildMonthPicker(
+                          label: 'Einträge löschen nach:',
+                          value: _zeitDeleteMonths,
+                          onChanged: (v) {
+                            setState(() => _zeitDeleteMonths = v);
+                            box.put('deleteAfterMonths_zeit', v);
+                          },
+                        ),
+                      ],
+                    )),
+                    const SizedBox(height: 14),
+
+                    // ── Dienstplan ──
+                    _TiCard(skin: skin, child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _TiCardHeader(skin: skin, icon: Icons.calendar_month_outlined, label: 'Dienstplan'),
+                        const SizedBox(height: 14),
+                        _buildMonthPicker(
+                          label: 'Daten löschen nach:',
+                          value: _dienstplanDeleteMonths,
+                          onChanged: (v) {
+                            setState(() => _dienstplanDeleteMonths = v);
+                            box.put('deleteAfterMonths_dienstplan', v);
+                          },
+                        ),
+                      ],
+                    )),
+                    const SizedBox(height: 14),
+
+                    // ── Fahrtenbuch ──
+                    _TiCard(skin: skin, child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _TiCardHeader(skin: skin, icon: Icons.directions_car_outlined, label: 'Fahrtenbuch'),
+                        const SizedBox(height: 14),
+                        _buildMonthPicker(
+                          label: 'Fahrten löschen nach:',
+                          value: _fahrtenbuchDeleteMonths,
+                          onChanged: (v) {
+                            setState(() => _fahrtenbuchDeleteMonths = v);
+                            box.put('deleteAfterMonths_fahrtenbuch', v);
+                          },
+                        ),
+                      ],
+                    )),
+                    const SizedBox(height: 14),
+
+                    // ── Erledigte Aufgaben ──
+                    _TiCard(skin: skin, child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _TiCardHeader(skin: skin, icon: Icons.task_alt_outlined, label: 'Erledigte Aufgaben'),
+                        const SizedBox(height: 8),
+                        Text('Automatisch löschen nach:', style: TextStyle(fontSize: 13, color: skin.textMuted)),
+                        const SizedBox(height: 14),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(14),
+                          child: BackdropFilter(
+                            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                            child: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: BoxDecoration(
+                                color: skin.isLight ? Colors.white.withValues(alpha: 0.45) : Colors.white.withValues(alpha: 0.06),
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(color: skin.glassBorder),
                               ),
-                            ),
-                          ),
-                          const SizedBox(height: 14),
-                          ClipRRect(
-                            borderRadius:
-                                BorderRadius.circular(12),
-                            child: BackdropFilter(
-                              filter: ImageFilter.blur(
-                                  sigmaX: 8, sigmaY: 8),
-                              child: Container(
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: skin.isLight
-                                      ? Colors.white.withValues(
-                                          alpha: 0.50)
-                                      : skin.primary.withValues(
-                                          alpha: 0.06),
-                                  borderRadius:
-                                      BorderRadius.circular(12),
-                                  border: Border.all(
-                                      color: skin.glassBorder),
-                                ),
-                                child: Row(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.start,
-                                  children: [
-                                    Icon(
-                                        Icons
-                                            .info_outline_rounded,
-                                        color: skin.primary
-                                            .withValues(alpha: 0.6),
-                                        size: 16),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: Text(
-                                        'Zeiterfassungs-Einträge, sowie Dienstplan- und Fahrtenbuch-Daten werden gelöscht, sobald sie mehr als $monthLabel zurückliegen.',
-                                        style: TextStyle(
-                                            fontSize: 12,
-                                            color: skin.textMuted,
-                                            height: 1.5),
+                              child: Row(
+                                children: [
+                                  {'key': 'never', 'label': 'Nie'},
+                                  {'key': '1d', 'label': '1T'},
+                                  {'key': '2d', 'label': '2T'},
+                                  {'key': '1w', 'label': '1W'},
+                                  {'key': '1m', 'label': '1M'},
+                                ].map((opt) {
+                                  final isSelected = _taskAutoDelete == opt['key'];
+                                  return Expanded(
+                                    child: GestureDetector(
+                                      onTap: () {
+                                        setState(() => _taskAutoDelete = opt['key']!);
+                                        box.put('task_auto_delete', opt['key']);
+                                      },
+                                      child: AnimatedContainer(
+                                        duration: const Duration(milliseconds: 200),
+                                        padding: const EdgeInsets.symmetric(vertical: 10),
+                                        decoration: BoxDecoration(
+                                          color: isSelected
+                                              ? (skin.isLight ? Colors.white.withValues(alpha: 0.80) : Colors.white.withValues(alpha: 0.14))
+                                              : Colors.transparent,
+                                          borderRadius: BorderRadius.circular(10),
+                                          border: isSelected ? Border.all(color: skin.glassBorder) : null,
+                                        ),
+                                        child: Center(child: Text(opt['label']!,
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: isSelected ? FontWeight.w700 : FontWeight.w400,
+                                              color: isSelected ? skin.primary : skin.surface(0.45),
+                                            ))),
                                       ),
                                     ),
-                                  ],
-                                ),
+                                  );
+                                }).toList(),
                               ),
                             ),
                           ),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 16),
-
-                    // ── Erledigte Aufgaben ─────────────────────────────
-                    _TiCard(
-                      skin: skin,
-                      child: Column(
-                        crossAxisAlignment:
-                            CrossAxisAlignment.start,
-                        children: [
-                          _TiCardHeader(
-                              skin: skin,
-                              icon: Icons.task_alt_outlined,
-                              label: 'Erledigte Aufgaben'),
-                          const SizedBox(height: 12),
-                          Text(
-                              'Erledigte Aufgaben automatisch löschen nach:',
-                              style: TextStyle(
-                                  fontSize: 13,
-                                  color: skin.textMuted)),
-                          const SizedBox(height: 14),
-                          ClipRRect(
-                            borderRadius:
-                                BorderRadius.circular(14),
-                            child: BackdropFilter(
-                              filter: ImageFilter.blur(
-                                  sigmaX: 10, sigmaY: 10),
-                              child: Container(
-                                padding: const EdgeInsets.all(4),
-                                decoration: BoxDecoration(
-                                  color: skin.isLight
-                                      ? Colors.white.withValues(
-                                          alpha: 0.45)
-                                      : Colors.white.withValues(
-                                          alpha: 0.06),
-                                  borderRadius:
-                                      BorderRadius.circular(14),
-                                  border: Border.all(
-                                      color: skin.glassBorder),
-                                ),
-                                child: Row(
-                                  children: [
-                                    {
-                                      'key': 'never',
-                                      'label': 'Nie'
-                                    },
-                                    {'key': '1d', 'label': '1T'},
-                                    {'key': '2d', 'label': '2T'},
-                                    {'key': '1w', 'label': '1W'},
-                                    {'key': '1m', 'label': '1M'},
-                                  ].map((opt) {
-                                    final isSelected =
-                                        _taskAutoDelete ==
-                                            opt['key'];
-                                    return Expanded(
-                                      child: GestureDetector(
-                                        onTap: () {
-                                          setState(() =>
-                                              _taskAutoDelete =
-                                                  opt['key']!);
-                                          Hive.box('einstellungen')
-                                              .put(
-                                                  'task_auto_delete',
-                                                  opt['key']);
-                                        },
-                                        child: AnimatedContainer(
-                                          duration: const Duration(
-                                              milliseconds: 200),
-                                          padding: const EdgeInsets
-                                              .symmetric(
-                                              vertical: 10),
-                                          decoration:
-                                              BoxDecoration(
-                                            color: isSelected
-                                                ? (skin.isLight
-                                                    ? Colors.white
-                                                        .withValues(
-                                                            alpha:
-                                                                0.80)
-                                                    : Colors.white
-                                                        .withValues(
-                                                            alpha:
-                                                                0.14))
-                                                : Colors
-                                                    .transparent,
-                                            borderRadius:
-                                                BorderRadius
-                                                    .circular(10),
-                                            border: isSelected
-                                                ? Border.all(
-                                                    color: skin
-                                                        .glassBorder)
-                                                : null,
-                                            boxShadow: isSelected
-                                                ? [
-                                                    BoxShadow(
-                                                        color: skin
-                                                            .glassShadow,
-                                                        blurRadius:
-                                                            8,
-                                                        offset:
-                                                            const Offset(
-                                                                0,
-                                                                2))
-                                                  ]
-                                                : null,
-                                          ),
-                                          child: Center(
-                                            child: Text(
-                                                opt['label']!,
-                                                style: TextStyle(
-                                                    fontSize: 12,
-                                                    fontWeight: isSelected
-                                                        ? FontWeight
-                                                            .w700
-                                                        : FontWeight
-                                                            .w400,
-                                                    color: isSelected
-                                                        ? skin.primary
-                                                        : skin.surface(
-                                                            0.45))),
-                                          ),
-                                        ),
-                                      ),
-                                    );
-                                  }).toList(),
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          ClipRRect(
-                            borderRadius:
-                                BorderRadius.circular(12),
-                            child: BackdropFilter(
-                              filter: ImageFilter.blur(
-                                  sigmaX: 8, sigmaY: 8),
-                              child: Container(
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: skin.isLight
-                                      ? Colors.white.withValues(
-                                          alpha: 0.50)
-                                      : skin.primary.withValues(
-                                          alpha: 0.06),
-                                  borderRadius:
-                                      BorderRadius.circular(12),
-                                  border: Border.all(
-                                      color: skin.glassBorder),
-                                ),
-                                child: Row(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.start,
-                                  children: [
-                                    Icon(
-                                        Icons
-                                            .info_outline_rounded,
-                                        color: skin.primary
-                                            .withValues(alpha: 0.6),
-                                        size: 16),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: Text(
-                                        _taskAutoDelete == 'never'
-                                            ? 'Erledigte Aufgaben bleiben dauerhaft erhalten.'
-                                            : 'Erledigte Aufgaben werden ${_taskAutoDeleteLabel(_taskAutoDelete)} nach dem Abhaken automatisch gelöscht.',
-                                        style: TextStyle(
-                                            fontSize: 12,
-                                            color: skin.textMuted,
-                                            height: 1.5),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                        ),
+                      ],
+                    )),
+                    const SizedBox(height: 8),
+                    const _SectionFootnote(
+                        text: 'Jeder Bereich hat eine eigene Aufbewahrungsfrist. Erledigte Aufgaben werden standardmäßig nach 1 Tag gelöscht.'),
                   ],
                 ),
               ),
@@ -3025,18 +2780,19 @@ class _HomescreenSettingsScreen extends StatefulWidget {
       _HomescreenSettingsScreenState();
 }
 
-class _HomescreenSettingsScreenState
-    extends State<_HomescreenSettingsScreen> {
+class _HomescreenSettingsScreenState extends State<_HomescreenSettingsScreen> {
   bool _weatherBig = false;
-  String _taskAddMode = 'dictate'; // 'dictate' | 'sheet'
+  bool _weatherUseGps = true; // NEU
+  String _taskAddMode = 'dictate';
   String _weatherCity = '';
   late TextEditingController _cityCtrl;
 
-  @override
+    @override
   void initState() {
     super.initState();
     final box = Hive.box('einstellungen');
     _weatherBig = box.get('homescreen_weather_big', defaultValue: false) as bool;
+    _weatherUseGps = box.get('weather_use_gps', defaultValue: true) as bool; // NEU
     _taskAddMode = box.get('homescreen_task_add_mode', defaultValue: 'dictate') as String;
     _weatherCity = box.get('weather_city', defaultValue: '') as String;
     _cityCtrl = TextEditingController(text: _weatherCity);
@@ -3046,6 +2802,88 @@ class _HomescreenSettingsScreenState
   void dispose() {
     _cityCtrl.dispose();
     super.dispose();
+  }
+
+  void _showCityInputSheet(BuildContext context, AppSkin skin) {
+    final ctrl = TextEditingController(text: _weatherCity);
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+        child: ClipRRect(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+              decoration: BoxDecoration(
+                color: skin.isLight
+                    ? Colors.white.withValues(alpha: 0.92)
+                    : skin.bgCard.withValues(alpha: 0.92),
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                border: Border.all(color: skin.glassBorder),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 36, height: 4,
+                      decoration: BoxDecoration(
+                        color: skin.surface(0.2),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text('Stadt eingeben',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700,
+                          color: skin.textPrimary)),
+                  const SizedBox(height: 4),
+                  Text('Das Wetter wird für diese Stadt geladen.',
+                      style: TextStyle(fontSize: 13, color: skin.textMuted)),
+                  const SizedBox(height: 16),
+                  _TiTextField(
+                    skin: skin,
+                    controller: ctrl,
+                    hint: 'z.B. Berlin, München, Hamburg',
+                  ),
+                  const SizedBox(height: 14),
+                  GestureDetector(
+                    onTap: () {
+                      final city = ctrl.text.trim();
+                      setState(() => _weatherCity = city);
+                      _set('weather_city', city);
+                      // Cache löschen damit sofort neu geladen wird
+                      Hive.box('einstellungen').delete('weather_cache');
+                      Navigator.pop(context);
+                    },
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      decoration: BoxDecoration(
+                        color: skin.primary.withValues(alpha: skin.isLight ? 0.12 : 0.20),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                            color: skin.primary.withValues(alpha: skin.isLight ? 0.30 : 0.45)),
+                      ),
+                      child: Center(
+                        child: Text('Übernehmen',
+                            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700,
+                                color: skin.primary)),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   void _set(String key, dynamic value) =>
@@ -3067,7 +2905,8 @@ class _HomescreenSettingsScreenState
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // ── Wetter ────────────────────────────────────────
+
+                                        // ── Wetter ────────────────────────────────────────
                     const _SectionHeader(label: 'Wetter'),
                     _SettingsTileGroup(skin: skin, children: [
                       _SettingsSwitchTile(
@@ -3081,39 +2920,44 @@ class _HomescreenSettingsScreenState
                           setState(() => _weatherBig = v);
                           _set('homescreen_weather_big', v);
                         },
-                        isLast: true,
                       ),
-                    ]),
-                    const SizedBox(height: 12),
-                    _TiCard(
-                      skin: skin,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _TiCardHeader(
-                              skin: skin,
-                              icon: Icons.location_on_outlined,
-                              label: 'Standort / Stadt'),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Trage deine Stadt ein, damit das Wetter stimmt.',
-                            style: TextStyle(fontSize: 13, color: skin.textMuted, height: 1.5),
-                          ),
-                          const SizedBox(height: 12),
-                          _TiTextField(
-                            skin: skin,
-                            controller: _cityCtrl,
-                            hint: 'z.B. Berlin',
-                            onChanged: (v) => _set('weather_city', v.trim()),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const _SectionFootnote(
-  text: 'Das Wetter wird automatisch per GPS-Standort geladen. '
-      'Falls der Standortzugriff verweigert wird, '
-      'wird die eingetragene Stadt als Fallback verwendet.',
+                      _SettingsSwitchTile(
+  skin: skin,
+  icon: Icons.location_on_outlined,
+  iconBg: const Color(0xFF5B9EF5),
+  label: 'Per GPS-Standort',
+  subtitle: 'Automatisch aktueller Standort',
+  value: _weatherUseGps,
+  onChanged: (v) {
+    setState(() => _weatherUseGps = v);
+    _set('weather_use_gps', v);
+    // Cache IMMER löschen beim Moduswechsel
+    Hive.box('einstellungen').delete('weather_cache');
+    // Wenn GPS aktiviert: Stadt-Cache auch invalidieren
+    // damit beim nächsten Build sofort GPS geladen wird
+    if (v) {
+      // In-Memory Cache auch zurücksetzen
+      WeatherService.instance.invalidateCache();
+    }
+  },
+  isLast: _weatherUseGps, // letztes Element wenn GPS an
 ),
+if (!_weatherUseGps)
+  _SettingsTile(
+    skin: skin,
+    icon: Icons.location_city_outlined,
+    iconBg: const Color(0xFF8B8B9E),
+    label: 'Stadt',
+    trailingValue: _weatherCity.isNotEmpty ? _weatherCity : 'nicht gesetzt',
+    isLast: true, // ← immer last, da letztes Element
+    onTap: () => _showCityInputSheet(context, skin),
+  ),
+                    ]),
+                     _SectionFootnote(
+                      text: _weatherUseGps
+                          ? 'Wetter wird per GPS geladen — immer aktuell für deinen Standort.'
+                          : 'Wetter wird für die eingetragene Stadt geladen.',
+                    ),
 
                     const SizedBox(height: 24),
 

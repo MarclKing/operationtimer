@@ -1,15 +1,16 @@
 import 'package:hive_flutter/hive_flutter.dart';
 import 'dart:convert';
 
-/// Löscht alte Zeiterfassungs- und Dienstplan-Einträge basierend auf der
-/// in den Einstellungen gespeicherten "deleteAfterMonths"-Auswahl.
 Future<void> runAutoCleanup() async {
   final settingsBox = Hive.box('einstellungen');
-  final deleteAfterMonths =
-      settingsBox.get('deleteAfterMonths', defaultValue: 3) as int;
+  final zeitMonths = settingsBox.get('deleteAfterMonths_zeit', defaultValue: 3) as int;
+  final dienstplanMonths = settingsBox.get('deleteAfterMonths_dienstplan', defaultValue: 3) as int;
+  final fahrtenbuchMonths = settingsBox.get('deleteAfterMonths_fahrtenbuch', defaultValue: 3) as int;
 
   final now = DateTime.now();
-  final cutoffMonth = DateTime(now.year, now.month - deleteAfterMonths);
+  final zeitCutoff = DateTime(now.year, now.month - zeitMonths);
+  final dienstplanCutoff = DateTime(now.year, now.month - dienstplanMonths);
+  final fahrtenbuchCutoff = DateTime(now.year, now.month - fahrtenbuchMonths);
 
   // Arbeitszeiten
   final zeitBox = Hive.box('arbeitszeiten');
@@ -17,36 +18,26 @@ Future<void> runAutoCleanup() async {
     try {
       final date = DateTime.parse(key.toString());
       final entryMonth = DateTime(date.year, date.month);
-      return entryMonth.isBefore(cutoffMonth);
-    } catch (_) {
-      return false;
-    }
+      return entryMonth.isBefore(zeitCutoff);
+    } catch (_) { return false; }
   }).toList();
-  for (final key in zeitKeysToDelete) {
-    zeitBox.delete(key);
-  }
+  for (final key in zeitKeysToDelete) zeitBox.delete(key);
 
-  // Dienstpläne (schedule_YYYY-MM), ohne die Notizen
+  // Dienstpläne
   final scheduleKeysToDelete = settingsBox.keys.where((key) {
     final k = key.toString();
-    if (!k.startsWith('schedule_') || k.startsWith('schedule_note_')) {
-      return false;
-    }
+    if (!k.startsWith('schedule_') || k.startsWith('schedule_note_')) return false;
     try {
       final monthStr = k.substring('schedule_'.length);
       final parts = monthStr.split('-');
       if (parts.length < 2) return false;
       final entryMonth = DateTime(int.parse(parts[0]), int.parse(parts[1]));
-      return entryMonth.isBefore(cutoffMonth);
-    } catch (_) {
-      return false;
-    }
+      return entryMonth.isBefore(dienstplanCutoff);
+    } catch (_) { return false; }
   }).toList();
-  for (final key in scheduleKeysToDelete) {
-    settingsBox.delete(key);
-  }
+  for (final key in scheduleKeysToDelete) settingsBox.delete(key);
 
-  // Dienstplan-Notizen (schedule_note_YYYY-MM-DD)
+  // Dienstplan-Notizen
   final noteKeysToDelete = settingsBox.keys.where((key) {
     final k = key.toString();
     if (!k.startsWith('schedule_note_')) return false;
@@ -54,33 +45,26 @@ Future<void> runAutoCleanup() async {
       final dateStr = k.substring('schedule_note_'.length);
       final date = DateTime.parse(dateStr);
       final entryMonth = DateTime(date.year, date.month);
-      return entryMonth.isBefore(cutoffMonth);
-    } catch (_) {
-      return false;
-    }
+      return entryMonth.isBefore(dienstplanCutoff);
+    } catch (_) { return false; }
   }).toList();
-  for (final key in noteKeysToDelete) {
-    settingsBox.delete(key);
-  }
+  for (final key in noteKeysToDelete) settingsBox.delete(key);
 
-  // NEU: Fahrtenbuch-Einträge löschen
-final fahrtKeys = settingsBox.keys.where((key) {
-  final k = key.toString();
-  if (!k.startsWith('fahrten_')) return false;
-  try {
-    final monthStr = k.substring('fahrten_'.length);
-    final parts = monthStr.split('-');
-    if (parts.length < 2) return false;
-    final entryMonth = DateTime(int.parse(parts[0]), int.parse(parts[1]));
-    return entryMonth.isBefore(cutoffMonth);
-  } catch (_) {
-    return false;
-  }
-}).toList();
-for (final key in fahrtKeys) {
-  settingsBox.delete(key);
-}
-// Erledigte Aufgaben automatisch löschen
+  // Fahrtenbuch
+  final fahrtKeys = settingsBox.keys.where((key) {
+    final k = key.toString();
+    if (!k.startsWith('fahrten_')) return false;
+    try {
+      final monthStr = k.substring('fahrten_'.length);
+      final parts = monthStr.split('-');
+      if (parts.length < 2) return false;
+      final entryMonth = DateTime(int.parse(parts[0]), int.parse(parts[1]));
+      return entryMonth.isBefore(fahrtenbuchCutoff);
+    } catch (_) { return false; }
+  }).toList();
+  for (final key in fahrtKeys) settingsBox.delete(key);
+
+  // Erledigte Aufgaben
   final taskAutoDelete =
       settingsBox.get('task_auto_delete', defaultValue: 'never') as String;
   if (taskAutoDelete != 'never') {
@@ -101,17 +85,16 @@ for (final key in fahrtKeys) {
                   .map((e) => Map<String, dynamic>.from(e as Map)));
           final filtered = decoded.where((t) {
             final done = t['done'] as bool? ?? false;
-            if (!done) return true; // offene Tasks nie löschen
+            if (!done) return true;
             final completedStr = t['completedAt'] as String?;
-            if (completedStr == null) return false; // kein Zeitstempel → löschen
+            if (completedStr == null) return false;
             final completed = DateTime.tryParse(completedStr);
             if (completed == null) return false;
-            return completed.isAfter(tasksCutoff); // noch innerhalb der Frist
+            return completed.isAfter(tasksCutoff);
           }).toList();
           settingsBox.put('tasks', jsonEncode(filtered));
         } catch (_) {}
       }
     }
   }
-  
 }

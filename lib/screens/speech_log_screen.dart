@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../theme/app_theme.dart';
 import '../services/speech_log.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SPEECH LOG SCREEN
@@ -225,49 +226,56 @@ class _SpeechLogScreenState extends State<SpeechLogScreen> {
 
             // ── Liste ──
             Expanded(
-              child: _entries.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.mic_none_rounded, size: 46, color: skin.surface(0.18)),
-                          const SizedBox(height: 12),
-                          Text(
-                            'Noch keine Einträge',
-                            style: TextStyle(color: skin.surface(0.3), fontSize: 15),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Benutze die Diktierfunktion um\nEinträge zu erzeugen',
-                            style: TextStyle(color: skin.surface(0.22), fontSize: 12),
-                            textAlign: TextAlign.center,
-                          ),
-                        ],
-                      ),
-                    )
-                  : filtered.isEmpty
-                      ? Center(
-                          child: Text(
-                            'Keine Einträge für diesen Filter',
-                            style: TextStyle(color: skin.surface(0.3), fontSize: 14),
-                          ),
-                        )
-                      : ListView.separated(
-                          padding: const EdgeInsets.fromLTRB(20, 4, 20, 40),
-                          itemCount: filtered.length,
-                          separatorBuilder: (_, __) => const SizedBox(height: 8),
-                          itemBuilder: (_, i) => _LogEntryCard(
-                            skin: skin,
-                            entry: filtered[i],
-                          ),
-                        ),
+  child: _entries.isEmpty
+      ? Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.mic_none_rounded,
+                  size: 46, color: skin.surface(0.18)),
+              const SizedBox(height: 12),
+              Text(
+                'Noch keine Einträge',
+                style: TextStyle(
+                    color: skin.surface(0.3), fontSize: 15),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Benutze die Diktierfunktion um\nEinträge zu erzeugen',
+                style:
+                    TextStyle(color: skin.surface(0.22), fontSize: 12),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        )
+      : filtered.isEmpty
+          ? Center(
+              child: Text(
+                'Keine Einträge für diesen Filter',
+                style:
+                    TextStyle(color: skin.surface(0.3), fontSize: 14),
+              ),
+            )
+          : ListView.builder(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 40),
+              itemCount: filtered.length,
+              itemBuilder: (_, i) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: _LogEntryCard(
+                  skin: skin,
+                  entry: filtered[i],
+                  onDeleted: _reload,
+                ),
+              ),
             ),
-          ],
-        ),
-      ),
-    );
-  }
-}
+        ),   // ← schließt Expanded
+          ],  // ← schließt Column.children
+        ),   // ← schließt Column
+      ),     // ← schließt SafeArea
+    );       // ← schließt Scaffold / return
+  }          // ← schließt build()
+}            // ← schließt _SpeechLogScreenState
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Statistik-Kachel
@@ -363,7 +371,8 @@ class _FilterChip extends StatelessWidget {
 class _LogEntryCard extends StatefulWidget {
   final AppSkin skin;
   final SpeechLogEntry entry;
-  const _LogEntryCard({required this.skin, required this.entry});
+  final VoidCallback onDeleted;
+  const _LogEntryCard({required this.skin, required this.entry, required this.onDeleted});
 
   @override
   State<_LogEntryCard> createState() => _LogEntryCardState();
@@ -371,12 +380,70 @@ class _LogEntryCard extends StatefulWidget {
 
 class _LogEntryCardState extends State<_LogEntryCard> {
   bool _expanded = false;
+  double _swipeOffset = 0.0;
+  static const double _revealWidth = 80.0;
+  bool _isOpen = false;
+  bool _dragging = false;
+  double _dragStartX = 0, _dragStartY = 0;
 
   Color get _statusColor {
     if (widget.entry.isFullSuccess) return const Color(0xFF5BCB8F);
     if (widget.entry.normalizerHit && !widget.entry.hasDate) return const Color(0xFFFFB347);
     return const Color(0xFFEF5B5B);
   }
+
+  void _onPanStart(DragStartDetails d) {
+    _dragging = false;
+    _dragStartX = d.globalPosition.dx;
+    _dragStartY = d.globalPosition.dy;
+  }
+
+  void _onPanUpdate(DragUpdateDetails d) {
+    final dx = d.globalPosition.dx - _dragStartX;
+    final dy = (d.globalPosition.dy - _dragStartY).abs();
+    if (!_dragging) {
+      if (dy > dx.abs()) return;
+      if (dx.abs() < 6) return;
+      _dragging = true;
+    }
+    final newOffset = (_swipeOffset + d.delta.dx).clamp(-_revealWidth, 0.0);
+    setState(() => _swipeOffset = newOffset);
+  }
+
+  void _onPanEnd(DragEndDetails d) {
+    if (!_dragging) return;
+    _dragging = false;
+    final v = d.primaryVelocity ?? 0;
+    if (_swipeOffset < -40 || v < -400) {
+      setState(() { _swipeOffset = -_revealWidth; _isOpen = true; });
+    } else {
+      setState(() { _swipeOffset = 0; _isOpen = false; });
+    }
+  }
+  
+  void _deleteEntry() {
+  // Firestore-Eintrag ebenfalls löschen (wenn vorhanden)
+  _deleteFromFirestore(widget.entry.rawText);
+  // Lokalen Eintrag löschen
+  SpeechLog.deleteEntry(widget.entry);
+  widget.onDeleted();
+}
+
+Future<void> _deleteFromFirestore(String rawText) async {
+  try {
+    final query = await FirebaseFirestore.instance
+        .collection('speech_logs')
+        .where('rawText', isEqualTo: rawText)
+        .where('status', isEqualTo: 'pending')
+        .limit(1)
+        .get();
+    for (final doc in query.docs) {
+      await doc.reference.delete();
+    }
+  } catch (e) {
+    debugPrint('SpeechLog: Firestore-Sync-Delete fehlgeschlagen: $e');
+  }
+}
 
   @override
   Widget build(BuildContext context) {
@@ -387,129 +454,121 @@ class _LogEntryCardState extends State<_LogEntryCard> {
     final normalizerChanged = entry.rawText != entry.normalized;
 
     return GestureDetector(
-      onTap: () => setState(() => _expanded = !_expanded),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(14),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
-          child: Container(
-            padding: const EdgeInsets.all(13),
-            decoration: BoxDecoration(
-              color: skin.isLight
-                  ? Colors.white.withValues(alpha: skin.glassOpacity)
-                  : skin.bgCard.withValues(alpha: skin.glassOpacity),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: _expanded ? color.withValues(alpha: 0.35) : skin.glassBorder,
-                width: _expanded ? 1.3 : 1.0,
-              ),
-              boxShadow: [BoxShadow(color: skin.glassShadow, blurRadius: 16, offset: const Offset(0, 4))],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // ── Zeile 1: Status + Zeitstempel + Expand-Icon ──
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: color.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(color: color.withValues(alpha: 0.28)),
-                      ),
-                      child: Text(
-                        entry.statusLabel,
-                        style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: color),
-                      ),
-                    ),
-                    const Spacer(),
-                    Text(
-                      timeStr,
-                      style: TextStyle(fontSize: 11, color: skin.surface(0.35)),
-                    ),
-                    const SizedBox(width: 6),
-                    Icon(
-                      _expanded ? Icons.expand_less_rounded : Icons.expand_more_rounded,
-                      size: 16,
-                      color: skin.surface(0.3),
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 8),
-
-                // ── Zeile 2: Raw-Text ──
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(Icons.mic_none_rounded, size: 12, color: skin.surface(0.35)),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        '"${entry.rawText}"',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontStyle: FontStyle.italic,
-                          color: skin.textPrimary.withValues(alpha: 0.85),
-                          height: 1.35,
+      onHorizontalDragStart: _onPanStart,
+      onHorizontalDragUpdate: _onPanUpdate,
+      onHorizontalDragEnd: _onPanEnd,
+      onTap: _isOpen
+          ? () => setState(() { _swipeOffset = 0; _isOpen = false; })
+          : () => setState(() => _expanded = !_expanded),
+      child: ClipRect(
+        child: Stack(
+          clipBehavior: Clip.hardEdge,
+          children: [
+            // Rote Löschen-Fläche
+            Positioned(
+              right: 0, top: 2, bottom: 2, width: _revealWidth,
+              child: Opacity(
+                opacity: (_swipeOffset.abs() / _revealWidth).clamp(0.0, 1.0),
+                child: GestureDetector(
+                  onTap: _deleteEntry,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(14),
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                      child: Container(
+                        margin: const EdgeInsets.only(left: 6),
+                        decoration: BoxDecoration(
+                          color: skin.deleteColor.withValues(alpha: 0.10),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: skin.deleteColor.withValues(alpha: 0.22)),
                         ),
-                        maxLines: _expanded ? null : 2,
-                        overflow: _expanded ? TextOverflow.visible : TextOverflow.ellipsis,
+                        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                          Icon(Icons.delete_outline, color: skin.deleteColor, size: 20),
+                          const SizedBox(height: 3),
+                          Text('Löschen', style: TextStyle(color: skin.deleteColor, fontSize: 10, fontWeight: FontWeight.w600)),
+                        ]),
                       ),
                     ),
-                  ],
+                  ),
                 ),
-
-                // ── Ausgeklappt: Details ──
-                if (_expanded) ...[
-                  const SizedBox(height: 10),
-                  Container(height: 0.5, color: skin.surface(0.10)),
-                  const SizedBox(height: 10),
-
-                  // Normalizer-Ergebnis (nur wenn anders)
-                  if (normalizerChanged) ...[
-                    _DetailRow(
-                      skin: skin,
-                      icon: Icons.auto_fix_high_outlined,
-                      label: 'Normalizer',
-                      value: entry.normalized,
-                      valueColor: skin.primary,
-                    ),
-                    const SizedBox(height: 6),
-                  ] else ...[
-                    _DetailRow(
-                      skin: skin,
-                      icon: Icons.auto_fix_off_outlined,
-                      label: 'Normalizer',
-                      value: 'Kein Muster erkannt — Original weitergegeben',
-                      valueColor: const Color(0xFFEF5B5B),
-                    ),
-                    const SizedBox(height: 6),
-                  ],
-
-                  // Parser-Ergebnis: Titel
-                  _DetailRow(
-                    skin: skin,
-                    icon: Icons.task_alt_outlined,
-                    label: 'Titel',
-                    value: entry.parsedTitle,
-                    valueColor: skin.textPrimary,
-                  ),
-                  const SizedBox(height: 6),
-
-                  // Parser-Ergebnis: Datum
-                  _DetailRow(
-                    skin: skin,
-                    icon: Icons.calendar_today_outlined,
-                    label: 'Datum',
-                    value: entry.hasDate ? 'Erkannt' : 'Nicht erkannt',
-                    valueColor: entry.hasDate ? const Color(0xFF5BCB8F) : const Color(0xFFEF5B5B),
-                  ),
-                ],
-              ],
+              ),
             ),
-          ),
+            // Karten-Inhalt
+            Transform.translate(
+              offset: Offset(_swipeOffset, 0),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(14),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
+                  child: Container(
+                    padding: const EdgeInsets.all(13),
+                    decoration: BoxDecoration(
+                      color: skin.isLight
+                          ? Colors.white.withValues(alpha: skin.glassOpacity)
+                          : skin.bgCard.withValues(alpha: skin.glassOpacity),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: _expanded ? color.withValues(alpha: 0.35) : skin.glassBorder,
+                        width: _expanded ? 1.3 : 1.0,
+                      ),
+                      boxShadow: [BoxShadow(color: skin.glassShadow, blurRadius: 16, offset: const Offset(0, 4))],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: color.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: color.withValues(alpha: 0.28)),
+                            ),
+                            child: Text(entry.statusLabel,
+                                style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: color)),
+                          ),
+                          const Spacer(),
+                          Text(timeStr, style: TextStyle(fontSize: 11, color: skin.surface(0.35))),
+                          const SizedBox(width: 6),
+                          Icon(_expanded ? Icons.expand_less_rounded : Icons.expand_more_rounded,
+                              size: 16, color: skin.surface(0.3)),
+                        ]),
+                        const SizedBox(height: 8),
+                        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Icon(Icons.mic_none_rounded, size: 12, color: skin.surface(0.35)),
+                          const SizedBox(width: 6),
+                          Expanded(child: Text('"${entry.rawText}"',
+                              style: TextStyle(fontSize: 13, fontStyle: FontStyle.italic,
+                                  color: skin.textPrimary.withValues(alpha: 0.85), height: 1.35),
+                              maxLines: _expanded ? null : 2,
+                              overflow: _expanded ? TextOverflow.visible : TextOverflow.ellipsis)),
+                        ]),
+                        if (_expanded) ...[
+                          const SizedBox(height: 10),
+                          Container(height: 0.5, color: skin.surface(0.10)),
+                          const SizedBox(height: 10),
+                          if (normalizerChanged)
+                            _DetailRow(skin: skin, icon: Icons.auto_fix_high_outlined,
+                                label: 'Normalizer', value: entry.normalized, valueColor: skin.primary)
+                          else
+                            _DetailRow(skin: skin, icon: Icons.auto_fix_off_outlined,
+                                label: 'Normalizer', value: 'Kein Muster erkannt',
+                                valueColor: const Color(0xFFEF5B5B)),
+                          const SizedBox(height: 6),
+                          _DetailRow(skin: skin, icon: Icons.task_alt_outlined,
+                              label: 'Titel', value: entry.parsedTitle, valueColor: skin.textPrimary),
+                          const SizedBox(height: 6),
+                          _DetailRow(skin: skin, icon: Icons.calendar_today_outlined,
+                              label: 'Datum', value: entry.hasDate ? 'Erkannt' : 'Nicht erkannt',
+                              valueColor: entry.hasDate ? const Color(0xFF5BCB8F) : const Color(0xFFEF5B5B)),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

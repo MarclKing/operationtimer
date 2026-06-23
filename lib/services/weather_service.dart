@@ -93,38 +93,40 @@ class WeatherService {
     return _cached;
   }
 
+  /// Löscht den In-Memory Cache, damit beim nächsten fetchIfNeeded
+  /// frisch geladen wird.
+  void invalidateCache() {
+    _cached = null;
+    try {
+      Hive.box('einstellungen').delete(_cacheKey);
+    } catch (_) {}
+  }
+
   /// Versucht zuerst GPS, fällt auf cityName zurück.
   /// cityName kann leer sein — dann nur GPS.
-  Future<WeatherData?> fetchIfNeeded(String cityName) async {
+  Future<WeatherData?> fetchIfNeeded(String cityName, {bool useGps = true}) async {
     final c = cached;
     if (c != null && !c.isStale) {
-      // Cache noch frisch — aber prüfen ob Stadt gewechselt
-      final cityChanged = cityName.isNotEmpty &&
-          !c.isGps &&
+      final modeChanged = useGps != c.isGps;
+      final cityChanged = !useGps && cityName.isNotEmpty &&
           c.city.toLowerCase() != cityName.toLowerCase();
-      if (!cityChanged) return c;
+      if (!modeChanged && !cityChanged) return c;
     }
     if (_fetching) return c;
 
     _fetching = true;
     try {
-      // ── Versuch 1: GPS ──────────────────────────────────────────
-      final gpsData = await _fetchByGps();
-      if (gpsData != null) {
-        _save(gpsData);
-        return gpsData;
-      }
-
-      // ── Versuch 2: Stadtname ────────────────────────────────────
-      if (cityName.trim().isNotEmpty) {
-        final cityData = await _fetchByCity(cityName.trim());
-        if (cityData != null) {
-          _save(cityData);
-          return cityData;
+      if (useGps) {
+        final gpsData = await _fetchByGps();
+        if (gpsData != null) { _save(gpsData); return gpsData; }
+        return c;
+      } else {
+        if (cityName.trim().isNotEmpty) {
+          final cityData = await _fetchByCity(cityName.trim());
+          if (cityData != null) { _save(cityData); return cityData; }
         }
+        return c;
       }
-
-      return c; // Nur Cache wenn beides scheitert
     } catch (e) {
       debugPrint('[WeatherService] Fehler: $e');
       return c;

@@ -237,7 +237,25 @@ class SpeechLog {
     } catch (_) {}
   }
 
-/// Markiert den Log-Eintrag, der zu [taskId] gehört, als "wurde bearbeitet".
+  /// Löscht einen einzelnen Eintrag anhand des Zeitstempels.
+  static void deleteEntry(SpeechLogEntry entry) {
+  try {
+    final box = Hive.box('einstellungen');
+    final raw = box.get('entries');
+    if (raw is! String || raw.isEmpty) return;
+    final decoded = jsonDecode(raw) as List;
+    final filtered = decoded.where((e) {
+      final map = Map<String, dynamic>.from(e as Map);
+      final ts = map['timestamp'] as int?;
+      return ts != entry.timestamp.millisecondsSinceEpoch;
+    }).toList();
+    box.put('entries', jsonEncode(filtered));
+  } catch (e) {
+    debugPrint('deleteEntry Fehler: $e');
+  }
+}
+
+  /// Markiert den Log-Eintrag, der zu [taskId] gehört, als "wurde bearbeitet".
   /// Wird von TasksScreenState aufgerufen, sobald ein Task verändert/gelöscht
   /// wird (siehe tasks_screen.dart → _commitInlineEdit, _editTaskFull,
   /// _deleteTaskImmediate). Wirkt nur, wenn die Bearbeitung innerhalb eines

@@ -2,6 +2,10 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../widgets/glass_kit.dart';
+import '../screens/speech_log_screen.dart';
+import '../screens/admin_rules_screen.dart';
+import '../services/auth_service.dart';
+import 'package:flutter/cupertino.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DICTATION HELP SCREEN v3
@@ -72,6 +76,11 @@ class DictationHelpScreen extends StatelessWidget {
                   // ── NEU: Lern-Banner ──────────────────────────────────────
                   _LearnBanner(skin: skin),
                   const SizedBox(height: 20),
+
+                  if (AuthService.instance.isAdmin) ...[
+                  _AdminLinksCard(skin: skin),
+                  const SizedBox(height: 20),
+                    ],
 
                   // ── Muster 1 ─────────────────────────────────────────────
                   _PatternBlock(
@@ -1298,6 +1307,93 @@ class _ReferenceCard extends StatelessWidget {
                       ],
                     ),
                   )),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AdminLinksCard extends StatelessWidget {
+  final AppSkin skin;
+  const _AdminLinksCard({required this.skin});
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: const Color(0xFF8B5CF6).withValues(alpha: skin.isLight ? 0.07 : 0.11),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFF8B5CF6).withValues(alpha: 0.28)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(children: [
+                Container(
+                  width: 32, height: 32,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF8B5CF6).withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(9),
+                  ),
+                  child: const Center(
+                    child: Icon(Icons.admin_panel_settings_outlined, size: 17, color: Color(0xFF8B5CF6)),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Text('Admin-Tools',
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF8B5CF6))),
+              ]),
+              const SizedBox(height: 12),
+              Row(children: [
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () => Navigator.push(context,
+                        CupertinoPageRoute(builder: (_) => const SpeechLogScreen())),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 11),
+                      decoration: BoxDecoration(
+                        color: skin.isLight ? Colors.white.withValues(alpha: 0.55) : Colors.white.withValues(alpha: 0.07),
+                        borderRadius: BorderRadius.circular(11),
+                        border: Border.all(color: const Color(0xFF8B5CF6).withValues(alpha: 0.25)),
+                      ),
+                      child: Column(children: [
+                        Icon(Icons.bar_chart_rounded, size: 20, color: skin.primary),
+                        const SizedBox(height: 5),
+                        Text('Sprach-Log',
+                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: skin.textPrimary)),
+                      ]),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () => Navigator.push(context,
+                        CupertinoPageRoute(builder: (_) => const AdminRulesScreen())),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 11),
+                      decoration: BoxDecoration(
+                        color: skin.isLight ? Colors.white.withValues(alpha: 0.55) : Colors.white.withValues(alpha: 0.07),
+                        borderRadius: BorderRadius.circular(11),
+                        border: Border.all(color: const Color(0xFF8B5CF6).withValues(alpha: 0.25)),
+                      ),
+                      child: Column(children: [
+                        const Icon(Icons.auto_awesome_outlined, size: 20, color: Color(0xFF8B5CF6)),
+                        const SizedBox(height: 5),
+                        Text('Sprach-Analyse',
+                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: skin.textPrimary)),
+                      ]),
+                    ),
+                  ),
+                ),
+              ]),
             ],
           ),
         ),

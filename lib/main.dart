@@ -34,6 +34,7 @@ import 'services/auth_service.dart';
 import 'screens/admin_rules_screen.dart';
 import 'services/rule_engine.dart';
 import 'services/sync_service.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 void main() async {
   WidgetsBinding binding = WidgetsFlutterBinding.ensureInitialized();
@@ -50,15 +51,45 @@ void main() async {
   await Hive.openBox('arbeitszeiten');
   await Hive.openBox('einstellungen');
 
-  // Erst danach Services initialisieren
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
-  await AuthService.instance.init();
-  await SyncService.instance.init();
-  await RuleEngine.instance.init();
+  // ── Firebase mit Offline-Support ──────────────────────────────────────────
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    ).timeout(const Duration(seconds: 5));
+    
+    // ── NEU: Firestore Offline-Einstellungen ──────────────────────────────
+    // Aktiviert persistentes Caching für Offline-Nutzung
+    // MUSS NACH Firebase.initializeApp() kommen
+    FirebaseFirestore.instance.settings = const Settings(
+      persistenceEnabled: true,
+      cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+    );
+    
+    debugPrint('✅ Firebase + Firestore Offline-Cache initialisiert');
+  } catch (e) {
+    debugPrint('⚠️ Firebase init fehlgeschlagen (offline?): $e');
+    // Firestore wird trotzdem funktionieren, aber nur mit Cache
+  }
 
-  await NotificationService.instance.init();
+try {
+  await AuthService.instance.init().timeout(const Duration(seconds: 4));
+} catch (e) {
+  debugPrint('⚠️ AuthService init fehlgeschlagen: $e');
+}
+
+try {
+  await SyncService.instance.init().timeout(const Duration(seconds: 4));
+} catch (e) {
+  debugPrint('⚠️ SyncService init fehlgeschlagen: $e');
+}
+
+try {
+  await RuleEngine.instance.init().timeout(const Duration(seconds: 4));
+} catch (e) {
+  debugPrint('⚠️ RuleEngine init fehlgeschlagen: $e');
+}
+
+await NotificationService.instance.init();
 
   _migrateOldEntries();
   await runAutoCleanup();
@@ -815,13 +846,19 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       onDateChanged: (d) => setState(() => _sharedDate = d),
       onNavigateToMonth: () => _goToPage(1),
       onNavigateToFahrtenbuch: () => _goToPage(_dienstplanEnabled ? 3 : 2),
-      onNavigateToFahrtenbuchNeueFahrt: () async {        // NEU
+      onNavigateToFahrtenbuchNeueFahrt: () async {
         await _animateToPage(_dienstplanEnabled ? 3 : 2);
         await Future.delayed(const Duration(milliseconds: 500));
         if (!mounted) return;
         _fahrtenbuchKey.currentState?.triggerKmStartScan();
       },
       onNavigateToTasks: () => _goToPage(_dienstplanEnabled ? 4 : 3),
+      onNavigateToScheduleAndImport: () async {
+        await _animateToPage(2); // Dienstplan-Tab
+        await Future.delayed(const Duration(milliseconds: 400));
+        if (!mounted) return;
+        _showUploadSheet(context, AppTheme.of(context));
+      },
     ),
     MonthScreen(
       key: _monthKey,
@@ -1067,20 +1104,24 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                       const SizedBox(width: 40),
                       const Spacer(),
                       if (_isOnFahrtenbuchPage)
-                        GestureDetector(
-                          onTap: _onPlusPressed,
-                          child: SizedBox(
-                            width: 40,
-                            height: 40,
-                            child: Center(
-                              child: Icon(
-                                hasDraft ? Icons.edit_note_rounded : Icons.add,
-                                color: skin.textPrimary,
-                                size: 22,
-                              ),
-                            ),
-                          ),
-                        ),
+  GestureDetector(
+    onTap: _onPlusPressed,
+    child: SizedBox(
+      width: 40, height: 40,
+      child: Center(child: Icon(
+        hasDraft ? Icons.edit_note_rounded : Icons.add,
+        color: skin.textPrimary, size: 22,
+      )),
+    ),
+  ),
+if (_currentPage == (_dienstplanEnabled ? 4 : 3))
+  GestureDetector(
+    onTap: () => _tasksKey.currentState?.openQuickAdd(),
+    child: SizedBox(
+      width: 40, height: 40,
+      child: Center(child: Icon(Icons.add, color: skin.textPrimary, size: 22)),
+    ),
+  ),
                       GestureDetector(
                         onTap: _toggleMenu,
                         child: SizedBox(
