@@ -13,6 +13,8 @@ class WeatherData {
   final double windKmh;
   final String city;       // 'GPS' wenn per Standort
   final DateTime fetchedAt;
+  final DateTime? sunrise;   // NEU: Sonnenaufgang
+  final DateTime? sunset;    // NEU: Sonnenuntergang
 
   const WeatherData({
     required this.tempC,
@@ -22,6 +24,8 @@ class WeatherData {
     required this.windKmh,
     required this.city,
     required this.fetchedAt,
+    this.sunrise,
+    this.sunset,
   });
 
   String get icon {
@@ -50,6 +54,17 @@ class WeatherData {
 
   bool get isGps => city == 'GPS';
 
+  /// Gibt die nächste relevante Sonnen-Zeit zurück (Aufgang oder Untergang)
+  /// und ob es Aufgang (true) oder Untergang (false) ist.
+  (DateTime time, bool isSunrise)? get nextSunEvent {
+    if (sunrise == null || sunset == null) return null;
+    final now = DateTime.now();
+    if (now.isBefore(sunrise!)) return (sunrise!, true);
+    if (now.isBefore(sunset!)) return (sunset!, false);
+    // Beide vorbei → nächster Aufgang morgen
+    return (sunrise!.add(const Duration(days: 1)), true);
+  }
+
   Map<String, dynamic> toJson() => {
     'tempC': tempC,
     'feelsLikeC': feelsLikeC,
@@ -58,6 +73,8 @@ class WeatherData {
     'windKmh': windKmh,
     'city': city,
     'fetchedAt': fetchedAt.toIso8601String(),
+    'sunrise': sunrise?.toIso8601String(),
+    'sunset': sunset?.toIso8601String(),
   };
 
   factory WeatherData.fromJson(Map<String, dynamic> j) => WeatherData(
@@ -68,6 +85,8 @@ class WeatherData {
     windKmh: (j['windKmh'] as num? ?? 0).toDouble(),
     city: j['city'] as String,
     fetchedAt: DateTime.parse(j['fetchedAt'] as String),
+    sunrise: j['sunrise'] != null ? DateTime.parse(j['sunrise'] as String) : null,
+    sunset: j['sunset'] != null ? DateTime.parse(j['sunset'] as String) : null,
   );
 }
 
@@ -188,6 +207,7 @@ class WeatherService {
       '?latitude=$lat&longitude=$lon'
       '&current=temperature_2m,apparent_temperature,weather_code,'
       'precipitation,wind_speed_10m'
+      '&daily=sunrise,sunset'    // NEU: Sonnenzeiten abrufen
       '&timezone=auto',
     );
     final wResp = await http
@@ -198,6 +218,18 @@ class WeatherService {
     final wJson = jsonDecode(wResp.body) as Map<String, dynamic>;
     final cur = wJson['current'] as Map<String, dynamic>;
 
+    // ── Sunrise/Sunset parsen ──────────────────────────────────────────────
+    DateTime? sunrise, sunset;
+    try {
+      final daily = wJson['daily'] as Map<String, dynamic>;
+      final srList = daily['sunrise'] as List;
+      final ssList = daily['sunset'] as List;
+      if (srList.isNotEmpty) sunrise = DateTime.parse(srList.first as String);
+      if (ssList.isNotEmpty) sunset = DateTime.parse(ssList.first as String);
+    } catch (_) {
+      // Sunrise/Sunset nicht verfügbar → ignoriert
+    }
+
     return WeatherData(
       tempC: (cur['temperature_2m'] as num).toDouble(),
       feelsLikeC: (cur['apparent_temperature'] as num).toDouble(),
@@ -206,6 +238,8 @@ class WeatherService {
       windKmh: (cur['wind_speed_10m'] as num).toDouble(),
       city: label,
       fetchedAt: DateTime.now(),
+      sunrise: sunrise,
+      sunset: sunset,
     );
   }
 

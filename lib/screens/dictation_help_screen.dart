@@ -380,7 +380,7 @@ class _LearnBanner extends StatelessWidget {
                 children: [
                   _LearnChip(label: '🎙 Einfach diktieren', green: _green, skin: skin),
                   const SizedBox(width: 6),
-                  _LearnChip(label: '🧠 App lernt mit', green: _green, skin: skin),
+                  _LearnChip(label: '🧠 App lernt', green: _green, skin: skin),
                   const SizedBox(width: 6),
                   _LearnChip(label: '✓ Wird besser', green: _green, skin: skin),
                 ],

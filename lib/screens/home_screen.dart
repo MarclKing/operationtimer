@@ -1234,8 +1234,35 @@ class _WeatherKachelGross extends StatelessWidget {
     required this.detail,
   });
 
+  /// Nächstes Sonnenereignis: gibt (emoji, zeitString) zurück
+  ({String icon, String time, String label})? _nextSunEvent() {
+    final now = DateTime.now();
+    final rise = data?.sunrise;
+    final set  = data?.sunset;
+    if (rise == null && set == null) return null;
+
+    // Welches Ereignis liegt als nächstes in der Zukunft?
+    final riseIsFuture = rise != null && rise.isAfter(now);
+    final setIsFuture  = set  != null && set.isAfter(now);
+
+    if (riseIsFuture && setIsFuture) {
+      // Beide in der Zukunft → das frühere nehmen
+      return rise.isBefore(set!)
+          ? (icon: '🌅', time: _fmt(rise), label: 'Aufgang')
+          : (icon: '🌇', time: _fmt(set),  label: 'Untergang');
+    }
+    if (riseIsFuture) return (icon: '🌅', time: _fmt(rise!), label: 'Aufgang');
+    if (setIsFuture)  return (icon: '🌇', time: _fmt(set!),  label: 'Untergang');
+    return null; // beide in der Vergangenheit (sollte selten sein)
+  }
+
+  String _fmt(DateTime dt) =>
+      '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+
   @override
   Widget build(BuildContext context) {
+    final sunEvent = _nextSunEvent();
+
     return ClipRRect(
       borderRadius: BorderRadius.circular(18),
       child: BackdropFilter(
@@ -1253,23 +1280,22 @@ class _WeatherKachelGross extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // ── Oberer Bereich: Icon + Temp + Gefühlt + Stadt | Aktualisiert ──
+              // ── Oberer Bereich ──────────────────────────────────────
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Links: Icon
+                  // Wetter-Icon
                   Padding(
                     padding: const EdgeInsets.only(top: 2),
                     child: Text(icon, style: const TextStyle(fontSize: 36)),
                   ),
                   const SizedBox(width: 12),
-                  // Mitte: Temp + Gefühlt (nebeneinander) + Stadt
+                  // Temp + Gefühlt + Stadt
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        // ── Temperatur + Gefühlt nebeneinander ──
                         Row(
                           crossAxisAlignment: CrossAxisAlignment.baseline,
                           textBaseline: TextBaseline.alphabetic,
@@ -1294,7 +1320,6 @@ class _WeatherKachelGross extends StatelessWidget {
                           ],
                         ),
                         const SizedBox(height: 3),
-                        // ── Stadt-Zeile mit Icon (immer sichtbar) ──
                         Row(children: [
                           Padding(
                             padding: const EdgeInsets.only(right: 3),
@@ -1320,22 +1345,46 @@ class _WeatherKachelGross extends StatelessWidget {
                       ],
                     ),
                   ),
-                  // Rechts: Aktualisiert
-                  Padding(
-                    padding: const EdgeInsets.only(top: 2),
-                    child: Text(detail,
-                        style: TextStyle(fontSize: 9, color: skin.surface(0.28))),
-                  ),
+                  // ── Sonnen-Ereignis oben rechts ──────────────────────
+                  if (sunEvent != null)
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(sunEvent.icon, style: const TextStyle(fontSize: 16)),
+                        const SizedBox(height: 2),
+                        Text(sunEvent.time,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: skin.textPrimary,
+                            )),
+                        Text(sunEvent.label,
+                            style: TextStyle(
+                              fontSize: 9,
+                              color: skin.surface(0.35),
+                              fontWeight: FontWeight.w500,
+                            )),
+                      ],
+                    ),
                 ],
               ),
 
-              // ── Trennlinie ──────────────────────────────────────────────────
+              // ── Trennlinie + Niederschlag/Wind/Aktualisiert ─────────
               if (data != null) ...[
                 const SizedBox(height: 12),
-                Container(height: 0.5, color: skin.surface(0.10)),
+                // ── Strich mit "Aktualisiert" ganz rechts ──────────────
+                Row(
+                  children: [
+                    Expanded(
+                      child: Container(height: 0.5, color: skin.surface(0.10)),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(detail,
+                        style: TextStyle(fontSize: 9, color: skin.surface(0.28))),
+                  ],
+                ),
                 const SizedBox(height: 10),
-
-                // ── Unterer Bereich: Niederschlag + Wind ───────────────────────
                 Row(
                   children: [
                     _WeatherDetailRow(
@@ -1497,6 +1546,7 @@ class _DictationTaskKachelState extends State<_DictationTaskKachel>
   final GlobalKey<DictationFabState> _fabKey = GlobalKey<DictationFabState>();
 
   bool _isListening = false;
+  OverlayEntry? _overlayEntry;
 
   // Press-Animation
   late AnimationController _pressCtrl;
@@ -1505,16 +1555,6 @@ class _DictationTaskKachelState extends State<_DictationTaskKachel>
   // Pulsier-Animation (nur während Listening)
   late AnimationController _pulseCtrl;
   late Animation<double> _pulseAnim;
-
-  // Overlay-Animation
-  late AnimationController _overlayCtrl;
-
-  // Wellen-Animation
-  late AnimationController _waveCtrl;
-  late Animation<double> _waveAnim;
-
-  OverlayEntry? _overlayEntry;
-  double _slideOffset = 0;
 
   @override
   void initState() {
@@ -1529,14 +1569,6 @@ class _DictationTaskKachelState extends State<_DictationTaskKachel>
         vsync: this, duration: const Duration(milliseconds: 900))
       ..repeat(reverse: true);
     _pulseAnim = CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut);
-
-    _overlayCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 220));
-
-    _waveCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 1200))
-      ..repeat();
-    _waveAnim = CurvedAnimation(parent: _waveCtrl, curve: Curves.easeOut);
   }
 
   @override
@@ -1544,9 +1576,21 @@ class _DictationTaskKachelState extends State<_DictationTaskKachel>
     _removeOverlay();
     _pressCtrl.dispose();
     _pulseCtrl.dispose();
-    _overlayCtrl.dispose();
-    _waveCtrl.dispose();
     super.dispose();
+  }
+
+  // ── Overlay ────────────────────────────────────────────────────────────────
+
+  Offset _getAnchorTopRight() {
+    final box = _kachelKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null) return Offset.zero;
+    final pos = box.localToGlobal(Offset.zero);
+    return Offset(pos.dx + box.size.width, pos.dy);
+  }
+
+  double _getKachelWidth() {
+    final box = _kachelKey.currentContext?.findRenderObject() as RenderBox?;
+    return box?.size.width ?? 100.0;
   }
 
   void _removeOverlay() {
@@ -1554,49 +1598,42 @@ class _DictationTaskKachelState extends State<_DictationTaskKachel>
     _overlayEntry = null;
   }
 
+  void _rebuildOverlay() {
+    _overlayEntry?.markNeedsBuild();
+  }
+
   void _showOverlay() {
     _removeOverlay();
-    _slideOffset = 0;
-    _overlayCtrl.forward(from: 0);
 
     _overlayEntry = OverlayEntry(builder: (_) {
-      return _DictationKachelOverlay(
-        kachelKey: _kachelKey,
+      final fabState = _fabKey.currentState;
+      if (fabState == null) return const SizedBox.shrink();
+
+      final anchorTopRight = _getAnchorTopRight();
+      final kachelWidth = _getKachelWidth();
+
+      final bubbles = fabState.buildExternalBubbles(
         skin: widget.skin,
-        isListening: _isListening,
-        pulseAnim: _pulseAnim,
-        waveAnim: _waveAnim,
-        overlayAnim: _overlayCtrl,
-        slideOffset: _slideOffset,
-        onSlideUpdate: (dx) {
-          _slideOffset = dx;
-          _overlayEntry?.markNeedsBuild();
-        },
-        onSlideEnd: (dx) {
-          if (dx < -70) {
-            _stopAndDiscard();
-          } else {
-            _slideOffset = 0;
-            _overlayEntry?.markNeedsBuild();
-          }
-        },
-        onDismiss: _hideOverlay,
+        anchorTopRight: anchorTopRight,
+        kachelWidth: kachelWidth,
+      );
+
+      if (bubbles.isEmpty) return const SizedBox.shrink();
+
+      return Stack(
+        children: bubbles,
       );
     });
 
     Overlay.of(context).insert(_overlayEntry!);
   }
 
-  Future<void> _hideOverlay() async {
-    await _overlayCtrl.reverse();
+  void _hideOverlay() {
     _removeOverlay();
     if (mounted) setState(() => _isListening = false);
   }
 
-  void _stopAndDiscard() {
-    _fabKey.currentState?.stopListening();
-    _hideOverlay();
-  }
+  // ── Aktionen ───────────────────────────────────────────────────────────────
 
   void _handleLongPress() {
     if (!widget.useDictate) return;
@@ -1605,16 +1642,18 @@ class _DictationTaskKachelState extends State<_DictationTaskKachel>
     _fabKey.currentState?.startListening();
   }
 
+  void _handleLongPressMoveUpdate(LongPressMoveUpdateDetails details) {
+    final dx = details.offsetFromOrigin.dx;
+    _fabKey.currentState?.onExternalDragUpdate(dx);
+  }
+
+  void _handleLongPressEnd(LongPressEndDetails details) {
+  _fabKey.currentState?.onExternalDragEnd();
+  _fabKey.currentState?.finishListening();
+}
+
   void _handleTap() {
-    if (_isListening) {
-      _stopAndDiscard();
-      return;
-    }
-    if (!widget.useDictate) {
-      widget.onNavigateToTasks?.call();
-      return;
-    }
-    // Kurzes Tippen → navigiert zu Tasks
+    if (_isListening) return;
     widget.onNavigateToTasks?.call();
   }
 
@@ -1625,7 +1664,7 @@ class _DictationTaskKachelState extends State<_DictationTaskKachel>
 
     return Stack(
       children: [
-        // Unsichtbarer FAB für Logik — identisch zu Tasks-Screen
+        // ── Unsichtbarer DictationFab für Logik ──────────────────────────
         if (widget.useDictate)
           Opacity(
             opacity: 0,
@@ -1636,6 +1675,22 @@ class _DictationTaskKachelState extends State<_DictationTaskKachel>
                 key: _fabKey,
                 skin: skin,
                 hideButton: true,
+                useExternalBubbles: true,
+                onBubbleStateChanged: () {
+                  final fabState = _fabKey.currentState;
+                  if (fabState == null) return;
+
+                  // Overlay zeigen/verstecken je nach Phase
+                  if (fabState.phase == DictationPhase.idle &&
+                      !fabState.isCancelling &&
+                      fabState.cancelAnimCtrl.value == 0) {
+                    _removeOverlay();
+                  } else if (_overlayEntry == null) {
+                    _showOverlay();
+                  } else {
+                    _rebuildOverlay();
+                  }
+                },
                 onResult: (parsed, logRef) {
                   widget.onResult(parsed, logRef);
                   _hideOverlay();
@@ -1645,17 +1700,18 @@ class _DictationTaskKachelState extends State<_DictationTaskKachel>
                   _hideOverlay();
                 },
                 onListeningStart: () {
-                  setState(() => _isListening = true);
-                  _overlayEntry?.markNeedsBuild();
+                  if (mounted) setState(() => _isListening = true);
+                  _rebuildOverlay();
                 },
                 onListeningEnd: () {
-                  setState(() => _isListening = false);
-                  _overlayEntry?.markNeedsBuild();
+                  if (mounted) setState(() => _isListening = false);
+                  _rebuildOverlay();
                 },
               ),
             ),
           ),
 
+        // ── Sichtbare Kachel ─────────────────────────────────────────────
         GestureDetector(
           key: _kachelKey,
           onTapDown: (_) => _pressCtrl.forward(),
@@ -1665,6 +1721,8 @@ class _DictationTaskKachelState extends State<_DictationTaskKachel>
           },
           onTapCancel: () => _pressCtrl.reverse(),
           onLongPress: _handleLongPress,
+          onLongPressMoveUpdate: _handleLongPressMoveUpdate,
+          onLongPressEnd: _handleLongPressEnd,
           child: AnimatedBuilder(
             animation: Listenable.merge([_pressScale, _pulseAnim]),
             builder: (context, child) => Transform.scale(
@@ -1682,8 +1740,10 @@ class _DictationTaskKachelState extends State<_DictationTaskKachel>
                           ? accentColor.withValues(
                               alpha: skin.isLight ? 0.12 : 0.18)
                           : (skin.isLight
-                              ? Colors.white.withValues(alpha: skin.glassOpacity)
-                              : skin.bgCard.withValues(alpha: skin.glassOpacity)),
+                              ? Colors.white
+                                  .withValues(alpha: skin.glassOpacity)
+                              : skin.bgCard
+                                  .withValues(alpha: skin.glassOpacity)),
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(
                         color: _isListening
@@ -1709,7 +1769,6 @@ class _DictationTaskKachelState extends State<_DictationTaskKachel>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Icon-Badge — grünes Mic wie in Tasks
                         Container(
                           width: 34,
                           height: 34,
@@ -1746,9 +1805,7 @@ class _DictationTaskKachelState extends State<_DictationTaskKachel>
                         ),
                         const SizedBox(height: 1),
                         Text(
-                          _isListening
-                              ? 'Höre zu…'
-                              : 'Halten & sprechen',
+                          _isListening ? 'Höre zu…' : 'Halten & sprechen',
                           style: TextStyle(
                             fontSize: 10,
                             fontWeight: FontWeight.w500,
@@ -1769,321 +1826,6 @@ class _DictationTaskKachelState extends State<_DictationTaskKachel>
           ),
         ),
       ],
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// DICTATION KACHEL OVERLAY — erscheint über der Kachel bei Long-Press
-// Gleiches Design wie DictationFab in Tasks, aber positioniert über der Kachel
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _DictationKachelOverlay extends StatelessWidget {
-  final GlobalKey kachelKey;
-  final AppSkin skin;
-  final bool isListening;
-  final Animation<double> pulseAnim;
-  final Animation<double> waveAnim;
-  final AnimationController overlayAnim;
-  final double slideOffset;
-  final ValueChanged<double> onSlideUpdate;
-  final ValueChanged<double> onSlideEnd;
-  final VoidCallback onDismiss;
-
-  const _DictationKachelOverlay({
-    required this.kachelKey,
-    required this.skin,
-    required this.isListening,
-    required this.pulseAnim,
-    required this.waveAnim,
-    required this.overlayAnim,
-    required this.slideOffset,
-    required this.onSlideUpdate,
-    required this.onSlideEnd,
-    required this.onDismiss,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final RenderBox? box =
-        kachelKey.currentContext?.findRenderObject() as RenderBox?;
-    if (box == null) return const SizedBox.shrink();
-
-    final pos = box.localToGlobal(Offset.zero);
-    final kachelW = box.size.width;
-    final kachelH = box.size.height;
-
-    // Overlay-Dimensionen — analog zu DictationFab-Bubble in Tasks
-    const bubbleW = 220.0;
-    const bubbleH = 100.0;
-    const deleteW = 68.0;
-    const gap = 10.0;
-
-    // Zentriert über der Kachel
-    final bubbleLeft = pos.dx + kachelW / 2 - bubbleW / 2;
-    final bubbleTop = pos.dy - bubbleH - gap;
-    // Delete-Zone links neben dem Bubble
-    final deleteLeft = bubbleLeft - deleteW - 8;
-    final deleteTop = bubbleTop + (bubbleH - 56) / 2;
-
-    return AnimatedBuilder(
-      animation: overlayAnim,
-      builder: (context, _) {
-        final t = CurvedAnimation(
-                parent: overlayAnim, curve: Curves.easeOutCubic)
-            .value;
-
-        return Stack(
-          children: [
-            // ── Abdunklung ───────────────────────────────────────────
-            Positioned.fill(
-              child: GestureDetector(
-                onTap: onDismiss,
-                child: Container(
-                  color: Colors.black.withValues(alpha: 0.40 * t),
-                ),
-              ),
-            ),
-
-            // ── Delete-Zone (links) ──────────────────────────────────
-            Positioned(
-              left: deleteLeft,
-              top: deleteTop,
-              child: Opacity(
-                opacity: ((slideOffset.abs() / 70).clamp(0.0, 1.0) * t),
-                child: Transform.translate(
-                  offset: Offset(
-                      (1 - (slideOffset.abs() / 70).clamp(0.0, 1.0)) *
-                          -deleteW *
-                          t,
-                      0),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(16),
-                    child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-                      child: Container(
-                        width: deleteW,
-                        height: 56,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFEF5B5B)
-                              .withValues(alpha: skin.isLight ? 0.12 : 0.18),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                              color: const Color(0xFFEF5B5B)
-                                  .withValues(alpha: 0.40)),
-                        ),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.delete_outline,
-                                color: const Color(0xFFEF5B5B), size: 20),
-                            const SizedBox(height: 3),
-                            Text('Abbrechen',
-                                style: TextStyle(
-                                    color: const Color(0xFFEF5B5B),
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w600)),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-
-            // ── Haupt-Bubble ─────────────────────────────────────────
-            Positioned(
-              left: bubbleLeft,
-              top: bubbleTop,
-              child: GestureDetector(
-                onHorizontalDragUpdate: (d) =>
-                    onSlideUpdate(slideOffset + d.delta.dx),
-                onHorizontalDragEnd: (d) => onSlideEnd(slideOffset),
-                child: Transform.translate(
-                  offset: Offset(
-                    slideOffset.clamp(-70.0, 0.0),
-                    (1 - t) * 10,
-                  ),
-                  child: Opacity(
-                    opacity: t.clamp(0.0, 1.0),
-                    child: AnimatedBuilder(
-                      animation: pulseAnim,
-                      builder: (context, child) => ClipRRect(
-                        borderRadius: BorderRadius.circular(20),
-                        child: BackdropFilter(
-                          filter: ImageFilter.blur(
-                              sigmaX: skin.glassBlur,
-                              sigmaY: skin.glassBlur),
-                          child: Container(
-                            width: bubbleW,
-                            height: bubbleH,
-                            padding:
-                                const EdgeInsets.fromLTRB(14, 12, 14, 12),
-                            decoration: BoxDecoration(
-                              color: skin.isLight
-                                  ? Colors.white.withValues(alpha: 0.92)
-                                  : skin.bgCard.withValues(alpha: 0.94),
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(
-                                color: isListening
-                                    ? const Color(0xFF3DD68C).withValues(
-                                        alpha:
-                                            0.5 + 0.2 * pulseAnim.value)
-                                    : skin.glassBorder,
-                                width: isListening ? 1.5 : 1.0,
-                              ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: skin.glassShadow,
-                                  blurRadius: 28,
-                                  offset: const Offset(0, 8),
-                                ),
-                                if (isListening)
-                                  BoxShadow(
-                                    color: const Color(0xFF3DD68C)
-                                        .withValues(
-                                            alpha:
-                                                0.18 * pulseAnim.value),
-                                    blurRadius: 22,
-                                    spreadRadius: 2,
-                                  ),
-                              ],
-                            ),
-                            child: child,
-                          ),
-                        ),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          // ── Spektrum + Status + Schließen ──
-                          Row(
-                            children: [
-                              // Spektrum-Bars — identisch zu Tasks
-                              AnimatedBuilder(
-                                animation: waveAnim,
-                                builder: (context, _) => _KachelSpektrum(
-                                  isListening: isListening,
-                                  waveValue: waveAnim.value,
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Text(
-                                  isListening ? 'Höre zu…' : 'Bereit',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                    color: isListening
-                                        ? const Color(0xFF3DD68C)
-                                        : skin.surface(0.4),
-                                  ),
-                                ),
-                              ),
-                              GestureDetector(
-                                onTap: onDismiss,
-                                child: Container(
-                                  width: 24,
-                                  height: 24,
-                                  decoration: BoxDecoration(
-                                    color: skin.surface(0.06),
-                                    borderRadius:
-                                        BorderRadius.circular(8),
-                                  ),
-                                  child: Icon(Icons.close_rounded,
-                                      size: 14,
-                                      color: skin.surface(0.4)),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          Container(
-                              height: 0.5,
-                              color: skin.surface(0.08)),
-                          const SizedBox(height: 8),
-                          // ── Hinweis-Text ──
-                          Text(
-                            isListening
-                                ? 'Spreche jetzt die Aufgabe…'
-                                : '← Schieben zum Abbrechen',
-                            style: TextStyle(
-                              fontSize: 11.5,
-                              color: isListening
-                                  ? skin.textPrimary
-                                  : skin.surface(0.32),
-                              fontWeight: isListening
-                                  ? FontWeight.w500
-                                  : FontWeight.w400,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// KACHEL SPEKTRUM — identische Balken wie in Tasks DictationFab
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _KachelSpektrum extends StatelessWidget {
-  final bool isListening;
-  final double waveValue;
-
-  const _KachelSpektrum({
-    required this.isListening,
-    required this.waveValue,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    const accentColor = Color(0xFF3DD68C);
-    const barCount = 5;
-    final heights = isListening
-        ? [
-            0.3 + 0.55 * ((waveValue + 0.0) % 1.0),
-            0.5 + 0.45 * ((waveValue + 0.2) % 1.0),
-            0.65 + 0.35 * ((waveValue + 0.4) % 1.0),
-            0.5 + 0.45 * ((waveValue + 0.6) % 1.0),
-            0.3 + 0.55 * ((waveValue + 0.8) % 1.0),
-          ]
-        : [0.2, 0.2, 0.2, 0.2, 0.2];
-
-    const maxBarH = 28.0;
-    return SizedBox(
-      width: 32,
-      height: maxBarH,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: List.generate(barCount, (i) {
-          return AnimatedContainer(
-            duration: const Duration(milliseconds: 80),
-            width: 4,
-            height: maxBarH * heights[i],
-            decoration: BoxDecoration(
-              color: isListening
-                  ? accentColor.withValues(
-                      alpha: 0.45 + 0.45 * heights[i])
-                  : accentColor.withValues(alpha: 0.22),
-              borderRadius: BorderRadius.circular(2),
-            ),
-          );
-        }),
-      ),
     );
   }
 }

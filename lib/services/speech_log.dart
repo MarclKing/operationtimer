@@ -38,6 +38,10 @@ class SpeechLogEntry {
   final bool wentToReview; // true = needsReview hat angeschlagen
   bool wasEdited; // nicht final — wird nachträglich gesetzt, siehe markEdited()
   int? editedWithinSeconds; // wie schnell nach Erstellung die Änderung kam
+  String? firestoreId; // ← NEU: verknüpft 1:1 mit dem Firestore-Doc in speech_logs,
+                        // wird erst NACH dem Upload nachträglich gesetzt (siehe _uploadToFirestore).
+                        // Ist die einzige verlässliche Referenz zum Löschen/Syncen —
+                        // rawText ist NICHT eindeutig (Duplikate möglich).
 
   SpeechLogEntry({
     required this.rawText,
@@ -50,6 +54,7 @@ class SpeechLogEntry {
     this.wentToReview = false,
     this.wasEdited = false,
     this.editedWithinSeconds,
+    this.firestoreId,
   });
 
   /// true = System hat alles erkannt (Normalizer + Parser haben Datum/Muster gefunden)
@@ -80,6 +85,7 @@ class SpeechLogEntry {
     'wentToReview': wentToReview,
     'wasEdited': wasEdited,
     'editedWithinSeconds': editedWithinSeconds,
+    'firestoreId': firestoreId,
   };
 
   factory SpeechLogEntry.fromJson(Map<String, dynamic> j) => SpeechLogEntry(
@@ -93,6 +99,7 @@ class SpeechLogEntry {
     wentToReview: j['wentToReview'] as bool? ?? false,
     wasEdited: j['wasEdited'] as bool? ?? false,
     editedWithinSeconds: j['editedWithinSeconds'] as int?,
+    firestoreId: j['firestoreId'] as String?,
   );
 }
 
@@ -153,12 +160,12 @@ class SpeechLog {
       debugPrint('SPEECH_LOG Fehler beim Speichern: $e');
     }
 
-    // NEU: Bei unvollständiger Erkennung zusätzlich nach Firestore hochladen.
-    // Fire-and-forget — wir warten nicht auf das Ergebnis und zeigen dem
-    // Nutzer nie einen Fehler, falls z.B. kein Internet verfügbar ist.
-    if (!entry.isFullSuccess) {
-      _uploadToFirestore(entry);
-    }
+    // Nur hochladen wenn Normalizer NICHT getroffen hat —
+// also unbekannte Satzmuster die die KI als Pattern lernen soll.
+// Korrekt erkannte Sätze (auch ohne Datum) brauchen keine KI-Analyse.
+if (!entry.normalizerHit) {
+  _uploadToFirestore(entry, now.millisecondsSinceEpoch);
+}
 
     // Rückgabewert: Zeitstempel in ms als simple, eindeutige Referenz auf
     // diesen Log-Eintrag — der Aufrufer nutzt das, um per setTaskId() später
@@ -185,10 +192,11 @@ class SpeechLog {
     }
   }
 
-  static Future<void> _uploadToFirestore(SpeechLogEntry entry) async {
+  static Future<void> _uploadToFirestore(
+      SpeechLogEntry entry, int localTimestampMs) async {
     try {
       final uid = FirebaseAuth.instance.currentUser?.uid;
-      await FirebaseFirestore.instance.collection('speech_logs').add({
+      final docRef = await FirebaseFirestore.instance.collection('speech_logs').add({
         'rawText': entry.rawText,
         'normalized': entry.normalized,
         'parsedTitle': entry.parsedTitle,
@@ -198,11 +206,34 @@ class SpeechLog {
         'userId': uid,
         'timestamp': FieldValue.serverTimestamp(),
       });
-      debugPrint('SPEECH_LOG → Firestore Upload erfolgreich');
+      debugPrint('SPEECH_LOG → Firestore Upload erfolgreich (${docRef.id})');
+
+      // Echte Doc-ID zurück in den passenden Hive-Eintrag schreiben, damit
+      // wir später beim Löschen IMMER per ID statt per rawText matchen
+      // können (rawText ist nicht eindeutig — z.B. bei zwei identischen
+      // Diktaten gäbe es sonst Verwechslungsgefahr).
+      _linkFirestoreId(localTimestampMs, docRef.id);
     } catch (e) {
       // Bewusst stumm nach außen — kein SnackBar, kein Crash, nur Debug-Log.
       // Typische Gründe: kein Internet, Firestore Rules verweigern Schreiben.
       debugPrint('SPEECH_LOG → Firestore Upload fehlgeschlagen: $e');
+    }
+  }
+
+  /// Trägt die Firestore-Doc-ID nachträglich in den Hive-Eintrag ein, der
+  /// zum übergebenen lokalen Zeitstempel passt. Wird ausschließlich intern
+  /// von _uploadToFirestore() aufgerufen, sobald der Upload abgeschlossen ist.
+  static void _linkFirestoreId(int localTimestampMs, String firestoreId) {
+    try {
+      final box = Hive.box('einstellungen');
+      final entries = _loadAll(box);
+      final idx = entries.indexWhere(
+          (e) => e.timestamp.millisecondsSinceEpoch == localTimestampMs);
+      if (idx == -1) return;
+      entries[idx].firestoreId = firestoreId;
+      box.put(_dataKey, jsonEncode(entries.map((e) => e.toJson()).toList()));
+    } catch (e) {
+      debugPrint('SPEECH_LOG _linkFirestoreId Fehler: $e');
     }
   }
 
@@ -237,23 +268,47 @@ class SpeechLog {
     } catch (_) {}
   }
 
-  /// Löscht einen einzelnen Eintrag anhand des Zeitstempels.
+  /// Löscht einen einzelnen Eintrag anhand seines Zeitstempels (= eindeutige
+  /// lokale Identität innerhalb von Hive, da pro record()-Aufruf neu erzeugt).
+  /// Firestore-seitiges Löschen passiert NICHT hier — das übernimmt der
+  /// Aufrufer (siehe SpeechLogScreen._deleteEntry) über entry.firestoreId,
+  /// weil nur der Aufrufer weiß, ob/wann der Firestore-Sync gewünscht ist.
   static void deleteEntry(SpeechLogEntry entry) {
-  try {
-    final box = Hive.box('einstellungen');
-    final raw = box.get('entries');
-    if (raw is! String || raw.isEmpty) return;
-    final decoded = jsonDecode(raw) as List;
-    final filtered = decoded.where((e) {
-      final map = Map<String, dynamic>.from(e as Map);
-      final ts = map['timestamp'] as int?;
-      return ts != entry.timestamp.millisecondsSinceEpoch;
-    }).toList();
-    box.put('entries', jsonEncode(filtered));
-  } catch (e) {
-    debugPrint('deleteEntry Fehler: $e');
+    try {
+      final box = Hive.box('einstellungen');
+      final raw = box.get(_dataKey);
+      if (raw is! String || raw.isEmpty) return;
+      final decoded = jsonDecode(raw) as List;
+      final filtered = decoded.where((e) {
+        final map = Map<String, dynamic>.from(e as Map);
+        final ts = map['timestamp'] as String?;
+        final parsedTs = ts != null ? DateTime.tryParse(ts) : null;
+        return parsedTs?.millisecondsSinceEpoch !=
+            entry.timestamp.millisecondsSinceEpoch;
+      }).toList();
+      box.put(_dataKey, jsonEncode(filtered));
+    } catch (e) {
+      debugPrint('SPEECH_LOG deleteEntry Fehler: $e');
+    }
   }
-}
+
+  /// Entfernt den Hive-Eintrag, der zu [firestoreId] gehört — wird von
+  /// AdminRulesScreen aufgerufen, wenn dort ein speech_logs-Doc gelöscht
+  /// wird, damit der lokale Log synchron bleibt. Tut nichts, wenn kein
+  /// Eintrag mit dieser firestoreId existiert (z.B. uralter Eintrag ohne
+  /// Verknüpfung — die werden mit der Zeit durch normale Nutzung verdrängt).
+  static void deleteEntryByFirestoreId(String firestoreId) {
+    if (firestoreId.isEmpty) return;
+    try {
+      final box = Hive.box('einstellungen');
+      final entries = _loadAll(box);
+      final filtered = entries.where((e) => e.firestoreId != firestoreId).toList();
+      if (filtered.length == entries.length) return; // nichts gefunden, kein Schreiben nötig
+      box.put(_dataKey, jsonEncode(filtered.map((e) => e.toJson()).toList()));
+    } catch (e) {
+      debugPrint('SPEECH_LOG deleteEntryByFirestoreId Fehler: $e');
+    }
+  }
 
   /// Markiert den Log-Eintrag, der zu [taskId] gehört, als "wurde bearbeitet".
   /// Wird von TasksScreenState aufgerufen, sobald ein Task verändert/gelöscht

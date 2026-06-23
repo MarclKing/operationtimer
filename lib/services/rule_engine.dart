@@ -148,72 +148,155 @@ class RuleEngine {
   /// Gibt ein [ParsedSpokenTask] zurück wenn eine Regel greift, sonst null.
   /// Ist synchron (keine async nötig, da _rules bereits im Speicher).
   ParsedSpokenTask? match(String rawText) {
-    if (_rules.isEmpty) return null;
+  if (_rules.isEmpty) return null;
 
-    final input = rawText.trim();
-    final inputNorm = _normalizeInternal(input);
-    final inputWords = _words(inputNorm);
+  final input = rawText.trim();
+  final inputNorm = _normalizeInternal(input);
+  final inputWords = _words(inputNorm);
 
-    LearnedRule? bestRule;
-    _MatchQuality bestQuality = _MatchQuality.none;
+  LearnedRule? bestRule;
+  _MatchQuality bestQuality = _MatchQuality.none;
+  String? bestExtractedTitle;
+  String? bestExtractedDate;
 
-    for (final rule in _rules) {
-      if (rule.originalText.isEmpty || rule.title.isEmpty) continue;
+  for (final rule in _rules) {
+    if (rule.originalText.isEmpty || rule.title.isEmpty) continue;
 
-      final ruleNorm = _normalizeInternal(rule.originalText);
-      final ruleWords = _words(ruleNorm);
+    String? extractedTitle;
+    String? extractedDate;
+    _MatchQuality quality;
 
-      _MatchQuality quality;
-
-      // 1) Exakt
-      if (inputNorm == ruleNorm) {
-        quality = _MatchQuality.exact;
-      }
-      // 2) Enthält den vollständigen Regeltext
-      else if (inputNorm.contains(ruleNorm) && ruleNorm.length > 4) {
-        quality = _MatchQuality.contains;
-      }
-      // 3) Fuzzy: ≥ 80 % der Regelwörter im Input
-      else if (ruleWords.isNotEmpty) {
-        final matched = ruleWords.where((w) => inputWords.contains(w)).length;
-        final ratio = matched / ruleWords.length;
-        if (ratio >= 0.80 && matched >= 2) {
-          quality = _MatchQuality.fuzzy;
-        } else {
-          continue;
+    // ── Pattern-Match (höchste Prio wenn Pattern vorhanden) ──────────────
+    if (rule.pattern != null && rule.pattern!.contains('[TITEL]')) {
+      final patternResult = _tryPatternMatch(input, rule);
+      if (patternResult != null) {
+        extractedTitle = patternResult['title'];
+        extractedDate = patternResult['date'];
+        quality = _MatchQuality.pattern;
+        if (quality.index > bestQuality.index) {
+          bestQuality = quality;
+          bestRule = rule;
+          bestExtractedTitle = extractedTitle;
+          bestExtractedDate = extractedDate;
         }
-      } else {
         continue;
-      }
-
-      if (quality.index > bestQuality.index) {
-        bestQuality = quality;
-        bestRule = rule;
-        if (bestQuality == _MatchQuality.exact) break; // besser wird's nicht
       }
     }
 
-    if (bestRule == null) return null;
+    // ── Bisheriges Matching (Fallback) ────────────────────────────────────
+    final ruleNorm = _normalizeInternal(rule.originalText);
+    final ruleWords = _words(ruleNorm);
 
-    debugLog('RuleEngine: Treffer (${bestQuality.name}) → „${bestRule.title}"');
+    if (inputNorm == ruleNorm) {
+      quality = _MatchQuality.exact;
+    } else if (inputNorm.contains(ruleNorm) && ruleNorm.length > 4) {
+      quality = _MatchQuality.contains;
+    } else if (ruleWords.isNotEmpty) {
+      final matched = ruleWords.where((w) => inputWords.contains(w)).length;
+      final ratio = matched / ruleWords.length;
+      if (ratio >= 0.80 && matched >= 2) {
+        quality = _MatchQuality.fuzzy;
+      } else {
+        continue;
+      }
+    } else {
+      continue;
+    }
 
-    // Datum aus dateHint parsen (best-effort, SpokenTaskParser-Logik nutzen)
-    final dateHintParsed = _parseDateHint(bestRule.dateHint);
-
-    return ParsedSpokenTask(
-      title: bestRule.title,
-      rawText: rawText,
-      date: dateHintParsed?.date,
-      time: dateHintParsed?.time,
-    );
+    if (quality.index > bestQuality.index) {
+      bestQuality = quality;
+      bestRule = rule;
+      bestExtractedTitle = null;
+      bestExtractedDate = null;
+      if (bestQuality == _MatchQuality.exact) break;
+    }
   }
 
+  if (bestRule == null) return null;
+
+  debugLog('RuleEngine: Treffer (${bestQuality.name}) → „${bestExtractedTitle ?? bestRule.title}"');
+
+  final finalTitle = bestExtractedTitle ?? bestRule.title;
+  final finalDateHint = bestExtractedDate ?? bestRule.dateHint;
+  final dateHintParsed = _parseDateHint(finalDateHint);
+
+  return ParsedSpokenTask(
+    title: finalTitle,
+    rawText: rawText,
+    date: dateHintParsed?.date,
+    time: dateHintParsed?.time,
+  );
+}
   // ── Hilfsfunktionen ───────────────────────────────────────────────────────
 
   /// Lowercase + Sonderzeichen/Satzzeichen entfernen + Leerzeichen normalisieren.
   /// Public, damit auch außerhalb (z.B. Duplikat-Check in tasks_screen.dart)
   /// dieselbe Normalisierung für Titel-Vergleiche genutzt werden kann.
   static String normalizeForCompare(String s) => _normalizeInternal(s);
+
+/// Versucht den Input gegen das Pattern der Regel zu matchen.
+/// Pattern-Format: "Ich muss [noch] [TITEL]" oder "Kannst du mich [DATUM] an [TITEL] erinnern"
+/// Gibt Map mit 'title' und optional 'date' zurück, oder null wenn kein Match.
+Map<String, String?>? _tryPatternMatch(String input, LearnedRule rule) {
+  if (rule.pattern == null) return null;
+
+  try {
+    final pattern = rule.pattern!;
+
+    // Pattern in Regex umwandeln
+    // Schritt 1: optionale Teile [text] → (?:text )?
+    // Schritt 2: [TITEL] → benannte Capture-Gruppe
+    // Schritt 3: [DATUM] → optionale benannte Gruppe
+
+var regexStr = pattern;
+
+// A: [DATUM] mit umgebenden Leerzeichen als Einheit — kontextsensitiv per RegExp
+regexStr = regexStr.replaceAllMapped(
+  RegExp(r' \[DATUM\] '),
+  (_) => r'(?:\s+(?<datum>.+?))?\s+',
+);
+// Fallback: [DATUM] ohne Leerzeichen-Kontext (Anfang/Ende des Patterns)
+regexStr = regexStr.replaceAll('[DATUM]', r'(?<datum>.+?)?');
+
+// B: [TITEL]
+regexStr = regexStr.replaceAll('[TITEL]', r'(?<titel>.+?)');
+
+// C: optionale Literalwörter [wort] — alle noch verbleibenden [...]-Blöcke
+regexStr = regexStr.replaceAllMapped(
+  RegExp(r' \[([^\]]+)\]'),
+  (m) => r'(?:\s+' + RegExp.escape(m.group(1)!) + r')?',
+);
+// D: alle Literal-Leerzeichen → \s+ (erst jetzt, nachdem alle Platzhalter weg sind)
+regexStr = regexStr.replaceAll(RegExp(r' +'), r'\s+');
+
+    final rx = RegExp(
+      '^$regexStr\$',
+      caseSensitive: false,
+    );
+
+    final m = rx.firstMatch(input.trim());
+    if (m == null) return null;
+
+    String? titel;
+    String? datum;
+
+    try { titel = m.namedGroup('titel')?.trim(); } catch (_) {}
+    try { datum = m.namedGroup('datum')?.trim(); } catch (_) {}
+
+    if (titel == null || titel.isEmpty) return null;
+
+    // Titel aufräumen
+    titel = titel[0].toUpperCase() + titel.substring(1);
+
+    return {
+      'title': titel,
+      'date': datum?.isNotEmpty == true ? datum : null,
+    };
+  } catch (e) {
+    debugLog('RuleEngine: Pattern-Match Fehler: $e');
+    return null;
+  }
+}
 
   static String _normalizeInternal(String s) {
     return s
@@ -265,7 +348,7 @@ class RuleEngine {
   }
 }
 
-enum _MatchQuality { none, fuzzy, contains, exact }
+enum _MatchQuality { none, fuzzy, contains, exact, pattern }
 
 class _HintResult {
   final DateTime? date;

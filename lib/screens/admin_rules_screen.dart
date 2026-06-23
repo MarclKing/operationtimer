@@ -83,53 +83,39 @@ class _AdminRulesScreenState extends State<AdminRulesScreen>
   }
 
   Future<void> _deleteSingle(String docId) async {
-  HapticFeedback.mediumImpact();
-  final docSnap = await FirebaseFirestore.instance
-      .collection('speech_logs')
-      .doc(docId)
-      .get();
-  if (docSnap.exists) {
-    final rawText = (docSnap.data()?['rawText'] as String?) ?? '';
-    _removeFromLocalLog(rawText);
+    HapticFeedback.mediumImpact();
+    // Lokalen Hive-Log-Eintrag über die Firestore-Doc-ID syncen — NICHT
+    // mehr über rawText, weil rawText bei zwei identischen Diktaten nicht
+    // eindeutig ist und sonst der falsche lokale Eintrag getroffen wird.
+    _removeFromLocalLog(docId);
+    await FirebaseFirestore.instance
+        .collection('speech_logs')
+        .doc(docId)
+        .delete();
+    if (mounted) setState(() {});
   }
-  await FirebaseFirestore.instance
-      .collection('speech_logs')
-      .doc(docId)
-      .delete();
-  if (mounted) setState(() {});
-}
 
 Future<void> _deleteSelected(List<QueryDocumentSnapshot> docs) async {
   if (_selectedIds.isEmpty) return;
   HapticFeedback.mediumImpact();
   final batch = FirebaseFirestore.instance.batch();
   for (final id in List<String>.from(_selectedIds)) {
-    try {
-      final doc = docs.firstWhere((d) => d.id == id);
-      final rawText = ((doc.data() as Map<String, dynamic>)['rawText'] as String?) ?? '';
-      _removeFromLocalLog(rawText);
-    } catch (_) {}
+    // Lokalen Log über die Doc-ID syncen (siehe _deleteSingle für Begründung).
+    _removeFromLocalLog(id);
     batch.delete(FirebaseFirestore.instance.collection('speech_logs').doc(id));
   }
   await batch.commit();
   _exitSelectionMode();
 }
 
-void _removeFromLocalLog(String rawText) {
-  if (rawText.isEmpty) return;
-  try {
-    final box = Hive.box('einstellungen');
-    final raw = box.get('entries'); // ← 'entries' ist der korrekte Key aus SpeechLog
-    if (raw is! String || raw.isEmpty) return;
-    final decoded = jsonDecode(raw) as List;
-    final filtered = decoded.where((e) {
-      final map = Map<String, dynamic>.from(e as Map);
-      return (map['rawText'] as String? ?? '') != rawText;
-    }).toList();
-    box.put('entries', jsonEncode(filtered));
-  } catch (e) {
-    debugPrint('AdminRules: lokales Log löschen fehlgeschlagen: $e');
-  }
+void _removeFromLocalLog(String firestoreId) {
+  // Entfernt den Hive-Log-Eintrag, der zu diesem Firestore-Doc gehört.
+  // Matching läuft über firestoreId statt rawText, weil rawText bei
+  // doppelten Diktaten (z.B. zwei identische Testsätze) nicht eindeutig
+  // ist — über die ID gibt es diese Verwechslungsgefahr nicht.
+  // Delegiert an SpeechLog, damit das Hive-Schema an einer Stelle gepflegt
+  // wird statt hier eine zweite, leicht abweichende Kopie zu pflegen.
+  SpeechLog.deleteEntryByFirestoreId(firestoreId);
 }
 
   @override
@@ -547,58 +533,73 @@ void _removeFromLocalLog(String rawText) {
   }
 
   void _generateAndCopyPrompt(
-    BuildContext context,
-    List<QueryDocumentSnapshot> docs,
-    AppSkin skin,
-  ) {
-    final sentences = docs
-        .map((d) =>
-            (d.data() as Map<String, dynamic>)['rawText'] as String? ??
-            '')
-        .where((s) => s.trim().isNotEmpty)
-        .toList();
-    if (sentences.isEmpty) return;
+  BuildContext context,
+  List<QueryDocumentSnapshot> docs,
+  AppSkin skin,
+) {
+  final sentences = docs
+      .map((d) =>
+          (d.data() as Map<String, dynamic>)['rawText'] as String? ?? '')
+      .where((s) => s.trim().isNotEmpty)
+      .toList();
+  if (sentences.isEmpty) return;
 
-    final buffer = StringBuffer();
-    buffer.writeln(
-        'Analysiere diese deutschen Sprachbefehle für eine Task-App.');
-    buffer.writeln(
-        'Für jeden Satz: ist es ein ERNSTGEMEINTER Task- oder Reminder-Befehl');
-    buffer.writeln('(kein Test, kein Unsinn, kein abgebrochener Satz)?');
-    buffer.writeln(
-        'Falls ja, extrahiere einen sauberen Titel und einen Datum-Hinweis');
-    buffer.writeln(
-        '(z.B. "morgen", "freitag", "in 3 tagen" oder null falls kein Datum).');
-    buffer.writeln('Beschreibe außerdem kurz das Satzmuster.');
-    buffer.writeln();
-    buffer.writeln(
-        'Antworte AUSSCHLIESSLICH mit einem validen JSON-Array, keine Markdown-Codeblöcke,');
-    buffer.writeln('kein Fließtext davor oder danach. Format pro Satz:');
-    buffer.writeln('{');
-    buffer.writeln('  "originalText": "...",');
-    buffer.writeln('  "isTaskIntent": true oder false,');
-    buffer.writeln('  "title": "...",');
-    buffer.writeln('  "dateHint": "..." oder null,');
-    buffer.writeln('  "pattern": "..."');
-    buffer.writeln('}');
-    buffer.writeln();
-    buffer.writeln('Sätze:');
-    for (var i = 0; i < sentences.length; i++) {
-      buffer.writeln('${i + 1}. "${sentences[i]}"');
-    }
-
-    Clipboard.setData(ClipboardData(text: buffer.toString()));
-    HapticFeedback.mediumImpact();
-
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(
-          'Prompt kopiert (${sentences.length} Sätze) — jetzt in dein KI-Tool einfügen'),
-      backgroundColor: skin.statComplete,
-      behavior: SnackBarBehavior.floating,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 100),
-    ));
+  final buffer = StringBuffer();
+  buffer.writeln('Du analysierst deutsche Sprachbefehle für eine Task-App.');
+  buffer.writeln('Die App erkennt bereits diese festen Muster:');
+  buffer.writeln('  - "Füge die Aufgabe [TITEL] hinzu"');
+  buffer.writeln('  - "Füge die Aufgabe [TITEL] für [DATUM] hinzu"');
+  buffer.writeln('  - "Erinnere mich an: [TITEL]"');
+  buffer.writeln('  - "Erinnere mich [DATUM] an: [TITEL]"');
+  buffer.writeln('  - "Ich muss [TITEL]"');
+  buffer.writeln('  - "Nicht vergessen: [TITEL]"');
+  buffer.writeln();
+  buffer.writeln('Für jeden Satz unten:');
+  buffer.writeln('1. Ist es ein echter Task/Reminder-Befehl? (kein Test, kein Unsinn)');
+  buffer.writeln('2. Extrahiere Titel und optionales Datum.');
+  buffer.writeln('3. Erstelle ein PATTERN — das ist das wichtigste Feld!');
+  buffer.writeln();
+  buffer.writeln('PATTERN-REGELN (sehr wichtig):');
+  buffer.writeln('  - Beschreibe die Satzstruktur generisch, nicht den konkreten Satz');
+  buffer.writeln('  - Pflichtteile: normaler Text');
+  buffer.writeln('  - Optionale Teile: in [eckigen Klammern]');
+  buffer.writeln('  - Titel-Platzhalter: immer [TITEL]');
+  buffer.writeln('  - Datum-Platzhalter: immer [DATUM]');
+  buffer.writeln('  - Beispiele:');
+  buffer.writeln('      "Ich muss noch Zahnarzt anrufen" → "Ich muss [noch] [TITEL]"');
+  buffer.writeln('      "Morgen früh Auto waschen" → "[DATUM] [TITEL]"');
+  buffer.writeln('      "Kannst du mich an X erinnern" → "Kannst du mich [DATUM] an [TITEL] erinnern"');
+  buffer.writeln('      "Dringend: Reisepass verlängern" → "Dringend [TITEL]"');
+  buffer.writeln('      "Nicht vergessen Zahnarzt" → "Nicht vergessen [TITEL]"');
+  buffer.writeln();
+  buffer.writeln('Antworte NUR mit einem JSON-Array, kein Markdown, kein Fließtext:');
+  buffer.writeln('[');
+  buffer.writeln('  {');
+  buffer.writeln('    "originalText": "...",');
+  buffer.writeln('    "isTaskIntent": true/false,');
+  buffer.writeln('    "title": "...",');
+  buffer.writeln('    "dateHint": "..." oder null,');
+  buffer.writeln('    "pattern": "..."');
+  buffer.writeln('  }');
+  buffer.writeln(']');
+  buffer.writeln();
+  buffer.writeln('Sätze:');
+  for (var i = 0; i < sentences.length; i++) {
+    buffer.writeln('${i + 1}. "${sentences[i]}"');
   }
+
+  Clipboard.setData(ClipboardData(text: buffer.toString()));
+  HapticFeedback.mediumImpact();
+
+  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+    content: Text(
+        'Prompt kopiert (${sentences.length} Sätze) — jetzt in dein KI-Tool einfügen'),
+    backgroundColor: skin.statComplete,
+    behavior: SnackBarBehavior.floating,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    margin: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+  ));
+}
 
   void _openAnswerImportSheet(
     BuildContext context,

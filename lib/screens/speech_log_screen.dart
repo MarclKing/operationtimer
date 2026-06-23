@@ -32,10 +32,20 @@ class _SpeechLogScreenState extends State<SpeechLogScreen> {
   Map<String, int> _stats = {};
   _LogFilter _filter = _LogFilter.all;
 
+  // Nur EIN Eintrag darf gleichzeitig "aufgeschoben" (geöffnet) sein.
+  // Identifiziert über den Millisekunden-Zeitstempel des Eintrags, weil das
+  // innerhalb des Logs eindeutig ist. Tippt man irgendwo anders hin, wird
+  // dieser Wert auf null gesetzt und alle Karten schließen sich automatisch.
+  int? _openSwipedKey;
+
   @override
   void initState() {
     super.initState();
     _reload();
+  }
+
+  void _closeOpenSwipe() {
+    if (_openSwipedKey != null) setState(() => _openSwipedKey = null);
   }
 
   void _reload() {
@@ -77,7 +87,14 @@ class _SpeechLogScreenState extends State<SpeechLogScreen> {
     return Scaffold(
       backgroundColor: skin.bgBase,
       body: SafeArea(
-        child: Column(
+        child: GestureDetector(
+          // Globaler Schließen-Layer: Tippt man irgendwo hin, das NICHT von
+          // einer Karte selbst behandelt wird (z.B. Header, Statistik-Kacheln,
+          // Filter-Leiste, Leerraum), schließt sich ein offener Slider.
+          // translucent sorgt dafür, dass Taps trotzdem an Kinder weitergehen.
+          behavior: HitTestBehavior.translucent,
+          onTap: _closeOpenSwipe,
+          child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // ── Header ──
@@ -260,17 +277,25 @@ class _SpeechLogScreenState extends State<SpeechLogScreen> {
           : ListView.builder(
               padding: const EdgeInsets.fromLTRB(20, 4, 20, 40),
               itemCount: filtered.length,
-              itemBuilder: (_, i) => Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: _LogEntryCard(
-                  skin: skin,
-                  entry: filtered[i],
-                  onDeleted: _reload,
-                ),
-              ),
+              itemBuilder: (_, i) {
+                final entry = filtered[i];
+                final entryKey = entry.timestamp.millisecondsSinceEpoch;
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: _LogEntryCard(
+                    skin: skin,
+                    entry: entry,
+                    isOpen: _openSwipedKey == entryKey,
+                    onSwiped: (opened) => setState(
+                        () => _openSwipedKey = opened ? entryKey : null),
+                    onDeleted: _reload,
+                  ),
+                );
+              },
             ),
         ),   // ← schließt Expanded
-          ],  // ← schließt Column.children
+          ],
+            ),  // ← schließt Column.children
         ),   // ← schließt Column
       ),     // ← schließt SafeArea
     );       // ← schließt Scaffold / return
@@ -371,8 +396,16 @@ class _FilterChip extends StatelessWidget {
 class _LogEntryCard extends StatefulWidget {
   final AppSkin skin;
   final SpeechLogEntry entry;
+  final bool isOpen; // ← von außen gesteuert: ist DIESE Karte die aktuell offene?
+  final void Function(bool opened) onSwiped; // ← meldet dem Parent Öffnen/Schließen
   final VoidCallback onDeleted;
-  const _LogEntryCard({required this.skin, required this.entry, required this.onDeleted});
+  const _LogEntryCard({
+    required this.skin,
+    required this.entry,
+    required this.isOpen,
+    required this.onSwiped,
+    required this.onDeleted,
+  });
 
   @override
   State<_LogEntryCard> createState() => _LogEntryCardState();
@@ -382,7 +415,7 @@ class _LogEntryCardState extends State<_LogEntryCard> {
   bool _expanded = false;
   double _swipeOffset = 0.0;
   static const double _revealWidth = 80.0;
-  bool _isOpen = false;
+  static const double _snapThreshold = 40.0;
   bool _dragging = false;
   double _dragStartX = 0, _dragStartY = 0;
 
@@ -390,6 +423,16 @@ class _LogEntryCardState extends State<_LogEntryCard> {
     if (widget.entry.isFullSuccess) return const Color(0xFF5BCB8F);
     if (widget.entry.normalizerHit && !widget.entry.hasDate) return const Color(0xFFFFB347);
     return const Color(0xFFEF5B5B);
+  }
+
+  @override
+  void didUpdateWidget(_LogEntryCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Wenn der Parent meldet, dass eine ANDERE Karte jetzt offen ist (oder
+    // alle geschlossen werden sollen), schließt sich diese Karte automatisch.
+    if (!widget.isOpen && oldWidget.isOpen) {
+      setState(() => _swipeOffset = 0);
+    }
   }
 
   void _onPanStart(DragStartDetails d) {
@@ -414,36 +457,45 @@ class _LogEntryCardState extends State<_LogEntryCard> {
     if (!_dragging) return;
     _dragging = false;
     final v = d.primaryVelocity ?? 0;
-    if (_swipeOffset < -40 || v < -400) {
-      setState(() { _swipeOffset = -_revealWidth; _isOpen = true; });
+    if (_swipeOffset < -_snapThreshold || v < -400) {
+      setState(() => _swipeOffset = -_revealWidth);
+      widget.onSwiped(true);
     } else {
-      setState(() { _swipeOffset = 0; _isOpen = false; });
+      setState(() => _swipeOffset = 0);
+      widget.onSwiped(false);
     }
   }
-  
-  void _deleteEntry() {
-  // Firestore-Eintrag ebenfalls löschen (wenn vorhanden)
-  _deleteFromFirestore(widget.entry.rawText);
-  // Lokalen Eintrag löschen
-  SpeechLog.deleteEntry(widget.entry);
-  widget.onDeleted();
-}
 
-Future<void> _deleteFromFirestore(String rawText) async {
-  try {
-    final query = await FirebaseFirestore.instance
-        .collection('speech_logs')
-        .where('rawText', isEqualTo: rawText)
-        .where('status', isEqualTo: 'pending')
-        .limit(1)
-        .get();
-    for (final doc in query.docs) {
-      await doc.reference.delete();
-    }
-  } catch (e) {
-    debugPrint('SpeechLog: Firestore-Sync-Delete fehlgeschlagen: $e');
+  void _close() {
+    setState(() => _swipeOffset = 0);
+    widget.onSwiped(false);
   }
-}
+
+  void _deleteEntry() {
+    // Reihenfolge bewusst: erst Firestore (braucht noch die ID aus dem
+    // Eintrag), dann lokal löschen.
+    _deleteFromFirestore(widget.entry.firestoreId);
+    SpeechLog.deleteEntry(widget.entry);
+    widget.onDeleted();
+  }
+
+  Future<void> _deleteFromFirestore(String? firestoreId) async {
+    // Kein Firestore-Doc verknüpft (z.B. Eintrag war von Anfang an
+    // vollständig erkannt und wurde nie hochgeladen, oder Upload ist
+    // damals fehlgeschlagen) → nichts zu tun, kein Fehler.
+    if (firestoreId == null || firestoreId.isEmpty) return;
+    try {
+      await FirebaseFirestore.instance
+          .collection('speech_logs')
+          .doc(firestoreId)
+          .delete();
+    } catch (e) {
+      // Bewusst stumm — z.B. kein Internet. Der lokale Eintrag wird trotzdem
+      // gelöscht; der Firestore-Eintrag bleibt dann verwaist liegen, was
+      // unkritisch ist (er wird einfach nie zu einer Regel).
+      debugPrint('SpeechLog: Firestore-Sync-Delete fehlgeschlagen: $e');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -452,50 +504,58 @@ Future<void> _deleteFromFirestore(String rawText) async {
     final color = _statusColor;
     final timeStr = DateFormat('dd.MM. HH:mm').format(entry.timestamp);
     final normalizerChanged = entry.rawText != entry.normalized;
+    final isOpen = widget.isOpen;
 
-    return GestureDetector(
-      onHorizontalDragStart: _onPanStart,
-      onHorizontalDragUpdate: _onPanUpdate,
-      onHorizontalDragEnd: _onPanEnd,
-      onTap: _isOpen
-          ? () => setState(() { _swipeOffset = 0; _isOpen = false; })
-          : () => setState(() => _expanded = !_expanded),
-      child: ClipRect(
-        child: Stack(
-          clipBehavior: Clip.hardEdge,
-          children: [
-            // Rote Löschen-Fläche
-            Positioned(
-              right: 0, top: 2, bottom: 2, width: _revealWidth,
-              child: Opacity(
-                opacity: (_swipeOffset.abs() / _revealWidth).clamp(0.0, 1.0),
-                child: GestureDetector(
-                  onTap: _deleteEntry,
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(14),
-                    child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                      child: Container(
-                        margin: const EdgeInsets.only(left: 6),
-                        decoration: BoxDecoration(
-                          color: skin.deleteColor.withValues(alpha: 0.10),
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: skin.deleteColor.withValues(alpha: 0.22)),
-                        ),
-                        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                          Icon(Icons.delete_outline, color: skin.deleteColor, size: 20),
-                          const SizedBox(height: 3),
-                          Text('Löschen', style: TextStyle(color: skin.deleteColor, fontSize: 10, fontWeight: FontWeight.w600)),
-                        ]),
+    return ClipRect(
+      child: Stack(
+        clipBehavior: Clip.hardEdge,
+        children: [
+          // ── Rote Löschen-Fläche: eigener GestureDetector, NICHT vom
+          // äußeren Card-Tap überdeckt. Das ist der Kernfix: vorher lag ein
+          // GestureDetector mit onTap um den GESAMTEN Stack inkl. diesem
+          // roten Bereich, wodurch der äußere Tap (Slider schließen) den
+          // Lösch-Tap im roten Bereich verschluckt hat.
+          Positioned(
+            right: 0,
+            top: 2,
+            bottom: 2,
+            width: _revealWidth,
+            child: Opacity(
+              opacity: (_swipeOffset.abs() / _revealWidth).clamp(0.0, 1.0),
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _deleteEntry,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(14),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                    child: Container(
+                      margin: const EdgeInsets.only(left: 6),
+                      decoration: BoxDecoration(
+                        color: skin.deleteColor.withValues(alpha: 0.10),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: skin.deleteColor.withValues(alpha: 0.22)),
                       ),
+                      child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                        Icon(Icons.delete_outline, color: skin.deleteColor, size: 20),
+                        const SizedBox(height: 3),
+                        Text('Löschen', style: TextStyle(color: skin.deleteColor, fontSize: 10, fontWeight: FontWeight.w600)),
+                      ]),
                     ),
                   ),
                 ),
               ),
             ),
-            // Karten-Inhalt
-            Transform.translate(
-              offset: Offset(_swipeOffset, 0),
+          ),
+          // ── Karten-Inhalt: bekommt seinen EIGENEN Tap/Drag-Handler.
+          // Wenn offen → Tap schließt nur. Wenn geschlossen → Tap expandiert.
+          Transform.translate(
+            offset: Offset(_swipeOffset, 0),
+            child: GestureDetector(
+              onHorizontalDragStart: _onPanStart,
+              onHorizontalDragUpdate: _onPanUpdate,
+              onHorizontalDragEnd: _onPanEnd,
+              onTap: isOpen ? _close : () => setState(() => _expanded = !_expanded),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(14),
                 child: BackdropFilter(
@@ -568,8 +628,8 @@ Future<void> _deleteFromFirestore(String rawText) async {
                 ),
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
