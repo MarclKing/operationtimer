@@ -170,10 +170,10 @@ class SpeechNormalizer {
     var titel = _stripInfinitive(daranNachM.group(2)!.trim());
     if (_looksLikeDateOrEmpty(dateWindow)) {
       final datePart = dateWindow.isNotEmpty ? ' $dateWindow' : '';
-      return 'Erinnere mich$datePart an: $titel';
+      return 'Erinnere mich$datePart an: ${_stripInfinitive(titel)}';
     }
     // dateWindow ist kein Datum → alles als Titel
-    return 'Erinnere mich an: $dateWindow $titel';
+    return 'Erinnere mich an: ${_stripInfinitive("$dateWindow $titel")}';
   }
 
   // ── "Erinnere mich daran [DATUM] an [TITEL]" ─────────────────────────
@@ -504,17 +504,19 @@ return 'Füge die Aufgabe ${_stripInfinitive(cleanRest.isEmpty ? rest : cleanRes
   return s
       // "Dienstplan zu schreiben" → "Dienstplan"
       .replaceFirstMapped(
-      RegExp(r'(\w+\s+\w+)\s+zu\s+(\w+en)\s*$', caseSensitive: false),
+      RegExp(r'([\wäöüßÄÖÜ]+\s+[\wäöüßÄÖÜ]+)\s+zu\s+([\wäöüßÄÖÜ]+en)\s*$', caseSensitive: false),
       (m) => '${m.group(1)!} ${m.group(2)!}',
     )
-    // "Dienstplan zu schreiben" → "Dienstplan"  (einzelnes Wort vor "zu": Verb fällt weg)
-    .replaceFirstMapped(
-      RegExp(r'^(\w+)\s+zu\s+\w+en\s*$', caseSensitive: false),
-      (m) => m.group(1)!,
-    )
+    // "Dienstplan zu schreiben" → "Dienstplan schreiben"
+// NUR wenn das erste Wort ein bekanntes Nomen-artiges Token ist,
+// nicht bei Objekten wie "Auto zu waschen" → "Auto waschen"
+.replaceFirstMapped(
+  RegExp(r'^([\wäöüßÄÖÜ]+)\s+zu\s+([\wäöüßÄÖÜ]+en)\s*$', caseSensitive: false),
+  (m) => '${m.group(1)!} ${m.group(2)!}',
+)
       .replaceFirstMapped(
-        RegExp(r'\bmit(zu)(\w+en)\b', caseSensitive: false),
-        (m) => 'mit${m.group(2)}',
+        RegExp(r'\b(mit|auf|an|ab|ein|aus|um|vor|zu|nach|über|durch)(zu)([\wäöüßÄÖÜ]+en)\b', caseSensitive: false),
+        (m) => '${m.group(1)}${m.group(3)}',
       )
       .replaceFirst(
         RegExp(

@@ -322,26 +322,26 @@ class _StatTile extends StatelessWidget {
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
           child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 10),
+            padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 8),
             decoration: BoxDecoration(
               color: color.withValues(alpha: skin.isLight ? 0.07 : 0.12),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: color.withValues(alpha: 0.22)),
             ),
             child: Column(
-              children: [
-                Text(
-                  value,
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: color),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  label,
-                  style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w600, color: color.withValues(alpha: 0.7)),
-                  textAlign: TextAlign.center,
-                ),
-              ],
-            ),
+  children: [
+    Text(
+      value,
+      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: color),
+    ),
+    const SizedBox(height: 1),
+    Text(
+      label,
+      style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: color.withValues(alpha: 0.7)),
+      textAlign: TextAlign.center,
+    ),
+  ],
+),
           ),
         ),
       ),
@@ -397,8 +397,8 @@ class _FilterChip extends StatelessWidget {
 class _LogEntryCard extends StatefulWidget {
   final AppSkin skin;
   final SpeechLogEntry entry;
-  final bool isOpen; // ← von außen gesteuert: ist DIESE Karte die aktuell offene?
-  final void Function(bool opened) onSwiped; // ← meldet dem Parent Öffnen/Schließen
+  final bool isOpen;
+  final void Function(bool opened) onSwiped;
   final VoidCallback onDeleted;
   const _LogEntryCard({
     required this.skin,
@@ -412,7 +412,8 @@ class _LogEntryCard extends StatefulWidget {
   State<_LogEntryCard> createState() => _LogEntryCardState();
 }
 
-class _LogEntryCardState extends State<_LogEntryCard> {
+class _LogEntryCardState extends State<_LogEntryCard>
+    with TickerProviderStateMixin {
   bool _expanded = false;
   double _swipeOffset = 0.0;
   static const double _revealWidth = 80.0;
@@ -420,17 +421,72 @@ class _LogEntryCardState extends State<_LogEntryCard> {
   bool _dragging = false;
   double _dragStartX = 0, _dragStartY = 0;
 
+  // ── Lösch-Animation (identisch zu _SlidableRow in month_screen.dart) ──
+  late AnimationController _deleteAnimController;
+  late Animation<double> _slideAnim;
+  late Animation<double> _fadeAnim;
+  late Animation<double> _heightAnim;
+  late Animation<double> _deleteScaleAnim;
+  late Animation<double> _deleteFadeAnim;
+
   Color get _statusColor {
     if (widget.entry.isFullSuccess) return const Color(0xFF5BCB8F);
-    if (widget.entry.normalizerHit && !widget.entry.hasDate) return const Color(0xFFFFB347);
+    if (widget.entry.normalizerHit && !widget.entry.hasDate)
+      return const Color(0xFFFFB347);
     return const Color(0xFFEF5B5B);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _deleteAnimController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 550),
+    );
+    _slideAnim = Tween<double>(begin: 0, end: -440).animate(
+      CurvedAnimation(
+        parent: _deleteAnimController,
+        curve: const Interval(0.0, 0.65, curve: Curves.easeInBack),
+      ),
+    );
+    _fadeAnim = Tween<double>(begin: 1, end: 0).animate(
+      CurvedAnimation(
+        parent: _deleteAnimController,
+        curve: const Interval(0.3, 0.75, curve: Curves.easeOut),
+      ),
+    );
+    _heightAnim = Tween<double>(begin: 1, end: 0).animate(
+      CurvedAnimation(
+        parent: _deleteAnimController,
+        curve: const Interval(0.65, 1.0, curve: Curves.easeInOut),
+      ),
+    );
+    _deleteScaleAnim = Tween<double>(begin: 1, end: 1.18).animate(
+      CurvedAnimation(
+        parent: _deleteAnimController,
+        curve: const Interval(0.0, 0.5, curve: Curves.easeOut),
+      ),
+    );
+    _deleteFadeAnim = Tween<double>(begin: 1, end: 0).animate(
+      CurvedAnimation(
+        parent: _deleteAnimController,
+        curve: const Interval(0.5, 0.85, curve: Curves.easeIn),
+      ),
+    );
+    _deleteAnimController.addListener(() {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _deleteAnimController.dispose();
+    super.dispose();
   }
 
   @override
   void didUpdateWidget(_LogEntryCard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Wenn der Parent meldet, dass eine ANDERE Karte jetzt offen ist (oder
-    // alle geschlossen werden sollen), schließt sich diese Karte automatisch.
     if (!widget.isOpen && oldWidget.isOpen) {
       setState(() => _swipeOffset = 0);
     }
@@ -473,17 +529,15 @@ class _LogEntryCardState extends State<_LogEntryCard> {
   }
 
   void _deleteEntry() {
-    // Reihenfolge bewusst: erst Firestore (braucht noch die ID aus dem
-    // Eintrag), dann lokal löschen.
-    _deleteFromFirestore(widget.entry.firestoreId);
-    SpeechLog.deleteEntry(widget.entry);
-    widget.onDeleted();
+    // Erst animieren, dann wirklich löschen
+    _deleteAnimController.forward().then((_) {
+      _deleteFromFirestore(widget.entry.firestoreId);
+      SpeechLog.deleteEntry(widget.entry);
+      widget.onDeleted();
+    });
   }
 
   Future<void> _deleteFromFirestore(String? firestoreId) async {
-    // Kein Firestore-Doc verknüpft (z.B. Eintrag war von Anfang an
-    // vollständig erkannt und wurde nie hochgeladen, oder Upload ist
-    // damals fehlgeschlagen) → nichts zu tun, kein Fehler.
     if (firestoreId == null || firestoreId.isEmpty) return;
     try {
       await FirebaseFirestore.instance
@@ -491,9 +545,6 @@ class _LogEntryCardState extends State<_LogEntryCard> {
           .doc(firestoreId)
           .delete();
     } catch (e) {
-      // Bewusst stumm — z.B. kein Internet. Der lokale Eintrag wird trotzdem
-      // gelöscht; der Firestore-Eintrag bleibt dann verwaist liegen, was
-      // unkritisch ist (er wird einfach nie zu einer Regel).
       debugPrint('SpeechLog: Firestore-Sync-Delete fehlgeschlagen: $e');
     }
   }
@@ -507,130 +558,210 @@ class _LogEntryCardState extends State<_LogEntryCard> {
     final normalizerChanged = entry.rawText != entry.normalized;
     final isOpen = widget.isOpen;
 
-    return ClipRect(
-      child: Stack(
-        clipBehavior: Clip.hardEdge,
-        children: [
-          // ── Rote Löschen-Fläche: eigener GestureDetector, NICHT vom
-          // äußeren Card-Tap überdeckt. Das ist der Kernfix: vorher lag ein
-          // GestureDetector mit onTap um den GESAMTEN Stack inkl. diesem
-          // roten Bereich, wodurch der äußere Tap (Slider schließen) den
-          // Lösch-Tap im roten Bereich verschluckt hat.
-          Positioned(
-            right: 0,
-            top: 2,
-            bottom: 2,
-            width: _revealWidth,
-            child: Opacity(
-              opacity: (_swipeOffset.abs() / _revealWidth).clamp(0.0, 1.0),
+    return AnimatedBuilder(
+      animation: _deleteAnimController,
+      builder: (context, child) {
+        return SizeTransition(
+          sizeFactor: _heightAnim,
+          axisAlignment: -1,
+          child: Opacity(opacity: _fadeAnim.value, child: child!),
+        );
+      },
+      child: ClipRect(
+        child: Stack(
+          clipBehavior: Clip.hardEdge,
+          children: [
+            // ── Rote Löschen-Fläche ──
+            Positioned(
+              right: 0,
+              top: 2,
+              bottom: 2,
+              width: _revealWidth,
+              child: Opacity(
+                opacity: (_swipeOffset.abs() / _revealWidth).clamp(0.0, 1.0),
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _deleteEntry,
+                  child: Opacity(
+                    opacity: _deleteFadeAnim.value,
+                    child: Transform.scale(
+                      scale: _deleteScaleAnim.value,
+                      alignment: Alignment.center,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(14),
+                        child: BackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                          child: Container(
+                            margin: const EdgeInsets.only(left: 6),
+                            decoration: BoxDecoration(
+                              color: skin.deleteColor.withValues(alpha: 0.10),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                  color: skin.deleteColor.withValues(alpha: 0.22)),
+                              boxShadow: _deleteAnimController.value > 0
+                                  ? [
+                                      BoxShadow(
+                                        color: skin.deleteColor.withValues(
+                                            alpha: 0.5 * _deleteAnimController.value),
+                                        blurRadius: 16 * _deleteAnimController.value,
+                                        spreadRadius: 2 * _deleteAnimController.value,
+                                      )
+                                    ]
+                                  : null,
+                            ),
+                            child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.delete_outline,
+                                      color: skin.deleteColor, size: 20),
+                                  const SizedBox(height: 3),
+                                  Text('Löschen',
+                                      style: TextStyle(
+                                          color: skin.deleteColor,
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w600)),
+                                ]),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
+            // ── Karten-Inhalt ──
+            Transform.translate(
+              offset: Offset(_swipeOffset + _slideAnim.value, 0),
               child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: _deleteEntry,
+                onHorizontalDragStart: _onPanStart,
+                onHorizontalDragUpdate: _onPanUpdate,
+                onHorizontalDragEnd: _onPanEnd,
+                onTap: isOpen
+                    ? _close
+                    : () => setState(() => _expanded = !_expanded),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(14),
                   child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                    filter: ImageFilter.blur(
+                        sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
                     child: Container(
-                      margin: const EdgeInsets.only(left: 6),
+                      padding: const EdgeInsets.all(13),
                       decoration: BoxDecoration(
-                        color: skin.deleteColor.withValues(alpha: 0.10),
+                        color: skin.isLight
+                            ? Colors.white.withValues(alpha: skin.glassOpacity)
+                            : skin.bgCard.withValues(alpha: skin.glassOpacity),
                         borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: skin.deleteColor.withValues(alpha: 0.22)),
-                      ),
-                      child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                        Icon(Icons.delete_outline, color: skin.deleteColor, size: 20),
-                        const SizedBox(height: 3),
-                        Text('Löschen', style: TextStyle(color: skin.deleteColor, fontSize: 10, fontWeight: FontWeight.w600)),
-                      ]),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-          // ── Karten-Inhalt: bekommt seinen EIGENEN Tap/Drag-Handler.
-          // Wenn offen → Tap schließt nur. Wenn geschlossen → Tap expandiert.
-          Transform.translate(
-            offset: Offset(_swipeOffset, 0),
-            child: GestureDetector(
-              onHorizontalDragStart: _onPanStart,
-              onHorizontalDragUpdate: _onPanUpdate,
-              onHorizontalDragEnd: _onPanEnd,
-              onTap: isOpen ? _close : () => setState(() => _expanded = !_expanded),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(14),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
-                  child: Container(
-                    padding: const EdgeInsets.all(13),
-                    decoration: BoxDecoration(
-                      color: skin.isLight
-                          ? Colors.white.withValues(alpha: skin.glassOpacity)
-                          : skin.bgCard.withValues(alpha: skin.glassOpacity),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: _expanded ? color.withValues(alpha: 0.35) : skin.glassBorder,
-                        width: _expanded ? 1.3 : 1.0,
-                      ),
-                      boxShadow: [BoxShadow(color: skin.glassShadow, blurRadius: 16, offset: const Offset(0, 4))],
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                            decoration: BoxDecoration(
-                              color: color.withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(6),
-                              border: Border.all(color: color.withValues(alpha: 0.28)),
-                            ),
-                            child: Text(entry.statusLabel,
-                                style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: color)),
-                          ),
-                          const Spacer(),
-                          Text(timeStr, style: TextStyle(fontSize: 11, color: skin.surface(0.35))),
-                          const SizedBox(width: 6),
-                          Icon(_expanded ? Icons.expand_less_rounded : Icons.expand_more_rounded,
-                              size: 16, color: skin.surface(0.3)),
-                        ]),
-                        const SizedBox(height: 8),
-                        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Icon(Icons.mic_none_rounded, size: 12, color: skin.surface(0.35)),
-                          const SizedBox(width: 6),
-                          Expanded(child: Text('"${entry.rawText}"',
-                              style: TextStyle(fontSize: 13, fontStyle: FontStyle.italic,
-                                  color: skin.textPrimary.withValues(alpha: 0.85), height: 1.35),
-                              maxLines: _expanded ? null : 2,
-                              overflow: _expanded ? TextOverflow.visible : TextOverflow.ellipsis)),
-                        ]),
-                        if (_expanded) ...[
-                          const SizedBox(height: 10),
-                          Container(height: 0.5, color: skin.surface(0.10)),
-                          const SizedBox(height: 10),
-                          if (normalizerChanged)
-                            _DetailRow(skin: skin, icon: Icons.auto_fix_high_outlined,
-                                label: 'Normalizer', value: entry.normalized, valueColor: skin.primary)
-                          else
-                            _DetailRow(skin: skin, icon: Icons.auto_fix_off_outlined,
-                                label: 'Normalizer', value: 'Kein Muster erkannt',
-                                valueColor: const Color(0xFFEF5B5B)),
-                          const SizedBox(height: 6),
-                          _DetailRow(skin: skin, icon: Icons.task_alt_outlined,
-                              label: 'Titel', value: entry.parsedTitle, valueColor: skin.textPrimary),
-                          const SizedBox(height: 6),
-                          _DetailRow(skin: skin, icon: Icons.calendar_today_outlined,
-                              label: 'Datum', value: entry.hasDate ? 'Erkannt' : 'Nicht erkannt',
-                              valueColor: entry.hasDate ? const Color(0xFF5BCB8F) : const Color(0xFFEF5B5B)),
+                        border: Border.all(
+                          color: _expanded
+                              ? color.withValues(alpha: 0.35)
+                              : skin.glassBorder,
+                          width: _expanded ? 1.3 : 1.0,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                              color: skin.glassShadow,
+                              blurRadius: 16,
+                              offset: const Offset(0, 4))
                         ],
-                      ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 7, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: color.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(6),
+                                border:
+                                    Border.all(color: color.withValues(alpha: 0.28)),
+                              ),
+                              child: Text(entry.statusLabel,
+                                  style: TextStyle(
+                                      fontSize: 10.5,
+                                      fontWeight: FontWeight.w700,
+                                      color: color)),
+                            ),
+                            const Spacer(),
+                            Text(timeStr,
+                                style:
+                                    TextStyle(fontSize: 11, color: skin.surface(0.35))),
+                            const SizedBox(width: 6),
+                            Icon(
+                                _expanded
+                                    ? Icons.expand_less_rounded
+                                    : Icons.expand_more_rounded,
+                                size: 16,
+                                color: skin.surface(0.3)),
+                          ]),
+                          const SizedBox(height: 8),
+                          Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Icon(Icons.mic_none_rounded,
+                                    size: 12, color: skin.surface(0.35)),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                    child: Text('"${entry.rawText}"',
+                                        style: TextStyle(
+                                            fontSize: 13,
+                                            fontStyle: FontStyle.italic,
+                                            color: skin.textPrimary
+                                                .withValues(alpha: 0.85),
+                                            height: 1.35),
+                                        maxLines: _expanded ? null : 2,
+                                        overflow: _expanded
+                                            ? TextOverflow.visible
+                                            : TextOverflow.ellipsis)),
+                              ]),
+                          if (_expanded) ...[
+                            const SizedBox(height: 10),
+                            Container(height: 0.5, color: skin.surface(0.10)),
+                            const SizedBox(height: 10),
+                            if (normalizerChanged)
+                              _DetailRow(
+                                  skin: skin,
+                                  icon: Icons.auto_fix_high_outlined,
+                                  label: 'Normalizer',
+                                  value: entry.normalized,
+                                  valueColor: skin.primary)
+                            else
+                              _DetailRow(
+                                  skin: skin,
+                                  icon: Icons.auto_fix_off_outlined,
+                                  label: 'Normalizer',
+                                  value: 'Kein Muster erkannt',
+                                  valueColor: const Color(0xFFEF5B5B)),
+                            const SizedBox(height: 6),
+                            _DetailRow(
+                                skin: skin,
+                                icon: Icons.task_alt_outlined,
+                                label: 'Titel',
+                                value: entry.parsedTitle,
+                                valueColor: skin.textPrimary),
+                            const SizedBox(height: 6),
+                            _DetailRow(
+                                skin: skin,
+                                icon: Icons.calendar_today_outlined,
+                                label: 'Datum',
+                                value: entry.hasDate
+                                    ? 'Erkannt'
+                                    : 'Nicht erkannt',
+                                valueColor: entry.hasDate
+                                    ? const Color(0xFF5BCB8F)
+                                    : const Color(0xFFEF5B5B)),
+                          ],
+                        ],
+                      ),
                     ),
                   ),
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

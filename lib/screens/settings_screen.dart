@@ -1898,205 +1898,12 @@ class _ScheduleSettingsScreenState
     extends State<_ScheduleSettingsScreen> {
   bool _dienstplanDevMode = false;
 
-  static int _pinFailCount = 0;
-  static DateTime? _pinCooldownUntil;
-
   @override
   void initState() {
     super.initState();
     final box = Hive.box('einstellungen');
     _dienstplanDevMode =
-        box.get('dienstplan_dev_placeholder', defaultValue: false)
-            as bool;
-  }
-
-  Future<void> _toggleDevMode(bool desiredValue) async {
-    if (!desiredValue) {
-      setState(() => _dienstplanDevMode = false);
-      Hive.box('einstellungen')
-          .put('dienstplan_dev_placeholder', false);
-      return;
-    }
-    final granted = await _showPinDialog();
-    if (granted) {
-      setState(() => _dienstplanDevMode = true);
-      Hive.box('einstellungen')
-          .put('dienstplan_dev_placeholder', true);
-    }
-  }
-
-  Future<bool> _showPinDialog() async {
-    if (_pinCooldownUntil != null &&
-        DateTime.now().isBefore(_pinCooldownUntil!)) {
-      await _showPinBlockedAlert();
-      return false;
-    }
-
-    final skin = AppTheme.of(context);
-    final controller = TextEditingController();
-    bool result = false;
-    bool dialogClosed = false;
-
-    await showDialog(
-      context: context,
-      barrierDismissible: true,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialog) {
-          void trySubmit(String value) {
-            if (value.length != 4 || dialogClosed) return;
-            if (value == '2210') {
-              dialogClosed = true;
-              _pinFailCount = 0;
-              _pinCooldownUntil = null;
-              result = true;
-              Navigator.pop(ctx);
-            } else {
-              _pinFailCount++;
-              controller.clear();
-              if (_pinFailCount >= 3) {
-                dialogClosed = true;
-                _pinCooldownUntil = DateTime.now()
-                    .add(const Duration(minutes: 1));
-                _pinFailCount = 0;
-                Navigator.pop(ctx);
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  _showPinBlockedAlert();
-                });
-              } else {
-                setDialog(() {});
-              }
-            }
-          }
-
-          return GestureDetector(
-            onTap: () => FocusScope.of(ctx).unfocus(),
-            behavior: HitTestBehavior.translucent,
-            child: AlertDialog(
-              backgroundColor: skin.bgCard,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(24)),
-              title: Row(children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFEF5B5B)
-                        .withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(6),
-                    border: Border.all(
-                        color: const Color(0xFFEF5B5B)
-                            .withValues(alpha: 0.3)),
-                  ),
-                  child: const Text('DEV',
-                      style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFFEF5B5B),
-                          letterSpacing: 0.8)),
-                ),
-                const SizedBox(width: 10),
-                Text('Entwickler-Modus',
-                    style: TextStyle(
-                        color: skin.textPrimary,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700)),
-              ]),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Bitte gib den Entwickler-Code ein:',
-                      style: TextStyle(
-                          color: skin.textMuted, fontSize: 13)),
-                  const SizedBox(height: 14),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: skin.surface(0.05),
-                      borderRadius: BorderRadius.circular(14),
-                      border:
-                          Border.all(color: skin.borderSubtle),
-                    ),
-                    child: TextField(
-                      controller: controller,
-                      autofocus: true,
-                      keyboardType: TextInputType.number,
-                      obscureText: true,
-                      maxLength: 4,
-                      inputFormatters: [
-                        FilteringTextInputFormatter.digitsOnly
-                      ],
-                      style: TextStyle(
-                          color: skin.textPrimary,
-                          fontSize: 22,
-                          letterSpacing: 8),
-                      decoration: InputDecoration(
-                        hintText: '••••',
-                        hintStyle: TextStyle(
-                            color: skin.textHint,
-                            letterSpacing: 8),
-                        border: InputBorder.none,
-                        isDense: true,
-                        counterText: '',
-                      ),
-                      textAlign: TextAlign.center,
-                      onChanged: trySubmit,
-                    ),
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () {
-                    dialogClosed = true;
-                    Navigator.pop(ctx);
-                  },
-                  child: Text('Abbrechen',
-                      style: TextStyle(color: skin.textMuted)),
-                ),
-              ],
-            ),
-          );
-        },
-      ),
-    );
-
-    return result;
-  }
-
-  Future<void> _showPinBlockedAlert() async {
-    if (!mounted) return;
-    final skin = AppTheme.of(context);
-    await showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: skin.bgCard,
-        shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(24)),
-        title: Row(children: [
-          const Icon(Icons.lock_outline,
-              color: Color(0xFFEF5B5B), size: 20),
-          const SizedBox(width: 8),
-          Text('Nicht zugelassen',
-              style: TextStyle(
-                  color: skin.textPrimary,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700)),
-        ]),
-        content: Text('PIN zu oft falsch eingegeben.',
-            style: TextStyle(color: skin.textMuted, height: 1.5)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('OK',
-                style: TextStyle(
-                    color: skin.primary,
-                    fontWeight: FontWeight.w700)),
-          ),
-        ],
-      ),
-    );
+        box.get('dienstplan_dev_placeholder', defaultValue: false) as bool;
   }
 
   @override
@@ -2116,20 +1923,29 @@ class _ScheduleSettingsScreenState
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _SettingsTileGroup(skin: skin, children: [
-                      _SettingsSwitchTile(
-                        skin: skin,
-                        icon: Icons.code_rounded,
-                        iconBg: const Color(0xFFEF5B5B),
-                        label: 'Entwickler-Modus',
-                        subtitle: 'Erweiterte Fehlermeldungen beim PDF-Import',
-                        value: _dienstplanDevMode,
-                        isLast: true,
-                        onChanged: _toggleDevMode,
-                      ),
-                    ]),
+                    if (AuthService.instance.isAdmin) ...[
+                      _SettingsTileGroup(skin: skin, children: [
+                        _SettingsSwitchTile(
+                          skin: skin,
+                          icon: Icons.code_rounded,
+                          iconBg: const Color(0xFFEF5B5B),
+                          label: 'Entwickler-Modus',
+                          subtitle:
+                              'Erweiterte Fehlermeldungen beim PDF-Import',
+                          value: _dienstplanDevMode,
+                          isLast: true,
+                          onChanged: (v) {
+                            setState(() => _dienstplanDevMode = v);
+                            Hive.box('einstellungen')
+                                .put('dienstplan_dev_placeholder', v);
+                          },
+                        ),
+                      ]),
+                      const SizedBox(height: 8),
+                    ],
                     const _SectionFootnote(
-                      text: 'Der Dienstplan-Import befindet sich noch in der Beta-Phase.',
+                      text:
+                          'Der Dienstplan-Import befindet sich noch in der Beta-Phase.',
                     ),
                   ],
                 ),
@@ -2254,7 +2070,7 @@ class _DataManagementSettingsScreenState extends State<_DataManagementSettingsSc
                       GlassDropdownButton<int>(
                         value: _fahrtenbuchDeleteMonths,
                         label: 'Fahrtenbuch',
-                        subtitle: 'Einegtragene Fahrten löschen nach',
+                        subtitle: 'Eingetragene Fahrten löschen nach',
                         icon: Icons.directions_car_outlined,
                         iconBg: const Color(0xFF8B8B9E),
                         isLast: true,

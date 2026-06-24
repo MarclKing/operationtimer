@@ -431,21 +431,26 @@ class TasksScreenState extends State<TasksScreen> with TickerProviderStateMixin 
   void _createTaskFromSpeech(ParsedSpokenTask parsed, String logRef) {
     if (_isLikelyDuplicate(parsed)) {
       HapticFeedback.heavyImpact();
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: const Text('⚠️ Ähnliche Aufgabe existiert bereits — trotzdem als neue Aufgabe?'),
-        backgroundColor: AppTheme.of(context).bgCard,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        margin: const EdgeInsets.fromLTRB(16, 0, 16, 100),
-        action: SnackBarAction(
-          label: 'Trotzdem anlegen',
-          onPressed: () => _saveTaskFromSpeech(parsed, logRef),
-        ),
-        duration: const Duration(seconds: 4),
-      ));
+      _showDuplicateDialog(parsed, logRef);
       return;
     }
     _saveTaskFromSpeech(parsed, logRef);
+  }
+
+  Future<void> _showDuplicateDialog(ParsedSpokenTask parsed, String logRef) async {
+    final skin = AppTheme.of(context);
+    final confirmed = await confirmActionDialog(
+      context: context,
+      skin: skin,
+      icon: Icons.content_copy_outlined,
+      title: 'Ähnliche Aufgabe existiert',
+      message: 'Es gibt bereits eine offene Aufgabe mit dem Titel „${parsed.title}". Möchtest du sie trotzdem als neue Aufgabe anlegen?',
+      cancelLabel: 'Abbrechen',
+      confirmLabel: 'Trotzdem anlegen',
+    );
+    if (confirmed == true) {
+      _saveTaskFromSpeech(parsed, logRef);
+    }
   }
 
   void _reviewTaskFromSpeech(ParsedSpokenTask parsed, String logRef) {

@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../theme/app_theme.dart';
 import '../widgets/glass_kit.dart';
 import '../widgets/dictation_fab.dart';
+import '../widgets/glass_dialogs.dart';
 import '../models/relationship_style.dart';
 import '../services/weather_service.dart';
 import 'tasks_screen.dart' show TaskStore, Task;
@@ -123,8 +124,46 @@ class HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   void _createTaskFromSpeech(ParsedSpokenTask parsed, String logRef) {
+  if (_isLikelyDuplicate(parsed)) {
+    HapticFeedback.heavyImpact();
+    _showDuplicateDialog(parsed, logRef);
+    return;
+  }
+  _saveTaskFromSpeech(parsed, logRef);
+}
+
+bool _isLikelyDuplicate(ParsedSpokenTask parsed) {
+  final all = TaskStore.loadAll();
+  final newNorm = parsed.title.toLowerCase().trim();
+  if (newNorm.isEmpty) return false;
+  final newDate = parsed.combinedDateTime;
+  return all.any((t) {
+    if (t.done) return false;
+    final sameTitle = t.title.toLowerCase().trim() == newNorm;
+    if (!sameTitle) return false;
+    if (newDate == null && t.dueDate == null) return true;
+    if (newDate == null || t.dueDate == null) return false;
+    return newDate.year == t.dueDate!.year &&
+        newDate.month == t.dueDate!.month &&
+        newDate.day == t.dueDate!.day;
+  });
+}
+
+Future<void> _showDuplicateDialog(ParsedSpokenTask parsed, String logRef) async {
+  final skin = AppTheme.of(context);
+  final confirmed = await confirmActionDialog(
+    context: context,
+    skin: skin,
+    icon: Icons.content_copy_outlined,
+    title: 'Ähnliche Aufgabe existiert',
+    message: 'Es gibt bereits eine offene Aufgabe mit dem Titel „${parsed.title}". Möchtest du sie trotzdem als neue Aufgabe anlegen?',
+    cancelLabel: 'Abbrechen',
+    confirmLabel: 'Trotzdem anlegen',
+  );
+  if (confirmed == true) {
     _saveTaskFromSpeech(parsed, logRef);
   }
+}
 
   void _reviewTaskFromSpeech(ParsedSpokenTask parsed, String logRef) {
     // Review: navigiere zu Tasks und öffne das Review-Sheet dort
@@ -261,9 +300,10 @@ class HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         child: FadingListView(
           fadeFromBottom: bottomNavHeight + 20,
           child: ListView(
+            physics: const NeverScrollableScrollPhysics(),
             padding: EdgeInsets.zero,
             children: [
-              const SizedBox(height: 56),
+              const SizedBox(height: 36),
 
               FadeTransition(
                 opacity: _greetingFade,
@@ -298,43 +338,43 @@ class HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               ],
 
               // ── Quick-Access Kacheln ──────────────────────────────────────────
-Padding(
-  padding: const EdgeInsets.symmetric(horizontal: 20),
-  child: Row(
-    children: [
-      Expanded(
-        child: _StempeluhrKachel(
-          skin: skin,
-          onNavigateToMonth: widget.onNavigateToMonth,
-        ),
-      ),
-      const SizedBox(width: 10),
-      Expanded(
-        child: _QuickAccessKachel(
-          skin: skin,
-          icon: '🚗',
-          label: 'Neue Fahrt',
-          sublabel: 'KM + Foto →',
-          accentColor: const Color(0xFF2D6CFF),
-          onTap: () {
-            HapticFeedback.mediumImpact();
-            widget.onNavigateToFahrtenbuchNeueFahrt?.call();
-          },
-        ),
-      ),
-      const SizedBox(width: 10),
-      Expanded(
-        child: _DictationTaskKachel(
-          skin: skin,
-          onResult: _createTaskFromSpeech,
-          onNeedsReview: _reviewTaskFromSpeech,
-          onNavigateToTasks: widget.onNavigateToTasks,
-          useDictate: useDictate,
-        ),
-      ),
-    ],
-  ),
-),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: _StempeluhrKachel(
+                        skin: skin,
+                        onNavigateToMonth: widget.onNavigateToMonth,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _QuickAccessKachel(
+                        skin: skin,
+                        icon: '🚗',
+                        label: 'Neue Fahrt',
+                        sublabel: 'KM + Foto →',
+                        accentColor: const Color(0xFF2D6CFF),
+                        onTap: () {
+                          HapticFeedback.mediumImpact();
+                          widget.onNavigateToFahrtenbuchNeueFahrt?.call();
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _DictationTaskKachel(
+                        skin: skin,
+                        onResult: _createTaskFromSpeech,
+                        onNeedsReview: _reviewTaskFromSpeech,
+                        onNavigateToTasks: widget.onNavigateToTasks,
+                        useDictate: useDictate,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
 
               const SizedBox(height: 14),
 
@@ -433,61 +473,61 @@ Padding(
   // ── Wetter ─────────────────────────────────────────────────────────────────
 
   Widget _buildWeatherRow(AppSkin skin) {
-  final box = Hive.box('einstellungen');
-  final weatherEnabled = box.get('homescreen_weather_big', defaultValue: false) as bool;
-  final useGps = box.get('weather_use_gps', defaultValue: true) as bool;
-  // Wenn GPS aktiv → cityName LEER, sonst Stadt aus Settings
-  final cityName = useGps ? '' : (_getWeatherCity() ?? '');
+    final box = Hive.box('einstellungen');
+    final weatherEnabled = box.get('homescreen_weather_big', defaultValue: false) as bool;
+    final useGps = box.get('weather_use_gps', defaultValue: true) as bool;
+    // Wenn GPS aktiv → cityName LEER, sonst Stadt aus Settings
+    final cityName = useGps ? '' : (_getWeatherCity() ?? '');
 
-  return FutureBuilder<WeatherData?>(
-    future: WeatherService.instance.fetchIfNeeded(cityName, useGps: useGps),
-    builder: (context, snapshot) {
-      final data = snapshot.data ?? WeatherService.instance.cached;
-      final weatherIcon = data?.icon ?? '⛅';
-      final tempStr = data?.tempStr ?? '—°';
-      
-      // Intelligente City-Label-Logik:
-      // - GPS-Modus: immer "Aktueller Standort" zeigen (egal was im Cache)
-      // - Stadt-Modus: Stadt aus Cache oder eingestellte Stadt
-      final cityLabel = useGps
-          ? (data != null ? 'Aktueller Standort' : 'Wird geladen…')
-          : (data == null
-              ? (cityName.isNotEmpty ? cityName : 'Stadt nicht gesetzt')
-              : data.city);
-      
-      final detail = data != null
-          ? 'Aktualisiert ${_formatWeatherAge(data.fetchedAt)}'
-          : 'Lädt…';
+    return FutureBuilder<WeatherData?>(
+      future: WeatherService.instance.fetchIfNeeded(cityName, useGps: useGps),
+      builder: (context, snapshot) {
+        final data = snapshot.data ?? WeatherService.instance.cached;
+        final weatherIcon = data?.icon ?? '⛅';
+        final tempStr = data?.tempStr ?? '—°';
+        
+        // Intelligente City-Label-Logik:
+        // - GPS-Modus: immer "Aktueller Standort" zeigen (egal was im Cache)
+        // - Stadt-Modus: Stadt aus Cache oder eingestellte Stadt
+        final cityLabel = useGps
+            ? (data != null ? 'Aktueller Standort' : 'Wird geladen…')
+            : (data == null
+                ? (cityName.isNotEmpty ? cityName : 'Stadt nicht gesetzt')
+                : data.city);
+        
+        final detail = data != null
+            ? 'Aktualisiert ${_formatWeatherAge(data.fetchedAt)}'
+            : 'Lädt…';
 
-      if (weatherEnabled) {
-        return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: _WeatherKachelGross(
-            skin: skin,
-            data: data,
-            icon: weatherIcon,
-            temp: tempStr,
-            city: cityLabel,
-            detail: detail,
-          ),
-        );
-      } else {
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
-          child: Align(
-            alignment: Alignment.centerRight,
-            child: _WeatherChip(
+        if (weatherEnabled) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: _WeatherKachelGross(
               skin: skin,
+              data: data,
               icon: weatherIcon,
               temp: tempStr,
               city: cityLabel,
+              detail: detail,
             ),
-          ),
-        );
-      }
-    },
-  );
-}
+          );
+        } else {
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: _WeatherChip(
+                skin: skin,
+                icon: weatherIcon,
+                temp: tempStr,
+                city: cityLabel,
+              ),
+            ),
+          );
+        }
+      },
+    );
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1191,13 +1231,20 @@ class _WeatherChip extends StatelessWidget {
                       color: skin.textPrimary,
                     ),
                   ),
-                  Text(
-                    city,
-                    style: TextStyle(
-                      fontSize: 9,
-                      color: skin.surface(0.38),
-                      fontWeight: FontWeight.w500,
-                    ),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.location_on, size: 9, color: Color(0xFF5B8DEF)),
+                      const SizedBox(width: 2),
+                      Text(
+                        city,
+                        style: TextStyle(
+                          fontSize: 9,
+                          color: skin.surface(0.38),
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -1208,10 +1255,6 @@ class _WeatherChip extends StatelessWidget {
     );
   }
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// WETTER — Große Kachel (Settings-Toggle: homescreen_weather_big = true)
-// ─────────────────────────────────────────────────────────────────────────────
 
 // ─────────────────────────────────────────────────────────────────────────────
 // WETTER — Große Kachel (Settings-Toggle: homescreen_weather_big = true)
@@ -1234,34 +1277,38 @@ class _WeatherKachelGross extends StatelessWidget {
     required this.detail,
   });
 
-  /// Nächstes Sonnenereignis: gibt (emoji, zeitString) zurück
-  ({String icon, String time, String label})? _nextSunEvent() {
-    final now = DateTime.now();
-    final rise = data?.sunrise;
-    final set  = data?.sunset;
-    if (rise == null && set == null) return null;
+  List<({String time, String label, Color color})> _nextTwoSunEvents() {
+  final now = DateTime.now();
+  final rise = data?.sunrise;
+  final set = data?.sunset;
 
-    // Welches Ereignis liegt als nächstes in der Zukunft?
-    final riseIsFuture = rise != null && rise.isAfter(now);
-    final setIsFuture  = set  != null && set.isAfter(now);
+  // Sammle alle bekannten Events mit Zeitstempel
+  final events = <(DateTime dt, String label, Color color)>[];
 
-    if (riseIsFuture && setIsFuture) {
-      // Beide in der Zukunft → das frühere nehmen
-      return rise.isBefore(set!)
-          ? (icon: '🌅', time: _fmt(rise), label: 'Aufgang')
-          : (icon: '🌇', time: _fmt(set),  label: 'Untergang');
-    }
-    if (riseIsFuture) return (icon: '🌅', time: _fmt(rise!), label: 'Aufgang');
-    if (setIsFuture)  return (icon: '🌇', time: _fmt(set!),  label: 'Untergang');
-    return null; // beide in der Vergangenheit (sollte selten sein)
+  if (rise != null) events.add((rise, 'Aufgang', const Color(0xFFFFA040)));
+  if (set != null) events.add((set, 'Untergang', const Color(0xFFFF6B35)));
+
+  // Morgen-Aufgang schätzen (~24h nach heutigem Aufgang)
+  if (rise != null) {
+    final tomorrowRise = rise.add(const Duration(hours: 24));
+    events.add((tomorrowRise, 'Aufgang', const Color(0xFFFFA040)));
   }
+
+  // Sortieren und nur zukünftige nehmen
+  events.sort((a, b) => a.$1.compareTo(b.$1));
+  final upcoming = events.where((e) => e.$1.isAfter(now)).take(2).toList();
+
+  return upcoming
+      .map((e) => (time: _fmt(e.$1), label: e.$2, color: e.$3))
+      .toList();
+}
 
   String _fmt(DateTime dt) =>
       '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
 
   @override
   Widget build(BuildContext context) {
-    final sunEvent = _nextSunEvent();
+    final sunEvents = _nextTwoSunEvents();
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(18),
@@ -1280,7 +1327,7 @@ class _WeatherKachelGross extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // ── Oberer Bereich ──────────────────────────────────────
+              // ── Oberer Bereich ──────────────────────────────────────────
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -1320,17 +1367,16 @@ class _WeatherKachelGross extends StatelessWidget {
                           ],
                         ),
                         const SizedBox(height: 3),
+                        // Standort mit BLAUEM Pin
                         Row(children: [
-                          Padding(
-                            padding: const EdgeInsets.only(right: 3),
-                            child: Icon(
-                              data?.isGps == true
-                                  ? Icons.location_on
-                                  : Icons.location_city_outlined,
-                              size: 11,
-                              color: skin.surface(0.4),
-                            ),
+                          Icon(
+                            data?.isGps == true
+                                ? Icons.location_on
+                                : Icons.location_city_outlined,
+                            size: 11,
+                            color: const Color(0xFF5B8DEF), // ← BLAU
                           ),
+                          const SizedBox(width: 3),
                           Flexible(
                             child: Text(city,
                                 style: TextStyle(
@@ -1345,35 +1391,21 @@ class _WeatherKachelGross extends StatelessWidget {
                       ],
                     ),
                   ),
-                  // ── Sonnen-Ereignis oben rechts ──────────────────────
-                  if (sunEvent != null)
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(sunEvent.icon, style: const TextStyle(fontSize: 16)),
-                        const SizedBox(height: 2),
-                        Text(sunEvent.time,
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                              color: skin.textPrimary,
-                            )),
-                        Text(sunEvent.label,
-                            style: TextStyle(
-                              fontSize: 9,
-                              color: skin.surface(0.35),
-                              fontWeight: FontWeight.w500,
-                            )),
-                      ],
-                    ),
+
+                  // ── Sonnen-Ereignis: elegant neu designt ──────────────
+                  if (sunEvents.isNotEmpty) ...[
+  const SizedBox(width: 12),
+  _SunEventBadge(
+    skin: skin,
+    events: sunEvents,
+  ),
+],
                 ],
               ),
 
-              // ── Trennlinie + Niederschlag/Wind/Aktualisiert ─────────
+              // ── Trennlinie + Details ─────────────────────────────────
               if (data != null) ...[
                 const SizedBox(height: 12),
-                // ── Strich mit "Aktualisiert" ganz rechts ──────────────
                 Row(
                   children: [
                     Expanded(
@@ -1400,6 +1432,16 @@ class _WeatherKachelGross extends StatelessWidget {
                       label: 'Wind',
                       value: data!.windStr,
                     ),
+                    // NEU: Luftfeuchtigkeit
+                    if (data!.humidityPercent != null) ...[
+                      const SizedBox(width: 20),
+                      _WeatherDetailRow(
+                        skin: skin,
+                        icon: Icons.water_outlined,
+                        label: 'Luftfeuchte',
+                        value: data!.humidityStr,
+                      ),
+                    ],
                   ],
                 ),
               ],
@@ -1407,6 +1449,57 @@ class _WeatherKachelGross extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// NEU: _SunEventBadge — eleganter Sonnenuntergang/Aufgang Badge
+// ────────────────────────────────────────────────────────────────────────────
+
+class _SunEventBadge extends StatelessWidget {
+  final AppSkin skin;
+  final List<({String time, String label, Color color})> events;
+
+  const _SunEventBadge({
+    required this.skin,
+    required this.events,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        for (int i = 0; i < events.length; i++) ...[
+          if (i > 0) const SizedBox(height: 4),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                events[i].label == 'Aufgang'
+                    ? Icons.wb_twilight_rounded
+                    : Icons.wb_sunny_outlined,
+                size: 12,
+                color: events[i].color.withValues(alpha: 0.75),
+              ),
+              const SizedBox(width: 4),
+              Text(
+                events[i].time,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: i == 0
+                      ? skin.textPrimary
+                      : skin.textPrimary.withValues(alpha: 0.45),
+                  letterSpacing: -0.2,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ],
     );
   }
 }
@@ -1648,9 +1741,9 @@ class _DictationTaskKachelState extends State<_DictationTaskKachel>
   }
 
   void _handleLongPressEnd(LongPressEndDetails details) {
-  _fabKey.currentState?.onExternalDragEnd();
-  _fabKey.currentState?.finishListening();
-}
+    _fabKey.currentState?.onExternalDragEnd();
+    _fabKey.currentState?.finishListening();
+  }
 
   void _handleTap() {
     if (_isListening) return;

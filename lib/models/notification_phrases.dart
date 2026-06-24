@@ -96,12 +96,21 @@ const List<String> _greetingVorname = [
   'Schön, dass du da bist.',
   'Hey {name}, los geht\'s in den Tag.',
   'Guten Morgen ☀️',
+  'Moin, {name}! ☕',
+  'Guten Morgen, {name} — schön, dass du da bist.',
+  'Hallo {name}, ein neuer Tag wartet. ☀️',
+  'Hey {name}, guten Morgen!',
+  'Rise & shine, {name}! 🌅',
 ];
 
 const List<String> _greetingFamilie = [
   'Guten Morgen {name}.',
   'Einen guten Morgen, {name}.',
   'Ich hoffe, Sie haben gut geschlafen, {name}.',
+  'Guten Morgen, {name} — schön, Sie zu sehen.',
+  'Einen wunderschönen guten Morgen, {name}.',
+  'Guten Morgen, {name}. Ich hoffe, der Start in den Tag gelingt gut.',
+  'Guten Morgen ☀️',
 ];
 
 List<String> greeting(RelationshipStyle style) {
@@ -137,12 +146,20 @@ const List<String> _subtitleVorname = [
   'Hier ist dein Überblick für heute.',
   'Damit du gut vorbereitet bist.',
   'Ein kurzer Blick auf deinen Tag.',
+  'Was heute auf dich zukommt.',
+  'Dein Tag auf einen Blick.',
+  'Hier ist alles Wichtige für heute.',
+  'Gut vorbereitet in den Tag starten.',
 ];
 
 const List<String> _subtitleFamilie = [
   'Hier ist Ihre Übersicht für den heutigen Tag.',
   'Darf ich Ihnen einen kurzen Überblick geben?',
   'Ihre Tagesübersicht im Folgenden.',
+  'Ihr Tagesüberblick für heute, {name}.',
+  'Alles Wichtige für Ihren heutigen Tag.',
+  'Damit Sie bestens vorbereitet sind.',
+  'Ein kurzer Blick auf Ihren heutigen Tag.',
 ];
 
 List<String> subtitle(RelationshipStyle style) {
@@ -449,11 +466,11 @@ List<String>? taskLine(
 // Nur der BODY variiert je nach Stil und Case.
 // ─────────────────────────────────────────────────────────────────────────────
 
-// ── Fester Titel für alle Reminder-Cases ──
-const String _reminderTitle    = 'Kurze Erinnerung 📌';
-const String _urgentTitle      = 'Dringende Erinnerung 🚨';
+const String _reminderTitle = 'Kurze Erinnerung 📌';
+const String _urgentTitle   = 'Dringende Erinnerung 🚨';
 
-// ── Reminder Body ──
+// ── Reminder Body ──────────────────────────────────────────────────────────
+
 const List<String> _reminderBodyBro = [
   '"{task}" steht an, Bro — kümmer dich drum!',
   '"{task}" wartet auf dich, Bro!',
@@ -466,13 +483,22 @@ const List<String> _reminderBodyBro = [
 const List<String> _reminderBodyVorname = [
   '{name}, "{task}" steht bald an.',
   '"{task}" steht bald an.',
+  'Denk daran, {name}: "{task}" wartet noch auf dich.',
+  '"{task}" sollte bald erledigt sein, {name}.',
+  'Noch nicht vergessen: "{task}" steht noch aus.',
+  '{name}, hast du "{task}" noch auf dem Schirm?',
 ];
 const List<String> _reminderBodyFamilie = [
   '{name}, "{task}" steht bald an.',
   'Für Sie steht "{task}" bald an, {name}.',
+  'Bitte beachten Sie, {name}: "{task}" steht noch aus.',
+  'Darf ich Sie daran erinnern, {name}: "{task}" ist noch offen.',
+  '"{task}" steht in Kürze an, {name} — ich wollte kurz darauf hinweisen.',
+  'Eine freundliche Erinnerung, {name}: "{task}" wartet noch auf Sie.',
 ];
 
-// ── Heute fällig Body ──
+// ── Heute fällig Body ──────────────────────────────────────────────────────
+
 const List<String> _dueTodayBodyBro = [
   '"{task}" ist heute fällig — ran an die Sache!',
   '"{task}" muss heute laufen, Bro!',
@@ -484,13 +510,20 @@ const List<String> _dueTodayBodyBro = [
 const List<String> _dueTodayBodyVorname = [
   '{name}, denk daran: "{task}" ist heute fällig.',
   '"{task}" ist heute fällig.',
+  'Heute ist der Tag für "{task}", {name}.',
+  '"{task}" — heute fällig. Am besten gleich angehen!',
+  '{name}, "{task}" ist heute dran — nicht vergessen!',
 ];
 const List<String> _dueTodayBodyFamilie = [
   'Zur Erinnerung, {name}: "{task}" ist heute fällig.',
   '"{task}" ist heute fällig, {name}.',
+  'Heute ist die Frist für "{task}", {name} — bitte nicht vergessen.',
+  '"{task}" ist für den heutigen Tag vorgesehen, {name}.',
+  'Bitte denken Sie daran, {name}: "{task}" steht heute an.',
 ];
 
-// ── Überfällig Body ──
+// ── Überfällig Body ────────────────────────────────────────────────────────
+
 const List<String> _overdueBodyBro = [
   '"{task}" ist überfällig — schieb das nicht weiter auf!',
   '"{task}" hängt schon überfällig rum, Bro!',
@@ -502,13 +535,20 @@ const List<String> _overdueBodyBro = [
 const List<String> _overdueBodyVorname = [
   '{name}, Achtung: "{task}" ist bereits überfällig.',
   '"{task}" ist bereits überfällig.',
+  '"{task}" hat seine Frist verpasst, {name} — bitte kümmere dich darum.',
+  'Die Frist für "{task}" ist abgelaufen — jetzt aber, {name}!',
+  '"{task}" wartet schon zu lange, {name}.',
 ];
 const List<String> _overdueBodyFamilie = [
   'Bitte beachten Sie, {name}: "{task}" ist überfällig.',
   '"{task}" ist leider bereits überfällig, {name}.',
+  'Die Frist für "{task}" ist verstrichen, {name} — bitte erledigen Sie dies zeitnah.',
+  '"{task}" wartet bereits länger als geplant auf Sie, {name}.',
+  'Darf ich darauf hinweisen, {name}: "{task}" ist überfällig.',
 ];
 
-// ── Dringend Body ──
+// ── Dringend Body ──────────────────────────────────────────────────────────
+
 const List<String> _urgentBodyBro = [
   '"{task}" steht immer noch an, Bro — Zeit, das zu erledigen!',
   '"{task}" wartet weiterhin auf dich.',
@@ -520,20 +560,26 @@ const List<String> _urgentBodyBro = [
 const List<String> _urgentBodyVorname = [
   '{name}, "{task}" ist weiterhin als dringend markiert.',
   '"{task}" steht noch offen und ist dringend.',
+  '"{task}" ist weiterhin offen — bitte nicht vergessen, {name}.',
+  '{name}, "{task}" wartet immer noch — schieb das nicht weiter auf.',
+  '"{task}" ist dringend und noch nicht erledigt, {name}.',
 ];
 const List<String> _urgentBodyFamilie = [
   '"{task}" ist weiterhin als dringend markiert, {name}.',
   'Bitte beachten Sie, {name}, dass "{task}" weiterhin dringend ist.',
+  '"{task}" steht weiterhin aus, {name} — eine zeitnahe Erledigung wäre wünschenswert.',
+  'Darf ich Sie nochmals daran erinnern, {name}: "{task}" ist dringend und noch offen.',
+  '"{task}" wartet weiterhin auf Ihre Aufmerksamkeit, {name}.',
 ];
 
-// ── Getter: Titel (für alle Stile identisch) ──
+// ── Getter: Titel (für alle Stile identisch) ──────────────────────────────
 
-List<String> taskReminderTitle(RelationshipStyle style) => [_reminderTitle];
-List<String> taskDueTodayTitle(RelationshipStyle style) => [_reminderTitle];
-List<String> taskOverdueTitle(RelationshipStyle style)  => [_reminderTitle];
+List<String> taskReminderTitle(RelationshipStyle style)        => [_reminderTitle];
+List<String> taskDueTodayTitle(RelationshipStyle style)        => [_reminderTitle];
+List<String> taskOverdueTitle(RelationshipStyle style)         => [_reminderTitle];
 List<String> taskUrgentRecurringTitle(RelationshipStyle style) => [_urgentTitle];
 
-// ── Getter: Body (stilabhängig) ──
+// ── Getter: Body (stilabhängig) ───────────────────────────────────────────
 
 List<String> taskReminderBody(RelationshipStyle style) => switch (style) {
   RelationshipStyle.bro     => _reminderBodyBro,

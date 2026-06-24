@@ -662,24 +662,31 @@ class DienstplanParser {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _NoteData {
-  String phone; String text;
+  String phone;
+  String text;
   _NoteData({this.phone = '', this.text = ''});
-
+ 
   static String _hiveKey(String dateKey) => 'schedule_note_$dateKey';
-
+ 
   static _NoteData load(String dateKey) {
     final box = Hive.box('einstellungen');
     final raw = box.get(_hiveKey(dateKey));
-    if (raw is Map) return _NoteData(phone: (raw['phone'] ?? '') as String, text: (raw['text'] ?? '') as String);
+    if (raw is Map) {
+      return _NoteData(
+        phone: (raw['phone'] ?? '') as String,
+        text: (raw['text'] ?? '') as String,
+      );
+    }
     return _NoteData();
   }
-
-  static void save(String dateKey, String phone, String text) {
-  final box = Hive.box('einstellungen');
-  box.put(_hiveKey(dateKey), {'phone': phone, 'text': text});
-  box.flush(); // ← Erzwingt sofortiges Schreiben auf Disk
-}
-
+ 
+  // NEU: static Future<void> statt void, und await flush()
+  static Future<void> save(String dateKey, String phone, String text) async {
+    final box = Hive.box('einstellungen');
+    await box.put(_hiveKey(dateKey), {'phone': phone, 'text': text});
+    await box.flush(); // ← await ist entscheidend!
+  }
+ 
   bool get isEmpty => phone.isEmpty && text.isEmpty;
 }
 
@@ -1203,11 +1210,11 @@ class _NoteOverlayState extends State<_NoteOverlay> with TickerProviderStateMixi
   }
 
   void _saveAndClose() {
-  // Erst speichern, DANN schließen
-  _NoteData.save(widget.dateKey, _phoneCtrl.text.trim(), _textCtrl.text.trim());
-  _ctrl.reverse().then((_) => widget.onClose());
-  ScheduleScreenState.pushScheduleToWidget(); // bleibt wie es ist
-}
+     // Fire-and-forget aber mit await intern
+     _NoteData.save(widget.dateKey, _phoneCtrl.text.trim(), _textCtrl.text.trim())
+         .then((_) => ScheduleScreenState.pushScheduleToWidget());
+     _ctrl.reverse().then((_) => widget.onClose());
+   }
 
   void _dismissKeyboard() { _phoneFocus.unfocus(); _textFocus.unfocus(); }
 

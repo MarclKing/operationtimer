@@ -15,7 +15,8 @@ class WeatherData {
   final DateTime fetchedAt;
   final DateTime? sunrise;   // Sonnenaufgang
   final DateTime? sunset;    // Sonnenuntergang
-  final bool isDay;          // NEU: Tag/Nacht-Status
+  final bool isDay;          // Tag/Nacht-Status
+  final int? humidityPercent;   // Luftfeuchtigkeit in %
 
   const WeatherData({
     required this.tempC,
@@ -28,6 +29,7 @@ class WeatherData {
     this.sunrise,
     this.sunset,
     required this.isDay,
+    this.humidityPercent,
   });
 
   String get icon {
@@ -65,6 +67,7 @@ class WeatherData {
   String get precipStr => precipitationMm > 0
       ? '${precipitationMm.toStringAsFixed(1)} mm'
       : 'kein';
+  String get humidityStr => humidityPercent != null ? '$humidityPercent%' : '—';
 
   bool get isStale =>
       DateTime.now().difference(fetchedAt).inMinutes > 30;
@@ -92,7 +95,8 @@ class WeatherData {
     'fetchedAt': fetchedAt.toIso8601String(),
     'sunrise': sunrise?.toIso8601String(),
     'sunset': sunset?.toIso8601String(),
-    'isDay': isDay, // NEU
+    'isDay': isDay,
+    'humidityPercent': humidityPercent,
   };
 
   factory WeatherData.fromJson(Map<String, dynamic> j) => WeatherData(
@@ -105,7 +109,8 @@ class WeatherData {
     fetchedAt: DateTime.parse(j['fetchedAt'] as String),
     sunrise: j['sunrise'] != null ? DateTime.parse(j['sunrise'] as String) : null,
     sunset: j['sunset'] != null ? DateTime.parse(j['sunset'] as String) : null,
-    isDay: (j['isDay'] as bool? ?? true), // NEU
+    isDay: (j['isDay'] as bool? ?? true),
+    humidityPercent: j['humidityPercent'] as int?,
   );
 }
 
@@ -225,7 +230,7 @@ class WeatherService {
       'https://api.open-meteo.com/v1/forecast'
       '?latitude=$lat&longitude=$lon'
       '&current=temperature_2m,apparent_temperature,weather_code,'
-      'precipitation,wind_speed_10m,is_day'  // is_day hinzugefügt
+      'precipitation,wind_speed_10m,is_day,relative_humidity_2m'
       '&daily=sunrise,sunset'
       '&timezone=auto',
     );
@@ -238,7 +243,8 @@ class WeatherService {
     final cur = wJson['current'] as Map<String, dynamic>;
 
     // ── is_day parsen ──────────────────────────────────────────────────────
-    final isDay = (cur['is_day'] as int? ?? 1) == 1; // NEU
+    final isDay = (cur['is_day'] as int? ?? 1) == 1;
+    final humidity = cur['relative_humidity_2m'] as int?;
 
     // ── Sunrise/Sunset parsen ──────────────────────────────────────────────
     DateTime? sunrise, sunset;
@@ -262,7 +268,8 @@ class WeatherService {
       fetchedAt: DateTime.now(),
       sunrise: sunrise,
       sunset: sunset,
-      isDay: isDay, // NEU
+      isDay: isDay,
+      humidityPercent: humidity,
     );
   }
 

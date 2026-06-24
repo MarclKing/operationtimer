@@ -325,6 +325,52 @@ final testCases = <TestCase>[
     expectedDateOffsetDays: 7,
     note: '"in einer Woche" als Datum — RelativDatum-Variante',
   ),
+  // ── Datum + Uhrzeit kombiniert ────────────────────────────────────────────
+  TestCase(
+    input: 'Erinnere mich morgen um 14:30 an: Meeting',
+    expectedTitleContains: 'Meeting',
+    expectedDateOffsetDays: 1,
+    expectedHour: 14,
+    expectedMinute: 30,
+    note: 'Datum + exakte Uhrzeit mit Doppelpunkt',
+  ),
+  TestCase(
+    input: 'Erinnere mich übermorgen abends an: Zahnarzt',
+    expectedTitleContains: 'Zahnarzt',
+    expectedDateOffsetDays: 2,
+    expectedHour: 19,
+    note: '"abends" nach Datum',
+  ),
+
+  // ── daran + Datum + Uhrzeit ───────────────────────────────────────────────
+  TestCase(
+    input: 'Erinnere mich morgen Abend daran den Vertrag zu unterschreiben',
+    expectedTitleContains: 'Vertrag unterschreiben',
+    expectedDateOffsetDays: 1,
+    expectedHour: 19,
+    note: '"daran" nach Datum+Uhrzeit, Infinitiv mit Umlaut-Verb',
+  ),
+
+  // ── _stripInfinitive Grenzfälle ───────────────────────────────────────────
+  TestCase(
+    input: 'Erinnere mich morgen daran die Wohnung aufzuräumen',
+    expectedTitleContains: 'Wohnung aufräumen',
+    expectedDateOffsetDays: 1,
+    note: 'Infinitiv mit Umlaut: "aufzuräumen"',
+  ),
+  TestCase(
+    input: 'Ich muss die Küche zu erledigen',
+    expectedTitleContains: 'Küche',
+    note: '"zu erledigen" soll gestrippt werden',
+  ),
+
+  // ── _buildFuegeAufgabe Datum am Ende ─────────────────────────────────────
+  TestCase(
+    input: 'Ich muss Sport treiben morgen früh',
+    expectedTitleContains: 'Sport treiben',
+    expectedDateOffsetDays: 1,
+    note: 'Datum nach Titel in _buildFuegeAufgabe',
+  ),
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
