@@ -35,7 +35,14 @@ class _ExportHinweiseScreenState extends State<ExportHinweiseScreen> {
     children: [
       GestureDetector(
         onTap: () => Navigator.pop(context),
-        child: Icon(Icons.arrow_back_ios_new_rounded, size: 20, color: skin.textPrimary),
+        behavior: HitTestBehavior.opaque,
+        child: const SizedBox(
+          width: 48,
+          height: 48,
+          child: Center(
+            child: Icon(Icons.arrow_back_ios_new_rounded, size: 20),
+          ),
+        ),
       ),
       const SizedBox(width: 14),
       Text('Exportanleitung',

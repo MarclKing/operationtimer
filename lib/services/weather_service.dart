@@ -13,8 +13,9 @@ class WeatherData {
   final double windKmh;
   final String city;       // 'GPS' wenn per Standort
   final DateTime fetchedAt;
-  final DateTime? sunrise;   // NEU: Sonnenaufgang
-  final DateTime? sunset;    // NEU: Sonnenuntergang
+  final DateTime? sunrise;   // Sonnenaufgang
+  final DateTime? sunset;    // Sonnenuntergang
+  final bool isDay;          // NEU: Tag/Nacht-Status
 
   const WeatherData({
     required this.tempC,
@@ -26,9 +27,25 @@ class WeatherData {
     required this.fetchedAt,
     this.sunrise,
     this.sunset,
+    required this.isDay,
   });
 
   String get icon {
+    if (!isDay) {
+      // Nacht-Icons
+      if (weatherCode == 0) return '🌙';
+      if (weatherCode <= 2) return '🌙';
+      if (weatherCode == 3) return '☁️';
+      if (weatherCode <= 49) return '🌫️';
+      if (weatherCode <= 59) return '🌦️';
+      if (weatherCode <= 69) return '🌧️';
+      if (weatherCode <= 79) return '❄️';
+      if (weatherCode <= 82) return '🌧️';
+      if (weatherCode <= 86) return '🌨️';
+      if (weatherCode <= 99) return '⛈️';
+      return '🌙';
+    }
+    // Tag-Icons
     if (weatherCode == 0) return '☀️';
     if (weatherCode <= 2) return '⛅';
     if (weatherCode == 3) return '☁️';
@@ -75,6 +92,7 @@ class WeatherData {
     'fetchedAt': fetchedAt.toIso8601String(),
     'sunrise': sunrise?.toIso8601String(),
     'sunset': sunset?.toIso8601String(),
+    'isDay': isDay, // NEU
   };
 
   factory WeatherData.fromJson(Map<String, dynamic> j) => WeatherData(
@@ -87,6 +105,7 @@ class WeatherData {
     fetchedAt: DateTime.parse(j['fetchedAt'] as String),
     sunrise: j['sunrise'] != null ? DateTime.parse(j['sunrise'] as String) : null,
     sunset: j['sunset'] != null ? DateTime.parse(j['sunset'] as String) : null,
+    isDay: (j['isDay'] as bool? ?? true), // NEU
   );
 }
 
@@ -206,8 +225,8 @@ class WeatherService {
       'https://api.open-meteo.com/v1/forecast'
       '?latitude=$lat&longitude=$lon'
       '&current=temperature_2m,apparent_temperature,weather_code,'
-      'precipitation,wind_speed_10m'
-      '&daily=sunrise,sunset'    // NEU: Sonnenzeiten abrufen
+      'precipitation,wind_speed_10m,is_day'  // is_day hinzugefügt
+      '&daily=sunrise,sunset'
       '&timezone=auto',
     );
     final wResp = await http
@@ -217,6 +236,9 @@ class WeatherService {
     if (wResp.statusCode != 200) return null;
     final wJson = jsonDecode(wResp.body) as Map<String, dynamic>;
     final cur = wJson['current'] as Map<String, dynamic>;
+
+    // ── is_day parsen ──────────────────────────────────────────────────────
+    final isDay = (cur['is_day'] as int? ?? 1) == 1; // NEU
 
     // ── Sunrise/Sunset parsen ──────────────────────────────────────────────
     DateTime? sunrise, sunset;
@@ -240,6 +262,7 @@ class WeatherService {
       fetchedAt: DateTime.now(),
       sunrise: sunrise,
       sunset: sunset,
+      isDay: isDay, // NEU
     );
   }
 

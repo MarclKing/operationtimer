@@ -206,9 +206,10 @@ class _SettingsHeader extends StatelessWidget {
         children: [
           GestureDetector(
             onTap: onBack,
+            behavior: HitTestBehavior.opaque,
             child: const SizedBox(
-              width: 42,
-              height: 42,
+              width: 48,
+              height: 48,
               child: Center(
                   child: Icon(Icons.arrow_back_ios_new, size: 18)),
             ),

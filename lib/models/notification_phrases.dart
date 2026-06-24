@@ -82,8 +82,24 @@ enum WeatherCategory {
 
 /// Bestimmt die Wetterkategorie aus Code + Temperatur.
 /// `coldThresholdC`: ab welcher Temperatur (inkl.) "kalt" Vorrang bekommt.
-WeatherCategory categoryFor(int weatherCode, double tempC, {double coldThresholdC = 5.0}) {
+WeatherCategory categoryFor(int weatherCode, double tempC, {
+  double coldThresholdC = 5.0,
+  bool isDay = true, // NEU
+}) {
   if (tempC <= coldThresholdC) return WeatherCategory.kalt;
+  if (!isDay) {
+    // Nachts: nur zwischen klar/bewölkt/Niederschlag unterscheiden
+    if (weatherCode == 0) return WeatherCategory.bedeckt; // "klare Nacht" → neutral
+    if (weatherCode <= 2) return WeatherCategory.wechselhaftBewoelkt;
+    if (weatherCode == 3) return WeatherCategory.bedeckt;
+    if (weatherCode <= 49) return WeatherCategory.nebel;
+    if (weatherCode <= 59 || (weatherCode >= 80 && weatherCode <= 82)) return WeatherCategory.regenLeicht;
+    if (weatherCode <= 69) return WeatherCategory.regenStark;
+    if (weatherCode <= 86) return WeatherCategory.schnee;
+    if (weatherCode <= 99) return WeatherCategory.gewitter;
+    return WeatherCategory.bedeckt;
+  }
+  // Tag — wie bisher
   if (weatherCode == 0) return WeatherCategory.sonnig;
   if (weatherCode <= 2) return WeatherCategory.wechselhaftBewoelkt;
   if (weatherCode == 3) return WeatherCategory.bedeckt;
@@ -173,20 +189,19 @@ List<String> subtitle(RelationshipStyle style) {
 // BAUSTEIN: DIENST-ZEILE (Body, Zeile 1)
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Hinweis: P/F ohne Artikel, T/U/X/DA/VK/IS ausgeschrieben oder mit Artikel
 const List<String> _shiftBroWork = [
-  'Heute steht {shift}-Dienst an, Bro.',
+  'Heute steht {shift} an, Bro.',
   'Dein Ding heute: {shift}.',
-  'Auf dich wartet heute {shift}.',
+  'Heute läuft {shift}.',
 ];
-
 const List<String> _shiftVornameWork = [
-  'Heute hast du {shift}-Dienst.',
-  'Dein Dienst heute: {shift}.',
+  'Heute steht {shift} an.',
+  'Heute hast du {shift}.',
 ];
-
 const List<String> _shiftFamilieWork = [
-  'Heute steht für Sie {shift}-Dienst an, {name}.',
-  'Ihr heutiger Dienst, {name}: {shift}.',
+  'Heute steht {shift} an, {name}.',
+  'Für Sie steht heute {shift} an, {name}.',
 ];
 
 const List<String> _shiftBroFree = [
@@ -451,16 +466,16 @@ const List<String> _taskOnePlusManyFamilie = [
 
 // ── Fall: mehrere Aufgaben heute fällig (≥2) — keine Einzelnennung mehr ──
 const List<String> _taskManyBro = [
-  '📌 {count} Aufgaben warten heute auf dich, Bro.',
-  '📌 Heute sind {count} Aufgaben fällig — ran an die Buletten!',
+  '📌 {count} Aufgaben fällig — ran an den Speck!',
+  '📌 {count} Aufgaben heute — los, Bro!',
 ];
 const List<String> _taskManyVorname = [
-  '📌 Heute sind {count} Aufgaben fällig.',
-  '📌 {count} Aufgaben warten heute auf dich.',
+  '📌 {count} Aufgaben heute fällig.',
+  '📌 {count} Aufgaben warten heute.',
 ];
 const List<String> _taskManyFamilie = [
-  '📌 Für den heutigen Tag stehen {count} Aufgaben an.',
-  '📌 Es sind heute {count} Aufgaben fällig.',
+  '📌 {count} Aufgaben stehen heute an.',
+  '📌 Heute sind {count} Aufgaben fällig.',
 ];
 
 // ── Fall: heute nichts fällig, aber andere offene Aufgaben existieren ──

@@ -104,9 +104,10 @@ class _SpeechLogScreenState extends State<SpeechLogScreen> {
                 children: [
                   GestureDetector(
                     onTap: () => Navigator.pop(context),
+                    behavior: HitTestBehavior.opaque,
                     child: const SizedBox(
-                      width: 42,
-                      height: 42,
+                      width: 48,
+                      height: 48,
                       child: Center(
                         child: Icon(Icons.arrow_back_ios_new, size: 18),
                       ),

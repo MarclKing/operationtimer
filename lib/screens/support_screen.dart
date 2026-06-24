@@ -97,9 +97,10 @@ class _SupportScreenState extends State<SupportScreen> {
                     // Zurück — nur Hitbox, kein Rahmen
                     GestureDetector(
                       onTap: () => Navigator.pop(context),
+                      behavior: HitTestBehavior.opaque,
                       child: SizedBox(
-                        width: 42,
-                        height: 42,
+                        width: 48,
+                        height: 48,
                         child: Center(
                           child: Icon(
                             Icons.arrow_back_ios_new,

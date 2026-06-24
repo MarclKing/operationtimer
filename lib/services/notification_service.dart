@@ -397,23 +397,49 @@ class NotificationService {
   /// 'schedule_<yyyy-MM>' → Map<'yyyy-MM-dd', shiftCode>. 'X' (= frei/kein
   /// Eintrag laut DienstplanParser) wird als "frei" behandelt, kein Eintrag
   /// als "kein Dienstplan vorhanden".
-  ({bool hasShift, bool isFree, String? code}) _shiftInfoForDay(DateTime day) {
-    final box = Hive.box('einstellungen');
-    final monthKey = DateFormat('yyyy-MM').format(day);
-    final dayKey = DateFormat('yyyy-MM-dd').format(day);
-    final raw = box.get('schedule_$monthKey');
-    if (raw is Map) {
-      final shift = raw[dayKey];
-      if (shift is String && shift.trim().isNotEmpty) {
-        final trimmed = shift.trim();
-        if (trimmed.toUpperCase() == 'X') {
-          return (hasShift: true, isFree: true, code: null);
-        }
-        return (hasShift: true, isFree: false, code: trimmed);
+  ({bool hasShift, bool isFree, String? code, String? resolvedShift}) _shiftInfoForDay(DateTime day) {
+  final box = Hive.box('einstellungen');
+  final monthKey = DateFormat('yyyy-MM').format(day);
+  final dayKey = DateFormat('yyyy-MM-dd').format(day);
+  final raw = box.get('schedule_$monthKey');
+  if (raw is Map) {
+    final shift = raw[dayKey];
+    if (shift is String && shift.trim().isNotEmpty) {
+      final trimmed = shift.trim().toUpperCase();
+      if (trimmed == 'X') {
+        return (hasShift: true, isFree: true, code: null, resolvedShift: null);
       }
+      return (
+        hasShift: true,
+        isFree: false,
+        code: trimmed,
+        resolvedShift: _resolveShift(trimmed),
+      );
     }
-    return (hasShift: false, isFree: false, code: null);
   }
+  return (hasShift: false, isFree: false, code: null, resolvedShift: null);
+}
+
+/// Löst Dienstcodes in die gewünschten Anzeigestrings auf.
+String _resolveShift(String code) {
+  switch (code) {
+    case 'T':  return 'Tagdienst';
+    case 'U':  return 'Urlaub';
+    case 'X':  return 'einen freien Tag'; // wird nur in isFree-Zweig genutzt
+    // P/F: Kürzel beibehalten
+    case 'P':  return 'P';
+    case 'P1': return 'P1';
+    case 'P2': return 'P2';
+    case 'F':  return 'F';
+    case 'F1': return 'F1';
+    case 'F2': return 'F2';
+    // Weitere Kürzel
+    case 'DA': return 'DA';
+    case 'VK': return 'VK';
+    case 'IS': return 'IS';
+    default:   return code; // unbekannte Codes einfach zeigen
+  }
+}
 
   /// true, wenn für diesen Tag eine Notiz hinterlegt ist (Telefonnummer
   /// oder Text) — identische Hive-Konvention zu _NoteData in
@@ -466,33 +492,37 @@ class NotificationService {
   /// Homescreen) und mappt sie auf eine WeatherCategory. Liefert null, wenn
   /// keine (auch keine veralteten) Wetterdaten vorliegen.
   ({WeatherCategory category, double tempC})? _currentWeatherInfo() {
-    final cached = WeatherService.instance.cached;
-    if (cached == null) return null;
-    final category = categoryFor(cached.weatherCode, cached.tempC);
-    return (category: category, tempC: cached.tempC);
-  }
+  final cached = WeatherService.instance.cached;
+  if (cached == null) return null;
+  final category = categoryFor(
+    cached.weatherCode,
+    cached.tempC,
+    isDay: cached.isDay, // NEU
+  );
+  return (category: category, tempC: cached.tempC);
+}
 
   /// Baut Titel+Subtitle+Body für die Tagesvorschau eines bestimmten Tages.
   NotificationCopy _buildOverviewCopy({required DateTime day}) {
-    final shiftInfo = _shiftInfoForDay(day);
-    final hasNote = _hasNoteForDay(day);
-    final weather = _currentWeatherInfo();
-    final taskInfo = _taskInfoForDay(day);
+  final shiftInfo = _shiftInfoForDay(day);
+  final hasNote = _hasNoteForDay(day);
+  final weather = _currentWeatherInfo();
+  final taskInfo = _taskInfoForDay(day);
 
-    return RelationshipTexts.dailyOverview(
-      style: _style,
-      fullName: _fullName,
-      hasShift: shiftInfo.hasShift,
-      isFree: shiftInfo.isFree,
-      shiftCode: shiftInfo.code,
-      hasNote: hasNote,
-      weatherCategory: weather?.category,
-      weatherTempC: weather?.tempC,
-      dueTodayCount: taskInfo.dueTodayCount,
-      dueTodayTaskTitle: taskInfo.dueTodayTaskTitle,
-      otherOpenCount: taskInfo.otherOpenCount,
-    );
-  }
+  return RelationshipTexts.dailyOverview(
+    style: _style,
+    fullName: _fullName,
+    hasShift: shiftInfo.hasShift,
+    isFree: shiftInfo.isFree,
+    shiftCode: shiftInfo.resolvedShift ?? shiftInfo.code, // aufgelöster String
+    hasNote: hasNote,
+    weatherCategory: weather?.category,
+    weatherTempC: weather?.tempC,
+    dueTodayCount: taskInfo.dueTodayCount,
+    dueTodayTaskTitle: taskInfo.dueTodayTaskTitle,
+    otherOpenCount: taskInfo.otherOpenCount,
+  );
+}
 
   bool _dayHasRelevantContent(DateTime day) {
     final shiftInfo = _shiftInfoForDay(day);
