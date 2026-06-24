@@ -1228,6 +1228,102 @@ class _NoteOverlayState extends State<_NoteOverlay> with TickerProviderStateMixi
 
   AppSkin get skin => widget.skin;
 
+  Widget _buildTasksSection() {
+  final day = DateTime.tryParse(widget.dateKey);
+  if (day == null) return const SizedBox.shrink();
+
+  final tasks = TaskStore.loadAll().where((t) =>
+    !t.done &&
+    t.dueDate != null &&
+    t.dueDate!.year == day.year &&
+    t.dueDate!.month == day.month &&
+    t.dueDate!.day == day.day,
+  ).toList();
+
+  if (tasks.isEmpty) return const SizedBox.shrink();
+
+  final skin = widget.skin;
+
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+        child: Divider(color: skin.glassBorder, height: 1),
+      ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              Icon(Icons.task_alt_outlined, size: 11, color: skin.primary),
+              const SizedBox(width: 4),
+              Text('AUFGABEN', style: TextStyle(
+                fontSize: 9, fontWeight: FontWeight.w700,
+                color: skin.primary, letterSpacing: 0.8,
+              )),
+            ]),
+            const SizedBox(height: 10),
+            ...tasks.map((t) {
+              final isToday = t.isToday;
+              final isOverdue = t.isOverdue;
+              Color timeColor = skin.primary;
+              if (isOverdue) timeColor = const Color(0xFFEF5B5B);
+              else if (isToday) timeColor = const Color(0xFFFFB347);
+
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Container(
+                      width: 16, height: 16,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(color: skin.surface(0.28), width: 1.5),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(t.title,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: skin.textPrimary,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (t.hasTime) ...[
+                      const SizedBox(width: 8),
+                      Text(
+                        '${t.dueDate!.hour.toString().padLeft(2,'0')}:${t.dueDate!.minute.toString().padLeft(2,'0')}',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: timeColor,
+                        ),
+                      ),
+                    ] else if (isOverdue) ...[
+                      const SizedBox(width: 8),
+                      Text('überfällig', style: TextStyle(
+                        fontSize: 11, fontWeight: FontWeight.w600,
+                        color: const Color(0xFFEF5B5B),
+                      )),
+                    ],
+                  ],
+                ),
+              );
+            }),
+          ],
+        ),
+      ),
+    ],
+  );
+}
+
   @override
   Widget build(BuildContext context) {
     final screenH = MediaQuery.of(context).size.height;
@@ -1351,6 +1447,7 @@ class _NoteOverlayState extends State<_NoteOverlay> with TickerProviderStateMixi
                             ),
                           ]),
                         ),
+                        _buildTasksSection(),
                         const SizedBox(height: 18),
                       ],
                     ),
