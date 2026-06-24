@@ -675,8 +675,10 @@ class _NoteData {
   }
 
   static void save(String dateKey, String phone, String text) {
-    Hive.box('einstellungen').put(_hiveKey(dateKey), {'phone': phone, 'text': text});
-  }
+  final box = Hive.box('einstellungen');
+  box.put(_hiveKey(dateKey), {'phone': phone, 'text': text});
+  box.flush(); // ← Erzwingt sofortiges Schreiben auf Disk
+}
 
   bool get isEmpty => phone.isEmpty && text.isEmpty;
 }
@@ -1201,10 +1203,11 @@ class _NoteOverlayState extends State<_NoteOverlay> with TickerProviderStateMixi
   }
 
   void _saveAndClose() {
-    _NoteData.save(widget.dateKey, _phoneCtrl.text.trim(), _textCtrl.text.trim());
-    _ctrl.reverse().then((_) => widget.onClose());
-    ScheduleScreenState.pushScheduleToWidget();
-  }
+  // Erst speichern, DANN schließen
+  _NoteData.save(widget.dateKey, _phoneCtrl.text.trim(), _textCtrl.text.trim());
+  _ctrl.reverse().then((_) => widget.onClose());
+  ScheduleScreenState.pushScheduleToWidget(); // bleibt wie es ist
+}
 
   void _dismissKeyboard() { _phoneFocus.unfocus(); _textFocus.unfocus(); }
 
@@ -2009,24 +2012,25 @@ class _DayCardState extends State<_DayCard> with TickerProviderStateMixin {
           );
         }),
                 Expanded(child: shiftContent),
-        if (widget.entry != null && widget.entry!.shift.isNotEmpty) ...[
-  _isBirthdayDay
-      ? const SizedBox(width: 7, height: 7)
-      : _DayDot(day: widget.day, skin: skin, isChrome: widget.isChrome, isChanged: widget.isChanged),
-  if (hasEvent) ...[
-    const SizedBox(width: 5),
-    Icon(Icons.flag_rounded, size: 11,
-        color: widget.isChrome
-            ? const Color(0xFFFFB347).withValues(alpha: 0.75)
-            : const Color(0xFFFFB347)),
-  ],
+        // NACHHER:
+if (widget.entry != null && widget.entry!.shift.isNotEmpty) ...[
   if (widget.hasTask) ...[
-    const SizedBox(width: 5),
     Icon(Icons.task_alt_rounded, size: 11,
         color: widget.isChrome
             ? const Color(0xFFCCCCCC).withValues(alpha: 0.85)
             : skin.primary.withValues(alpha: 0.7)),
+    const SizedBox(width: 5),
   ],
+  if (hasEvent) ...[
+    Icon(Icons.flag_rounded, size: 11,
+        color: widget.isChrome
+            ? const Color(0xFFFFB347).withValues(alpha: 0.75)
+            : const Color(0xFFFFB347)),
+    const SizedBox(width: 5),
+  ],
+  _isBirthdayDay
+      ? const SizedBox(width: 7, height: 7)
+      : _DayDot(day: widget.day, skin: skin, isChrome: widget.isChrome, isChanged: widget.isChanged),
 ],
       ],
     );

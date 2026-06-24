@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../models/relationship_style.dart';
 import '../models/notification_phrases.dart' show WeatherCategory, categoryFor;
 import 'weather_service.dart';
+import 'package:flutter_timezone/flutter_timezone.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // NOTIFICATION SERVICE
@@ -114,7 +115,12 @@ class NotificationService {
   Future<void> init() async {
     if (_initialized) return;
 
+    // ── Timezone initialisieren ──────────────────────────────────────────────
     tz.initializeTimeZones();
+    
+    // NEU: lokale Timezone setzen, sonst ist tz.local immer UTC
+    final String timeZoneName = await _getLocalTimezoneName();
+    tz.setLocalLocation(tz.getLocation(timeZoneName));
 
     const iosSettings = DarwinInitializationSettings(
       requestAlertPermission: false,
@@ -144,6 +150,16 @@ class NotificationService {
     // App-Update oder erstem Start).
     if (DailyOverviewSettings.enabled && DailyOverviewSettings.mode == 'fixed_time') {
       await scheduleDailyOverview();
+    }
+  }
+
+  /// Holt die lokale Timezone des Geräts.
+  Future<String> _getLocalTimezoneName() async {
+    try {
+      // flutter_timezone package
+      return await FlutterTimezone.getLocalTimezone();
+    } catch (_) {
+      return 'Europe/Berlin'; // Fallback für dein Gerät
     }
   }
 
@@ -497,7 +513,7 @@ String _resolveShift(String code) {
   final category = categoryFor(
     cached.weatherCode,
     cached.tempC,
-    isDay: cached.isDay, // NEU
+    isDay: cached.isDay,
   );
   return (category: category, tempC: cached.tempC);
 }

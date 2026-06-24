@@ -353,7 +353,7 @@ class _RelationshipSheetState extends State<_RelationshipSheet> {
 
                 // ── Frage ─────────────────────────────────────────────────
                 Text(
-                  'Wie würdest Du unser\nVerhältnis beschreiben?',
+                  'Wie möchtest Du unser\nMiteinander erleben?',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 19,
@@ -374,7 +374,7 @@ class _RelationshipSheetState extends State<_RelationshipSheet> {
                 _RelationshipOptionCard(
                   skin: skin,
                   icon: Icons.bolt_rounded,
-                  text: 'Hilf mir einfach bei der Arbeit, Bro!',
+                  text: 'Locker, wir sind doch beides coole Charaktere!',
                   selected: _selected == RelationshipStyle.bro,
                   onTap: () {
                     HapticFeedback.selectionClick();
@@ -399,8 +399,8 @@ class _RelationshipSheetState extends State<_RelationshipSheet> {
                   skin: skin,
                   icon: Icons.workspace_premium_outlined,
                   text: nachname.isEmpty
-                      ? 'Für Dich gehöre ich zur Familie!'
-                      : 'Für Dich gehöre ich zur Familie, $nachname!',
+                      ? 'Beim "Du" sind wir jedenfalls noch nicht angekommen!'
+                      : 'Beim "Du" sind wir jedenfalls noch nicht angekommen!',
                   selected: _selected == RelationshipStyle.familie,
                   onTap: () {
                     HapticFeedback.selectionClick();

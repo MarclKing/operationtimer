@@ -3,44 +3,15 @@ import '../models/relationship_style.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // NOTIFICATION PHRASES — zentrales Phrasenbuch für ALLE Notification-Texte.
-//
-// ZWECK DIESER DATEI:
-// Jeder Textbaustein (Begrüßung, Wetter-Satz, Task-Hinweis, ...) ist eine
-// LISTE von Varianten pro RelationshipStyle. Beim Senden einer Notification
-// wird zufällig EINE Variante aus der passenden Liste gewählt (s. `pick()`).
-//
-// SO ERWEITERST DU DAS SPÄTER:
-// Einfach einen neuen String in die passende Liste einfügen — fertig. Kein
-// anderer Code muss angefasst werden. Du kannst pro Liste beliebig viele
-// Einträge ergänzen, auch nur für einen einzelnen Stil.
-//
-// Beispiel: Mehr "Bro"-Begrüßungen gewünscht? → einfach in `_greetingBro`
-// unten eine neue Zeile einfügen.
-//
-// PLATZHALTER:
-// {name}      → Vorname oder Nachname, je nach Stil (wird vom Aufrufer
-//               bereits eingesetzt, bevor der String genutzt wird — s.
-//               `applyName()`)
-// {temp}      → Temperatur in Grad, z.B. "25°" (nur Wetter-Sätze)
-// {task}      → Titel einer konkreten Aufgabe (nur Task-Sätze)
-// {shift}     → Schichtcode, z.B. "P1" (nur Dienst-Sätze)
-// {count}     → Anzahl offener Aufgaben (nur Sammel-Sätze)
 // ─────────────────────────────────────────────────────────────────────────────
 
 final _rng = Random();
 
-/// Wählt zufällig einen Eintrag aus einer nicht-leeren Liste.
-/// Fällt auf einen Fallback-String zurück, falls die Liste (versehentlich)
-/// leer sein sollte, damit die App nie crasht, nur weil eine Liste mal
-/// kurzzeitig leer ist.
 String pick(List<String> options, {String fallback = ''}) {
   if (options.isEmpty) return fallback;
   return options[_rng.nextInt(options.length)];
 }
 
-/// Ersetzt {name} im String. Bei leerem Namen wird die Lücke entfernt und
-/// umgebende doppelte Leerzeichen/Kommas bereinigt, damit kein "Hey , wie"
-/// entsteht.
 String applyName(String text, String name) {
   if (name.trim().isEmpty) {
     return text
@@ -62,10 +33,6 @@ String applyCount(String text, int count) => text.replaceAll('{count}', count.to
 
 // ─────────────────────────────────────────────────────────────────────────────
 // WETTER-KATEGORIEN
-//
-// Mappt den Open-Meteo weatherCode (s. WeatherData) auf eine grobe Kategorie.
-// Kälte hat Vorrang vor der Wetterlage selbst (s. categoryFor()) — bei
-// niedrigen Temperaturen ist "es ist kalt" wichtiger als "es ist bedeckt".
 // ─────────────────────────────────────────────────────────────────────────────
 
 enum WeatherCategory {
@@ -77,19 +44,16 @@ enum WeatherCategory {
   regenStark,
   schnee,
   gewitter,
-  kalt, // Override bei niedriger Temperatur, unabhängig vom Code
+  kalt,
 }
 
-/// Bestimmt die Wetterkategorie aus Code + Temperatur.
-/// `coldThresholdC`: ab welcher Temperatur (inkl.) "kalt" Vorrang bekommt.
 WeatherCategory categoryFor(int weatherCode, double tempC, {
   double coldThresholdC = 5.0,
-  bool isDay = true, // NEU
+  bool isDay = true,
 }) {
   if (tempC <= coldThresholdC) return WeatherCategory.kalt;
   if (!isDay) {
-    // Nachts: nur zwischen klar/bewölkt/Niederschlag unterscheiden
-    if (weatherCode == 0) return WeatherCategory.bedeckt; // "klare Nacht" → neutral
+    if (weatherCode == 0) return WeatherCategory.bedeckt;
     if (weatherCode <= 2) return WeatherCategory.wechselhaftBewoelkt;
     if (weatherCode == 3) return WeatherCategory.bedeckt;
     if (weatherCode <= 49) return WeatherCategory.nebel;
@@ -99,7 +63,6 @@ WeatherCategory categoryFor(int weatherCode, double tempC, {
     if (weatherCode <= 99) return WeatherCategory.gewitter;
     return WeatherCategory.bedeckt;
   }
-  // Tag — wie bisher
   if (weatherCode == 0) return WeatherCategory.sonnig;
   if (weatherCode <= 2) return WeatherCategory.wechselhaftBewoelkt;
   if (weatherCode == 3) return WeatherCategory.bedeckt;
@@ -119,7 +82,13 @@ const List<String> _greetingBro = [
   'Aufstehen, Schlafmütze ☀️',
   'Yo, Zeit zum Ranklotzen!',
   'Na, ausgeschlafen? Los geht\'s!',
-  'Wakey wakey, Bro!',
+  'Wakey wakey! 🌅',
+  'Moin du Langschläfer! ☕',
+  'Guten Morgen, Schlafmütze!',
+  'Na, Frischling!',
+  'Hallo Sonnenschein, rise & shine!',
+  'Ey, Schnarchnase — der Tag ruft! 📣',
+  'Die Tagwache ruft! 🫡',
 ];
 
 const List<String> _greetingVorname = [
@@ -129,11 +98,6 @@ const List<String> _greetingVorname = [
   'Guten Morgen ☀️',
 ];
 
-// Hinweis: "Familie"-Stil siezt, spricht aber mit dem VORNAMEN an (nicht
-// Nachname + Anrede-Titel) — vermeidet jedes Genus-Problem ("Werter/Werte")
-// und klingt trotzdem persönlich-förmlich, z.B. "Guten Morgen Olaf, Sie
-// haben heute folgenden Dienst." Der Aufrufer übergibt hier also bereits
-// den VORNAMEN als {name}, nicht den Nachnamen.
 const List<String> _greetingFamilie = [
   'Guten Morgen {name}.',
   'Einen guten Morgen, {name}.',
@@ -152,7 +116,7 @@ List<String> greeting(RelationshipStyle style) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// BAUSTEIN: SUBTITLE (zweite Zeile, kleiner Spruch unter der Begrüßung)
+// BAUSTEIN: SUBTITLE
 // ─────────────────────────────────────────────────────────────────────────────
 
 const List<String> _subtitleBro = [
@@ -160,6 +124,13 @@ const List<String> _subtitleBro = [
   'Auf geht\'s, reiß den Tag an dich!',
   'Lass den Laden brennen 🔥',
   'Zeit, Gas zu geben!',
+  'Die Bundesrepublik braucht dich!',
+  'Kann dein Land heute auf dich zählen?',
+  'Dein Kommando zählt auf dich! 🫡',
+  'Der Tag wartet nicht — du schon?',
+  'Heute wird geliefert, nicht gejammert.',
+  'Niemand rettet sich selbst — also los!',
+  'Mach was draus, Bro. 💪',
 ];
 
 const List<String> _subtitleVorname = [
@@ -186,10 +157,9 @@ List<String> subtitle(RelationshipStyle style) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// BAUSTEIN: DIENST-ZEILE (Body, Zeile 1)
+// BAUSTEIN: DIENST-ZEILE
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Hinweis: P/F ohne Artikel, T/U/X/DA/VK/IS ausgeschrieben oder mit Artikel
 const List<String> _shiftBroWork = [
   'Heute steht {shift} an, Bro.',
   'Dein Ding heute: {shift}.',
@@ -208,12 +178,10 @@ const List<String> _shiftBroFree = [
   'Heute ist frei, Bro — genieß es!',
   'Kein Dienst heute, einfach mal chillen.',
 ];
-
 const List<String> _shiftVornameFree = [
   'Heute hast du frei.',
   'Kein Dienst für dich heute.',
 ];
-
 const List<String> _shiftFamilieFree = [
   'Heute haben Sie keinen Dienst, {name}.',
   'Für Sie ist heute dienstfrei, {name}.',
@@ -222,85 +190,37 @@ const List<String> _shiftFamilieFree = [
 const List<String> _shiftBroUnknown = [
   'Kein Dienstplan für heute hinterlegt, Bro.',
 ];
-
 const List<String> _shiftVornameUnknown = [
   'Für heute ist kein Dienst hinterlegt.',
 ];
-
 const List<String> _shiftFamilieUnknown = [
   'Für den heutigen Tag liegt kein Dienst vor.',
 ];
 
-/// `shiftCode` == null → kein Dienstplan-Eintrag vorhanden.
-/// `shiftCode` == 'frei' (oder leer behandelt vom Aufrufer) → dienstfrei.
 List<String> shiftLine(RelationshipStyle style, {required bool hasShift, required bool isFree}) {
   if (!hasShift) {
     switch (style) {
-      case RelationshipStyle.bro:
-        return _shiftBroUnknown;
-      case RelationshipStyle.vorname:
-        return _shiftVornameUnknown;
-      case RelationshipStyle.familie:
-        return _shiftFamilieUnknown;
+      case RelationshipStyle.bro:     return _shiftBroUnknown;
+      case RelationshipStyle.vorname: return _shiftVornameUnknown;
+      case RelationshipStyle.familie: return _shiftFamilieUnknown;
     }
   }
   if (isFree) {
     switch (style) {
-      case RelationshipStyle.bro:
-        return _shiftBroFree;
-      case RelationshipStyle.vorname:
-        return _shiftVornameFree;
-      case RelationshipStyle.familie:
-        return _shiftFamilieFree;
+      case RelationshipStyle.bro:     return _shiftBroFree;
+      case RelationshipStyle.vorname: return _shiftVornameFree;
+      case RelationshipStyle.familie: return _shiftFamilieFree;
     }
   }
   switch (style) {
-    case RelationshipStyle.bro:
-      return _shiftBroWork;
-    case RelationshipStyle.vorname:
-      return _shiftVornameWork;
-    case RelationshipStyle.familie:
-      return _shiftFamilieWork;
+    case RelationshipStyle.bro:     return _shiftBroWork;
+    case RelationshipStyle.vorname: return _shiftVornameWork;
+    case RelationshipStyle.familie: return _shiftFamilieWork;
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// BAUSTEIN: NOTIZ-HINWEIS (Body, nur falls eine Notiz hinterlegt ist)
-// ─────────────────────────────────────────────────────────────────────────────
-
-const List<String> _noteHintBro = [
-  '📝 Schau mal in deine Notizen für heute, Bro.',
-  '📝 Da war doch was — guck in die Notiz von heute.',
-];
-
-const List<String> _noteHintVorname = [
-  '📝 Schau mal in deine Notizen für heute.',
-  '📝 Es gibt eine Notiz für heute — kurz reinschauen lohnt sich.',
-];
-
-const List<String> _noteHintFamilie = [
-  '📝 Für den heutigen Tag liegt eine Notiz vor — ein Blick lohnt sich.',
-  '📝 Bitte beachten Sie die Notiz für den heutigen Tag.',
-];
-
-List<String> noteHintLine(RelationshipStyle style) {
-  switch (style) {
-    case RelationshipStyle.bro:
-      return _noteHintBro;
-    case RelationshipStyle.vorname:
-      return _noteHintVorname;
-    case RelationshipStyle.familie:
-      return _noteHintFamilie;
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// BAUSTEIN: WETTER-ZEILE (Body)
-//
-// Ganze Sätze mit {temp}-Platzhalter, gruppiert nach Wetterkategorie. Pro
-// Kategorie reichen wenige Varianten (1-3), da das Wetter selbst täglich
-// für Abwechslung sorgt — die Kategorie bestimmt den Satz, die Temperatur
-// ist nur eine Ergänzung darin.
+// BAUSTEIN: WETTER-ZEILE
 // ─────────────────────────────────────────────────────────────────────────────
 
 const Map<WeatherCategory, List<String>> _weatherBro = {
@@ -415,19 +335,9 @@ List<String> weatherLine(RelationshipStyle style, WeatherCategory category) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// BAUSTEIN: AUFGABEN-ZEILE (Body, letzte Zeile der Tagesvorschau)
-//
-// Drei Fälle:
-//  - genau 1 Aufgabe heute fällig    → konkreten Titel nennen
-//  - mehrere Aufgaben heute fällig   → Anzahl nennen
-//  - keine Aufgabe heute, aber andere offene Aufgaben existieren
-//                                     → genereller Hinweis, mal in Aufgaben
-//                                       vorbeizuschauen
-//  - gar keine offenen Aufgaben      → kein Hinweis nötig (Aufrufer lässt
-//                                       die Zeile in diesem Fall einfach weg)
+// BAUSTEIN: AUFGABEN-ZEILE
 // ─────────────────────────────────────────────────────────────────────────────
 
-// ── Fall: genau 1 Aufgabe heute fällig, keine anderen offenen Aufgaben ──
 const List<String> _taskOneOnlyBro = [
   '📌 Heute steht an: {task}.',
   '📌 Nicht vergessen, Bro: {task}.',
@@ -441,7 +351,6 @@ const List<String> _taskOneOnlyFamilie = [
   '📌 Bitte denken Sie an: {task}.',
 ];
 
-// ── Fall: 1 Aufgabe heute fällig + 1-2 andere offene (kurzer Zusatz passt) ──
 const List<String> _taskOnePlusFewBro = [
   '📌 Heute steht an: {task}. Schau auch mal bei den anderen Aufgaben vorbei, Bro.',
 ];
@@ -452,8 +361,6 @@ const List<String> _taskOnePlusFewFamilie = [
   '📌 Für heute steht an: {task}. Ein Blick auf die weiteren offenen Aufgaben lohnt sich ebenfalls.',
 ];
 
-// ── Fall: 1 Aufgabe heute fällig + 3 oder mehr andere offene (kein Platz
-// mehr für Details, nur knapper Verweis) ──
 const List<String> _taskOnePlusManyBro = [
   '📌 Heute steht an: {task}. Schau mal in die Aufgaben rein, Bro.',
 ];
@@ -464,7 +371,6 @@ const List<String> _taskOnePlusManyFamilie = [
   '📌 Für heute steht an: {task}. Bitte schauen Sie auch in Ihre Aufgaben.',
 ];
 
-// ── Fall: mehrere Aufgaben heute fällig (≥2) — keine Einzelnennung mehr ──
 const List<String> _taskManyBro = [
   '📌 {count} Aufgaben fällig — ran an den Speck!',
   '📌 {count} Aufgaben heute — los, Bro!',
@@ -478,7 +384,6 @@ const List<String> _taskManyFamilie = [
   '📌 Heute sind {count} Aufgaben fällig.',
 ];
 
-// ── Fall: heute nichts fällig, aber andere offene Aufgaben existieren ──
 const List<String> _taskNoneTodayButOpenBro = [
   '✅ Heute ist nichts fällig, aber es liegen noch Aufgaben offen — schau mal vorbei, Bro.',
   '✅ Heute hast du frei von Fristen, trotzdem stehen noch ein paar Aufgaben offen.',
@@ -490,17 +395,6 @@ const List<String> _taskNoneTodayButOpenFamilie = [
   '✅ Für heute liegt nichts an, es sind jedoch noch Aufgaben offen — ein Blick lohnt sich.',
 ];
 
-/// Liefert die passende Aufgaben-Zeile für die Tagesvorschau, oder null,
-/// wenn gar keine Zeile nötig ist (keine fälligen Aufgaben heute UND keine
-/// sonstigen offenen Aufgaben).
-///
-/// `dueTodayCount`     — Anzahl Aufgaben mit Frist genau heute
-/// `dueTodayTaskTitle` — Titel der einzigen heute fälligen Aufgabe (nur
-///                       relevant, wenn dueTodayCount == 1)
-/// `otherOpenCount`    — Anzahl anderer offener Aufgaben (NICHT heute
-///                       fällig — weder mit Frist an einem anderen Tag,
-///                       siehe Aufrufer-Logik in notification_service.dart,
-///                       noch ohne Frist)
 List<String>? taskLine(
   RelationshipStyle style, {
   required int dueTodayCount,
@@ -510,34 +404,34 @@ List<String>? taskLine(
   if (dueTodayCount == 1) {
     if (otherOpenCount == 0) {
       switch (style) {
-        case RelationshipStyle.bro: return _taskOneOnlyBro;
+        case RelationshipStyle.bro:     return _taskOneOnlyBro;
         case RelationshipStyle.vorname: return _taskOneOnlyVorname;
         case RelationshipStyle.familie: return _taskOneOnlyFamilie;
       }
     }
     if (otherOpenCount <= 2) {
       switch (style) {
-        case RelationshipStyle.bro: return _taskOnePlusFewBro;
+        case RelationshipStyle.bro:     return _taskOnePlusFewBro;
         case RelationshipStyle.vorname: return _taskOnePlusFewVorname;
         case RelationshipStyle.familie: return _taskOnePlusFewFamilie;
       }
     }
     switch (style) {
-      case RelationshipStyle.bro: return _taskOnePlusManyBro;
+      case RelationshipStyle.bro:     return _taskOnePlusManyBro;
       case RelationshipStyle.vorname: return _taskOnePlusManyVorname;
       case RelationshipStyle.familie: return _taskOnePlusManyFamilie;
     }
   }
   if (dueTodayCount > 1) {
     switch (style) {
-      case RelationshipStyle.bro: return _taskManyBro;
+      case RelationshipStyle.bro:     return _taskManyBro;
       case RelationshipStyle.vorname: return _taskManyVorname;
       case RelationshipStyle.familie: return _taskManyFamilie;
     }
   }
   if (otherOpenCount > 0) {
     switch (style) {
-      case RelationshipStyle.bro: return _taskNoneTodayButOpenBro;
+      case RelationshipStyle.bro:     return _taskNoneTodayButOpenBro;
       case RelationshipStyle.vorname: return _taskNoneTodayButOpenVorname;
       case RelationshipStyle.familie: return _taskNoneTodayButOpenFamilie;
     }
@@ -546,17 +440,28 @@ List<String>? taskLine(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TASK-NOTIFICATIONS — Reminder / heute fällig / überfällig / dringend (6h)
+// TASK-NOTIFICATIONS
+//
+// TITEL-KONVENTION (gilt für ALLE Stile):
+//   Reminder / Heute fällig / Überfällig → 'Kurze Erinnerung 📌'
+//   Dringend                              → 'Dringende Erinnerung 🚨'
+//
+// Nur der BODY variiert je nach Stil und Case.
 // ─────────────────────────────────────────────────────────────────────────────
 
-// ── Reminder (Hinweisen vor Frist oder relativ) ──
-const List<String> _reminderTitleBro = ['🔥 Yo, nicht vergessen!', '🔥 Reminder, Bro!'];
-const List<String> _reminderTitleVorname = ['📌 Erinnerung', '📌 Kleine Erinnerung'];
-const List<String> _reminderTitleFamilie = ['📌 Eine Erinnerung für Sie', '📌 Freundliche Erinnerung'];
+// ── Fester Titel für alle Reminder-Cases ──
+const String _reminderTitle    = 'Kurze Erinnerung 📌';
+const String _urgentTitle      = 'Dringende Erinnerung 🚨';
 
+// ── Reminder Body ──
 const List<String> _reminderBodyBro = [
   '"{task}" steht an, Bro — kümmer dich drum!',
   '"{task}" wartet auf dich, Bro!',
+  'Hey Schnarchnase — hast du "{task}" noch auf\'m Schirm?',
+  'Du Schlafmütze, "{task}" erledigt sich nicht von allein!',
+  'Ey Frischling — "{task}" liegt noch an. Wird das heute was?',
+  '"{task}" wartet schon ne Weile, Bro. Zeit wird\'s!',
+  'Nicht vergessen, Sonnenschein: "{task}" steht noch aus.',
 ];
 const List<String> _reminderBodyVorname = [
   '{name}, "{task}" steht bald an.',
@@ -567,14 +472,14 @@ const List<String> _reminderBodyFamilie = [
   'Für Sie steht "{task}" bald an, {name}.',
 ];
 
-// ── Heute fällig ──
-const List<String> _dueTodayTitleBro = ['⏰ Heute ist der Tag, Bro', '⏰ Showtime, Bro!'];
-const List<String> _dueTodayTitleVorname = ['⏰ Heute fällig', '⏰ Heute dran'];
-const List<String> _dueTodayTitleFamilie = ['⏰ Fällig am heutigen Tag', '⏰ Heute zu erledigen'];
-
+// ── Heute fällig Body ──
 const List<String> _dueTodayBodyBro = [
   '"{task}" ist heute fällig — ran an die Sache!',
   '"{task}" muss heute laufen, Bro!',
+  'Schnarchnase, heute ist Schluss mit Ausreden — "{task}" ist dran!',
+  '"{task}" — fällig heute. Die Uhr tickt, Bro! ⏱️',
+  'Ey Frischling, "{task}" ist heute dran. Nicht verbaseln!',
+  '"{task}" wartet auf seinen großen Auftritt — heute ist der Tag!',
 ];
 const List<String> _dueTodayBodyVorname = [
   '{name}, denk daran: "{task}" ist heute fällig.',
@@ -585,14 +490,14 @@ const List<String> _dueTodayBodyFamilie = [
   '"{task}" ist heute fällig, {name}.',
 ];
 
-// ── Überfällig ──
-const List<String> _overdueTitleBro = ['🚨 Läuft schon, Bro!', '🚨 Achtung, überfällig!'];
-const List<String> _overdueTitleVorname = ['🚨 Überfällig', '🚨 Aufgepasst, überfällig'];
-const List<String> _overdueTitleFamilie = ['🚨 Frist bereits verstrichen', '🚨 Bitte um Beachtung'];
-
+// ── Überfällig Body ──
 const List<String> _overdueBodyBro = [
   '"{task}" ist überfällig — schieb das nicht weiter auf!',
   '"{task}" hängt schon überfällig rum, Bro!',
+  '"{task}" ist durch die Frist gerutscht — wirds heute noch was, Bro?',
+  'Schnarchnase, "{task}" ist überfällig. Die Uhr lief schon ab! ⏰',
+  '"{task}" wartet schon länger als erlaubt. Jetzt aber, Bro!',
+  'Du Frischling — "{task}" hätte gestern fertig sein sollen. Go!',
 ];
 const List<String> _overdueBodyVorname = [
   '{name}, Achtung: "{task}" ist bereits überfällig.',
@@ -603,14 +508,14 @@ const List<String> _overdueBodyFamilie = [
   '"{task}" ist leider bereits überfällig, {name}.',
 ];
 
-// ── Dringend, wiederkehrend alle 6h ──
-const List<String> _urgentTitleBro = ['🚨 Immer noch offen, Bro!', '🚨 Dringend — geht das heute noch?'];
-const List<String> _urgentTitleVorname = ['🚨 Weiterhin dringend', '🚨 Noch offen'];
-const List<String> _urgentTitleFamilie = ['🚨 Weiterhin als dringend markiert', '🚨 Bitte um zeitnahe Erledigung'];
-
+// ── Dringend Body ──
 const List<String> _urgentBodyBro = [
   '"{task}" steht immer noch an, Bro — Zeit, das zu erledigen!',
   '"{task}" wartet weiterhin auf dich.',
+  'Ey Schnarchnase — "{task}" ist immer noch dringend. Was ist los?',
+  '"{task}" brennt noch, Bro. Wird das heute noch was? 🔥',
+  'Frischling, "{task}" ist dringend — und wartet immer noch auf dich!',
+  '"{task}" steht noch auf der Kippe — jetzt wäre ein guter Moment, Bro.',
 ];
 const List<String> _urgentBodyVorname = [
   '{name}, "{task}" ist weiterhin als dringend markiert.',
@@ -621,46 +526,35 @@ const List<String> _urgentBodyFamilie = [
   'Bitte beachten Sie, {name}, dass "{task}" weiterhin dringend ist.',
 ];
 
-List<String> taskReminderTitle(RelationshipStyle style) => switch (style) {
-  RelationshipStyle.bro => _reminderTitleBro,
-  RelationshipStyle.vorname => _reminderTitleVorname,
-  RelationshipStyle.familie => _reminderTitleFamilie,
-};
+// ── Getter: Titel (für alle Stile identisch) ──
+
+List<String> taskReminderTitle(RelationshipStyle style) => [_reminderTitle];
+List<String> taskDueTodayTitle(RelationshipStyle style) => [_reminderTitle];
+List<String> taskOverdueTitle(RelationshipStyle style)  => [_reminderTitle];
+List<String> taskUrgentRecurringTitle(RelationshipStyle style) => [_urgentTitle];
+
+// ── Getter: Body (stilabhängig) ──
+
 List<String> taskReminderBody(RelationshipStyle style) => switch (style) {
-  RelationshipStyle.bro => _reminderBodyBro,
+  RelationshipStyle.bro     => _reminderBodyBro,
   RelationshipStyle.vorname => _reminderBodyVorname,
   RelationshipStyle.familie => _reminderBodyFamilie,
 };
 
-List<String> taskDueTodayTitle(RelationshipStyle style) => switch (style) {
-  RelationshipStyle.bro => _dueTodayTitleBro,
-  RelationshipStyle.vorname => _dueTodayTitleVorname,
-  RelationshipStyle.familie => _dueTodayTitleFamilie,
-};
 List<String> taskDueTodayBody(RelationshipStyle style) => switch (style) {
-  RelationshipStyle.bro => _dueTodayBodyBro,
+  RelationshipStyle.bro     => _dueTodayBodyBro,
   RelationshipStyle.vorname => _dueTodayBodyVorname,
   RelationshipStyle.familie => _dueTodayBodyFamilie,
 };
 
-List<String> taskOverdueTitle(RelationshipStyle style) => switch (style) {
-  RelationshipStyle.bro => _overdueTitleBro,
-  RelationshipStyle.vorname => _overdueTitleVorname,
-  RelationshipStyle.familie => _overdueTitleFamilie,
-};
 List<String> taskOverdueBody(RelationshipStyle style) => switch (style) {
-  RelationshipStyle.bro => _overdueBodyBro,
+  RelationshipStyle.bro     => _overdueBodyBro,
   RelationshipStyle.vorname => _overdueBodyVorname,
   RelationshipStyle.familie => _overdueBodyFamilie,
 };
 
-List<String> taskUrgentRecurringTitle(RelationshipStyle style) => switch (style) {
-  RelationshipStyle.bro => _urgentTitleBro,
-  RelationshipStyle.vorname => _urgentTitleVorname,
-  RelationshipStyle.familie => _urgentTitleFamilie,
-};
 List<String> taskUrgentRecurringBody(RelationshipStyle style) => switch (style) {
-  RelationshipStyle.bro => _urgentBodyBro,
+  RelationshipStyle.bro     => _urgentBodyBro,
   RelationshipStyle.vorname => _urgentBodyVorname,
   RelationshipStyle.familie => _urgentBodyFamilie,
 };

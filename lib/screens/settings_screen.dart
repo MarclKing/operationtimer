@@ -1406,9 +1406,9 @@ _SettingsTileGroup(skin: skin, children: [
       }
     },
     items: [
-      GlassDropdownItem(value: RelationshipStyle.bro,     label: 'Locker · Bro-Style',   icon: Icons.bolt_rounded),
-      GlassDropdownItem(value: RelationshipStyle.vorname, label: 'Vorname',               icon: Icons.waving_hand_outlined),
-      GlassDropdownItem(value: RelationshipStyle.familie, label: 'Formell · Nachname',    icon: Icons.workspace_premium_outlined),
+      GlassDropdownItem(value: RelationshipStyle.bro,     label: 'Locker',   icon: Icons.bolt_rounded),
+      GlassDropdownItem(value: RelationshipStyle.vorname, label: 'Normal',               icon: Icons.waving_hand_outlined),
+      GlassDropdownItem(value: RelationshipStyle.familie, label: 'Formell',    icon: Icons.workspace_premium_outlined),
     ],
     onChanged: _selectStyle,
   ),
@@ -2336,60 +2336,112 @@ class _DesignSettingsScreenState
   }
 
   void _setSkin(String key) {
-    setState(() => _activeSkin = key);
-    Hive.box('einstellungen').put(AppTheme.hiveKey, key);
-  }
+  setState(() => _activeSkin = key);
+  Hive.box('einstellungen').put(AppTheme.hiveKey, key);
+}
 
-  @override
-  Widget build(BuildContext context) {
-    final skin = AppTheme.of(context);
-    return Scaffold(
-      backgroundColor: skin.bgBase,
-      body: SafeArea(
-        child: Column(
-          children: [
-            _SettingsHeader(
-                title: 'Design',
-                onBack: () => Navigator.pop(context)),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _TiCard(
-                      skin: skin,
-                      child: Column(
-                        crossAxisAlignment:
-                            CrossAxisAlignment.start,
+@override
+Widget build(BuildContext context) {
+  final skin = AppTheme.of(context);
+  const skins = [skinShield, skinChrome, skinCrystal, skinTitanium];
+
+  return Scaffold(
+    backgroundColor: skin.bgBase,
+    body: SafeArea(
+      child: Column(
+        children: [
+          _SettingsHeader(
+              title: 'Design', onBack: () => Navigator.pop(context)),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const _SectionHeader(label: 'Farbschema'),
+                  _SettingsTileGroup(
+                    skin: skin,
+                    children: skins.asMap().entries.map((entry) {
+                      final i = entry.key;
+                      final s = entry.value;
+                      final isSelected = s.key == _activeSkin;
+                      final isLast = i == skins.length - 1;
+
+                      return Column(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          _TiCardHeader(
-                              skin: skin,
-                              icon: Icons.palette_outlined,
-                              label: 'Design'),
-                          const SizedBox(height: 12),
-                          Text(
-                              'Aussehen der App. Änderung wird sofort übernommen.',
-                              style: TextStyle(
-                                  fontSize: 13,
-                                  color: skin.textMuted,
-                                  height: 1.5)),
-                          const SizedBox(height: 16),
-                          _TiSkinPicker(
-                            activeSkin: _activeSkin,
-                            onSelect: _setSkin),
+                          GestureDetector(
+                            onTap: () {
+                              HapticFeedback.selectionClick();
+                              _setSkin(s.key);
+                            },
+                            behavior: HitTestBehavior.opaque,
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 14, vertical: 12),
+                              child: Row(
+                                children: [
+                                  // Farbvorschau-Dot
+                                  Container(
+                                    width: 32,
+                                    height: 32,
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        begin: Alignment.topLeft,
+                                        end: Alignment.bottomRight,
+                                        colors: [s.primary, s.bgBase],
+                                      ),
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: isSelected
+                                          ? Border.all(
+                                              color: skin.primary,
+                                              width: 2.0)
+                                          : null,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 14),
+                                  Expanded(
+                                    child: Text(
+                                      s.displayName,
+                                      style: TextStyle(
+                                        fontSize: 15,
+                                        fontWeight: isSelected
+                                            ? FontWeight.w600
+                                            : FontWeight.w500,
+                                        color: isSelected
+                                            ? skin.primary
+                                            : skin.textPrimary,
+                                      ),
+                                    ),
+                                  ),
+                                  if (isSelected)
+                                    Icon(Icons.check_rounded,
+                                        size: 18, color: skin.primary),
+                                ],
+                              ),
+                            ),
+                          ),
+                          if (!isLast)
+                            Padding(
+                              padding: const EdgeInsets.only(left: 60),
+                              child: Divider(
+                                  height: 0.5, color: skin.glassBorder),
+                            ),
                         ],
-                      ),
-                    ),
-                  ],
-                ),
+                      );
+                    }).toList(),
+                  ),
+                  const _SectionFootnote(
+                      text: 'Änderung wird sofort übernommen.'),
+                ],
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
-    );
-  }
+    ),
+  );
+}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
