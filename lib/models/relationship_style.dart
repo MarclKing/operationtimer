@@ -233,3 +233,6 @@ if (weatherCategory != null && weatherTempC != null) {
   weatherLine = phrases.applyTemp(weatherLine, tempStr);
   lines.add(weatherLine);
 }
+return NotificationCopy(title, lines.join('\n'), subtitle: subtitleText);
+  }
+}
