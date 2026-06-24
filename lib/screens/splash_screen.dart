@@ -56,7 +56,7 @@ class _SplashScreenState extends State<SplashScreen>
     });
 
     // ── Navigation ───────────────────────────────────────────────────
-    Future.delayed(const Duration(milliseconds: 1800), () {
+    Future.delayed(const Duration(milliseconds: 700), () {
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
         PageRouteBuilder(

@@ -36,6 +36,50 @@ import 'services/rule_engine.dart';
 import 'services/sync_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+Future<void> _initializeAppServicesInBackground() async {
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+
+    FirebaseFirestore.instance.settings = const Settings(
+      persistenceEnabled: true,
+      cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+    );
+
+    debugPrint('✅ Firebase + Firestore Offline-Cache initialisiert');
+  } catch (e) {
+    debugPrint('⚠️ Firebase init fehlgeschlagen (offline?): $e');
+  }
+
+  try {
+    await AuthService.instance.init();
+  } catch (e) {
+    debugPrint('⚠️ AuthService init fehlgeschlagen: $e');
+  }
+
+  try {
+    await SyncService.instance.init();
+  } catch (e) {
+    debugPrint('⚠️ SyncService init fehlgeschlagen: $e');
+  }
+
+  try {
+    await RuleEngine.instance.init();
+  } catch (e) {
+    debugPrint('⚠️ RuleEngine init fehlgeschlagen: $e');
+  }
+
+  try {
+    await NotificationService.instance.init();
+  } catch (e) {
+    debugPrint('⚠️ NotificationService init fehlgeschlagen: $e');
+  }
+
+  _migrateOldEntries();
+  await runAutoCleanup();
+}
+
 void main() async {
   WidgetsBinding binding = WidgetsFlutterBinding.ensureInitialized();
   FlutterNativeSplash.preserve(widgetsBinding: binding);
@@ -50,49 +94,6 @@ void main() async {
   await Hive.initFlutter();
   await Hive.openBox('arbeitszeiten');
   await Hive.openBox('einstellungen');
-
-  // ── Firebase mit Offline-Support ──────────────────────────────────────────
-  try {
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    ).timeout(const Duration(seconds: 5));
-    
-    // ── NEU: Firestore Offline-Einstellungen ──────────────────────────────
-    // Aktiviert persistentes Caching für Offline-Nutzung
-    // MUSS NACH Firebase.initializeApp() kommen
-    FirebaseFirestore.instance.settings = const Settings(
-      persistenceEnabled: true,
-      cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
-    );
-    
-    debugPrint('✅ Firebase + Firestore Offline-Cache initialisiert');
-  } catch (e) {
-    debugPrint('⚠️ Firebase init fehlgeschlagen (offline?): $e');
-    // Firestore wird trotzdem funktionieren, aber nur mit Cache
-  }
-
-try {
-  await AuthService.instance.init().timeout(const Duration(seconds: 4));
-} catch (e) {
-  debugPrint('⚠️ AuthService init fehlgeschlagen: $e');
-}
-
-try {
-  await SyncService.instance.init().timeout(const Duration(seconds: 4));
-} catch (e) {
-  debugPrint('⚠️ SyncService init fehlgeschlagen: $e');
-}
-
-try {
-  await RuleEngine.instance.init().timeout(const Duration(seconds: 4));
-} catch (e) {
-  debugPrint('⚠️ RuleEngine init fehlgeschlagen: $e');
-}
-
-await NotificationService.instance.init();
-
-  _migrateOldEntries();
-  await runAutoCleanup();
   await initializeDateFormatting('de', null);
 
   try {
@@ -102,6 +103,7 @@ await NotificationService.instance.init();
   }
 
   runApp(const MyApp());
+  unawaited(_initializeAppServicesInBackground());
 }
 
 Future<bool?> confirmDeleteDialog(

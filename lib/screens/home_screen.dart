@@ -49,6 +49,9 @@ class HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   // Für Uhr-Ticker
   late DateTime _now;
 
+  // ── NEU: Wetter-State, wird verzögert nach erstem Frame befüllt ──────────
+  WeatherData? _weatherData;
+
   // Review-Callback von main.dart
   void Function(ParsedSpokenTask, String)? onReviewFromHomescreen;
 
@@ -58,12 +61,30 @@ class HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _selectedDate = widget.selectedDate;
     _now = DateTime.now();
 
+    // Sofort verfügbaren Cache zeigen (kein Warten, kein Netzwerk-Call)
+    _weatherData = WeatherService.instance.cached;
+
     _greetingCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 600));
     _greetingFade = CurvedAnimation(parent: _greetingCtrl, curve: Curves.easeOut);
     _greetingCtrl.forward();
 
     // Uhr jede Minute aktualisieren
     _scheduleNextMinuteTick();
+
+    // ── NEU: Wetter-Fetch erst NACH dem ersten Frame anstoßen ──────────────
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _refreshWeather();
+    });
+  }
+
+  Future<void> _refreshWeather() async {
+    final box = Hive.box('einstellungen');
+    final useGps = box.get('weather_use_gps', defaultValue: true) as bool;
+    final cityName = useGps ? '' : (_getWeatherCity() ?? '');
+
+    final data = await WeatherService.instance.fetchIfNeeded(cityName, useGps: useGps);
+    if (!mounted) return;
+    setState(() => _weatherData = data);
   }
 
   void _scheduleNextMinuteTick() {
@@ -476,60 +497,50 @@ Future<void> _showDuplicateDialog(ParsedSpokenTask parsed, String logRef) async 
     final box = Hive.box('einstellungen');
     final weatherEnabled = box.get('homescreen_weather_big', defaultValue: false) as bool;
     final useGps = box.get('weather_use_gps', defaultValue: true) as bool;
-    // Wenn GPS aktiv → cityName LEER, sonst Stadt aus Settings
     final cityName = useGps ? '' : (_getWeatherCity() ?? '');
 
-    return FutureBuilder<WeatherData?>(
-      future: WeatherService.instance.fetchIfNeeded(cityName, useGps: useGps),
-      builder: (context, snapshot) {
-        final data = snapshot.data ?? WeatherService.instance.cached;
-        final weatherIcon = data?.icon ?? '⛅';
-        final tempStr = data?.tempStr ?? '—°';
-        
-        // Intelligente City-Label-Logik:
-        // - GPS-Modus: immer "Aktueller Standort" zeigen (egal was im Cache)
-        // - Stadt-Modus: Stadt aus Cache oder eingestellte Stadt
-        final cityLabel = useGps
-            ? (data != null ? 'Aktueller Standort' : 'Wird geladen…')
-            : (data == null
-                ? (cityName.isNotEmpty ? cityName : 'Stadt nicht gesetzt')
-                : data.city);
-        
-        final detail = data != null
-            ? 'Aktualisiert ${_formatWeatherAge(data.fetchedAt)}'
-            : 'Lädt…';
+    final data = _weatherData;
+    final weatherIcon = data?.icon ?? '⛅';
+    final tempStr = data?.tempStr ?? '—°';
 
-        if (weatherEnabled) {
-          return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: _WeatherKachelGross(
-              skin: skin,
-              data: data,
-              icon: weatherIcon,
-              temp: tempStr,
-              city: cityLabel,
-              detail: detail,
-            ),
-          );
-        } else {
-          return Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
-            child: Align(
-              alignment: Alignment.centerRight,
-              child: _WeatherChip(
-                skin: skin,
-                icon: weatherIcon,
-                temp: tempStr,
-                city: cityLabel,
-              ),
-            ),
-          );
-        }
-      },
-    );
+    final cityLabel = useGps
+        ? (data != null ? 'Aktueller Standort' : 'Wird geladen…')
+        : (data == null
+            ? (cityName.isNotEmpty ? cityName : 'Stadt nicht gesetzt')
+            : data.city);
+
+    final detail = data != null
+        ? 'Aktualisiert ${_formatWeatherAge(data.fetchedAt)}'
+        : 'Lädt…';
+
+    if (weatherEnabled) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        child: _WeatherKachelGross(
+          skin: skin,
+          data: data,
+          icon: weatherIcon,
+          temp: tempStr,
+          city: cityLabel,
+          detail: detail,
+        ),
+      );
+    } else {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
+        child: Align(
+          alignment: Alignment.centerRight,
+          child: _WeatherChip(
+            skin: skin,
+            icon: weatherIcon,
+            temp: tempStr,
+            city: cityLabel,
+          ),
+        ),
+      );
+    }
   }
 }
-
 // ─────────────────────────────────────────────────────────────────────────────
 // DIENST KACHEL
 // ─────────────────────────────────────────────────────────────────────────────
