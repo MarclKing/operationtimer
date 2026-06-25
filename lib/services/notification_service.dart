@@ -511,11 +511,11 @@ String _resolveShift(String code) {
   final cached = WeatherService.instance.cached;
   if (cached == null) return null;
   final category = categoryFor(
-    cached.weatherCode,
-    cached.tempC,
-    isDay: cached.isDay,
-  );
-  return (category: category, tempC: cached.tempC);
+  cached.forecastWeatherCode,
+  cached.forecastTempC,
+  isDay: true,
+);
+return (category: category, tempC: cached.forecastTempC);
 }
 
   /// Baut Titel+Subtitle+Body für die Tagesvorschau eines bestimmten Tages.

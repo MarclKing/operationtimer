@@ -736,12 +736,13 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   }
 
   void _goToPage(int index) {
-    FocusManager.instance.primaryFocus?.unfocus();
-    _closeMenu();
-    _homeKey.currentState?.closeOverlays();
-    _scheduleKey.currentState?.closeOverlays();
-    _monthKey.currentState?.closeAllRows();
-    _fahrtenbuchKey.currentState?.closeOverlays();
+  FocusManager.instance.primaryFocus?.unfocus();
+  _closeMenu();
+  _homeKey.currentState?.closeOverlays();
+  _scheduleKey.currentState?.closeOverlays();
+  _monthKey.currentState?.closeAllRows();
+  _fahrtenbuchKey.currentState?.closeOverlays();
+  _tasksKey.currentState?.closeOverlays(); // ← NEU
 
     // NEU: Wenn wir zum Schedule-Tab (Index 2) wechseln, Task-Marker aktualisieren
     if (index == 2 && _dienstplanEnabled) {
@@ -822,10 +823,11 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     }
 
     if (targetPage != _currentPage) {
-      _homeKey.currentState?.closeOverlays();
-      _scheduleKey.currentState?.closeOverlays();
-      _monthKey.currentState?.closeAllRows();
-      _fahrtenbuchKey.currentState?.closeOverlays();
+  _homeKey.currentState?.closeOverlays();
+  _scheduleKey.currentState?.closeOverlays();
+  _monthKey.currentState?.closeAllRows();
+  _fahrtenbuchKey.currentState?.closeOverlays();
+  _tasksKey.currentState?.closeOverlays(); // ← NEU
 
       // NEU: Wenn wir zum Schedule-Tab (Index 2) wechseln, Task-Marker aktualisieren
       if (targetPage == 2 && _dienstplanEnabled) {

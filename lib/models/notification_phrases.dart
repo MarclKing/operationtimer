@@ -140,26 +140,27 @@ const List<String> _subtitleBro = [
   'Heute wird geliefert, nicht gejammert.',
   'Niemand rettet sich selbst — also los!',
   'Mach was draus, Bro. 💪',
+  'Wo kein Schnee liegt, kann gelaufen werden!',
 ];
 
 const List<String> _subtitleVorname = [
-  'Hier ist dein Überblick für heute.',
-  'Damit du gut vorbereitet bist.',
-  'Ein kurzer Blick auf deinen Tag.',
-  'Was heute auf dich zukommt.',
-  'Dein Tag auf einen Blick.',
-  'Hier ist alles Wichtige für heute.',
+  'Hier ist dein Überblick für heute:',
+  'Damit du gut vorbereitet bist:',
+  'Ein kurzer Blick auf deinen Tag:',
+  'Was heute auf dich zukommt:',
+  'Dein Tag auf einen Blick:',
+  'Hier ist alles Wichtige für heute:',
   'Gut vorbereitet in den Tag starten.',
 ];
 
 const List<String> _subtitleFamilie = [
-  'Hier ist Ihre Übersicht für den heutigen Tag.',
+  'Hier ist Ihre Übersicht für den heutigen Tag:',
   'Darf ich Ihnen einen kurzen Überblick geben?',
-  'Ihre Tagesübersicht im Folgenden.',
-  'Ihr Tagesüberblick für heute, {name}.',
-  'Alles Wichtige für Ihren heutigen Tag.',
-  'Damit Sie bestens vorbereitet sind.',
-  'Ein kurzer Blick auf Ihren heutigen Tag.',
+  'Ihre Tagesübersicht im Folgenden:',
+  'Ihr Tagesüberblick für heute, {name}:',
+  'Alles Wichtige für Ihren heutigen Tag:',
+  'Damit Sie bestens vorbereitet sind:',
+  'Ein kurzer Blick auf Ihren heutigen Tag:',
 ];
 
 List<String> subtitle(RelationshipStyle style) {
@@ -178,9 +179,9 @@ List<String> subtitle(RelationshipStyle style) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const List<String> _shiftBroWork = [
-  'Heute steht {shift} an, Bro.',
-  'Dein Ding heute: {shift}.',
-  'Heute läuft {shift}.',
+  'Heute steht {shift} für dich an.',
+  'DU hast heute: {shift}.',
+  'Heute hast du {shift}.',
 ];
 const List<String> _shiftVornameWork = [
   'Heute steht {shift} an.',
@@ -192,7 +193,7 @@ const List<String> _shiftFamilieWork = [
 ];
 
 const List<String> _shiftBroFree = [
-  'Heute ist frei, Bro — genieß es!',
+  'Heute hast du frei — genieß es!',
   'Kein Dienst heute, einfach mal chillen.',
 ];
 const List<String> _shiftVornameFree = [
@@ -205,7 +206,7 @@ const List<String> _shiftFamilieFree = [
 ];
 
 const List<String> _shiftBroUnknown = [
-  'Kein Dienstplan für heute hinterlegt, Bro.',
+  'Heute ist kein Dienstplan hinterlegt.',
 ];
 const List<String> _shiftVornameUnknown = [
   'Für heute ist kein Dienst hinterlegt.',
@@ -242,34 +243,35 @@ List<String> shiftLine(RelationshipStyle style, {required bool hasShift, require
 
 const Map<WeatherCategory, List<String>> _weatherBro = {
   WeatherCategory.sonnig: [
-    'Draußen warten sonnige {temp}, Bro — Sonnencreme nicht vergessen!',
+    'Draußen warten sonnige {temp} — Sonnencreme nicht vergessen!',
     'Bombenwetter da draußen: {temp} und Sonne satt.',
+    'Bei {temp} den Bikini nicht vergessen!',
   ],
   WeatherCategory.wechselhaftBewoelkt: [
-    'Draußen ist es wechselhaft bei {temp}, Bro.',
+    'Draußen ist es wechselhaft bei unentspannten {temp}.',
     'Mal Sonne, mal Wolken — {temp} draußen.',
   ],
   WeatherCategory.bedeckt: [
-    'Draußen ist es bedeckt, {temp}, Bro.',
+    'Draußen ist es bedeckt, {temp} - Sonnenbrille brauchst du wohl nicht.',
     'Grauer Himmel heute, {temp} sind angesagt.',
   ],
   WeatherCategory.nebel: [
-    'Nebel draußen, Bro — {temp} und schlechte Sicht.',
+    'Nebel draußen — {temp} und schlechte Sicht und Augen auf.',
   ],
   WeatherCategory.regenLeicht: [
-    'Ein bisschen Regen heute, {temp} — Kapuze einpacken, Bro.',
+    'Ein bisschen Regen heute, {temp} — Kapuze aufsetzen.',
   ],
   WeatherCategory.regenStark: [
-    'Ordentlich Regen da draußen, {temp} — Schirm nicht vergessen, Bro!',
+    'Ordentlich Regen da draußen, {temp} — Schirm nicht vergessen!',
   ],
   WeatherCategory.schnee: [
-    'Schnee ist angesagt, {temp} — warm anziehen, Bro!',
+    'Schnee ist angesagt, {temp} — warm anziehen!',
   ],
   WeatherCategory.gewitter: [
-    'Gewitter im Anmarsch, {temp} draußen — pass auf dich auf, Bro.',
+    'Gewitter im Anmarsch, {temp} draußen — pass auf dich auf!',
   ],
   WeatherCategory.kalt: [
-    'Es fröstelt ordentlich, {temp} — zieh dich warm an, Bro!',
+    'Es fröstelt es ordentlich, {temp} — pack kugelsichere Socken ein!',
   ],
 };
 
@@ -357,7 +359,7 @@ List<String> weatherLine(RelationshipStyle style, WeatherCategory category) {
 
 const List<String> _taskOneOnlyBro = [
   '📌 Heute steht an: {task}.',
-  '📌 Nicht vergessen, Bro: {task}.',
+  '📌 Nicht vergessen, du Schnarchnase: {task}.',
 ];
 const List<String> _taskOneOnlyVorname = [
   '📌 Heute steht an: {task}.',
@@ -369,7 +371,7 @@ const List<String> _taskOneOnlyFamilie = [
 ];
 
 const List<String> _taskOnePlusFewBro = [
-  '📌 Heute steht an: {task}. Schau auch mal bei den anderen Aufgaben vorbei, Bro.',
+  '📌 Heute steht an: {task}. Die anderen Aufgaben erfüllen sich auch nicht  allein.',
 ];
 const List<String> _taskOnePlusFewVorname = [
   '📌 Heute steht an: {task}. Schau auch mal bei den anderen Aufgaben vorbei.',
@@ -379,7 +381,8 @@ const List<String> _taskOnePlusFewFamilie = [
 ];
 
 const List<String> _taskOnePlusManyBro = [
-  '📌 Heute steht an: {task}. Schau mal in die Aufgaben rein, Bro.',
+  '📌 Heute steht an: {task}. Da warten aber noch mehr Aufgaben auf dich.',
+  '📌 {task} steht für heute an. Aber es gibt noch mehr zu tun.',
 ];
 const List<String> _taskOnePlusManyVorname = [
   '📌 Heute steht an: {task}. Schau mal in die Aufgaben rein.',
@@ -390,7 +393,7 @@ const List<String> _taskOnePlusManyFamilie = [
 
 const List<String> _taskManyBro = [
   '📌 {count} Aufgaben fällig — ran an den Speck!',
-  '📌 {count} Aufgaben heute — los, Bro!',
+  '📌 {count} Aufgaben heute — faulenzen gibt es nicht!',
 ];
 const List<String> _taskManyVorname = [
   '📌 {count} Aufgaben heute fällig.',
@@ -402,8 +405,9 @@ const List<String> _taskManyFamilie = [
 ];
 
 const List<String> _taskNoneTodayButOpenBro = [
-  '✅ Heute ist nichts fällig, aber es liegen noch Aufgaben offen — schau mal vorbei, Bro.',
-  '✅ Heute hast du frei von Fristen, trotzdem stehen noch ein paar Aufgaben offen.',
+  '✅ Heute ist nichts fällig, aber der Rest mach sich auch nicht durch Nichtstun!',
+  '✅ Heute keine Fristen, die anderen Aufgaben sind trotzdem nicht aus der Welt!',
+  '✅ Heute ist nichts fällig, aber fürs nichtstun wirst du auch nicht bezahlt!',
 ];
 const List<String> _taskNoneTodayButOpenVorname = [
   '✅ Heute ist nichts fällig, aber es sind noch Aufgaben offen — schau mal vorbei.',
@@ -472,12 +476,13 @@ const String _urgentTitle   = 'Dringende Erinnerung 🚨';
 // ── Reminder Body ──────────────────────────────────────────────────────────
 
 const List<String> _reminderBodyBro = [
-  '"{task}" steht an, Bro — kümmer dich drum!',
-  '"{task}" wartet auf dich, Bro!',
+  '"{task}" steht an — kümmer dich drum!',
+  '"{task}" wartet auf dich!',
   'Hey Schnarchnase — hast du "{task}" noch auf\'m Schirm?',
-  'Du Schlafmütze, "{task}" erledigt sich nicht von allein!',
+  'Na Schlafmütze, "{task}" erledigt sich nicht von allein!',
+  'Also ich kann "{task}" nicht für dich erledigen!',
   'Ey Frischling — "{task}" liegt noch an. Wird das heute was?',
-  '"{task}" wartet schon ne Weile, Bro. Zeit wird\'s!',
+  '"{task}" wartet schon ne Weile. Zeit wird\'s!',
   'Nicht vergessen, Sonnenschein: "{task}" steht noch aus.',
 ];
 const List<String> _reminderBodyVorname = [
@@ -501,11 +506,13 @@ const List<String> _reminderBodyFamilie = [
 
 const List<String> _dueTodayBodyBro = [
   '"{task}" ist heute fällig — ran an die Sache!',
-  '"{task}" muss heute laufen, Bro!',
+  '"{task}" muss heute laufen!',
   'Schnarchnase, heute ist Schluss mit Ausreden — "{task}" ist dran!',
-  '"{task}" — fällig heute. Die Uhr tickt, Bro! ⏱️',
+  '"{task}" — fällig heute. Die Uhr tickt! ⏱️',
   'Ey Frischling, "{task}" ist heute dran. Nicht verbaseln!',
   '"{task}" wartet auf seinen großen Auftritt — heute ist der Tag!',
+  'Na Schlafmütze, "{task}" erledigt sich nicht von allein!',
+  'Wozu wirst du bezahlt, wenn du "{task}" nicht erledigst?',
 ];
 const List<String> _dueTodayBodyVorname = [
   '{name}, denk daran: "{task}" ist heute fällig.',
@@ -526,11 +533,12 @@ const List<String> _dueTodayBodyFamilie = [
 
 const List<String> _overdueBodyBro = [
   '"{task}" ist überfällig — schieb das nicht weiter auf!',
-  '"{task}" hängt schon überfällig rum, Bro!',
-  '"{task}" ist durch die Frist gerutscht — wirds heute noch was, Bro?',
+  '"{task}" hängt schon überfällig rum!',
+  '"{task}" ist durch die Frist gerutscht — wirds heute noch was?',
   'Schnarchnase, "{task}" ist überfällig. Die Uhr lief schon ab! ⏰',
-  '"{task}" wartet schon länger als erlaubt. Jetzt aber, Bro!',
-  'Du Frischling — "{task}" hätte gestern fertig sein sollen. Go!',
+  '"{task}" wartet schon länger als erlaubt. Jetzt aber!',
+  'Ey Frischling — "{task}" hätte gestern fertig sein sollen. Go!',
+  'Mach mal was für dein Geld, "{task}" muss gestern erledigt sein!',
 ];
 const List<String> _overdueBodyVorname = [
   '{name}, Achtung: "{task}" ist bereits überfällig.',
@@ -550,7 +558,7 @@ const List<String> _overdueBodyFamilie = [
 // ── Dringend Body ──────────────────────────────────────────────────────────
 
 const List<String> _urgentBodyBro = [
-  '"{task}" steht immer noch an, Bro — Zeit, das zu erledigen!',
+  '"{task}" steht immer noch an — Zeit, das zu erledigen!',
   '"{task}" wartet weiterhin auf dich.',
   'Ey Schnarchnase — "{task}" ist immer noch dringend. Was ist los?',
   '"{task}" brennt noch, Bro. Wird das heute noch was? 🔥',

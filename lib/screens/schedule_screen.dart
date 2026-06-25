@@ -1209,12 +1209,13 @@ class _NoteOverlayState extends State<_NoteOverlay> with TickerProviderStateMixi
     super.dispose();
   }
 
-  void _saveAndClose() {
-     // Fire-and-forget aber mit await intern
-     _NoteData.save(widget.dateKey, _phoneCtrl.text.trim(), _textCtrl.text.trim())
-         .then((_) => ScheduleScreenState.pushScheduleToWidget());
-     _ctrl.reverse().then((_) => widget.onClose());
-   }
+  Future<void> _saveAndClose() async {
+    await _NoteData.save(widget.dateKey, _phoneCtrl.text.trim(), _textCtrl.text.trim());
+    await ScheduleScreenState.pushScheduleToWidget();
+    if (!mounted) return;
+    await _ctrl.reverse();
+    widget.onClose();
+  }
 
   void _dismissKeyboard() { _phoneFocus.unfocus(); _textFocus.unfocus(); }
 

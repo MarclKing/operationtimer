@@ -1291,7 +1291,7 @@ class MonthScreenState extends State<MonthScreen> with TickerProviderStateMixin 
         entries.isEmpty
             ? SliverToBoxAdapter(
                 child: SizedBox(
-                  height: 200,
+                  height:200,
                   child: Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -2445,136 +2445,38 @@ class _EditSheetState extends State<_EditSheet> {
     HapticFeedback.selectionClick();
   }
 
-  Future<void> _pickTime(
-      TextEditingController ctrl, bool isGehenField) async {
-    final skin = AppTheme.of(context);
-    TimeOfDay initialTime;
-    if (ctrl.text.isNotEmpty && ctrl.text != '--:--') {
-      initialTime = _parse(ctrl.text) ?? TimeOfDay.now();
-    } else if (isGehenField) {
-      final kommenTime = _parse(widget.kommenCtrl.text);
-      initialTime = kommenTime != null
-          ? _getDefaultGehenTime(kommenTime)
-          : TimeOfDay.now();
-    } else {
-      initialTime = TimeOfDay.now();
-    }
-    int selH = initialTime.hour;
-    int selM = initialTime.minute;
-    final hourCtrl =
-        FixedExtentScrollController(initialItem: selH + 1008);
-    final minCtrl =
-        FixedExtentScrollController(initialItem: selM + 1020);
+  Future<void> _pickTime(TextEditingController ctrl, bool isGehenField) async {
+  final skin = AppTheme.of(context);
 
-    await showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (_) => StatefulBuilder(
-        builder: (ctx, setSheet) => GlassSheet(
-          skin: skin,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SheetHandle(skin: skin),
-              const SizedBox(height: 20),
-              Text(
-                  isGehenField
-                      ? 'Uhrzeit Gehen'
-                      : 'Uhrzeit Kommen',
-                  style: TextStyle(
-                      color: skin.textPrimary,
-                      fontSize: 17,
-                      fontWeight: FontWeight.w600)),
-              const SizedBox(height: 16),
-              SizedBox(
-                height: 180,
-                child: Row(children: [
-                  Expanded(
-                    child: CupertinoPicker(
-                      scrollController: hourCtrl,
-                      itemExtent: 40,
-                      looping: true,
-                      backgroundColor: Colors.transparent,
-                      onSelectedItemChanged: (i) => selH = i % 24,
-                      children: List.generate(
-                          24,
-                          (h) => Center(
-                                child: Text(
-                                    h.toString().padLeft(2, '0'),
-                                    style: TextStyle(
-                                        fontSize: 22,
-                                        fontWeight: FontWeight.w600,
-                                        color: skin.textPrimary)),
-                              )),
-                    ),
-                  ),
-                  Text(':',
-                      style: TextStyle(
-                          fontSize: 26,
-                          fontWeight: FontWeight.w700,
-                          color: skin.primary)),
-                  Expanded(
-                    child: CupertinoPicker(
-                      scrollController: minCtrl,
-                      itemExtent: 40,
-                      looping: true,
-                      backgroundColor: Colors.transparent,
-                      onSelectedItemChanged: (i) => selM = i % 60,
-                      children: List.generate(
-                          60,
-                          (m) => Center(
-                                child: Text(
-                                    m.toString().padLeft(2, '0'),
-                                    style: TextStyle(
-                                        fontSize: 22,
-                                        fontWeight: FontWeight.w600,
-                                        color: skin.textPrimary)),
-                              )),
-                    ),
-                  ),
-                ]),
-              ),
-              const SizedBox(height: 16),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
-                child: Row(children: [
-                  Expanded(
-                    child: GlassSecondaryButton(
-                      skin: skin,
-                      label: 'Jetzt',
-                      onTap: () {
-                        final now = DateTime.now();
-                        selH = now.hour;
-                        selM = now.minute;
-                        hourCtrl.jumpToItem(selH + 1008);
-                        minCtrl.jumpToItem(selM + 1020);
-                        ctrl.text =
-                            '${selH.toString().padLeft(2, '0')}:${selM.toString().padLeft(2, '0')}';
-                        setSheet(() {});
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: GlassPrimaryButton(
-                      skin: skin,
-                      label: 'Übernehmen',
-                      onTap: () {
-                        ctrl.text =
-                            '${selH.toString().padLeft(2, '0')}:${selM.toString().padLeft(2, '0')}';
-                        Navigator.pop(ctx);
-                      },
-                    ),
-                  ),
-                ]),
-              ),
-              const SizedBox(height: 28),
-            ],
-          ),
-        ),
-      ),
-    );
+  TimeOfDay initialTime;
+  if (ctrl.text.isNotEmpty && ctrl.text != '--:--') {
+    initialTime = _parse(ctrl.text) ?? TimeOfDay.now();
+  } else if (isGehenField) {
+    final kommenTime = _parse(widget.kommenCtrl.text);
+    initialTime = kommenTime != null
+        ? _getDefaultGehenTime(kommenTime)
+        : TimeOfDay.now();
+  } else {
+    initialTime = TimeOfDay.now();
   }
+
+  await showModalBottomSheet(
+    context: context,
+    backgroundColor: Colors.transparent,
+    builder: (_) => IOSTimePicker(
+      initialTime: initialTime,
+      skin: skin,
+      label: isGehenField ? 'Uhrzeit Gehen' : 'Uhrzeit Kommen',
+      confirmOnDismiss: false,
+      onTimeSelected: (t) {
+        setState(() {
+          ctrl.text =
+              '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+        });
+      },
+    ),
+  );
+}
 
   @override
   Widget build(BuildContext context) {

@@ -17,6 +17,8 @@ class WeatherData {
   final DateTime? sunset;    // Sonnenuntergang
   final bool isDay;          // Tag/Nacht-Status
   final int? humidityPercent;   // Luftfeuchtigkeit in %
+  final double? dailyMaxTempC;
+  final int? dailyWeatherCode;
 
   const WeatherData({
     required this.tempC,
@@ -30,6 +32,8 @@ class WeatherData {
     this.sunset,
     required this.isDay,
     this.humidityPercent,
+    this.dailyMaxTempC,
+    this.dailyWeatherCode,
   });
 
   String get icon {
@@ -69,6 +73,9 @@ class WeatherData {
       : 'kein';
   String get humidityStr => humidityPercent != null ? '$humidityPercent%' : '—';
 
+  double get forecastTempC => dailyMaxTempC ?? tempC;
+  int get forecastWeatherCode => dailyWeatherCode ?? weatherCode;
+
   bool get isStale =>
       DateTime.now().difference(fetchedAt).inMinutes > 30;
 
@@ -97,6 +104,8 @@ class WeatherData {
     'sunset': sunset?.toIso8601String(),
     'isDay': isDay,
     'humidityPercent': humidityPercent,
+    'dailyMaxTempC': dailyMaxTempC,
+    'dailyWeatherCode': dailyWeatherCode,
   };
 
   factory WeatherData.fromJson(Map<String, dynamic> j) => WeatherData(
@@ -111,6 +120,8 @@ class WeatherData {
     sunset: j['sunset'] != null ? DateTime.parse(j['sunset'] as String) : null,
     isDay: (j['isDay'] as bool? ?? true),
     humidityPercent: j['humidityPercent'] as int?,
+    dailyMaxTempC: (j['dailyMaxTempC'] as num?)?.toDouble(),
+    dailyWeatherCode: j['dailyWeatherCode'] as int?,
   );
 }
 
@@ -231,7 +242,7 @@ class WeatherService {
       '?latitude=$lat&longitude=$lon'
       '&current=temperature_2m,apparent_temperature,weather_code,'
       'precipitation,wind_speed_10m,is_day,relative_humidity_2m'
-      '&daily=sunrise,sunset'
+      '&daily=sunrise,sunset,temperature_2m_max,weather_code_10m_dominant'
       '&timezone=auto',
     );
     final wResp = await http
@@ -248,14 +259,26 @@ class WeatherService {
 
     // ── Sunrise/Sunset parsen ──────────────────────────────────────────────
     DateTime? sunrise, sunset;
+    double? dailyMaxTemp;
+    int? dailyWeatherCodeValue;
+
     try {
       final daily = wJson['daily'] as Map<String, dynamic>;
       final srList = daily['sunrise'] as List;
       final ssList = daily['sunset'] as List;
       if (srList.isNotEmpty) sunrise = DateTime.parse(srList.first as String);
       if (ssList.isNotEmpty) sunset = DateTime.parse(ssList.first as String);
+
+      final maxList = daily['temperature_2m_max'] as List?;
+      final codeList = daily['weather_code_10m_dominant'] as List?;
+      if (maxList != null && maxList.isNotEmpty) {
+        dailyMaxTemp = (maxList.first as num).toDouble();
+      }
+      if (codeList != null && codeList.isNotEmpty) {
+        dailyWeatherCodeValue = (codeList.first as num).toInt();
+      }
     } catch (_) {
-      // Sunrise/Sunset nicht verfügbar → ignoriert
+      // Sunrise/Sunset oder daily-Daten nicht verfügbar → ignoriert
     }
 
     return WeatherData(
@@ -270,6 +293,8 @@ class WeatherService {
       sunset: sunset,
       isDay: isDay,
       humidityPercent: humidity,
+      dailyMaxTempC: dailyMaxTemp,
+      dailyWeatherCode: dailyWeatherCodeValue,
     );
   }
 

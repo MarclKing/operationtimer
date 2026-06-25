@@ -206,70 +206,82 @@ Future<DateTime?> showMonthYearPicker({
           mainAxisSize: MainAxisSize.min,
           children: [
             SheetHandle(skin: skin),
-            const SizedBox(height: 20),
-            Text('Monat & Jahr', style: TextStyle(color: skin.textPrimary, fontSize: 17, fontWeight: FontWeight.w600)),
-            const SizedBox(height: 16),
-            SizedBox(
-              height: 200,
-              child: Row(children: [
-                Expanded(
-                  flex: 2,
-                  child: CupertinoPicker(
-                    scrollController: monthCtrl,
-                    itemExtent: 44,
-                    looping: true,
-                    backgroundColor: Colors.transparent,
-                    onSelectedItemChanged: (i) => setSheet(() => pickedMonth = i % 12),
-                    children: List.generate(
-                        12,
-                        (i) => Center(
-                              child: Text(DateFormat('MMMM', 'de').format(DateTime(2024, i + 1)),
-                                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w500, color: skin.textPrimary)),
-                            )),
-                  ),
-                ),
-                Expanded(
-                  child: CupertinoPicker(
-                    scrollController: yearCtrl,
-                    itemExtent: 44,
-                    looping: false,
-                    backgroundColor: Colors.transparent,
-                    onSelectedItemChanged: (i) => setSheet(() => pickedYear = 2020 + i.clamp(0, yearCount - 1)),
-                    children: List.generate(
-                        yearCount,
-                        (i) => Center(
-                              child: Text('${2020 + i}',
-                                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w500, color: skin.textPrimary)),
-                            )),
-                  ),
-                ),
-              ]),
+            const SizedBox(height: 12),
+Text('Monat & Jahr', style: TextStyle(color: skin.textPrimary, fontSize: 17, fontWeight: FontWeight.w600)),
+const SizedBox(height: 8),
+SizedBox(
+  height: 160,
+  child: Row(children: [
+    Expanded(
+      flex: 2,
+      child: CupertinoPicker(
+        scrollController: monthCtrl,
+        itemExtent: 32,
+        squeeze: 1.45,
+        diameterRatio: 1.07,
+        magnification: 1.2,
+        looping: true,
+        backgroundColor: Colors.transparent,
+        onSelectedItemChanged: (i) => setSheet(() => pickedMonth = i % 12),
+        children: List.generate(
+          12,
+          (i) => Center(
+            child: Text(
+              DateFormat('MMMM', 'de').format(DateTime(2024, i + 1)),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: skin.textPrimary),
             ),
-            const SizedBox(height: 16),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
-              child: Row(children: [
-                Expanded(
-                  child: GlassSecondaryButton(
-                    skin: skin,
-                    label: 'Aktuell',
-                    onTap: () {
-                      final now = DateTime.now();
-                      Navigator.pop(ctx, DateTime(now.year, now.month));
-                    },
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: GlassPrimaryButton(
-                    skin: skin,
-                    label: 'Auswählen',
-                    onTap: () => Navigator.pop(ctx, DateTime(pickedYear, pickedMonth + 1)),
-                  ),
-                ),
-              ]),
+          ),
+        ),
+      ),
+    ),
+    Expanded(
+      child: CupertinoPicker(
+        scrollController: yearCtrl,
+        itemExtent: 32,
+        squeeze: 1.45,
+        diameterRatio: 1.07,
+        magnification: 1.2,
+        looping: false,
+        backgroundColor: Colors.transparent,
+        onSelectedItemChanged: (i) => setSheet(() => pickedYear = 2020 + i.clamp(0, yearCount - 1)),
+        children: List.generate(
+          yearCount,
+          (i) => Center(
+            child: Text(
+              '${2020 + i}',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: skin.textPrimary),
             ),
-            const SizedBox(height: 32),
+          ),
+        ),
+      ),
+    ),
+  ]),
+),
+const SizedBox(height: 8),
+Padding(
+  padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+  child: Row(children: [
+    Expanded(
+      child: GlassSecondaryButton(
+        skin: skin,
+        label: 'Aktuell',
+        onTap: () {
+          final now = DateTime.now();
+          Navigator.pop(ctx, DateTime(now.year, now.month));
+        },
+      ),
+    ),
+    const SizedBox(width: 10),
+    Expanded(
+      child: GlassPrimaryButton(
+        skin: skin,
+        label: 'Auswählen',
+        onTap: () => Navigator.pop(ctx, DateTime(pickedYear, pickedMonth + 1)),
+      ),
+    ),
+  ]),
+),
+const SizedBox(height: 24),
           ],
         ),
       ),
@@ -305,9 +317,9 @@ Future<DateTime?> showSingleDatePicker({
             SheetHandle(skin: skin),
             const SizedBox(height: 8),
             Text('Datum auswählen', style: TextStyle(color: skin.textPrimary, fontSize: 17, fontWeight: FontWeight.w600)),
-            const SizedBox(height: 16),
+            const SizedBox(height: 8),
             SizedBox(
-              height: 200,
+              height: 160,
               child: CupertinoDatePicker(
                 key: pickerKey,
                 mode: CupertinoDatePickerMode.date,
@@ -318,7 +330,7 @@ Future<DateTime?> showSingleDatePicker({
                 onDateTimeChanged: (d) => tempDate = d,
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 8),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
               child: Row(children: [

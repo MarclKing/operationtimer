@@ -503,16 +503,24 @@ class TasksScreenState extends State<TasksScreen> with TickerProviderStateMixin 
     return Scaffold(
       backgroundColor: skin.bgBase,
       body: GestureDetector(
-        onTap: () {
-  FocusManager.instance.primaryFocus?.unfocus();
-  if (_inlineEditId != null) {
-    _taskCardKeys[_inlineEditId]?.currentState?.commitInlineEditNow();
-    setState(() => _inlineEditId = null);
-  }
-  if (_openSwipedId != null) setState(() => _openSwipedId = null);
-},
-behavior: HitTestBehavior.translucent,
-        child: Stack(
+  onTap: () {
+    FocusManager.instance.primaryFocus?.unfocus();
+    if (_inlineEditId != null) {
+      _taskCardKeys[_inlineEditId]?.currentState?.commitInlineEditNow();
+      setState(() => _inlineEditId = null);
+    }
+    if (_openSwipedId != null) setState(() => _openSwipedId = null);
+  },
+  onVerticalDragUpdate: (d) {
+    // Nach-unten-Wischen schließt Tastatur
+    if (d.delta.dy > 6 && _inlineEditId != null) {
+      FocusManager.instance.primaryFocus?.unfocus();
+      _taskCardKeys[_inlineEditId]?.currentState?.commitInlineEditNow();
+      setState(() => _inlineEditId = null);
+    }
+  },
+  behavior: HitTestBehavior.translucent,
+  child: Stack(
           children: [
             SafeArea(
               bottom: false,

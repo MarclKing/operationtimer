@@ -483,8 +483,8 @@ class _GlassDropdownButtonState<T> extends State<GlassDropdownButton<T>>
     const popupMinWidth = 160.0;
 
     final rightEdge = offset.dx + size.width;
-    double popupLeft = rightEdge - popupMaxWidth;
-    if (popupLeft < 16) popupLeft = 16;
+double popupLeft = rightEdge - popupMaxWidth - 16; // ← -16 hier
+if (popupLeft < 16) popupLeft = 16;
 
     double popupTop = offset.dy + size.height * 0.5 - 8;
     final estimatedHeight = widget.items.length * 48.0 + 16;
