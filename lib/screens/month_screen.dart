@@ -1168,9 +1168,11 @@ class MonthScreenState extends State<MonthScreen> with TickerProviderStateMixin 
     int offeneEntries,
     double bottomNavHeight,
   ) {
-    return CustomScrollView(
-      controller: _scrollController,
-      slivers: [
+    return FadingListView(
+  fadeFromBottom: bottomNavHeight + 20,
+  child: CustomScrollView(
+    controller: _scrollController,
+    slivers: [
         SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -1415,9 +1417,11 @@ class MonthScreenState extends State<MonthScreen> with TickerProviderStateMixin 
                 ),
               ),
       ],
+  ),
     );
   }
 }
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GLASS ZEIT-KARTE  (aus home_screen.dart übernommen)
