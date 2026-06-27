@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
@@ -173,95 +172,71 @@ class _BugCardState extends State<_BugCard> {
       cardKey: r.id,
       onDelete: widget.onDelete,
       animateDelete: false,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(14),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
-          child: Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: r.resolved
-                  ? skin.surface(0.04)
-                  : (skin.isLight ? Colors.white.withValues(alpha: skin.glassOpacity)
-                      : skin.bgCard.withValues(alpha: skin.glassOpacity)),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: r.resolved
-                    ? skin.surface(0.12)
-                    : skin.deleteColor.withValues(alpha: 0.30),
-                width: r.resolved ? 0.8 : 1.3,
+      child: GlassSurface(
+        borderRadius: 14,
+        padding: const EdgeInsets.all(14),
+        overrideColor: r.resolved ? skin.surface(0.04) : null,
+        borderColor: r.resolved ? skin.surface(0.12) : skin.deleteColor.withValues(alpha: 0.30),
+        borderWidth: r.resolved ? 0.8 : 1.3,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            // Resolved-Toggle
+            GestureDetector(
+              onTap: widget.onToggleResolved,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                width: 22, height: 22,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: r.resolved ? skin.statComplete : Colors.transparent,
+                  border: Border.all(
+                    color: r.resolved ? skin.statComplete : skin.surface(0.28),
+                    width: 1.8),
+                ),
+                child: r.resolved
+                    ? const Icon(Icons.check, size: 13, color: Colors.white) : null,
               ),
             ),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                // Resolved-Toggle
-                GestureDetector(
-                  onTap: widget.onToggleResolved,
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 180),
-                    width: 22, height: 22,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: r.resolved ? skin.statComplete : Colors.transparent,
-                      border: Border.all(
-                        color: r.resolved ? skin.statComplete : skin.surface(0.28),
-                        width: 1.8),
-                    ),
-                    child: r.resolved
-                        ? const Icon(Icons.check, size: 13, color: Colors.white) : null,
-                  ),
+            const SizedBox(width: 10),
+            Expanded(child: Text(r.title,
+              style: TextStyle(
+                fontSize: 14, fontWeight: FontWeight.w700,
+                color: r.resolved ? skin.surface(0.35) : skin.textPrimary,
+                decoration: r.resolved ? TextDecoration.lineThrough : null,
+                decorationColor: skin.surface(0.35),
+              ))),
+            if (r.screenshotUrl != null)
+              GestureDetector(
+                onTap: widget.onViewScreenshot,
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 8),
+                  child: Icon(Icons.image_outlined, size: 18, color: skin.primary),
                 ),
-                const SizedBox(width: 10),
-                Expanded(child: Text(r.title,
-                  style: TextStyle(
-                    fontSize: 14, fontWeight: FontWeight.w700,
-                    color: r.resolved ? skin.surface(0.35) : skin.textPrimary,
-                    decoration: r.resolved ? TextDecoration.lineThrough : null,
-                    decorationColor: skin.surface(0.35),
-                  ))),
-                if (r.screenshotUrl != null)
-                  GestureDetector(
-                    onTap: widget.onViewScreenshot,
-                    child: Padding(
-                      padding: const EdgeInsets.only(left: 8),
-                      child: Icon(Icons.image_outlined, size: 18, color: skin.primary),
-                    ),
-                  ),
-              ]),
-              if (r.description.isNotEmpty) ...[
-                const SizedBox(height: 6),
-                Padding(
-                  padding: const EdgeInsets.only(left: 32),
-                  child: Text(r.description,
-                    style: TextStyle(fontSize: 13, color: skin.surface(0.5), height: 1.4),
-                    maxLines: 3, overflow: TextOverflow.ellipsis),
-                ),
-              ],
-              const SizedBox(height: 6),
-              Padding(
-                padding: const EdgeInsets.only(left: 32),
-                child: Row(children: [
-                  Icon(Icons.access_time_outlined, size: 11, color: skin.surface(0.3)),
-                  const SizedBox(width: 4),
-                  Text(dateStr, style: TextStyle(fontSize: 11, color: skin.surface(0.3))),
-                  if (r.resolved) ...[
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: skin.statComplete.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text('Erledigt',
-                          style: TextStyle(fontSize: 10, color: skin.statComplete,
-                              fontWeight: FontWeight.w600)),
-                    ),
-                  ],
-                ]),
               ),
+          ]),
+          if (r.description.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Padding(
+              padding: const EdgeInsets.only(left: 32),
+              child: Text(r.description,
+                style: TextStyle(fontSize: 13, color: skin.surface(0.5), height: 1.4),
+                maxLines: 3, overflow: TextOverflow.ellipsis),
+            ),
+          ],
+          const SizedBox(height: 6),
+          Padding(
+            padding: const EdgeInsets.only(left: 32),
+            child: Row(children: [
+              Icon(Icons.access_time_outlined, size: 11, color: skin.surface(0.3)),
+              const SizedBox(width: 4),
+              Text(dateStr, style: TextStyle(fontSize: 11, color: skin.surface(0.3))),
+              if (r.resolved) ...[
+                const SizedBox(width: 8),
+                GlassStatusBadge(label: 'Erledigt', color: skin.statComplete, fontSize: 10),
+              ],
             ]),
           ),
-        ),
+        ]),
       ),
     );
   }

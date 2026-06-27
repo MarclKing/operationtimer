@@ -65,12 +65,6 @@ class NightShiftHelper {
     }
   }
 
-  static String _fromMinutes(int minutes) {
-    final hour = (minutes ~/ 60) % 24;
-    final minute = minutes % 60;
-    return '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
-  }
-
   static bool _hasConflict(List<Map<String, dynamic>> entries, String kommen, String gehen, [String? excludeId]) {
     final newStart = _toMinutes(kommen);
     final newEnd = _toMinutes(gehen);

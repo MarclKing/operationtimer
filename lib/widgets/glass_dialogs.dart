@@ -187,12 +187,105 @@ Future<bool?> confirmActionDialog({
                     const SizedBox(height: 12),
                     extraContent,
                   ],
-                  const SizedBox(height: 20),
+                 const SizedBox(height: 20),
                   Row(children: [
                     Expanded(child: GlassSecondaryButton(skin: skin, label: cancelLabel, onTap: () => Navigator.pop(ctx, false))),
                     const SizedBox(width: 10),
                     Expanded(child: GlassPrimaryButton(skin: skin, label: confirmLabel, onTap: () => Navigator.pop(ctx, true))),
                   ]),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+/// Zeigt einen reinen Hinweis-Dialog mit nur einem Button (kein Abbrechen-Pfad).
+/// Für Fehlermeldungen oder Bestätigungen ohne sinnvolle Alternative —
+/// z. B. "Ungültige Zeit" oder "Zeitüberschneidung" in night_shift_helper.dart,
+/// die vorher einen eigenen, glasslosen _NightShiftDialog mit Dialog(...) und
+/// showDialog(...) nutzten.
+///
+/// Beispiel:
+/// ```dart
+/// await infoDialog(
+///   context: context,
+///   skin: skin,
+///   title: 'Ungültige Zeit',
+///   message: '"Gehen" muss nach "Kommen" liegen.',
+///   icon: Icons.error_outline_rounded,
+///   isError: true,
+/// );
+/// ```
+Future<void> infoDialog({
+  required BuildContext context,
+  required AppSkin skin,
+  required String title,
+  required String message,
+  String confirmLabel = 'OK',
+  IconData icon = Icons.info_outline,
+  bool isError = false,
+  Widget? extraContent,
+}) {
+  final accentColor = isError ? skin.deleteColor : skin.primary;
+
+  return showGeneralDialog<void>(
+    context: context,
+    barrierDismissible: true,
+    barrierLabel: 'Schließen',
+    barrierColor: Colors.black.withValues(alpha: 0.55),
+    transitionDuration: const Duration(milliseconds: 280),
+    transitionBuilder: (ctx, anim, _, child) {
+      final curved = CurvedAnimation(parent: anim, curve: Curves.easeOutBack, reverseCurve: Curves.easeInBack);
+      return ScaleTransition(
+          scale: Tween<double>(begin: 0.82, end: 1.0).animate(curved), child: FadeTransition(opacity: anim, child: child));
+    },
+    pageBuilder: (ctx, _, __) => Center(
+      child: Material(
+        color: Colors.transparent,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(22),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+            child: Container(
+              margin: const EdgeInsets.symmetric(horizontal: 32),
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: skin.isLight ? Colors.white.withValues(alpha: 0.92) : skin.bgCard.withValues(alpha: 0.92),
+                borderRadius: BorderRadius.circular(22),
+                border: Border.all(color: skin.glassBorder),
+                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.35), blurRadius: 32, offset: const Offset(0, 8))],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(children: [
+                    Container(
+                      width: 42,
+                      height: 42,
+                      decoration: BoxDecoration(
+                        color: accentColor.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(icon, color: accentColor, size: 22),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                        child: Text(title,
+                            style: TextStyle(color: skin.textPrimary, fontSize: 17, fontWeight: FontWeight.w700))),
+                  ]),
+                  const SizedBox(height: 12),
+                  Text(message, style: TextStyle(color: skin.textMuted, fontSize: 13, height: 1.45)),
+                  if (extraContent != null) ...[
+                    const SizedBox(height: 12),
+                    extraContent,
+                  ],
+                  const SizedBox(height: 20),
+                  GlassPrimaryButton(skin: skin, label: confirmLabel, onTap: () => Navigator.pop(ctx)),
                 ],
               ),
             ),

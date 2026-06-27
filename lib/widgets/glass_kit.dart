@@ -26,6 +26,15 @@ class GlassSurface extends StatelessWidget {
   final bool highlighted;
   final Color? overrideColor;
 
+  /// Optionaler Override für die Border-Farbe — z. B. für Status-Indikatoren
+  /// wie einen roten Rahmen bei offenen Bug-Reports (bug_admin_screen.dart).
+  /// Hat Vorrang vor [highlighted].
+  final Color? borderColor;
+
+  /// Optionale Border-Breite, nur relevant zusammen mit [borderColor].
+  /// Ohne [borderColor] gilt weiterhin die bestehende highlighted-Logik (1.0/1.5).
+  final double? borderWidth;
+
   const GlassSurface({
     super.key,
     required this.child,
@@ -34,6 +43,8 @@ class GlassSurface extends StatelessWidget {
     this.useBlur = true,
     this.highlighted = false,
     this.overrideColor,
+    this.borderColor,
+    this.borderWidth,
   });
 
   @override
@@ -49,8 +60,8 @@ class GlassSurface extends StatelessWidget {
       color: baseColor,
       borderRadius: br,
       border: Border.all(
-        color: highlighted ? skin.primary.withValues(alpha: 0.45) : skin.glassBorder,
-        width: highlighted ? 1.5 : 1.0,
+        color: borderColor ?? (highlighted ? skin.primary.withValues(alpha: 0.45) : skin.glassBorder),
+        width: borderWidth ?? (highlighted ? 1.5 : 1.0),
       ),
       boxShadow: [
         BoxShadow(color: skin.glassShadow, blurRadius: 24, spreadRadius: 0, offset: const Offset(0, 6)),
