@@ -281,3 +281,74 @@ class _SkinInheritedWidget extends InheritedWidget {
   bool updateShouldNotify(_SkinInheritedWidget old) =>
       old.skin.key != skin.key;
 }
+// ─────────────────────────────────────────────────────────────────────────────
+// SPACING & RADIUS TOKENS
+//
+// Extrahiert aus den tatsächlich genutzten Werten in allen Screens.
+// Ziel: hardcoded 14.0, 20.0, 24.0 etc. durch benannte Konstanten ersetzen.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class AppSpacing {
+  AppSpacing._();
+
+  // ── Screen-Ebene ────────────────────────────────────────────────────────
+  /// Horizontales Padding auf Screen-Ebene (24px überall)
+  static const double screenH = 24.0;
+
+  /// Vertikaler Gap zwischen Sektionen auf einem Screen
+  static const double sectionGap = 24.0;
+
+  /// Kleiner Gap zwischen zusammengehörigen Elementen (z. B. StatCards)
+  static const double itemGap = 10.0;
+
+  /// Standard-Gap innerhalb einer Sektion
+  static const double gap = 16.0;
+
+  /// Kleiner Gap (z. B. zwischen Label und Wert)
+  static const double gapSm = 8.0;
+
+  /// Sehr kleiner Gap (z. B. zwischen Icon und Text)
+  static const double gapXs = 6.0;
+
+  // ── Card / Surface ───────────────────────────────────────────────────────
+  /// Padding für List-Items und einfache Kacheln
+  static const EdgeInsets cardPadding =
+      EdgeInsets.symmetric(horizontal: 14, vertical: 12);
+
+  /// Padding für größere Cards (z. B. _MonthEntryCard)
+  static const EdgeInsets cardPaddingLg =
+      EdgeInsets.symmetric(horizontal: 14, vertical: 13);
+
+  /// Padding für Screen-Inhalte
+  static const EdgeInsets screenPadding =
+      EdgeInsets.symmetric(horizontal: 24);
+
+  // ── Border Radius ────────────────────────────────────────────────────────
+  /// Sehr kleine Elemente: Badges, Status-Dots
+  static const double radiusXs = 6.0;
+
+  /// Chips, kleine Buttons
+  static const double radiusSm = 12.0;
+
+  /// Standard Cards, List-Items, Swipe-Buttons
+  static const double radius = 14.0;
+
+  /// NavCard, Datumskarte, große Surfaces
+  static const double radiusLg = 20.0;
+
+  /// Sheets (top-only)
+  static const double radiusSheet = 28.0;
+
+  /// Chips (rund)
+  static const double radiusChip = 20.0;
+
+  // ── Höhen ────────────────────────────────────────────────────────────────
+  /// Standard NavCard Höhe (Datums-/Monatsnavigation)
+  static const double navCardHeight = 52.0;
+
+  /// Standard SwipeCard Höhe in Zeiterfassung
+  static const double swipeCardHeight = 90.0;
+
+  /// Chevron-Breite in NavCards
+  static const double navChevronWidth = 44.0;
+}

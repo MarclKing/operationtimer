@@ -11,6 +11,7 @@ import '../theme/app_theme.dart';
 import '../widgets/glass_kit.dart';
 import '../widgets/glass_pickers.dart';
 import '../widgets/glass_dialogs.dart';
+import '../widgets/glass_snackbar.dart';
 import '../widgets/swipe_animation_mixin.dart';
 import 'km_scanner_screen.dart';
 import 'fuel_scanner_screen.dart';
@@ -941,16 +942,29 @@ Widget build(BuildContext context) {
                         ),
                       ]),
                       const SizedBox(height: 16),
-                      _MonthNavBar(
-                        monthName: monthName, skin: skin,
-                        onPrev: () => _changeMonth(-1), onNext: () => _changeMonth(1),
-                        onPicker: _showMonthPicker,
-                        onDoubleTap: () {
-                          HapticFeedback.selectionClick();
-                          final now = DateTime.now();
-                          _setMonth(DateTime(now.year, now.month));
-                        },
-                      ),
+                      GlassNavCard(
+  onPrevious: () => _changeMonth(-1),
+  onNext: () => _changeMonth(1),
+  onTap: _showMonthPicker,
+  onDoubleTap: () {
+    HapticFeedback.selectionClick();
+    final now = DateTime.now();
+    _setMonth(DateTime(now.year, now.month));
+  },
+  onSwipe: (v) {
+    if (v < -300) _changeMonth(1);
+    if (v > 300) _changeMonth(-1);
+  },
+  child: Row(
+    mainAxisAlignment: MainAxisAlignment.center,
+    children: [
+      Text(monthName,
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: skin.textPrimary)),
+      const SizedBox(width: 6),
+      Icon(Icons.expand_more, color: skin.primary, size: 18),
+    ],
+  ),
+),
                       const SizedBox(height: 12),
                       Row(children: [
                         GlassStatCard(label: 'Fahrten', value: '$totalFahrten', color: skin.primary),
@@ -1842,12 +1856,12 @@ class _FahrtCardState extends State<_FahrtCard>
                       onTap: () {
                         Navigator.pop(ctx);
                         HapticFeedback.selectionClick();
-                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                          content: const Text('Export kommt bald…'), backgroundColor: skin.textMuted,
-                          behavior: SnackBarBehavior.floating,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          margin: const EdgeInsets.fromLTRB(16, 0, 16, 100), duration: const Duration(seconds: 2),
-                        ));
+                        showGlassSnackBar(
+  context,
+  'Export kommt bald…',
+  type: GlassSnackBarType.info,
+  duration: const Duration(seconds: 2),
+);
                       },
                       child: AspectRatio(aspectRatio: 1, child: Container(
                         padding: const EdgeInsets.all(14),
@@ -2562,15 +2576,13 @@ class _FahrtEintragenSheetState extends State<_FahrtEintragenSheet> {
       }
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('KM-Stand übernommen: $km km'),
-          backgroundColor: skin.primary,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          margin: const EdgeInsets.fromLTRB(16, 0, 16, 100),
-          duration: const Duration(seconds: 2),
-        ));
-      }
+  showGlassSnackBar(
+    context,
+    'KM-Stand übernommen: $km km',
+    type: GlassSnackBarType.success,
+    duration: const Duration(seconds: 2),
+  );
+}
     }
   }
 
@@ -2590,14 +2602,12 @@ class _FahrtEintragenSheetState extends State<_FahrtEintragenSheet> {
     final liter = result['liter'] as String?;
     if (liter != null) {
       _set(() => _kraftstoffCtrl.text = liter);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('Liter übernommen: $liter L'),
-        backgroundColor: const Color(0xFFFFB347),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        margin: const EdgeInsets.fromLTRB(16, 0, 16, 100),
-        duration: const Duration(seconds: 2),
-      ));
+      showGlassSnackBar(
+  context,
+  'Liter übernommen: $liter L',
+  type: GlassSnackBarType.warning,
+  duration: const Duration(seconds: 2),
+);
     }
   }
 
@@ -2876,13 +2886,11 @@ class _FahrtEintragenSheetState extends State<_FahrtEintragenSheet> {
         _finalized = false;
         HapticFeedback.heavyImpact();
         if (_canShowAlert('zeit_reihenfolge'))
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: const Text('Ankunftszeit muss nach der Abfahrtszeit liegen.'),
-            backgroundColor: skin.deleteColor,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            margin: const EdgeInsets.fromLTRB(16, 0, 16, 100),
-          ));
+  showGlassSnackBar(
+    context,
+    'Ankunftszeit muss nach der Abfahrtszeit liegen.',
+    type: GlassSnackBarType.error,
+  );
         return;
       }
     }
@@ -2891,12 +2899,11 @@ class _FahrtEintragenSheetState extends State<_FahrtEintragenSheet> {
       _finalized = false;
       HapticFeedback.heavyImpact();
       if (_canShowAlert('km_reihenfolge'))
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: const Text('Ankunft-KM muss größer als Abfahrt-KM sein.'),
-          backgroundColor: skin.deleteColor, behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          margin: const EdgeInsets.fromLTRB(16, 0, 16, 100),
-        ));
+  showGlassSnackBar(
+    context,
+    'Ankunft-KM muss größer als Abfahrt-KM sein.',
+    type: GlassSnackBarType.error,
+  );
       return;
     }
 
@@ -2905,18 +2912,12 @@ class _FahrtEintragenSheetState extends State<_FahrtEintragenSheet> {
       _finalized = false;
       HapticFeedback.heavyImpact();
       if (_canShowAlert('kz_leer'))
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Row(children: [
-            const Icon(Icons.directions_car_outlined, color: Colors.white, size: 18),
-            const SizedBox(width: 10),
-            const Expanded(child: Text('Bitte ein Kennzeichen eintragen (z.B. B-UX 157)',
-                style: TextStyle(fontWeight: FontWeight.w600))),
-          ]),
-          backgroundColor: skin.deleteColor, behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          margin: const EdgeInsets.fromLTRB(16, 0, 16, 100),
-          duration: const Duration(seconds: 3),
-        ));
+  showGlassSnackBar(
+    context,
+    'Bitte ein Kennzeichen eintragen (z.B. B-UX 157)',
+    type: GlassSnackBarType.error,
+    duration: const Duration(seconds: 3),
+  );
       return;
     }
 
@@ -2925,18 +2926,12 @@ class _FahrtEintragenSheetState extends State<_FahrtEintragenSheet> {
       _finalized = false;
       HapticFeedback.heavyImpact();
       if (_canShowAlert('kz_ungueltig'))
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: const Row(children: [
-            Icon(Icons.directions_car_outlined, color: Colors.white, size: 18),
-            SizedBox(width: 10),
-            Expanded(child: Text('Kennzeichen unvollständig (z.B. B-UX 157)',
-                style: TextStyle(fontWeight: FontWeight.w600))),
-          ]),
-          backgroundColor: skin.deleteColor, behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          margin: const EdgeInsets.fromLTRB(16, 0, 16, 100),
-          duration: const Duration(seconds: 3),
-        ));
+  showGlassSnackBar(
+    context,
+    'Kennzeichen unvollständig (z.B. B-UX 157)',
+    type: GlassSnackBarType.error,
+    duration: const Duration(seconds: 3),
+  );
       return;
     }
 

@@ -4,20 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../theme/app_theme.dart';
 import '../models/relationship_style.dart';
-
-// ─────────────────────────────────────────────────────────────────────────────
-// LIQUID GLASS EXTENSION (gleiche Werte wie im Rest der App)
-// ─────────────────────────────────────────────────────────────────────────────
-
-extension _AppSkinGlass on AppSkin {
-  double get glassBlur => isLight ? 18.0 : 22.0;
-  double get glassOpacity => isLight ? 0.62 : 0.55;
-  Color get glassHighlight =>
-      isLight ? Colors.white.withValues(alpha: 0.70) : Colors.white.withValues(alpha: 0.12);
-  Color get glassBorder =>
-      isLight ? Colors.white.withValues(alpha: 0.55) : Colors.white.withValues(alpha: 0.16);
-  Color get glassShadow => Colors.black.withValues(alpha: isLight ? 0.08 : 0.35);
-}
+import '../widgets/glass_kit.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ONBOARDING-EINSTIEG
@@ -92,6 +79,7 @@ class _WelcomeSheetState extends State<_WelcomeSheet> {
   void initState() {
     super.initState();
     _nameCtrl.addListener(() => setState(() {}));
+    _focusNode.addListener(() => setState(() {}));
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Future.delayed(const Duration(milliseconds: 250), () {
         if (mounted) _focusNode.requestFocus();
@@ -123,159 +111,91 @@ class _WelcomeSheetState extends State<_WelcomeSheet> {
       canPop: false,
       child: Padding(
         padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-        child: ClipRRect(
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
-            child: Container(
-              decoration: BoxDecoration(
-                color: skin.isLight
-                    ? Colors.white.withValues(alpha: 0.90)
-                    : skin.bgSheet.withValues(alpha: 0.92),
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-                border: Border.all(color: skin.glassBorder),
-              ),
-              padding: const EdgeInsets.fromLTRB(24, 16, 24, 36),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // ── Icon ──────────────────────────────────────────────────
-                  Container(
-                    width: 60,
-                    height: 60,
-                    decoration: BoxDecoration(
-                      color: skin.primary.withValues(alpha: skin.isLight ? 0.12 : 0.18),
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                    child: Icon(Icons.front_hand_outlined, color: skin.primary, size: 28),
+        child: GlassSheet(
+          skin: skin,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 16, 24, 36),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // ── Icon ──────────────────────────────────────────────────
+                Container(
+                  width: 60,
+                  height: 60,
+                  decoration: BoxDecoration(
+                    color: skin.primary.withValues(alpha: skin.isLight ? 0.12 : 0.18),
+                    borderRadius: BorderRadius.circular(18),
                   ),
-                  const SizedBox(height: 18),
+                  child: Icon(Icons.front_hand_outlined, color: skin.primary, size: 28),
+                ),
+                const SizedBox(height: 18),
 
-                  // ── Begrüßung ─────────────────────────────────────────────
-                  Text(
-                    'Willkommen bei OpTimes',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 19,
-                      fontWeight: FontWeight.w700,
-                      color: skin.textPrimary,
-                    ),
+                // ── Begrüßung ─────────────────────────────────────────────
+                Text(
+                  'Willkommen bei OpTimes',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 19,
+                    fontWeight: FontWeight.w700,
+                    color: skin.textPrimary,
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Wie heißt du? Dein Name erscheint in der Begrüßung,\nim PDF-Export und hilft bei der Dienstplan-Erkennung.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 13, color: skin.textMuted, height: 1.5),
-                  ),
-                  const SizedBox(height: 22),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Wie heißt du? Dein Name erscheint in der Begrüßung,\nim PDF-Export und hilft bei der Dienstplan-Erkennung.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 13, color: skin.textMuted, height: 1.5),
+                ),
+                const SizedBox(height: 22),
 
-                  // ── Eingabefeld (Glass-Stil wie restliche App) ───────────────
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(16),
-                    child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                        decoration: BoxDecoration(
-                          color: skin.isLight
-                              ? Colors.white.withValues(alpha: skin.glassOpacity)
-                              : skin.bgCard.withValues(alpha: skin.glassOpacity),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: _focusNode.hasFocus
-                                ? skin.primary.withValues(alpha: 0.45)
-                                : skin.glassBorder,
-                            width: _focusNode.hasFocus ? 1.5 : 1.0,
+                // ── Eingabefeld (GlassSurface) ───────────────────────────
+                GlassSurface(
+                  borderRadius: 16,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  highlighted: _focusNode.hasFocus,
+                  child: Row(
+                    children: [
+                      Icon(Icons.person_outline_rounded, size: 18, color: skin.primary),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextField(
+                          controller: _nameCtrl,
+                          focusNode: _focusNode,
+                          textCapitalization: TextCapitalization.words,
+                          autocorrect: false,
+                          style: TextStyle(
+                            color: skin.textPrimary,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
                           ),
-                          boxShadow: [
-                            BoxShadow(color: skin.glassShadow, blurRadius: 16, offset: const Offset(0, 4)),
-                          ],
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(Icons.person_outline_rounded, size: 18, color: skin.primary),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: TextField(
-                                controller: _nameCtrl,
-                                focusNode: _focusNode,
-                                textCapitalization: TextCapitalization.words,
-                                autocorrect: false,
-                                style: TextStyle(
-                                  color: skin.textPrimary,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                                decoration: InputDecoration(
-                                  hintText: 'z.B. Max Mustermann',
-                                  hintStyle: TextStyle(color: skin.surface(0.3), fontSize: 16),
-                                  border: InputBorder.none,
-                                  isDense: true,
-                                  contentPadding: EdgeInsets.zero,
-                                ),
-                                onSubmitted: (_) => _submit(),
-                              ),
-                            ),
-                          ],
+                          decoration: InputDecoration(
+                            hintText: 'z.B. Max Mustermann',
+                            hintStyle: TextStyle(color: skin.surface(0.3), fontSize: 16),
+                            border: InputBorder.none,
+                            isDense: true,
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                          onSubmitted: (_) => _submit(),
                         ),
                       ),
-                    ),
+                    ],
                   ),
-                  const SizedBox(height: 18),
+                ),
+                const SizedBox(height: 18),
 
-                  // ── Primary Button (deaktiviert solange leer) ────────────────
-                  GestureDetector(
-                    onTap: _submit,
-                    child: AnimatedOpacity(
-                      duration: const Duration(milliseconds: 200),
-                      opacity: _canSubmit ? 1.0 : 0.4,
-                      child: Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        decoration: BoxDecoration(
-                          color: skin.isLight
-                              ? skin.primary.withValues(alpha: 0.13)
-                              : skin.primary.withValues(alpha: 0.22),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: skin.isLight
-                                ? skin.primary.withValues(alpha: 0.28)
-                                : skin.primary.withValues(alpha: 0.45),
-                            width: 1.5,
-                          ),
-                          boxShadow: [
-                            BoxShadow(color: skin.glassShadow, blurRadius: 24, offset: const Offset(0, 6)),
-                          ],
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              // NEU: "Weiter" statt "Los geht's" — es folgt noch Sheet 2
-                              'Weiter',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w700,
-                                color: skin.isLight
-                                    ? skin.primary.withValues(alpha: 0.90)
-                                    : skin.primary.withValues(alpha: 0.85),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Icon(
-                              Icons.arrow_forward_rounded,
-                              size: 18,
-                              color: skin.isLight
-                                  ? skin.primary.withValues(alpha: 0.65)
-                                  : skin.primary.withValues(alpha: 0.70),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
+                // ── Primary Button (deaktiviert solange leer) ────────────
+                AnimatedOpacity(
+                  duration: const Duration(milliseconds: 200),
+                  opacity: _canSubmit ? 1.0 : 0.4,
+                  child: GlassPrimaryButton(
+                    skin: skin,
+                    large: true,
+                    label: 'Weiter',
+                    icon: Icons.arrow_forward_rounded,
+                    onTap: _canSubmit ? _submit : () {},
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),
@@ -322,145 +242,97 @@ class _RelationshipSheetState extends State<_RelationshipSheet> {
 
     return PopScope(
       canPop: false,
-      child: ClipRRect(
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
-          child: Container(
-            decoration: BoxDecoration(
-              color: skin.isLight
-                  ? Colors.white.withValues(alpha: 0.90)
-                  : skin.bgSheet.withValues(alpha: 0.92),
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-              border: Border.all(color: skin.glassBorder),
-            ),
-            padding: const EdgeInsets.fromLTRB(24, 16, 24, 36),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
+      child: GlassSheet(
+        skin: skin,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 36),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
 
-                // ── Icon ──────────────────────────────────────────────────
-                Container(
-                  width: 60,
-                  height: 60,
-                  decoration: BoxDecoration(
-                    color: skin.primary.withValues(alpha: skin.isLight ? 0.12 : 0.18),
-                    borderRadius: BorderRadius.circular(18),
-                  ),
-                  child: Icon(Icons.chat_bubble_outline_rounded, color: skin.primary, size: 26),
+              // ── Icon ──────────────────────────────────────────────────
+              Container(
+                width: 60,
+                height: 60,
+                decoration: BoxDecoration(
+                  color: skin.primary.withValues(alpha: skin.isLight ? 0.12 : 0.18),
+                  borderRadius: BorderRadius.circular(18),
                 ),
-                const SizedBox(height: 18),
+                child: Icon(Icons.chat_bubble_outline_rounded, color: skin.primary, size: 26),
+              ),
+              const SizedBox(height: 18),
 
-                // ── Frage ─────────────────────────────────────────────────
-                Text(
-                  'Wie möchtest Du unser\nMiteinander erleben?',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 19,
-                    fontWeight: FontWeight.w700,
-                    color: skin.textPrimary,
-                    height: 1.3,
-                  ),
+              // ── Frage ─────────────────────────────────────────────────
+              Text(
+                'Wie möchtest Du unser\nMiteinander erleben?',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 19,
+                  fontWeight: FontWeight.w700,
+                  color: skin.textPrimary,
+                  height: 1.3,
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  '(Dies beeinflusst, wie Benachrichtigungen von\nOpTimes formuliert werden)',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 12.5, color: skin.textMuted, height: 1.5),
-                ),
-                const SizedBox(height: 22),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '(Dies beeinflusst, wie Benachrichtigungen von\nOpTimes formuliert werden)',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 12.5, color: skin.textMuted, height: 1.5),
+              ),
+              const SizedBox(height: 22),
 
-                // ── 3 Auswahlkarten ───────────────────────────────────────
-                _RelationshipOptionCard(
+              // ── 3 Auswahlkarten ───────────────────────────────────────
+              _RelationshipOptionCard(
+                skin: skin,
+                icon: Icons.bolt_rounded,
+                text: 'Locker, wir sind doch beides coole Charaktere!',
+                selected: _selected == RelationshipStyle.bro,
+                onTap: () {
+                  HapticFeedback.selectionClick();
+                  setState(() => _selected = RelationshipStyle.bro);
+                },
+              ),
+              const SizedBox(height: 10),
+              _RelationshipOptionCard(
+                skin: skin,
+                icon: Icons.waving_hand_outlined,
+                text: vorname.isEmpty
+                    ? 'Du kannst meinen Vornamen zu mir sagen!'
+                    : 'Du kannst $vorname zu mir sagen!',
+                selected: _selected == RelationshipStyle.vorname,
+                onTap: () {
+                  HapticFeedback.selectionClick();
+                  setState(() => _selected = RelationshipStyle.vorname);
+                },
+              ),
+              const SizedBox(height: 10),
+              _RelationshipOptionCard(
+                skin: skin,
+                icon: Icons.workspace_premium_outlined,
+                text: nachname.isEmpty
+                    ? 'Beim "Du" sind wir jedenfalls noch nicht angekommen!'
+                    : 'Beim "Du" sind wir jedenfalls noch nicht angekommen!',
+                selected: _selected == RelationshipStyle.familie,
+                onTap: () {
+                  HapticFeedback.selectionClick();
+                  setState(() => _selected = RelationshipStyle.familie);
+                },
+              ),
+              const SizedBox(height: 18),
+
+              // ── Primary Button (deaktiviert ohne Auswahl) ────────────
+              AnimatedOpacity(
+                duration: const Duration(milliseconds: 200),
+                opacity: _selected != null ? 1.0 : 0.4,
+                child: GlassPrimaryButton(
                   skin: skin,
-                  icon: Icons.bolt_rounded,
-                  text: 'Locker, wir sind doch beides coole Charaktere!',
-                  selected: _selected == RelationshipStyle.bro,
-                  onTap: () {
-                    HapticFeedback.selectionClick();
-                    setState(() => _selected = RelationshipStyle.bro);
-                  },
+                  large: true,
+                  label: "Los geht's",
+                  icon: Icons.arrow_forward_rounded,
+                  onTap: _selected != null ? _submit : () {},
                 ),
-                const SizedBox(height: 10),
-                _RelationshipOptionCard(
-                  skin: skin,
-                  icon: Icons.waving_hand_outlined,
-                  text: vorname.isEmpty
-                      ? 'Du kannst meinen Vornamen zu mir sagen!'
-                      : 'Du kannst $vorname zu mir sagen!',
-                  selected: _selected == RelationshipStyle.vorname,
-                  onTap: () {
-                    HapticFeedback.selectionClick();
-                    setState(() => _selected = RelationshipStyle.vorname);
-                  },
-                ),
-                const SizedBox(height: 10),
-                _RelationshipOptionCard(
-                  skin: skin,
-                  icon: Icons.workspace_premium_outlined,
-                  text: nachname.isEmpty
-                      ? 'Beim "Du" sind wir jedenfalls noch nicht angekommen!'
-                      : 'Beim "Du" sind wir jedenfalls noch nicht angekommen!',
-                  selected: _selected == RelationshipStyle.familie,
-                  onTap: () {
-                    HapticFeedback.selectionClick();
-                    setState(() => _selected = RelationshipStyle.familie);
-                  },
-                ),
-                const SizedBox(height: 18),
-
-                // ── Primary Button (deaktiviert ohne Auswahl) ────────────────
-                GestureDetector(
-                  onTap: _submit,
-                  child: AnimatedOpacity(
-                    duration: const Duration(milliseconds: 200),
-                    opacity: _selected != null ? 1.0 : 0.4,
-                    child: Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      decoration: BoxDecoration(
-                        color: skin.isLight
-                            ? skin.primary.withValues(alpha: 0.13)
-                            : skin.primary.withValues(alpha: 0.22),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: skin.isLight
-                              ? skin.primary.withValues(alpha: 0.28)
-                              : skin.primary.withValues(alpha: 0.45),
-                          width: 1.5,
-                        ),
-                        boxShadow: [
-                          BoxShadow(color: skin.glassShadow, blurRadius: 24, offset: const Offset(0, 6)),
-                        ],
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
-                            "Los geht's",
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              color: skin.isLight
-                                  ? skin.primary.withValues(alpha: 0.90)
-                                  : skin.primary.withValues(alpha: 0.85),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Icon(
-                            Icons.arrow_forward_rounded,
-                            size: 18,
-                            color: skin.isLight
-                                ? skin.primary.withValues(alpha: 0.65)
-                                : skin.primary.withValues(alpha: 0.70),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),

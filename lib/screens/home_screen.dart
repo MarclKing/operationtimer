@@ -8,6 +8,7 @@ import '../theme/app_theme.dart';
 import '../widgets/glass_kit.dart';
 import '../widgets/dictation_fab.dart';
 import '../widgets/glass_dialogs.dart';
+import '../widgets/glass_snackbar.dart';
 import '../models/relationship_style.dart';
 import '../services/weather_service.dart';
 import 'tasks_screen.dart' show TaskStore, Task;
@@ -134,14 +135,8 @@ class HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     TaskStore.add(task);
     setState(() {}); // Aufgaben-Preview aktualisieren
     HapticFeedback.mediumImpact();
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text('✓ „${task.title}" gespeichert'),
-      backgroundColor: AppTheme.of(context).statComplete,
-      behavior: SnackBarBehavior.floating,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 100),
-      duration: const Duration(seconds: 2),
-    ));
+    showGlassSnackBar(context, '„${task.title}" gespeichert',
+    type: GlassSnackBarType.success);
   }
 
   void _createTaskFromSpeech(ParsedSpokenTask parsed, String logRef) {
@@ -1698,9 +1693,11 @@ class _DictationTaskKachelState extends State<_DictationTaskKachel>
   }
 
   void _removeOverlay() {
+  try {
     _overlayEntry?.remove();
-    _overlayEntry = null;
-  }
+  } catch (_) {}
+  _overlayEntry = null;
+}
 
   void _rebuildOverlay() {
     _overlayEntry?.markNeedsBuild();
@@ -1770,48 +1767,42 @@ class _DictationTaskKachelState extends State<_DictationTaskKachel>
       children: [
         // ── Unsichtbarer DictationFab für Logik ──────────────────────────
         if (widget.useDictate)
-          Opacity(
-            opacity: 0,
-            child: SizedBox(
-              width: 0,
-              height: 0,
-              child: DictationFab(
-                key: _fabKey,
-                skin: skin,
-                hideButton: true,
-                useExternalBubbles: true,
-                onBubbleStateChanged: () {
-                  final fabState = _fabKey.currentState;
-                  if (fabState == null) return;
-
-                  // Overlay zeigen/verstecken je nach Phase
-                  if (fabState.phase == DictationPhase.idle &&
-                      !fabState.isCancelling &&
-                      fabState.cancelAnimCtrl.value == 0) {
-                    _removeOverlay();
-                  } else if (_overlayEntry == null) {
-                    _showOverlay();
-                  } else {
-                    _rebuildOverlay();
-                  }
-                },
-                onResult: (parsed, logRef) {
-                  widget.onResult(parsed, logRef);
-                  _hideOverlay();
-                },
-                onNeedsReview: (parsed, logRef) {
-                  widget.onNeedsReview(parsed, logRef);
-                  _hideOverlay();
-                },
-                onListeningStart: () {
-                  if (mounted) setState(() => _isListening = true);
+          Offstage(
+            offstage: true,
+            child: DictationFab(
+              key: _fabKey,
+              skin: skin,
+              hideButton: true,
+              useExternalBubbles: true,
+              onBubbleStateChanged: () {
+                final fabState = _fabKey.currentState;
+                if (fabState == null) return;
+                if (fabState.phase == DictationPhase.idle &&
+                    !fabState.isCancelling &&
+                    fabState.cancelAnimCtrl.value == 0) {
+                  _removeOverlay();
+                } else if (_overlayEntry == null) {
+                  _showOverlay();
+                } else {
                   _rebuildOverlay();
-                },
-                onListeningEnd: () {
-                  if (mounted) setState(() => _isListening = false);
-                  _rebuildOverlay();
-                },
-              ),
+                }
+              },
+              onResult: (parsed, logRef) {
+                widget.onResult(parsed, logRef);
+                _hideOverlay();
+              },
+              onNeedsReview: (parsed, logRef) {
+                widget.onNeedsReview(parsed, logRef);
+                _hideOverlay();
+              },
+              onListeningStart: () {
+                if (mounted) setState(() => _isListening = true);
+                _rebuildOverlay();
+              },
+              onListeningEnd: () {
+                if (mounted) setState(() => _isListening = false);
+                _rebuildOverlay();
+              },
             ),
           ),
 

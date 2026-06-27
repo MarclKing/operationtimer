@@ -2,6 +2,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import '../theme/app_theme.dart';
+import '../widgets/glass_kit.dart';
 import '../screens/speech_log_screen.dart';
 import '../screens/admin_rules_screen.dart';
 import '../services/auth_service.dart';
@@ -187,7 +188,7 @@ class _LearnBanner extends StatelessWidget {
   const _LearnBanner({required this.skin});
 
   static const _green = Color(0xFF2A9D5C);
-static const _greenDark = Color(0xFF1E7A45);
+  static const _greenDark = Color(0xFF1E7A45);
 
   @override
   Widget build(BuildContext context) {
@@ -256,7 +257,7 @@ static const _greenDark = Color(0xFF1E7A45);
             // ── Drei grüne Chips wie im Bild ──
             Row(
               children: [
-                _GreenChip(icon: Icons.mic_none_rounded, label: 'Einfach diktieren'),
+                _GreenChip(icon: Icons.mic_none_rounded, label: 'Diktieren'),
                 const SizedBox(width: 7),
                 _GreenChip(icon: Icons.psychology_outlined, label: 'App lernt'),
                 const SizedBox(width: 7),
@@ -339,6 +340,12 @@ class _ToolsRow extends StatelessWidget {
   }
 }
 
+// HINWEIS: Bewusste Ausnahme vom Design-System. GlassInfoCard ist als
+// zweizeilige Title+Description-Card konzipiert (38px Badge, größeres
+// Padding) und passt nicht zum kompakten, akzentgefärbten Tool-Tile-Look.
+// Diese Klasse bleibt lokal bestehen, übernimmt aber skin.glassShadow /
+// skin.glassHighlight, damit sie sich optisch in den Rest des Screens
+// (GlassSurface-Cards) einfügt.
 class _ToolTile extends StatelessWidget {
   final AppSkin skin;
   final IconData icon;
@@ -362,6 +369,10 @@ class _ToolTile extends StatelessWidget {
               color: color.withValues(alpha: skin.isLight ? 0.10 : 0.14),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: color.withValues(alpha: 0.35)),
+              boxShadow: [
+                BoxShadow(color: skin.glassShadow, blurRadius: 20, spreadRadius: 0, offset: const Offset(0, 6)),
+                BoxShadow(color: skin.glassHighlight, blurRadius: 0, spreadRadius: -1, offset: const Offset(0, 1)),
+              ],
             ),
             child: Row(
               children: [
@@ -445,136 +456,124 @@ class _PatternCardState extends State<_PatternCard> {
   Widget build(BuildContext context) {
     final accent = widget.accentColor;
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(14),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
-        child: Container(
-          decoration: BoxDecoration(
-            color: skin.isLight
-                ? Colors.white.withValues(alpha: skin.glassOpacity)
-                : skin.bgCard.withValues(alpha: skin.glassOpacity),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: skin.glassBorder),
-            boxShadow: [BoxShadow(color: skin.glassShadow, blurRadius: 20, offset: const Offset(0, 5))],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // ── Farbige Header-Leiste ──
-              Container(
-                padding: const EdgeInsets.fromLTRB(13, 11, 13, 11),
-                decoration: BoxDecoration(
-                  color: accent.withValues(alpha: skin.isLight ? 0.08 : 0.12),
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
-                  border: Border(bottom: BorderSide(color: accent.withValues(alpha: 0.20))),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 22, height: 22,
-                      decoration: BoxDecoration(
-                        color: accent.withValues(alpha: 0.18),
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(color: accent.withValues(alpha: 0.45)),
-                      ),
-                      child: Center(
-                        child: Text(widget.number,
-                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: accent)),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Icon(widget.icon, size: 13, color: accent),
-                    const SizedBox(width: 5),
-                    Text(widget.iconLabel,
-                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
-                            color: accent, letterSpacing: 0.4)),
-                  ],
-                ),
-              ),
-
-              // ── Template Chips ──
-              Padding(
-                padding: const EdgeInsets.fromLTRB(13, 10, 13, 0),
-                child: Wrap(
-                  spacing: 4, runSpacing: 4,
-                  children: widget.templateSegments.map((s) => _SegChip(seg: s, skin: skin)).toList(),
-                ),
-              ),
-
-              // ── Subtitle ──
-              Padding(
-                padding: const EdgeInsets.fromLTRB(13, 5, 13, 0),
-                child: Text(widget.subtitle,
-                    style: TextStyle(fontSize: 11, color: skin.textMuted)),
-              ),
-
-              // ── Divider + Beispiele ──
-              Padding(
-                padding: const EdgeInsets.fromLTRB(13, 9, 13, 0),
-                child: Container(height: 0.5, color: skin.surface(0.10)),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(13, 7, 13, 0),
-                child: Text('BEISPIELE',
-                    style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700,
-                        color: skin.surface(0.32), letterSpacing: 1.0)),
-              ),
-              ...widget.examples.map((e) => _ExampleRow(ex: e, skin: skin)),
-              const SizedBox(height: 4),
-
-              // ── Aufklappbar ──
-              GestureDetector(
-                onTap: () => setState(() => _open = !_open),
-                child: Container(
-                  color: skin.isLight
-                      ? Colors.black.withValues(alpha: 0.025)
-                      : Colors.white.withValues(alpha: 0.04),
-                  padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
-                  child: Row(
-                    children: [
-                      Icon(Icons.calendar_today_outlined, size: 13,
-                          color: _open ? accent : skin.surface(0.38)),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(widget.deadlineLabel,
-                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500,
-                                color: _open ? accent : skin.surface(0.45))),
-                      ),
-                      AnimatedRotation(
-                        turns: _open ? 0.5 : 0.0,
-                        duration: const Duration(milliseconds: 200),
-                        child: Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: skin.surface(0.35)),
-                      ),
-                    ],
+    return GlassSurface(
+      borderRadius: 14,
+      padding: EdgeInsets.zero,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ── Farbige Header-Leiste ──
+          Container(
+            padding: const EdgeInsets.fromLTRB(13, 11, 13, 11),
+            decoration: BoxDecoration(
+              color: accent.withValues(alpha: skin.isLight ? 0.08 : 0.12),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
+              border: Border(bottom: BorderSide(color: accent.withValues(alpha: 0.20))),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 22, height: 22,
+                  decoration: BoxDecoration(
+                    color: accent.withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: accent.withValues(alpha: 0.45)),
+                  ),
+                  child: Center(
+                    child: Text(widget.number,
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: accent)),
                   ),
                 ),
-              ),
-              if (_open) ...[
-                Container(height: 0.5, color: skin.surface(0.08)),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(13, 10, 13, 0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      ...widget.deadlineTemplates.map((segs) => Padding(
-                            padding: const EdgeInsets.only(bottom: 6),
-                            child: Wrap(spacing: 4, runSpacing: 4,
-                                children: segs.map((s) => _SegChip(seg: s, skin: skin)).toList()),
-                          )),
-                      if (widget.deadlineTemplates.isNotEmpty) const SizedBox(height: 4),
-                      Text('BEISPIELE',
-                          style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700,
-                              color: skin.surface(0.32), letterSpacing: 1.0)),
-                    ],
-                  ),
-                ),
-                ...widget.deadlineExamples.map((e) => _ExampleRow(ex: e, skin: skin)),
-                const SizedBox(height: 6),
+                const SizedBox(width: 8),
+                Icon(widget.icon, size: 13, color: accent),
+                const SizedBox(width: 5),
+                Text(widget.iconLabel,
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
+                        color: accent, letterSpacing: 0.4)),
               ],
-            ],
+            ),
           ),
-        ),
+
+          // ── Template Chips ──
+          Padding(
+            padding: const EdgeInsets.fromLTRB(13, 10, 13, 0),
+            child: Wrap(
+              spacing: 4, runSpacing: 4,
+              children: widget.templateSegments.map((s) => _SegChip(seg: s, skin: skin)).toList(),
+            ),
+          ),
+
+          // ── Subtitle ──
+          Padding(
+            padding: const EdgeInsets.fromLTRB(13, 5, 13, 0),
+            child: Text(widget.subtitle,
+                style: TextStyle(fontSize: 11, color: skin.textMuted)),
+          ),
+
+          // ── Divider + Beispiele ──
+          Padding(
+            padding: const EdgeInsets.fromLTRB(13, 9, 13, 0),
+            child: Container(height: 0.5, color: skin.surface(0.10)),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(13, 7, 13, 0),
+            child: Text('BEISPIELE',
+                style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700,
+                    color: skin.surface(0.32), letterSpacing: 1.0)),
+          ),
+          ...widget.examples.map((e) => _ExampleRow(ex: e, skin: skin)),
+          const SizedBox(height: 4),
+
+          // ── Aufklappbar ──
+          GestureDetector(
+            onTap: () => setState(() => _open = !_open),
+            child: Container(
+              color: skin.isLight
+                  ? Colors.black.withValues(alpha: 0.025)
+                  : Colors.white.withValues(alpha: 0.04),
+              padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
+              child: Row(
+                children: [
+                  Icon(Icons.calendar_today_outlined, size: 13,
+                      color: _open ? accent : skin.surface(0.38)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(widget.deadlineLabel,
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500,
+                            color: _open ? accent : skin.surface(0.45))),
+                  ),
+                  AnimatedRotation(
+                    turns: _open ? 0.5 : 0.0,
+                    duration: const Duration(milliseconds: 200),
+                    child: Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: skin.surface(0.35)),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (_open) ...[
+            Container(height: 0.5, color: skin.surface(0.08)),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(13, 10, 13, 0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  ...widget.deadlineTemplates.map((segs) => Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: Wrap(spacing: 4, runSpacing: 4,
+                            children: segs.map((s) => _SegChip(seg: s, skin: skin)).toList()),
+                      )),
+                  if (widget.deadlineTemplates.isNotEmpty) const SizedBox(height: 4),
+                  Text('BEISPIELE',
+                      style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700,
+                          color: skin.surface(0.32), letterSpacing: 1.0)),
+                ],
+              ),
+            ),
+            ...widget.deadlineExamples.map((e) => _ExampleRow(ex: e, skin: skin)),
+            const SizedBox(height: 6),
+          ],
+        ],
       ),
     );
   }
@@ -750,104 +749,92 @@ class _NaturalCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(14),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
-        child: Container(
-          decoration: BoxDecoration(
-            color: skin.isLight
-                ? Colors.white.withValues(alpha: skin.glassOpacity)
-                : skin.bgCard.withValues(alpha: skin.glassOpacity),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: skin.glassBorder),
-            boxShadow: [BoxShadow(color: skin.glassShadow, blurRadius: 16, offset: const Offset(0, 4))],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Header mit grünem Akzent
-              Container(
-                padding: const EdgeInsets.fromLTRB(13, 11, 13, 11),
-                decoration: BoxDecoration(
-                  color: _green.withValues(alpha: skin.isLight ? 0.07 : 0.10),
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
-                  border: Border(bottom: BorderSide(color: _green.withValues(alpha: 0.20))),
+    return GlassSurface(
+      borderRadius: 14,
+      padding: EdgeInsets.zero,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header mit grünem Akzent
+          Container(
+            padding: const EdgeInsets.fromLTRB(13, 11, 13, 11),
+            decoration: BoxDecoration(
+              color: _green.withValues(alpha: skin.isLight ? 0.07 : 0.10),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
+              border: Border(bottom: BorderSide(color: _green.withValues(alpha: 0.20))),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 22, height: 22,
+                  decoration: BoxDecoration(
+                    color: _green.withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: _green.withValues(alpha: 0.45)),
+                  ),
+                  child: const Center(
+                    child: Text('3',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: _green)),
+                  ),
                 ),
+                const SizedBox(width: 8),
+                Icon(Icons.auto_fix_high_outlined, size: 13, color: _green),
+                const SizedBox(width: 5),
+                Text('NATÜRLICHE SPRACHE',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
+                        color: _green, letterSpacing: 0.4)),
+                const SizedBox(width: 7),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: _green.withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: _green.withValues(alpha: 0.40)),
+                  ),
+                  child: const Text('LERNEND',
+                      style: TextStyle(fontSize: 8.5, fontWeight: FontWeight.w700,
+                          color: _green, letterSpacing: 0.7)),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(13, 9, 13, 0),
+            child: Text(
+              'Formulierungen die nicht Muster 1 oder 2 entsprechen, werden automatisch analysiert und der App beigebracht. Einfach natürlich sprechen — die Erkennung verbessert sich mit der Zeit.',
+              style: TextStyle(fontSize: 11.5, color: skin.textMuted, height: 1.4),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(13, 9, 13, 0),
+            child: Container(height: 0.5, color: skin.surface(0.10)),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(13, 7, 13, 0),
+            child: Text('WIRD AUTOMATISCH ERKANNT',
+                style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700,
+                    color: skin.surface(0.32), letterSpacing: 1.0)),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(13, 6, 13, 10),
+            child: Column(
+              children: _examples.map((e) => Padding(
+                padding: const EdgeInsets.only(bottom: 5),
                 child: Row(
                   children: [
-                    Container(
-                      width: 22, height: 22,
-                      decoration: BoxDecoration(
-                        color: _green.withValues(alpha: 0.18),
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(color: _green.withValues(alpha: 0.45)),
-                      ),
-                      child: const Center(
-                        child: Text('3',
-                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: _green)),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Icon(Icons.auto_fix_high_outlined, size: 13, color: _green),
-                    const SizedBox(width: 5),
-                    Text('NATÜRLICHE SPRACHE',
-                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
-                            color: _green, letterSpacing: 0.4)),
+                    Icon(Icons.mic_none_rounded, size: 12, color: skin.surface(0.30)),
                     const SizedBox(width: 7),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: _green.withValues(alpha: 0.18),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: _green.withValues(alpha: 0.40)),
-                      ),
-                      child: const Text('LERNEND',
-                          style: TextStyle(fontSize: 8.5, fontWeight: FontWeight.w700,
-                              color: _green, letterSpacing: 0.7)),
+                    Expanded(
+                      child: Text('„$e"',
+                          style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic,
+                              color: skin.textPrimary.withValues(alpha: 0.68))),
                     ),
                   ],
                 ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(13, 9, 13, 0),
-                child: Text(
-                  'Formulierungen die nicht Muster 1 oder 2 entsprechen, werden automatisch analysiert und der App beigebracht. Einfach natürlich sprechen — die Erkennung verbessert sich mit der Zeit.',
-                  style: TextStyle(fontSize: 11.5, color: skin.textMuted, height: 1.4),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(13, 9, 13, 0),
-                child: Container(height: 0.5, color: skin.surface(0.10)),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(13, 7, 13, 0),
-                child: Text('WIRD AUTOMATISCH ERKANNT',
-                    style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700,
-                        color: skin.surface(0.32), letterSpacing: 1.0)),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(13, 6, 13, 10),
-                child: Column(
-                  children: _examples.map((e) => Padding(
-                    padding: const EdgeInsets.only(bottom: 5),
-                    child: Row(
-                      children: [
-                        Icon(Icons.mic_none_rounded, size: 12, color: skin.surface(0.30)),
-                        const SizedBox(width: 7),
-                        Expanded(
-                          child: Text('„$e"',
-                              style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic,
-                                  color: skin.textPrimary.withValues(alpha: 0.68))),
-                        ),
-                      ],
-                    ),
-                  )).toList(),
-                ),
-              ),
-            ],
+              )).toList(),
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -869,63 +856,51 @@ class _UrgentCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(14),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
-        child: Container(
-          decoration: BoxDecoration(
-            color: skin.isLight
-                ? Colors.white.withValues(alpha: skin.glassOpacity)
-                : skin.bgCard.withValues(alpha: skin.glassOpacity),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: skin.glassBorder),
-            boxShadow: [BoxShadow(color: skin.glassShadow, blurRadius: 16, offset: const Offset(0, 4))],
+    return GlassSurface(
+      borderRadius: 14,
+      padding: EdgeInsets.zero,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              color: _red.withValues(alpha: skin.isLight ? 0.07 : 0.12),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
+              border: Border(bottom: BorderSide(color: _red.withValues(alpha: 0.22), width: 0.5)),
+            ),
+            padding: const EdgeInsets.fromLTRB(13, 10, 13, 10),
+            child: Row(
+              children: [
+                Icon(Icons.priority_high_rounded, size: 15, color: _red),
+                const SizedBox(width: 7),
+                const Text('Dringend',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: _red)),
+                const SizedBox(width: 6),
+                Text('— überall im Satz erkannt',
+                    style: TextStyle(fontSize: 11, color: _red.withValues(alpha: 0.70))),
+              ],
+            ),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                decoration: BoxDecoration(
-                  color: _red.withValues(alpha: skin.isLight ? 0.07 : 0.12),
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
-                  border: Border(bottom: BorderSide(color: _red.withValues(alpha: 0.22), width: 0.5)),
-                ),
-                padding: const EdgeInsets.fromLTRB(13, 10, 13, 10),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(13, 8, 13, 10),
+            child: Column(
+              children: _examples.map((e) => Padding(
+                padding: const EdgeInsets.only(bottom: 5),
                 child: Row(
                   children: [
-                    Icon(Icons.priority_high_rounded, size: 15, color: _red),
+                    Icon(Icons.mic_none_rounded, size: 12, color: skin.surface(0.30)),
                     const SizedBox(width: 7),
-                    const Text('Dringend',
-                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: _red)),
-                    const SizedBox(width: 6),
-                    Text('— überall im Satz erkannt',
-                        style: TextStyle(fontSize: 11, color: _red.withValues(alpha: 0.70))),
+                    Expanded(
+                      child: Text('„$e"',
+                          style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic,
+                              color: skin.textPrimary.withValues(alpha: 0.68))),
+                    ),
                   ],
                 ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(13, 8, 13, 10),
-                child: Column(
-                  children: _examples.map((e) => Padding(
-                    padding: const EdgeInsets.only(bottom: 5),
-                    child: Row(
-                      children: [
-                        Icon(Icons.mic_none_rounded, size: 12, color: skin.surface(0.30)),
-                        const SizedBox(width: 7),
-                        Expanded(
-                          child: Text('„$e"',
-                              style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic,
-                                  color: skin.textPrimary.withValues(alpha: 0.68))),
-                        ),
-                      ],
-                    ),
-                  )).toList(),
-                ),
-              ),
-            ],
+              )).toList(),
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -981,55 +956,43 @@ class _RefCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(14),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
-        child: Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: skin.isLight
-                ? Colors.white.withValues(alpha: skin.glassOpacity * 0.85)
-                : skin.bgCard.withValues(alpha: skin.glassOpacity * 0.75),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: skin.glassBorder),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(children: [
-                Icon(icon, size: 13, color: skin.primary.withValues(alpha: 0.70)),
-                const SizedBox(width: 6),
-                Text(title, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: skin.textPrimary)),
-              ]),
-              const SizedBox(height: 9),
-              ...groups.map((g) => Padding(
-                padding: const EdgeInsets.only(bottom: 7),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(g.label, style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w700,
-                        color: skin.surface(0.35), letterSpacing: 0.3)),
-                    const SizedBox(height: 4),
-                    Wrap(
-                      spacing: 4, runSpacing: 4,
-                      children: g.items.map((item) => Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: skin.surface(0.05),
-                          borderRadius: BorderRadius.circular(5),
-                          border: Border.all(color: skin.glassBorder, width: 0.7),
-                        ),
-                        child: Text(item, style: TextStyle(fontSize: 10.5,
-                            color: skin.textMuted, fontWeight: FontWeight.w500)),
-                      )).toList(),
+    return GlassSurface(
+      borderRadius: 14,
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Icon(icon, size: 13, color: skin.primary.withValues(alpha: 0.70)),
+            const SizedBox(width: 6),
+            Text(title, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: skin.textPrimary)),
+          ]),
+          const SizedBox(height: 9),
+          ...groups.map((g) => Padding(
+            padding: const EdgeInsets.only(bottom: 7),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(g.label, style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w700,
+                    color: skin.surface(0.35), letterSpacing: 0.3)),
+                const SizedBox(height: 4),
+                Wrap(
+                  spacing: 4, runSpacing: 4,
+                  children: g.items.map((item) => Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: skin.surface(0.05),
+                      borderRadius: BorderRadius.circular(5),
+                      border: Border.all(color: skin.glassBorder, width: 0.7),
                     ),
-                  ],
+                    child: Text(item, style: TextStyle(fontSize: 10.5,
+                        color: skin.textMuted, fontWeight: FontWeight.w500)),
+                  )).toList(),
                 ),
-              )),
-            ],
-          ),
-        ),
+              ],
+            ),
+          )),
+        ],
       ),
     );
   }

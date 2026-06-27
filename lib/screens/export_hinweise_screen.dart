@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
@@ -30,26 +29,26 @@ class _ExportHinweiseScreenState extends State<ExportHinweiseScreen> {
           children: [
             // Header
             Padding(
-  padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-  child: Row(
-    children: [
-      GestureDetector(
-        onTap: () => Navigator.pop(context),
-        behavior: HitTestBehavior.opaque,
-        child: const SizedBox(
-          width: 48,
-          height: 48,
-          child: Center(
-            child: Icon(Icons.arrow_back_ios_new_rounded, size: 20),
-          ),
-        ),
-      ),
-      const SizedBox(width: 14),
-      Text('Exportanleitung',
-          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: skin.textPrimary)),
-    ],
-  ),
-),
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+              child: Row(
+                children: [
+                  GestureDetector(
+                    onTap: () => Navigator.pop(context),
+                    behavior: HitTestBehavior.opaque,
+                    child: const SizedBox(
+                      width: 48,
+                      height: 48,
+                      child: Center(
+                        child: Icon(Icons.arrow_back_ios_new_rounded, size: 20),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Text('Exportanleitung',
+                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: skin.textPrimary)),
+                ],
+              ),
+            ),
 
             const SizedBox(height: 24),
 
@@ -116,17 +115,23 @@ class _ExportHinweiseScreenState extends State<ExportHinweiseScreen> {
                     const SizedBox(height: 20),
                     _SectionHeader(label: 'BOOKMARKLET WEITERGEBEN', skin: skin),
                     const SizedBox(height: 12),
-                    GestureDetector(
+
+                    // ── Bookmarklet per Mail senden (GlassInfoCard) ──
+                    GlassInfoCard(
+                      icon: Icons.share_outlined,
+                      iconColor: skin.primary,
+                      title: 'Bookmarklet per Mail senden',
+                      description: 'HTML-Installationsseite an Kollegen weitergeben',
+                      trailing: Icon(Icons.chevron_right, color: skin.surface(0.3), size: 18),
                       onTap: () async {
                         final subject = 'OpTimes – FleetPortal Bookmarklet';
                         final body = '''Hallo,\n\nanbei die Installationsseite für das OpTimes-Bookmarklet, das den Import von Fahrten in FleetPortal automatisiert.\n\nEinmalige Installation (30 Sekunden):\n1. HTML-Anhang im Browser öffnen\n2. Den grünen Button in die Lesezeichenleiste ziehen - diese mit STRG + UMSCHLT + B öffnen\n3. Fertig – ab sofort steht das Bookmarklet in FleetPortal zur Verfügung\n\nPro Fahrt spart es ca. 2 Minuten manuelles Eintippen.\n\nViele Grüße''';
-                        
-                        // Bookmarklet-HTML aus Assets oder inline
+
                         final bookmarkletHtml = _buildBookmarkletHtml();
                         final dir = await getTemporaryDirectory();
                         final file = File('${dir.path}/OpTimes_Bookmarklet.html');
                         await file.writeAsString(bookmarkletHtml, flush: true);
-                        
+
                         final xfile = XFile(file.path, mimeType: 'text/html', name: 'OpTimes_Bookmarklet.html');
                         await SharePlus.instance.share(ShareParams(
                           files: [xfile],
@@ -134,75 +139,16 @@ class _ExportHinweiseScreenState extends State<ExportHinweiseScreen> {
                           text: body,
                         ));
                       },
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(14),
-                        child: BackdropFilter(
-                          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                          child: Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: skin.primary.withValues(alpha: 0.08),
-                              borderRadius: BorderRadius.circular(14),
-                              border: Border.all(color: skin.primary.withValues(alpha: 0.28)),
-                            ),
-                            child: Row(children: [
-                              Container(
-                                width: 40, height: 40,
-                                decoration: BoxDecoration(
-                                  color: skin.primary.withValues(alpha: 0.12),
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: Icon(Icons.share_outlined, color: skin.primary, size: 20),
-                              ),
-                              const SizedBox(width: 14),
-                              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                Text('Bookmarklet per Mail senden',
-                                    style: TextStyle(color: skin.textPrimary, fontSize: 14, fontWeight: FontWeight.w700)),
-                                const SizedBox(height: 2),
-                                Text('HTML-Installationsseite an Kollegen weitergeben',
-                                    style: TextStyle(color: skin.textMuted, fontSize: 12)),
-                              ])),
-                              Icon(Icons.chevron_right, color: skin.surface(0.3), size: 18),
-                            ]),
-                          ),
-                        ),
-                      ),
                     ),
 
-                    const SizedBox(height: 28),
+                    const SizedBox(height: 16),
 
-                    // Bookmarklet Hinweis
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(16),
-                      child: BackdropFilter(
-                        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                        child: Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: skin.primary.withValues(alpha: 0.07),
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: skin.primary.withValues(alpha: 0.22)),
-                          ),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Icon(Icons.info_outline_rounded, color: skin.primary, size: 18),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                  Text('Bookmarklet benötigt',
-                                      style: TextStyle(color: skin.primary, fontSize: 13, fontWeight: FontWeight.w700)),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    'Das Bookmarklet muss einmalig auf dem Dienstrechner in der Lesezeichenleiste des Browsers installiert sein. Die Installationsseite wurde dir separat bereitgestellt.',
-                                    style: TextStyle(color: skin.textMuted, fontSize: 12, height: 1.5),
-                                  ),
-                                ]),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
+                    // ── Bookmarklet benötigt (GlassInfoCard) ──
+                    GlassInfoCard(
+                      icon: Icons.info_outline_rounded,
+                      iconColor: skin.primary,
+                      title: 'Bookmarklet benötigt',
+                      description: 'Das Bookmarklet muss einmalig auf dem Dienstrechner in der Lesezeichenleiste des Browsers installiert sein. Die Installationsseite wurde dir separat bereitgestellt.',
                     ),
 
                     const SizedBox(height: 40),
@@ -647,49 +593,37 @@ class _StepCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(14),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-        child: Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: skin.isLight
-                ? Colors.white.withValues(alpha: skin.glassOpacity)
-                : skin.bgCard.withValues(alpha: skin.glassOpacity),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: skin.glassBorder),
+    return GlassSurface(
+      borderRadius: 14,
+      padding: const EdgeInsets.all(14),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 28, height: 28,
+            decoration: BoxDecoration(
+              color: skin.primary.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+            ),
+            child: Center(
+              child: Text(number,
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: skin.primary)),
+            ),
           ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 28, height: 28,
-                decoration: BoxDecoration(
-                  color: skin.primary.withValues(alpha: 0.12),
-                  shape: BoxShape.circle,
-                ),
-                child: Center(
-                  child: Text(number,
-                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: skin.primary)),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Row(children: [
-                    Icon(icon, size: 14, color: skin.primary),
-                    const SizedBox(width: 6),
-                    Expanded(child: Text(title,
-                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: skin.textPrimary))),
-                  ]),
-                  const SizedBox(height: 4),
-                  Text(body, style: TextStyle(fontSize: 12, color: skin.textMuted, height: 1.5)),
-                ]),
-              ),
-            ],
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Icon(icon, size: 14, color: skin.primary),
+                const SizedBox(width: 6),
+                Expanded(child: Text(title,
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: skin.textPrimary))),
+              ]),
+              const SizedBox(height: 4),
+              Text(body, style: TextStyle(fontSize: 12, color: skin.textMuted, height: 1.5)),
+            ]),
           ),
-        ),
+        ],
       ),
     );
   }

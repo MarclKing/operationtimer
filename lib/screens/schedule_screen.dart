@@ -14,6 +14,8 @@ import '../theme/app_theme.dart';
 import '../widgets/glass_kit.dart';
 import '../widgets/glass_pickers.dart';
 import '../widgets/glass_dialogs.dart';
+import '../widgets/glass_snackbar.dart';
+import '../widgets/swipe_animation_mixin.dart';
 import 'package:archive/archive.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'tasks_screen.dart' show TaskStore;
@@ -920,14 +922,14 @@ class ScheduleScreenState extends State<ScheduleScreen> {
     await ScheduleScreenState.pushScheduleToWidget();
     if (mounted) {
       loadScheduleData();
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('🗑 Dienstplan $displayMonth gelöscht'),
-        backgroundColor: skin.deleteColor, behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        margin: const EdgeInsets.fromLTRB(16, 0, 16, 100), duration: const Duration(seconds: 3),
-      ));
-    }
-  }
+      showGlassSnackBar(
+  context,
+  'Dienstplan $displayMonth gelöscht',
+  type: GlassSnackBarType.error,
+  duration: const Duration(seconds: 3),
+);
+}
+}
 
   void _onCardSwiped(String? dateKey) => setState(() => _openSwipedCardKey = dateKey);
 
@@ -1001,50 +1003,28 @@ class ScheduleScreenState extends State<ScheduleScreen> {
                           ]),
                           const SizedBox(height: 16),
 
-                          GestureDetector(
-                            onHorizontalDragEnd: (d) {
-                              final v = d.primaryVelocity ?? 0;
-                              if (v < -300) _changeMonth(1);
-                              if (v > 300) _changeMonth(-1);
-                            },
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(20),
-                              child: BackdropFilter(
-                                filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    color: skin.isLight ? Colors.white.withValues(alpha: skin.glassOpacity) : skin.bgCard.withValues(alpha: skin.glassOpacity),
-                                    borderRadius: BorderRadius.circular(20),
-                                    border: Border.all(color: skin.glassBorder, width: 1.0),
-                                    boxShadow: [
-                                      BoxShadow(color: skin.glassShadow, blurRadius: 24, offset: const Offset(0, 6)),
-                                      BoxShadow(color: skin.glassHighlight, blurRadius: 0, spreadRadius: -1, offset: const Offset(0, 1)),
-                                    ],
-                                  ),
-                                  child: Row(children: [
-                                    GestureDetector(onTap: () => _changeMonth(-1),
-                                        child: const SizedBox(width: 44, height: 52, child: Center(child: Icon(Icons.chevron_left, size: 22)))),
-                                    Expanded(
-                                      child: GestureDetector(
-                                        onTap: _showMonthPicker,
-                                        onDoubleTap: () { HapticFeedback.selectionClick(); scrollToCurrentMonth(); },
-                                        child: Padding(
-                                          padding: const EdgeInsets.symmetric(vertical: 12),
-                                          child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                                            Text(monthName, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: skin.textPrimary)),
-                                            const SizedBox(width: 6),
-                                            Icon(Icons.expand_more, color: skin.primary, size: 18),
-                                          ]),
-                                        ),
-                                      ),
-                                    ),
-                                    GestureDetector(onTap: () => _changeMonth(1),
-                                        child: SizedBox(width: 44, height: 52, child: Center(child: Icon(Icons.chevron_right, size: 22, color: skin.surface(0.5))))),
-                                  ]),
-                                ),
-                              ),
-                            ),
-                          ),
+                          GlassNavCard(
+  onPrevious: () => _changeMonth(-1),
+  onNext: () => _changeMonth(1),
+  onTap: _showMonthPicker,
+  onDoubleTap: () {
+    HapticFeedback.selectionClick();
+    scrollToCurrentMonth();
+  },
+  onSwipe: (v) {
+    if (v < -300) _changeMonth(1);
+    if (v > 300) _changeMonth(-1);
+  },
+  child: Row(
+    mainAxisAlignment: MainAxisAlignment.center,
+    children: [
+      Text(monthName,
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: skin.textPrimary)),
+      const SizedBox(width: 6),
+      Icon(Icons.expand_more, color: skin.primary, size: 18),
+    ],
+  ),
+),
                           const SizedBox(height: 12),
 
                           // ── GlassStatCard aus glass_kit.dart ──
@@ -1943,8 +1923,7 @@ class _DayCard extends StatefulWidget {
   State<_DayCard> createState() => _DayCardState();
 }
 
-class _DayCardState extends State<_DayCard> with TickerProviderStateMixin {
-  double _swipeOffset = 0;
+class _DayCardState extends State<_DayCard> with TickerProviderStateMixin, SwipeAnimationMixin {
   static const double _revealWidth = 180.0;
   static const double _snapThreshold = 65.0;
   bool _isOpen = false;
@@ -1955,23 +1934,28 @@ class _DayCardState extends State<_DayCard> with TickerProviderStateMixin {
   late AnimationController _lpCtrl;
   late Animation<double> _lpAnim;
 
-  double get _revealProgress => (_swipeOffset.abs() / _revealWidth).clamp(0.0, 1.0);
+  double get _revealProgress => (swipeOffset.abs() / _revealWidth).clamp(0.0, 1.0);
 
   @override
   void initState() {
     super.initState();
+    initSwipeAnimation(vsync: this);
     _lpCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 400));
     _lpAnim = CurvedAnimation(parent: _lpCtrl, curve: Curves.easeInOut);
   }
 
   @override
-  void dispose() { _lpCtrl.dispose(); super.dispose(); }
+  void dispose() {
+    disposeSwipeAnimation();
+    _lpCtrl.dispose();
+    super.dispose();
+  }
 
   @override
   void didUpdateWidget(_DayCard oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.externallyOpenKey != widget.dateKey && _isOpen) {
-      _animateTo(0);
+      animateSwipeTo(0);
       setState(() => _isOpen = false);
     }
   }
@@ -1979,24 +1963,6 @@ class _DayCardState extends State<_DayCard> with TickerProviderStateMixin {
   Color _color(String part) => _shiftColor(part, isChrome: widget.isChrome);
   bool get _isBirthdayDay => widget.entry?.hasBirthday ?? false;
   bool get _hasNote => !_NoteData.load(widget.dateKey).isEmpty;
-
-  void _animateTo(double target) {
-    if (!mounted) return;
-    final start = _swipeOffset;
-    final dist = target - start;
-    int step = 0;
-    const steps = 12;
-    Future.doWhile(() async {
-      await Future.delayed(const Duration(milliseconds: 12));
-      if (!mounted) return false;
-      step++;
-      final t = step / steps;
-      final eased = 1 - (1 - t) * (1 - t);
-      setState(() => _swipeOffset = start + dist * eased);
-      if (step >= steps) { if (mounted) setState(() => _swipeOffset = target); return false; }
-      return true;
-    });
-  }
 
   void _onPanStart(DragStartDetails d) { _dragging = false; _dragStartX = d.globalPosition.dx; _dragStartY = d.globalPosition.dy; }
 
@@ -2010,8 +1976,8 @@ class _DayCardState extends State<_DayCard> with TickerProviderStateMixin {
       _dragging = true;
       widget.dayCardDragging?.value = true;
     }
-    final newOffset = (_swipeOffset + d.delta.dx).clamp(-_revealWidth, 0.0);
-    setState(() => _swipeOffset = newOffset);
+    final newOffset = (swipeOffset + d.delta.dx).clamp(-_revealWidth, 0.0);
+    setSwipeOffsetImmediate(newOffset);
   }
 
   void _onPanEnd(DragEndDetails d) {
@@ -2019,18 +1985,18 @@ class _DayCardState extends State<_DayCard> with TickerProviderStateMixin {
     _dragging = false;
     widget.dayCardDragging?.value = false;
     final v = d.primaryVelocity ?? d.velocity.pixelsPerSecond.dx;
-    if (_swipeOffset < -_snapThreshold || v < -400) {
-      _animateTo(-_revealWidth);
+    if (swipeOffset < -_snapThreshold || v < -400) {
+      animateSwipeTo(-_revealWidth);
       setState(() => _isOpen = true);
       widget.onCardSwiped(widget.dateKey);
     } else {
-      _animateTo(0);
+      animateSwipeTo(0); 
       if (_isOpen) { setState(() => _isOpen = false); widget.onCardSwiped(null); }
     }
   }
 
   void _close() {
-    _animateTo(0);
+    animateSwipeTo(0);
     if (mounted) { setState(() => _isOpen = false); widget.onCardSwiped(null); }
   }
 
@@ -2251,7 +2217,7 @@ if (widget.entry != null && widget.entry!.shift.isNotEmpty) ...[
                   )),
                 ]),
               ),
-              Transform.translate(offset: Offset(_swipeOffset, 0), child: animatedCard),
+Transform.translate(offset: Offset(swipeOffset, 0), child: animatedCard),
             ]),
           ),
         ),
@@ -2401,12 +2367,12 @@ class _DienstplanUploadSheetState extends State<DienstplanUploadSheet> {
       await ScheduleScreenState.pushScheduleToWidget();
       if (!mounted) return;
       Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('✓ Dienstplan ${DateFormat('MMMM yyyy', 'de').format(month)} importiert (${newData.length} Tage)'),
-        backgroundColor: skin.statComplete, behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        margin: const EdgeInsets.fromLTRB(16, 0, 16, 100), duration: const Duration(seconds: 3),
-      ));
+      showGlassSnackBar(
+        context,
+        'Dienstplan ${DateFormat('MMMM yyyy', 'de').format(month)} importiert (${newData.length} Tage)',
+        type: GlassSnackBarType.success,
+        duration: const Duration(seconds: 3),
+      );
       widget.onImported();
     } catch (e) {
       setState(() => _errorMessage = 'Fehler beim Importieren: $e');

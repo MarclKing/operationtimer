@@ -2,6 +2,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../theme/app_theme.dart';
+import 'swipe_animation_mixin.dart';
 
 extension AppSkinGlass on AppSkin {
   double get glassBlur => isLight ? 18.0 : 22.0;
@@ -188,8 +189,9 @@ class GlassPrimaryButton extends StatelessWidget {
 class GlassSecondaryButton extends StatelessWidget {
   final AppSkin skin;
   final String label;
+  final IconData? icon;
   final VoidCallback onTap;
-  const GlassSecondaryButton({super.key, required this.skin, required this.label, required this.onTap});
+  const GlassSecondaryButton({super.key, required this.skin, required this.label, required this.onTap, this.icon});
 
   @override
   Widget build(BuildContext context) {
@@ -204,8 +206,15 @@ class GlassSecondaryButton extends StatelessWidget {
           border: Border.all(color: skin.glassBorder, width: 1.0),
           boxShadow: [BoxShadow(color: skin.glassShadow, blurRadius: 24, spreadRadius: 0, offset: const Offset(0, 6))],
         ),
-        child: Center(
-          child: Text(label, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: skin.textPrimary)),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            if (icon != null) ...[
+              Icon(icon, size: 17, color: skin.textPrimary),
+              const SizedBox(width: 8),
+            ],
+            Text(label, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: skin.textPrimary)),
+          ],
         ),
       ),
     );
@@ -307,19 +316,6 @@ class FadingListView extends StatelessWidget {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GLASS SEGMENTED CONTROL
-// Ersetzt den alten manuellen Row-Segmented-Picker (z.B. "Erledigte Aufgaben")
-// Verwendung:
-//   GlassSegmentedControl<String>(
-//     value: _taskAutoDelete,
-//     items: [
-//       GlassSegmentItem(value: 'never', label: 'Nie'),
-//       GlassSegmentItem(value: '1d',    label: '1T'),
-//       GlassSegmentItem(value: '2d',    label: '2T'),
-//       GlassSegmentItem(value: '1w',    label: '1W'),
-//       GlassSegmentItem(value: '1m',    label: '1M'),
-//     ],
-//     onChanged: (v) { setState(() => _taskAutoDelete = v); box.put('task_auto_delete', v); },
-//   )
 // ─────────────────────────────────────────────────────────────────────────────
 
 class GlassSegmentItem<T> {
@@ -483,8 +479,8 @@ class _GlassDropdownButtonState<T> extends State<GlassDropdownButton<T>>
     const popupMinWidth = 160.0;
 
     final rightEdge = offset.dx + size.width;
-double popupLeft = rightEdge - popupMaxWidth - 16; // ← -16 hier
-if (popupLeft < 16) popupLeft = 16;
+    double popupLeft = rightEdge - popupMaxWidth - 16;
+    if (popupLeft < 16) popupLeft = 16;
 
     double popupTop = offset.dy + size.height * 0.5 - 8;
     final estimatedHeight = widget.items.length * 48.0 + 16;
@@ -609,10 +605,6 @@ if (popupLeft < 16) popupLeft = 16;
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// OVERLAY POPUP — FIX: Material() wrapper verhindert gelbe Unterstreichungen
-// ─────────────────────────────────────────────────────────────────────────────
-
 class _DropdownOverlay<T> extends StatefulWidget {
   final AnimationController animCtrl;
   final List<GlassDropdownItem<T>> items;
@@ -658,7 +650,6 @@ class _DropdownOverlayState<T> extends State<_DropdownOverlay<T>> {
 
     return Stack(
       children: [
-        // Dismiss-Fläche
         Positioned.fill(
           child: GestureDetector(
             onTap: widget.onDismiss,
@@ -666,8 +657,6 @@ class _DropdownOverlayState<T> extends State<_DropdownOverlay<T>> {
             child: const SizedBox.expand(),
           ),
         ),
-
-        // Popup
         Positioned(
           left: widget.left,
           top: widget.top,
@@ -681,9 +670,6 @@ class _DropdownOverlayState<T> extends State<_DropdownOverlay<T>> {
                 child: child,
               ),
             ),
-            // ── FIX: Material() wrapper ──────────────────────────────────
-            // Ohne Material-Ancestor zeigt Flutter alle Texte im Overlay
-            // mit gelben Debug-Unterstreichungen (DefaultTextStyle-Fallback).
             child: Material(
               color: Colors.transparent,
               child: ConstrainedBox(
@@ -739,20 +725,14 @@ class _DropdownOverlayState<T> extends State<_DropdownOverlay<T>> {
                                       SizedBox(
                                         width: 22,
                                         child: isSelected
-                                            ? Icon(
-                                                Icons.check_rounded,
-                                                size: 16,
-                                                color: skin.primary,
-                                              )
+                                            ? Icon(Icons.check_rounded, size: 16, color: skin.primary)
                                             : null,
                                       ),
                                       if (item.icon != null) ...[
                                         Icon(
                                           item.icon,
                                           size: 16,
-                                          color: isSelected
-                                              ? skin.primary
-                                              : skin.surface(0.45),
+                                          color: isSelected ? skin.primary : skin.surface(0.45),
                                         ),
                                         const SizedBox(width: 8),
                                       ],
@@ -760,12 +740,8 @@ class _DropdownOverlayState<T> extends State<_DropdownOverlay<T>> {
                                         item.label,
                                         style: TextStyle(
                                           fontSize: 15,
-                                          fontWeight: isSelected
-                                              ? FontWeight.w600
-                                              : FontWeight.w400,
-                                          color: isSelected
-                                              ? skin.primary
-                                              : skin.textPrimary,
+                                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                                          color: isSelected ? skin.primary : skin.textPrimary,
                                         ),
                                       ),
                                     ],
@@ -795,3 +771,1154 @@ class _DropdownOverlayState<T> extends State<_DropdownOverlay<T>> {
     );
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GLASS SWIPE ACTION
+//
+// Beschreibt einen einzelnen Aktions-Button der beim Swipe seitlich erscheint.
+// Wird als Liste an GlassSwipeCard.leftActions übergeben.
+//
+// Beispiel:
+//   GlassSwipeAction(
+//     icon: Icons.edit_outlined,
+//     label: 'Bearb.',
+//     color: skin.editColor,
+//     onTap: () => _editEntry(entry),
+//   )
+// ─────────────────────────────────────────────────────────────────────────────
+
+class GlassSwipeAction {
+  final IconData icon;
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+
+  const GlassSwipeAction({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.onTap,
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GLASS SWIPE CARD
+//
+// Einheitlicher Swipe-Container für alle Listen-Cards in der App.
+// Ersetzt die duplizierten Swipe-Implementierungen in:
+//   • _SlidableRow     (month_screen.dart)
+//   • _FahrtCard       (fahrtenbuch_screen.dart)
+//   • _DayCard         (schedule_screen.dart)
+//
+// Verhalten:
+//   • Links-Wischen  → zeigt [leftActions] (Bearbeiten, Teilen, etc.)
+//   • Rechts-Wischen → zeigt Löschen-Button (immer gleich: rot, Mülleimer)
+//                      nur wenn [onDelete] nicht null ist
+//   • Swipe-Animation läuft über SwipeAnimationMixin (kein Future.doWhile)
+//   • Lösch-Animation: SlideOut → FadeOut → HeightCollapse
+//
+// [height]: Feste Kartenhöhe. null = automatisch (wrap_content).
+// [leftRevealWidth]: Gesamtbreite des linken Reveal-Bereichs.
+//   Wird automatisch durch Anzahl der Actions geteilt.
+// [rightRevealWidth]: Breite des rechten Löschen-Buttons.
+// [snapThreshold]: Ab wie vielen px einrasten.
+// [externallyOpen]: Externaler Schlüssel; wenn != [cardKey], wird die Card
+//   automatisch geschlossen (für "nur eine Card offen"-Logik).
+// [cardKey]: Der Schlüssel dieser Card für [externallyOpen].
+// [onCardSwiped]: Callback mit cardKey wenn geöffnet, null wenn geschlossen.
+//
+// Screen-spezifische Extras wie Long-Press-Glow (_DayCard) oder
+// Auswahl-Overlay (_FahrtCard im SelectionMode) werden als [foregroundLayer]
+// übergeben und über die Hauptkarte gelegt.
+//
+// Verwendung:
+//
+//   GlassSwipeCard(
+//     height: 90,
+//     cardKey: fahrt.id,
+//     externallyOpen: _openSwipedFahrtId,
+//     onCardSwiped: (key) => setState(() => _openSwipedFahrtId = key),
+//     leftActions: [
+//       GlassSwipeAction(
+//         icon: Icons.edit_outlined,
+//         label: 'Bearb.',
+//         color: skin.editColor,
+//         onTap: _editFahrt,
+//       ),
+//       GlassSwipeAction(
+//         icon: Icons.ios_share_outlined,
+//         label: 'Teilen',
+//         color: skin.statComplete,
+//         onTap: _shareFahrt,
+//       ),
+//     ],
+//     onDelete: _deleteFahrt,
+//     onDoubleTap: _editFahrt,
+//     child: _FahrtCardContent(fahrt: fahrt),
+//   )
+// ─────────────────────────────────────────────────────────────────────────────
+
+class GlassSwipeCard extends StatefulWidget {
+  /// Der eigentliche Karteninhalt (Datum, Zeiten, etc.).
+  final Widget child;
+
+  /// Optionale Aktions-Buttons die links (beim Rechts-Wischen) erscheinen.
+  /// Leer = kein Links-Wischen möglich.
+  final List<GlassSwipeAction> leftActions;
+
+  /// Callback für den rechten Löschen-Button.
+  /// null = kein Rechts-Wischen / kein Löschen möglich.
+  final VoidCallback? onDelete;
+
+  /// Wenn true, wird beim onDelete-Tap zuerst die Lösch-Animation abgespielt
+  /// (SlideOut + FadeOut + HeightCollapse), bevor [onDelete] aufgerufen wird.
+  final bool animateDelete;
+
+  /// Wird nach Abschluss der Lösch-Animation aufgerufen (nur bei animateDelete).
+  /// Ideal für setState() + Listen-Update im Parent.
+  final VoidCallback? onDeleteAnimationDone;
+
+  /// Optionaler Double-Tap Handler auf die Hauptkarte.
+  final VoidCallback? onDoubleTap;
+
+  /// Optionaler Long-Press Handler.
+  final VoidCallback? onLongPress;
+
+  /// Optionaler Tap Handler (nur aktiv wenn die Card geschlossen ist).
+  final VoidCallback? onTap;
+
+  /// Feste Kartenhöhe in Pixeln. null = wrap_content.
+  final double? height;
+
+  /// Eindeutiger Schlüssel dieser Card für die "nur eine Card offen"-Logik.
+  final String? cardKey;
+
+  /// Externer offener Schlüssel. Wenn != [cardKey], wird diese Card
+  /// automatisch geschlossen.
+  final String? externallyOpen;
+
+  /// Callback wenn die Card durch Wischen geöffnet/geschlossen wird.
+  /// Parameter: cardKey wenn geöffnet, null wenn geschlossen.
+  final void Function(String?)? onCardSwiped;
+
+  /// Gesamtbreite des linken Reveal-Bereichs (wird durch Anzahl Actions geteilt).
+  final double leftRevealWidth;
+
+  /// Breite des rechten Löschen-Buttons.
+  final double rightRevealWidth;
+
+  /// Schwellwert in Pixeln ab dem die Card einrastet.
+  final double snapThreshold;
+
+  /// Optionaler Layer der über die Hauptkarte gerendert wird.
+  /// Für screen-spezifische Extras wie Auswahl-Overlay oder Glow.
+  final Widget? foregroundLayer;
+
+  /// Wenn true, reagiert die Card nicht auf horizontale Drags.
+  /// Nützlich für Selektion-Modus (z. B. _FahrtCard).
+  final bool disableSwipe;
+
+  const GlassSwipeCard({
+    super.key,
+    required this.child,
+    this.leftActions = const [],
+    this.onDelete,
+    this.animateDelete = true,
+    this.onDeleteAnimationDone,
+    this.onDoubleTap,
+    this.onLongPress,
+    this.onTap,
+    this.height,
+    this.cardKey,
+    this.externallyOpen,
+    this.onCardSwiped,
+    this.leftRevealWidth = 180.0,
+    this.rightRevealWidth = 90.0,
+    this.snapThreshold = 50.0,
+    this.foregroundLayer,
+    this.disableSwipe = false,
+  });
+
+  @override
+  State<GlassSwipeCard> createState() => GlassSwipeCardState();
+}
+
+class GlassSwipeCardState extends State<GlassSwipeCard>
+    with TickerProviderStateMixin, SwipeAnimationMixin {
+
+  // ── Drag-Tracking ──────────────────────────────────────────────────────────
+  bool _dragging = false;
+  double _dragStartX = 0;
+  double _dragStartY = 0;
+  bool _isOpenLeft = false;
+  bool _isOpenRight = false;
+
+  // ── Lösch-Animation ────────────────────────────────────────────────────────
+  late AnimationController _deleteCtrl;
+  late Animation<double> _slideOutAnim;
+  late Animation<double> _fadeOutAnim;
+  late Animation<double> _heightCollapseAnim;
+
+  @override
+  void initState() {
+    super.initState();
+    initSwipeAnimation(vsync: this);
+
+    _deleteCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 500),
+    );
+
+    _slideOutAnim = Tween<double>(begin: 0, end: -440).animate(
+      CurvedAnimation(
+        parent: _deleteCtrl,
+        curve: const Interval(0.0, 0.6, curve: Curves.easeInBack),
+      ),
+    );
+    _fadeOutAnim = Tween<double>(begin: 1, end: 0).animate(
+      CurvedAnimation(
+        parent: _deleteCtrl,
+        curve: const Interval(0.25, 0.7, curve: Curves.easeOut),
+      ),
+    );
+    _heightCollapseAnim = Tween<double>(begin: 1, end: 0).animate(
+      CurvedAnimation(
+        parent: _deleteCtrl,
+        curve: const Interval(0.6, 1.0, curve: Curves.easeInOut),
+      ),
+    );
+
+    _deleteCtrl.addListener(() {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    disposeSwipeAnimation();
+    _deleteCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(GlassSwipeCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Extern geschlossen werden wenn eine andere Card geöffnet wird
+    if (widget.externallyOpen != widget.cardKey && (_isOpenLeft || _isOpenRight)) {
+      _closeAnimated();
+    }
+  }
+
+  // ── Public API ──────────────────────────────────────────────────────────────
+
+  /// Schließt die Card ohne Animation (sofort).
+  void close() {
+    setSwipeOffsetImmediate(0);
+    if (mounted) setState(() { _isOpenLeft = false; _isOpenRight = false; });
+  }
+
+  /// Schließt die Card mit Animation.
+  Future<void> _closeAnimated() async {
+    await animateSwipeTo(0);
+    if (mounted) setState(() { _isOpenLeft = false; _isOpenRight = false; });
+  }
+
+  /// Spielt die Lösch-Animation ab und ruft danach [onDeleteAnimationDone] auf.
+  Future<void> animateOutAndDelete(VoidCallback onDone) async {
+    await _deleteCtrl.forward();
+    onDone();
+  }
+
+  // ── Drag-Handler ────────────────────────────────────────────────────────────
+
+  void _onPanStart(DragStartDetails d) {
+    _dragging = false;
+    _dragStartX = d.globalPosition.dx;
+    _dragStartY = d.globalPosition.dy;
+  }
+
+  void _onPanUpdate(DragUpdateDetails d) {
+    final totalDx = d.globalPosition.dx - _dragStartX;
+    final totalDy = (d.globalPosition.dy - _dragStartY).abs();
+
+    if (!_dragging) {
+      if (totalDy > totalDx.abs()) return; // Vertikaler Scroll → ignorieren
+      if (totalDx.abs() < 8) return;       // Todzone
+      _dragging = true;
+    }
+
+    final hasLeft = widget.leftActions.isNotEmpty;
+    final hasRight = widget.onDelete != null;
+
+    final minOffset = hasRight ? -widget.rightRevealWidth : 0.0;
+    final maxOffset = hasLeft ? widget.leftRevealWidth : 0.0;
+
+    final newOffset = (swipeOffset + d.delta.dx).clamp(minOffset, maxOffset);
+    setSwipeOffsetImmediate(newOffset);
+  }
+
+  void _onPanEnd(DragEndDetails d) {
+    if (!_dragging) return;
+    _dragging = false;
+
+    final v = d.primaryVelocity ?? d.velocity.pixelsPerSecond.dx;
+
+    // Links aufgeklappt (positive Richtung = links-Bereich)
+    if (widget.leftActions.isNotEmpty &&
+        (swipeOffset > widget.snapThreshold || v > 400)) {
+      animateSwipeTo(widget.leftRevealWidth);
+      setState(() { _isOpenLeft = true; _isOpenRight = false; });
+      widget.onCardSwiped?.call(widget.cardKey);
+      return;
+    }
+
+    // Rechts aufgeklappt (negative Richtung = rechts/Löschen-Bereich)
+    if (widget.onDelete != null &&
+        (swipeOffset < -widget.snapThreshold || v < -400)) {
+      animateSwipeTo(-widget.rightRevealWidth);
+      setState(() { _isOpenRight = true; _isOpenLeft = false; });
+      widget.onCardSwiped?.call(widget.cardKey);
+      return;
+    }
+
+    // Zurück zur Mitte
+    animateSwipeTo(0);
+    setState(() { _isOpenLeft = false; _isOpenRight = false; });
+    widget.onCardSwiped?.call(null);
+  }
+
+  // ── Delete-Handler ──────────────────────────────────────────────────────────
+
+  void _handleDelete() {
+    if (widget.animateDelete && widget.onDeleteAnimationDone != null) {
+      // Parent hat explizit eine Animation-Done-Callback übergeben →
+      // erst schließen, dann Lösch-Animation abspielen
+      animateSwipeTo(0).then((_) {
+        animateOutAndDelete(widget.onDeleteAnimationDone!);
+      });
+    } else {
+      // Direkt löschen (Parent kümmert sich selbst um Animation)
+      _closeAnimated();
+      widget.onDelete?.call();
+    }
+  }
+
+  // ── Reveal-Progress ─────────────────────────────────────────────────────────
+
+  double get _rightRevealProgress =>
+      (swipeOffset < 0 ? swipeOffset.abs() / widget.rightRevealWidth : 0.0).clamp(0.0, 1.0);
+
+  double get _leftRevealProgress =>
+      (swipeOffset > 0 ? swipeOffset / widget.leftRevealWidth : 0.0).clamp(0.0, 1.0);
+
+  // ── Build ───────────────────────────────────────────────────────────────────
+
+  @override
+  Widget build(BuildContext context) {
+    final skin = AppTheme.of(context);
+
+    final cardContent = Stack(
+      children: [
+        widget.child,
+        if (widget.foregroundLayer != null) widget.foregroundLayer!,
+      ],
+    );
+
+    return AnimatedBuilder(
+      animation: _deleteCtrl,
+      builder: (context, child) => SizeTransition(
+        sizeFactor: _heightCollapseAnim,
+        axisAlignment: -1,
+        child: Opacity(
+          opacity: _fadeOutAnim.value,
+          child: Transform.translate(
+            offset: Offset(_slideOutAnim.value, 0),
+            child: child,
+          ),
+        ),
+      ),
+      child: GestureDetector(
+        onHorizontalDragStart: widget.disableSwipe ? null : _onPanStart,
+        onHorizontalDragUpdate: widget.disableSwipe ? null : _onPanUpdate,
+        onHorizontalDragEnd: widget.disableSwipe ? null : _onPanEnd,
+        onTap: (_isOpenLeft || _isOpenRight)
+            ? () {
+                _closeAnimated();
+                widget.onCardSwiped?.call(null);
+              }
+            : widget.onTap,
+        onDoubleTap: widget.onDoubleTap,
+        onLongPress: widget.onLongPress,
+        child: SizedBox(
+          height: widget.height,
+          width: double.infinity,
+          child: ClipRect(
+            child: Stack(
+              clipBehavior: Clip.hardEdge,
+              children: [
+
+                // ── Linker Reveal-Bereich (erscheint beim Rechts-Wischen) ──
+                if (widget.leftActions.isNotEmpty && swipeOffset >= 0)
+                  Positioned(
+                    left: 0,
+                    top: 4,
+                    bottom: 4,
+                    width: widget.leftRevealWidth,
+                    child: Row(
+                      children: widget.leftActions.asMap().entries.map((entry) {
+                        final i = entry.key;
+                        final action = entry.value;
+                        final isLast = i == widget.leftActions.length - 1;
+                        return Expanded(
+                          child: Opacity(
+                            opacity: _leftRevealProgress,
+                            child: Transform.scale(
+                              scale: _leftRevealProgress,
+                              alignment: Alignment.centerRight,
+                              child: GestureDetector(
+                                onTap: () {
+                                  _closeAnimated();
+                                  widget.onCardSwiped?.call(null);
+                                  action.onTap();
+                                },
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(14),
+                                  child: BackdropFilter(
+                                    filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                                    child: Container(
+                                      margin: EdgeInsets.only(
+                                        left: i == 0 ? 5 : 5,
+                                        right: isLast ? 5 : 5,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: action.color.withValues(alpha: 0.10),
+                                        borderRadius: BorderRadius.circular(14),
+                                        border: Border.all(
+                                          color: action.color.withValues(alpha: 0.22),
+                                        ),
+                                      ),
+                                      child: Column(
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        children: [
+                                          Icon(action.icon, color: action.color, size: 22),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            action.label,
+                                            style: TextStyle(
+                                              color: action.color,
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+
+                // ── Rechter Reveal-Bereich (Löschen, erscheint beim Links-Wischen) ──
+                if (widget.onDelete != null && swipeOffset <= 0)
+                  Positioned(
+                    right: 0,
+                    top: 4,
+                    bottom: 4,
+                    width: widget.rightRevealWidth,
+                    child: Opacity(
+                      opacity: _rightRevealProgress,
+                      child: Transform.scale(
+                        scale: _rightRevealProgress,
+                        alignment: Alignment.centerLeft,
+                        child: GestureDetector(
+                          onTap: _handleDelete,
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(14),
+                            child: BackdropFilter(
+                              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                              child: Container(
+                                margin: const EdgeInsets.only(left: 5),
+                                decoration: BoxDecoration(
+                                  color: skin.deleteColor.withValues(alpha: 0.10),
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(
+                                    color: skin.deleteColor.withValues(alpha: 0.22),
+                                  ),
+                                ),
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(Icons.delete_outline, color: skin.deleteColor, size: 22),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      'Löschen',
+                                      style: TextStyle(
+                                        color: skin.deleteColor,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+
+                // ── Hauptkarte (verschoben mit Swipe-Offset) ──
+                Transform.translate(
+                  offset: Offset(widget.disableSwipe ? 0 : swipeOffset, 0),
+                  child: cardContent,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GLASS NAV CARD
+//
+// Einheitliche Navigationsleiste mit Links/Rechts-Chevrons und zentriertem
+// Inhalt. Ersetzt die duplizierten Datums- und Monats-Navigationsblöcke in:
+//   • month_screen.dart  (_buildZeiterfassungTab  → Datumskarte)
+//   • month_screen.dart  (_buildMonatsuebersichtTab → Monatskarte)
+//   • fahrtenbuch_screen.dart (Monatsnavigation)
+//   • schedule_screen.dart    (Monatsnavigation)
+//
+// Verwendung:
+//   GlassNavCard(
+//     onPrevious: () => _changeMonth(-1),
+//     onNext:     () => _changeMonth(1),
+//     onTap:      _showMonthPicker,
+//     onDoubleTap: () => _setMonth(DateTime(now.year, now.month)),
+//     highlighted: false,
+//     child: Text(monthName, style: ...),
+//   )
+// ─────────────────────────────────────────────────────────────────────────────
+
+class GlassNavCard extends StatelessWidget {
+  /// Wird beim Tap auf den mittleren Bereich ausgelöst (z. B. Picker öffnen).
+  final VoidCallback? onTap;
+
+  /// Wird beim Doppeltap ausgelöst (z. B. zurück zu Heute/aktuellem Monat).
+  final VoidCallback? onDoubleTap;
+
+  /// Linker Chevron-Tap.
+  final VoidCallback onPrevious;
+
+  /// Rechter Chevron-Tap.
+  final VoidCallback onNext;
+
+  /// Wird beim horizontalen Wischen ausgelöst (positiv = rechts = zurück).
+  final void Function(double velocity)? onSwipe;
+
+  /// Wenn true, wird der Border in primary-Farbe dargestellt (z. B. "Heute").
+  final bool highlighted;
+
+  /// Der zentrierte Inhalt zwischen den Chevrons.
+  final Widget child;
+
+  /// Höhe der Card. Standard 52 passt für einzeiligen Text.
+  final double height;
+
+  const GlassNavCard({
+    super.key,
+    required this.onPrevious,
+    required this.onNext,
+    required this.child,
+    this.onTap,
+    this.onDoubleTap,
+    this.onSwipe,
+    this.highlighted = false,
+    this.height = 52,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final skin = AppTheme.of(context);
+    final br = BorderRadius.circular(20);
+
+    return GestureDetector(
+      onHorizontalDragEnd: onSwipe == null
+          ? null
+          : (d) => onSwipe!(d.primaryVelocity ?? 0),
+      child: ClipRRect(
+        borderRadius: br,
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
+          child: Container(
+            height: height,
+            decoration: BoxDecoration(
+              color: skin.isLight
+                  ? Colors.white.withValues(alpha: skin.glassOpacity)
+                  : skin.bgCard.withValues(alpha: skin.glassOpacity),
+              borderRadius: br,
+              border: Border.all(
+                color: highlighted
+                    ? skin.primary.withValues(alpha: 0.45)
+                    : skin.glassBorder,
+                width: highlighted ? 1.5 : 1.0,
+              ),
+              boxShadow: [
+                BoxShadow(
+                    color: skin.glassShadow,
+                    blurRadius: 24,
+                    offset: const Offset(0, 6)),
+                BoxShadow(
+                    color: skin.glassHighlight,
+                    blurRadius: 0,
+                    spreadRadius: -1,
+                    offset: const Offset(0, 1)),
+              ],
+            ),
+            child: Row(
+              children: [
+                // Linker Chevron
+                GestureDetector(
+                  onTap: onPrevious,
+                  child: SizedBox(
+                    width: 44,
+                    height: double.infinity,
+                    child: Center(
+                      child: Icon(
+                        Icons.chevron_left,
+                        size: 22,
+                        color: skin.surface(0.5),
+                      ),
+                    ),
+                  ),
+                ),
+
+                // Mittlerer Inhalt
+                Expanded(
+                  child: GestureDetector(
+                    onTap: onTap,
+                    onDoubleTap: onDoubleTap,
+                    behavior: HitTestBehavior.opaque,
+                    child: Container(
+                      height: double.infinity,
+                      alignment: Alignment.center,
+                      child: child,
+                    ),
+                  ),
+                ),
+
+                // Rechter Chevron
+                GestureDetector(
+                  onTap: onNext,
+                  child: SizedBox(
+                    width: 44,
+                    height: double.infinity,
+                    child: Center(
+                      child: Icon(
+                        Icons.chevron_right,
+                        size: 22,
+                        color: skin.surface(0.5),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GLASS INFO CARD
+//
+// Einheitliche Info/Hinweis-Karte mit Icon-Badge, Titel und Beschreibungstext.
+// Ersetzt die 7 verschiedenen Inline-Varianten in dictation_help_screen.dart
+// und die Hinweiskarten in export_hinweise_screen.dart.
+//
+// Verwendung:
+//   GlassInfoCard(
+//     icon: Icons.mic_outlined,
+//     iconColor: skin.primary,
+//     title: 'Diktiermodus',
+//     description: 'Halte den Knopf gedrückt und sprich...',
+//   )
+//
+//   // Mit onTap (z. B. aufklappbar oder navigierbar):
+//   GlassInfoCard(
+//     icon: Icons.warning_amber_outlined,
+//     iconColor: skin.statOpen,
+//     title: 'Hinweis',
+//     description: 'Exportiere erst wenn alle Einträge vollständig sind.',
+//     onTap: () => ...,
+//   )
+// ─────────────────────────────────────────────────────────────────────────────
+
+class GlassInfoCard extends StatelessWidget {
+  final IconData icon;
+  final Color? iconColor;
+
+  /// Optionale Hintergrundfarbe des Icon-Badge.
+  /// Standard: iconColor mit alpha 0.12.
+  final Color? iconBgColor;
+
+  final String title;
+  final String description;
+
+  /// Optionaler Tap-Handler (z. B. für Navigation oder Aufklappen).
+  final VoidCallback? onTap;
+
+  /// Optionaler trailing Widget (z. B. Chevron, Badge, Switch).
+  final Widget? trailing;
+
+  /// Wenn true, wird kein BackdropFilter verwendet (Performance in langen Listen).
+  final bool useBlur;
+
+  const GlassInfoCard({
+    super.key,
+    required this.icon,
+    required this.title,
+    required this.description,
+    this.iconColor,
+    this.iconBgColor,
+    this.onTap,
+    this.trailing,
+    this.useBlur = true,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final skin = AppTheme.of(context);
+    final color = iconColor ?? skin.primary;
+    final bgColor = iconBgColor ?? color.withValues(alpha: 0.12);
+    final br = BorderRadius.circular(16);
+
+    final content = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+      decoration: BoxDecoration(
+        color: skin.isLight
+            ? Colors.white.withValues(alpha: skin.glassOpacity)
+            : skin.bgCard.withValues(alpha: skin.glassOpacity),
+        borderRadius: br,
+        border: Border.all(color: skin.glassBorder),
+        boxShadow: [
+          BoxShadow(
+              color: skin.glassShadow,
+              blurRadius: 16,
+              offset: const Offset(0, 4)),
+          BoxShadow(
+              color: skin.glassHighlight,
+              blurRadius: 0,
+              spreadRadius: -1,
+              offset: const Offset(0, 1)),
+        ],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Icon Badge
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: bgColor,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, color: color, size: 20),
+          ),
+          const SizedBox(width: 13),
+
+          // Text
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: skin.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  description,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    color: skin.textMuted,
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          if (trailing != null) ...[
+            const SizedBox(width: 10),
+            trailing!,
+          ],
+        ],
+      ),
+    );
+
+    final clipped = ClipRRect(borderRadius: br, child: content);
+
+    return GestureDetector(
+      onTap: onTap,
+      child: useBlur
+          ? ClipRRect(
+              borderRadius: br,
+              child: BackdropFilter(
+                filter: ImageFilter.blur(
+                    sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
+                child: content,
+              ),
+            )
+          : clipped,
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GLASS LIST ITEM
+//
+// Einheitliche Zeilen-Darstellung für einfache Listen ohne Swipe-Aktionen.
+// Ersetzt inline Container-Rows in speech_log_screen.dart und tasks_screen.dart.
+//
+// Für Swipe-Listen → GlassSwipeCard verwenden.
+//
+// Verwendung:
+//   GlassListItem(
+//     leading: Icon(Icons.mic, color: skin.primary),
+//     title: 'Sprachnotiz vom 12.06.',
+//     subtitle: '0:42 min',
+//     trailing: Text('09:14', style: TextStyle(color: skin.textMuted)),
+//     onTap: () => _playRecording(entry),
+//   )
+//
+//   // Als letztes Element in einer Gruppe (kein Divider):
+//   GlassListItem(..., isLast: true)
+//
+//   // Gruppe von Items in einer GlassSurface:
+//   GlassSurface(
+//     padding: EdgeInsets.zero,
+//     child: Column(children: [
+//       GlassListItem(title: 'Eintrag A', ...),
+//       GlassListItem(title: 'Eintrag B', isLast: true, ...),
+//     ]),
+//   )
+// ─────────────────────────────────────────────────────────────────────────────
+
+class GlassListItem extends StatelessWidget {
+  final Widget? leading;
+  final String title;
+  final String? subtitle;
+  final Widget? trailing;
+  final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
+  final bool isLast;
+  final EdgeInsetsGeometry padding;
+
+  // ── Switch-Support ──────────────────────────────────────────────────────
+  /// Wenn gesetzt, wird rechts ein Switch gerendert (trailing wird ignoriert).
+  final bool? switchValue;
+  final ValueChanged<bool>? onSwitchChanged;
+  /// Switch-Farbe. Standard: skin.primary.
+  final Color? switchActiveColor;
+
+  const GlassListItem({
+    super.key,
+    required this.title,
+    this.leading,
+    this.subtitle,
+    this.trailing,
+    this.onTap,
+    this.onLongPress,
+    this.isLast = false,
+    this.padding = const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+    this.switchValue,
+    this.onSwitchChanged,
+    this.switchActiveColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final skin = AppTheme.of(context);
+    final activeColor = switchActiveColor ?? skin.primary;
+    final hasSwitch = switchValue != null && onSwitchChanged != null;
+
+    final rowContent = Padding(
+      padding: padding,
+      child: Row(
+        children: [
+          if (leading != null) ...[
+            leading!,
+            const SizedBox(width: 12),
+          ],
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                    color: skin.textPrimary,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                if (subtitle != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle!,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: skin.textMuted,
+                      height: 1.35,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ],
+            ),
+          ),
+          if (hasSwitch)
+            Switch(
+              value: switchValue!,
+              onChanged: onSwitchChanged,
+              activeThumbColor: activeColor,
+              activeTrackColor: activeColor.withValues(alpha: 0.28),
+              inactiveThumbColor: skin.textMuted,
+              inactiveTrackColor: skin.surface(0.08),
+            )
+          else if (trailing != null) ...[
+            const SizedBox(width: 10),
+            trailing!,
+          ],
+        ],
+      ),
+    );
+
+    return GestureDetector(
+      onTap: hasSwitch
+          ? () => onSwitchChanged!(!switchValue!)
+          : onTap,
+      onLongPress: onLongPress,
+      behavior: HitTestBehavior.opaque,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          rowContent,
+          if (!isLast)
+            Padding(
+              padding: EdgeInsets.only(
+                left: leading != null ? 14.0 + 12.0 + 24.0 : 14.0,
+              ),
+              child: Divider(
+                height: 0.5,
+                thickness: 0.5,
+                color: skin.isLight
+                    ? Colors.black.withValues(alpha: 0.07)
+                    : Colors.white.withValues(alpha: 0.07),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GLASS CHIP
+//
+// Einheitlicher Filter/Auswahl-Chip. Ersetzt alle inline
+// GestureDetector + AnimatedContainer Chip-Muster in:
+//   • speech_log_screen.dart  (_FilterChip)
+//   • tasks_screen.dart       (_ReminderQuickChips items)
+//   • settings_screen.dart    (_ModeSegment, Stil-Chips)
+//   • admin_rules_screen.dart (Auswählen/Abbrechen Toggle)
+//
+// Verwendung:
+//   GlassChip(
+//     label: 'Alle',
+//     active: _filter == LogFilter.all,
+//     onTap: () => setState(() => _filter = LogFilter.all),
+//   )
+//   GlassChip(
+//     label: 'Nicht erkannt',
+//     active: true,
+//     color: skin.deleteColor,       // optional, Standard: skin.primary
+//     icon: Icons.close_rounded,     // optional, links vom Label
+//     onTap: ...,
+//   )
+// ─────────────────────────────────────────────────────────────────────────────
+
+class GlassChip extends StatelessWidget {
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+
+  /// Akzentfarbe wenn aktiv. Standard: skin.primary.
+  final Color? color;
+
+  /// Optionales Icon links vom Label (nur wenn active oder immer sichtbar).
+  final IconData? icon;
+
+  /// Wenn true, wird das Icon auch im inaktiven Zustand angezeigt.
+  final bool showIconWhenInactive;
+
+  const GlassChip({
+    super.key,
+    required this.label,
+    required this.active,
+    required this.onTap,
+    this.color,
+    this.icon,
+    this.showIconWhenInactive = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final skin = AppTheme.of(context);
+    final c = color ?? skin.primary;
+
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.selectionClick();
+        onTap();
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          color: active
+              ? c.withValues(alpha: 0.14)
+              : skin.surface(0.06),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: active
+                ? c.withValues(alpha: 0.45)
+                : skin.surface(0.12),
+            width: active ? 1.5 : 1.0,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (icon != null && (active || showIconWhenInactive)) ...[
+              Icon(
+                icon,
+                size: 13,
+                color: active ? c : skin.surface(0.4),
+              ),
+              const SizedBox(width: 4),
+            ],
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: active ? c : skin.surface(0.45),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GLASS STATUS BADGE
+//
+// Kleines farbiges Label-Badge mit Border. Ersetzt alle inline
+// Container + Text Status-Badges in:
+//   • admin_rules_screen.dart  ("ADMIN", "Ausstehend")
+//   • speech_log_screen.dart   ("Vollständig", "Nicht erkannt", etc.)
+//   • bug_admin_screen.dart    ("Erledigt")
+//   • tasks_screen.dart        (kein Badge, aber "DRINGEND" Section-Header)
+//
+// Verwendung:
+//   GlassStatusBadge(label: 'ADMIN', color: Color(0xFF8B5CF6))
+//   GlassStatusBadge(label: 'Erledigt', color: skin.statComplete)
+//   GlassStatusBadge(label: '✗ Nicht erkannt', color: skin.deleteColor)
+//   GlassStatusBadge(label: 'Ausstehend', color: Color(0xFFF59E0B), dot: true)
+// ─────────────────────────────────────────────────────────────────────────────
+
+class GlassStatusBadge extends StatelessWidget {
+  final String label;
+  final Color color;
+
+  /// Wenn true, wird ein kleiner farbiger Dot links vom Label gerendert.
+  final bool dot;
+
+  /// Schriftgröße. Standard 10.5 passt für kompakte Badges.
+  final double fontSize;
+
+  const GlassStatusBadge({
+    super.key,
+    required this.label,
+    required this.color,
+    this.dot = false,
+    this.fontSize = 10.5,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final skin = AppTheme.of(context);
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: dot ? 8 : 7,
+        vertical: 3,
+      ),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: skin.isLight ? 0.10 : 0.12),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(
+          color: color.withValues(alpha: skin.isLight ? 0.28 : 0.25),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (dot) ...[
+            Container(
+              width: 5,
+              height: 5,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.80),
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 5),
+          ],
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: fontSize,
+              fontWeight: FontWeight.w700,
+              color: color,
+              letterSpacing: label == label.toUpperCase() ? 0.6 : 0.0,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+

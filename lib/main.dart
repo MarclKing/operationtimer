@@ -22,6 +22,8 @@ import 'services/pdf_service.dart';
 import 'screens/dictation_help_screen.dart';
 import 'theme/app_theme.dart';
 import 'widgets/glass_kit.dart';
+import 'widgets/glass_snackbar.dart';
+import 'widgets/glass_dialogs.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart';
@@ -104,33 +106,6 @@ void main() async {
 
   runApp(const MyApp());
   unawaited(_initializeAppServicesInBackground());
-}
-
-Future<bool?> confirmDeleteDialog(
-  BuildContext context, {
-  required String title,
-  required String body,
-  String confirmLabel = 'Löschen',
-}) {
-  final skin = AppTheme.of(context);
-  return showDialog<bool>(
-    context: context,
-    builder: (ctx) => AlertDialog(
-      backgroundColor: skin.bgCard,
-      title: Text(title, style: TextStyle(color: skin.textPrimary)),
-      content: Text(body, style: TextStyle(color: skin.textMuted)),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(ctx, false),
-          child: Text('Abbrechen', style: TextStyle(color: skin.textMuted)),
-        ),
-        TextButton(
-          onPressed: () => Navigator.pop(ctx, true),
-          child: Text(confirmLabel, style: TextStyle(color: skin.deleteColor)),
-        ),
-      ],
-    ),
-  );
 }
 
 void _migrateOldEntries() {
@@ -430,111 +405,34 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     _autoImportPdf(path, fileName, skin, preloadedBytes: bytes);
   }
 
-  Future<bool?> _showImportConfirmDialog(String displayName, AppSkin skin) async {
-    return showGeneralDialog<bool>(
+  Future<bool?> _showImportConfirmDialog(String displayName, AppSkin skin) {
+    return confirmActionDialog(
       context: context,
-      barrierDismissible: true,
-      barrierLabel: 'Schließen',
-      barrierColor: Colors.black.withValues(alpha: 0.55),
-      transitionDuration: const Duration(milliseconds: 280),
-      transitionBuilder: (ctx, anim, _, child) {
-        final curved = CurvedAnimation(parent: anim, curve: Curves.easeOutBack, reverseCurve: Curves.easeInBack);
-        return ScaleTransition(
-          scale: Tween<double>(begin: 0.82, end: 1.0).animate(curved),
-          child: FadeTransition(opacity: anim, child: child),
-        );
-      },
-      pageBuilder: (ctx, _, __) => Center(
-        child: Material(
-          color: Colors.transparent,
+      skin: skin,
+      title: 'Dienstplan importieren',
+      message: 'Soll diese PDF als Dienstplan importiert werden?',
+      icon: Icons.upload_file_outlined,
+      confirmLabel: 'Importieren',
+      extraContent: ClipRRect(
+        borderRadius: BorderRadius.circular(10),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
           child: Container(
-            margin: const EdgeInsets.symmetric(horizontal: 32),
-            padding: const EdgeInsets.all(24),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
-              color: skin.bgCard,
-              borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: skin.borderMedium),
-              boxShadow: [
-                BoxShadow(color: Colors.black.withValues(alpha: 0.35), blurRadius: 32, offset: const Offset(0, 8)),
-              ],
+              color: skin.surface(0.05),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: skin.glassBorder),
             ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(children: [
-                  Container(
-                    width: 42, height: 42,
-                    decoration: BoxDecoration(color: skin.primaryWithAlpha(0.12), borderRadius: BorderRadius.circular(12)),
-                    child: Icon(Icons.upload_file_outlined, color: skin.primary, size: 22),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text('Dienstplan importieren',
-                        style: TextStyle(color: skin.textPrimary, fontSize: 17, fontWeight: FontWeight.w700)),
-                  ),
-                ]),
-                const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: skin.surface(0.05),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: skin.borderSubtle),
-                  ),
-                  child: Row(children: [
-                    Icon(Icons.picture_as_pdf_outlined, color: skin.primary, size: 18),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(displayName,
-                          style: TextStyle(color: skin.textPrimary, fontSize: 13, fontWeight: FontWeight.w500),
-                          maxLines: 1, overflow: TextOverflow.ellipsis),
-                    ),
-                  ]),
-                ),
-                const SizedBox(height: 12),
-                Text('Soll diese PDF als Dienstplan importiert werden?',
-                    style: TextStyle(color: skin.textMuted, fontSize: 13, height: 1.45)),
-                const SizedBox(height: 20),
-                Row(children: [
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: () => Navigator.pop(ctx, false),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 13),
-                        decoration: BoxDecoration(
-                          color: skin.surface(0.06),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: skin.borderSubtle),
-                        ),
-                        child: Center(
-                          child: Text('Abbrechen',
-                              style: TextStyle(color: skin.textMuted, fontSize: 15, fontWeight: FontWeight.w600)),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: () => Navigator.pop(ctx, true),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 13),
-                        decoration: BoxDecoration(
-                          gradient: skin.gradient,
-                          borderRadius: BorderRadius.circular(12),
-                          boxShadow: [BoxShadow(color: skin.primaryWithAlpha(0.3), blurRadius: 8, offset: const Offset(0, 3))],
-                        ),
-                        child: Center(
-                          child: Text('Importieren',
-                              style: TextStyle(color: skin.onGradient, fontSize: 15, fontWeight: FontWeight.w700)),
-                        ),
-                      ),
-                    ),
-                  ),
-                ]),
-              ],
-            ),
+            child: Row(children: [
+              Icon(Icons.picture_as_pdf_outlined, color: skin.primary, size: 18),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(displayName,
+                    style: TextStyle(color: skin.textPrimary, fontSize: 13, fontWeight: FontWeight.w500),
+                    maxLines: 1, overflow: TextOverflow.ellipsis),
+              ),
+            ]),
           ),
         ),
       ),
@@ -688,14 +586,12 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
         : '✓ Dienstplan ${_monthName(month.month)} ${month.year} importiert (${data.length} Tage)';
 
     _scheduleKey.currentState?.loadScheduleData();
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(snackText),
-      backgroundColor: skin.statComplete,
-      behavior: SnackBarBehavior.floating,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+    showGlassSnackBar(
+      context,
+      snackText,
+      type: wasOverwritten ? GlassSnackBarType.warning : GlassSnackBarType.success,
       duration: const Duration(seconds: 3),
-    ));
+    );
   }
 
   String _monthName(int m) {
@@ -736,13 +632,13 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   }
 
   void _goToPage(int index) {
-  FocusManager.instance.primaryFocus?.unfocus();
-  _closeMenu();
-  _homeKey.currentState?.closeOverlays();
-  _scheduleKey.currentState?.closeOverlays();
-  _monthKey.currentState?.closeAllRows();
-  _fahrtenbuchKey.currentState?.closeOverlays();
-  _tasksKey.currentState?.closeOverlays(); // ← NEU
+    FocusManager.instance.primaryFocus?.unfocus();
+    _closeMenu();
+    _homeKey.currentState?.closeOverlays();
+    _scheduleKey.currentState?.closeOverlays();
+    _monthKey.currentState?.closeAllRows();
+    _fahrtenbuchKey.currentState?.closeOverlays();
+    _tasksKey.currentState?.closeOverlays(); // ← NEU
 
     // NEU: Wenn wir zum Schedule-Tab (Index 2) wechseln, Task-Marker aktualisieren
     if (index == 2 && _dienstplanEnabled) {
@@ -823,11 +719,11 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     }
 
     if (targetPage != _currentPage) {
-  _homeKey.currentState?.closeOverlays();
-  _scheduleKey.currentState?.closeOverlays();
-  _monthKey.currentState?.closeAllRows();
-  _fahrtenbuchKey.currentState?.closeOverlays();
-  _tasksKey.currentState?.closeOverlays(); // ← NEU
+      _homeKey.currentState?.closeOverlays();
+      _scheduleKey.currentState?.closeOverlays();
+      _monthKey.currentState?.closeAllRows();
+      _fahrtenbuchKey.currentState?.closeOverlays();
+      _tasksKey.currentState?.closeOverlays(); // ← NEU
 
       // NEU: Wenn wir zum Schedule-Tab (Index 2) wechseln, Task-Marker aktualisieren
       if (targetPage == 2 && _dienstplanEnabled) {
@@ -844,46 +740,46 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   }
 
   List<Widget> _buildPages() => [
-    HomeScreen(
-      key: _homeKey,
-      selectedDate: _sharedDate,
-      onDateChanged: (d) => setState(() => _sharedDate = d),
-      onNavigateToMonth: () => _goToPage(1),
-      onNavigateToFahrtenbuch: () => _goToPage(_dienstplanEnabled ? 3 : 2),
-      onNavigateToFahrtenbuchNeueFahrt: () async {
-        await _animateToPage(_dienstplanEnabled ? 3 : 2);
-        await Future.delayed(const Duration(milliseconds: 500));
-        if (!mounted) return;
-        _fahrtenbuchKey.currentState?.triggerKmStartScan();
-      },
-      onNavigateToTasks: () => _goToPage(_dienstplanEnabled ? 4 : 3),
-      onNavigateToScheduleAndImport: () async {
-        await _animateToPage(2); // Dienstplan-Tab
-        await Future.delayed(const Duration(milliseconds: 400));
-        if (!mounted) return;
-        _showUploadSheet(context, AppTheme.of(context));
-      },
-    ),
-    MonthScreen(
-      key: _monthKey,
-      selectedMonth: _sharedMonth,
-      onMonthChanged: (m) => setState(() => _sharedMonth = m),
-      onNavigateToHome: () => _goToPage(0),
-    ),
-    if (_dienstplanEnabled)
-      ScheduleScreen(
-        key: _scheduleKey,
-        onNavigateToHome: () => _goToPage(0),
-        onNavigateToMonth: () => _goToPage(1),
-        onMonthChanged: (m) => setState(() => _scheduleViewMonth = m),
-        dayCardDragging: _dayCardDragging,
-      ),
-    FahrtenbuchScreen(
-      key: _fahrtenbuchKey,
-      onDraftChanged: () => setState(() {}),
-    ),
-    TasksScreen(key: _tasksKey),
-  ];
+        HomeScreen(
+          key: _homeKey,
+          selectedDate: _sharedDate,
+          onDateChanged: (d) => setState(() => _sharedDate = d),
+          onNavigateToMonth: () => _goToPage(1),
+          onNavigateToFahrtenbuch: () => _goToPage(_dienstplanEnabled ? 3 : 2),
+          onNavigateToFahrtenbuchNeueFahrt: () async {
+            await _animateToPage(_dienstplanEnabled ? 3 : 2);
+            await Future.delayed(const Duration(milliseconds: 500));
+            if (!mounted) return;
+            _fahrtenbuchKey.currentState?.triggerKmStartScan();
+          },
+          onNavigateToTasks: () => _goToPage(_dienstplanEnabled ? 4 : 3),
+          onNavigateToScheduleAndImport: () async {
+            await _animateToPage(2); // Dienstplan-Tab
+            await Future.delayed(const Duration(milliseconds: 400));
+            if (!mounted) return;
+            _showUploadSheet(context, AppTheme.of(context));
+          },
+        ),
+        MonthScreen(
+          key: _monthKey,
+          selectedMonth: _sharedMonth,
+          onMonthChanged: (m) => setState(() => _sharedMonth = m),
+          onNavigateToHome: () => _goToPage(0),
+        ),
+        if (_dienstplanEnabled)
+          ScheduleScreen(
+            key: _scheduleKey,
+            onNavigateToHome: () => _goToPage(0),
+            onNavigateToMonth: () => _goToPage(1),
+            onMonthChanged: (m) => setState(() => _scheduleViewMonth = m),
+            dayCardDragging: _dayCardDragging,
+          ),
+        FahrtenbuchScreen(
+          key: _fahrtenbuchKey,
+          onDraftChanged: () => setState(() {}),
+        ),
+        TasksScreen(key: _tasksKey),
+      ];
 
   void _toggleMenu() {
     setState(() {
@@ -1108,24 +1004,35 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                       const SizedBox(width: 40),
                       const Spacer(),
                       if (_isOnFahrtenbuchPage)
-  GestureDetector(
-    onTap: _onPlusPressed,
-    child: SizedBox(
-      width: 40, height: 40,
-      child: Center(child: Icon(
-        hasDraft ? Icons.edit_note_rounded : Icons.add,
-        color: skin.textPrimary, size: 22,
-      )),
-    ),
-  ),
-if (_currentPage == (_dienstplanEnabled ? 4 : 3))
-  GestureDetector(
-    onTap: () => _tasksKey.currentState?.openQuickAdd(),
-    child: SizedBox(
-      width: 40, height: 40,
-      child: Center(child: Icon(Icons.add, color: skin.textPrimary, size: 22)),
-    ),
-  ),
+                        GestureDetector(
+                          onTap: _onPlusPressed,
+                          child: SizedBox(
+                            width: 40,
+                            height: 40,
+                            child: Center(
+                              child: Icon(
+                                hasDraft ? Icons.edit_note_rounded : Icons.add,
+                                color: skin.textPrimary,
+                                size: 22,
+                              ),
+                            ),
+                          ),
+                        ),
+                      if (_currentPage == (_dienstplanEnabled ? 4 : 3))
+                        GestureDetector(
+                          onTap: () => _tasksKey.currentState?.openQuickAdd(),
+                          child: SizedBox(
+                            width: 40,
+                            height: 40,
+                            child: Center(
+                              child: Icon(
+                                Icons.add,
+                                color: skin.textPrimary,
+                                size: 22,
+                              ),
+                            ),
+                          ),
+                        ),
                       GestureDetector(
                         onTap: _toggleMenu,
                         child: SizedBox(
@@ -1194,7 +1101,6 @@ class _KfzVerwaltungSheet extends StatefulWidget {
 
 class _KfzVerwaltungSheetState extends State<_KfzVerwaltungSheet> {
   List<Map<String, dynamic>> _entries = [];
-  final Map<String, double> _swipeOffsets = {};
 
   @override
   void initState() {
@@ -1214,10 +1120,10 @@ class _KfzVerwaltungSheetState extends State<_KfzVerwaltungSheet> {
   Future<void> _deleteEntry(String kennzeichen) async {
     final skin = AppTheme.of(context);
     final confirmed = await confirmDeleteDialog(
-      context,
+      context: context,
+      skin: skin,
       title: '$kennzeichen löschen?',
-      body: 'Das Fahrzeug wird aus dem KM-Gedächtnis entfernt.',
-      confirmLabel: 'Löschen',
+      message: 'Das Fahrzeug wird aus dem KM-Gedächtnis entfernt.',
     );
     if (confirmed == true) {
       KmMemory.delete(kennzeichen);
@@ -1230,104 +1136,78 @@ class _KfzVerwaltungSheetState extends State<_KfzVerwaltungSheet> {
     final kz = entry['kennzeichen'] as String;
     final ctrl = TextEditingController(text: (entry['kmEnd'] as int).toString());
     showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (_) => Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-        child: ClipRRect(
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-            child: Container(
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
-              decoration: BoxDecoration(
-                color: skin.isLight ? Colors.white.withValues(alpha: 0.92) : skin.bgSheet.withValues(alpha: 0.92),
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-                border: Border.all(color: skin.glassBorder),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(child: Container(width: 40, height: 4,
-                      decoration: BoxDecoration(color: skin.surface(0.2), borderRadius: BorderRadius.circular(2)))),
-                  const SizedBox(height: 16),
-                  Text('KM-Stand bearbeiten – $kz',
-                      style: TextStyle(color: skin.textPrimary, fontSize: 16, fontWeight: FontWeight.w700)),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: ctrl,
-                    autofocus: true,
-                    keyboardType: TextInputType.number,
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    style: TextStyle(color: skin.textPrimary, fontSize: 28, fontWeight: FontWeight.w700),
-                    decoration: InputDecoration(
-                      hintText: '0',
-                      hintStyle: TextStyle(color: skin.surface(0.2), fontSize: 28),
-                      border: InputBorder.none,
-                      suffix: Text(' km', style: TextStyle(color: skin.surface(0.4), fontSize: 16)),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  GestureDetector(
-                    onTap: () {
-                      final km = int.tryParse(ctrl.text);
-                      if (km != null && km > 0) {
-                        KmMemory.save(kz, km);
-                        Navigator.pop(context);
-                        _load();
-                      }
-                    },
-                    child: Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(vertical: 15),
-                      decoration: BoxDecoration(
-                        color: skin.primary.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: skin.primary.withValues(alpha: 0.35)),
-                      ),
-                      child: Center(child: Text('Übernehmen',
-                          style: TextStyle(color: skin.primary, fontSize: 15, fontWeight: FontWeight.w700))),
-                    ),
-                  ),
-                ],
+  context: context,
+  backgroundColor: Colors.transparent,
+  isScrollControlled: true,
+  builder: (_) => Padding(
+    padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+    child: GlassSheet(
+      skin: skin,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SheetHandle(skin: skin),
+            const SizedBox(height: 16),
+            Text('KM-Stand bearbeiten – $kz',
+                style: TextStyle(color: skin.textPrimary, fontSize: 16, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 16),
+            TextField(
+              controller: ctrl,
+              autofocus: true,
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              style: TextStyle(color: skin.textPrimary, fontSize: 28, fontWeight: FontWeight.w700),
+              decoration: InputDecoration(
+                hintText: '0',
+                hintStyle: TextStyle(color: skin.surface(0.2), fontSize: 28),
+                border: InputBorder.none,
+                suffix: Text(' km', style: TextStyle(color: skin.surface(0.4), fontSize: 16)),
               ),
             ),
-          ),
+            const SizedBox(height: 16),
+            GlassPrimaryButton(
+              skin: skin,
+              label: 'Übernehmen',
+              onTap: () {
+                final km = int.tryParse(ctrl.text);
+                if (km != null && km > 0) {
+                  KmMemory.save(kz, km);
+                  Navigator.pop(context);
+                  _load();
+                }
+              },
+            ),
+          ],
         ),
       ),
-    );
-  }
+    ),
+  ),
+);
+}
 
   @override
   Widget build(BuildContext context) {
     final skin = AppTheme.of(context);
-    return ClipRRect(
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-        child: Container(
-          constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.75),
-          decoration: BoxDecoration(
-            color: skin.isLight ? Colors.white.withValues(alpha: 0.92) : skin.bgSheet.withValues(alpha: 0.92),
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-            border: Border.all(color: skin.glassBorder),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(margin: const EdgeInsets.only(top: 12), width: 40, height: 4,
-                  decoration: BoxDecoration(color: skin.surface(0.18), borderRadius: BorderRadius.circular(2))),
-              const SizedBox(height: 16),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Row(children: [
-                  Icon(Icons.directions_car_outlined, color: skin.primary, size: 20),
-                  const SizedBox(width: 10),
-                  Text('Fahrzeuge & KM-Stand', style: TextStyle(color: skin.textPrimary, fontSize: 17, fontWeight: FontWeight.w700)),
-                ]),
-              ),
+    return ConstrainedBox(
+  constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.75),
+  child: GlassSheet(
+    skin: skin,
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SheetHandle(skin: skin),
+        const SizedBox(height: 16),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Row(children: [
+            Icon(Icons.directions_car_outlined, color: skin.primary, size: 20),
+            const SizedBox(width: 10),
+            Text('Fahrzeuge & KM-Stand', style: TextStyle(color: skin.textPrimary, fontSize: 17, fontWeight: FontWeight.w700)),
+          ]),
+        ),
               const SizedBox(height: 12),
               if (_entries.isEmpty)
                 Padding(
@@ -1342,118 +1222,66 @@ class _KfzVerwaltungSheetState extends State<_KfzVerwaltungSheet> {
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                     itemCount: _entries.length,
                     itemBuilder: (context, i) {
-                      final e = _entries[i];
-                      final kz = e['kennzeichen'] as String? ?? '';
-                      final km = e['kmEnd'] as int? ?? 0;
-                      final datum = e['datum'] as String?;
-                      final dateStr = datum != null
-                          ? DateFormat('dd.MM.yy').format(DateTime.tryParse(datum) ?? DateTime.now())
-                          : '';
-                      final swipe = _swipeOffsets[kz] ?? 0.0;
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: GestureDetector(
-                          onHorizontalDragUpdate: (d) {
-                            setState(() {
-                              _swipeOffsets[kz] = ((_swipeOffsets[kz] ?? 0) + d.delta.dx).clamp(-80.0, 0.0);
-                            });
-                          },
-                          onHorizontalDragEnd: (d) {
-                            if ((_swipeOffsets[kz] ?? 0) < -40) {
-                              setState(() => _swipeOffsets[kz] = -80.0);
-                            } else {
-                              setState(() => _swipeOffsets[kz] = 0.0);
-                            }
-                          },
-                          child: SizedBox(
-                            height: 72,
-                            child: ClipRect(
-                              child: Stack(
-                                children: [
-                                  Positioned(
-                                    right: 0, top: 4, bottom: 4, width: 75,
-                                    child: GestureDetector(
-                                      onTap: () => _deleteEntry(kz),
-                                      child: Opacity(
-                                        opacity: ((-(_swipeOffsets[kz] ?? 0)) / 80).clamp(0.0, 1.0),
-                                        child: ClipRRect(
-                                          borderRadius: BorderRadius.circular(14),
-                                          child: BackdropFilter(
-                                            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                                            child: Container(
-                                              margin: const EdgeInsets.only(left: 5),
-                                              decoration: BoxDecoration(
-                                                color: skin.deleteColor.withValues(alpha: 0.10),
-                                                borderRadius: BorderRadius.circular(14),
-                                                border: Border.all(color: skin.deleteColor.withValues(alpha: 0.22)),
-                                              ),
-                                              child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                                                Icon(Icons.delete_outline, color: skin.deleteColor, size: 20),
-                                                const SizedBox(height: 3),
-                                                Text('Löschen', style: TextStyle(color: skin.deleteColor, fontSize: 10, fontWeight: FontWeight.w600)),
-                                              ]),
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  Transform.translate(
-                                    offset: Offset(swipe, 0),
-                                    child: GestureDetector(
-                                      onTap: () => _editKm(e),
-                                      child: ClipRRect(
-                                        borderRadius: BorderRadius.circular(14),
-                                        child: BackdropFilter(
-                                          filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-                                          child: Container(
-                                            width: double.infinity,
-                                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                                            decoration: BoxDecoration(
-                                              color: skin.isLight ? Colors.white.withValues(alpha: 0.72) : skin.bgCard.withValues(alpha: 0.65),
-                                              borderRadius: BorderRadius.circular(14),
-                                              border: Border.all(color: skin.glassBorder),
-                                            ),
-                                            child: Row(children: [
-                                              Container(
-                                                width: 36, height: 36,
-                                                decoration: BoxDecoration(
-                                                  color: skin.primary.withValues(alpha: 0.10),
-                                                  borderRadius: BorderRadius.circular(10),
-                                                ),
-                                                child: Icon(Icons.directions_car_outlined, color: skin.primary, size: 18),
-                                              ),
-                                              const SizedBox(width: 12),
-                                              Expanded(
-                                                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                                  Text(kz, style: TextStyle(color: skin.textPrimary, fontSize: 15, fontWeight: FontWeight.w700)),
-                                                  Text('${_formatKm(km)} km  ·  $dateStr',
-                                                      style: TextStyle(color: skin.textMuted, fontSize: 11)),
-                                                ]),
-                                              ),
-                                              Icon(Icons.edit_outlined, color: skin.surface(0.3), size: 16),
-                                            ]),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
+  final e = _entries[i];
+  final kz = e['kennzeichen'] as String? ?? '';
+  final km = e['kmEnd'] as int? ?? 0;
+  final datum = e['datum'] as String?;
+  final dateStr = datum != null
+      ? DateFormat('dd.MM.yy').format(DateTime.tryParse(datum) ?? DateTime.now())
+      : '';
+  return Padding(
+    padding: const EdgeInsets.only(bottom: 8),
+    child: GlassSwipeCard(
+      height: 72,
+      cardKey: kz,
+      onTap: () => _editKm(e),
+      onDelete: () => _deleteEntry(kz),
+      animateDelete: false, // _deleteEntry zeigt eigenen confirmDeleteDialog, danach _load()
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              color: skin.isLight ? Colors.white.withValues(alpha: 0.72) : skin.bgCard.withValues(alpha: 0.65),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: skin.glassBorder),
+            ),
+            child: Row(children: [
+              Container(
+                width: 36, height: 36,
+                decoration: BoxDecoration(
+                  color: skin.primary.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(10),
                 ),
-            ],
+                child: Icon(Icons.directions_car_outlined, color: skin.primary, size: 18),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(kz, style: TextStyle(color: skin.textPrimary, fontSize: 15, fontWeight: FontWeight.w700)),
+                  Text('${_formatKm(km)} km  ·  $dateStr',
+                      style: TextStyle(color: skin.textMuted, fontSize: 11)),
+                ]),
+              ),
+              Icon(Icons.edit_outlined, color: skin.surface(0.3), size: 16),
+            ]),
           ),
         ),
       ),
-    );
-  }
-}
+    ),
+  );
+},                          // schließt itemBuilder
+                  ),        // schließt ListView.builder
+                ),           // schließt Flexible
+              ],             // schließt Column children
+            ),               // schließt Column
+          ),                 // schließt GlassSheet
+        );                   // schließt ConstrainedBox
+  }                          // schließt build()
+}   
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Dropdown Helpers
@@ -1677,29 +1505,29 @@ class _GlassBottomNavState extends State<_GlassBottomNav>
           (instance) {
             instance
               ..onStart = (details) {
-                  _isDraggingNav = true;
-                  _dragStartX = details.localPosition.dx;
-                  _dragStartIndex = widget.selectedIndex;
-                }
+                _isDraggingNav = true;
+                _dragStartX = details.localPosition.dx;
+                _dragStartIndex = widget.selectedIndex;
+              }
               ..onUpdate = (details) {
-                  if (!_isDraggingNav) return;
-                  final delta = details.localPosition.dx - _dragStartX;
-                  final itemCount = widget.dienstplanEnabled ? 5 : 4;
-                  final steps = (delta / _scrubItemWidth).round();
-                  final newIndex =
-                      (_dragStartIndex + steps).clamp(0, itemCount - 1);
-                  if (newIndex != widget.selectedIndex) {
-                    HapticFeedback.selectionClick();
-                    _stretchDirection =
-                        newIndex > widget.selectedIndex ? 1.0 : -1.0;
-                    _lastIndex = newIndex;
-                    _bounceCtrl.forward(from: 0);
-                    widget.onTap(newIndex);
-                  }
+                if (!_isDraggingNav) return;
+                final delta = details.localPosition.dx - _dragStartX;
+                final itemCount = widget.dienstplanEnabled ? 5 : 4;
+                final steps = (delta / _scrubItemWidth).round();
+                final newIndex =
+                    (_dragStartIndex + steps).clamp(0, itemCount - 1);
+                if (newIndex != widget.selectedIndex) {
+                  HapticFeedback.selectionClick();
+                  _stretchDirection =
+                      newIndex > widget.selectedIndex ? 1.0 : -1.0;
+                  _lastIndex = newIndex;
+                  _bounceCtrl.forward(from: 0);
+                  widget.onTap(newIndex);
                 }
+              }
               ..onEnd = (details) {
-                  _isDraggingNav = false;
-                };
+                _isDraggingNav = false;
+              };
           },
         ),
       },

@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:image_picker/image_picker.dart';
 import '../theme/app_theme.dart';
+import '../widgets/glass_snackbar.dart';
 
 class KmScannerScreen extends StatefulWidget {
   final String label; // 'ABFAHRT KM' oder 'ANKUNFT KM'
@@ -215,10 +216,12 @@ class _KmScannerScreenState extends State<KmScannerScreen>
         });
       } else {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('Kein KM-Stand im Bild erkannt'),
-            duration: Duration(seconds: 2),
-          ));
+          showGlassSnackBar(
+  context,
+  'Kein KM-Stand im Bild erkannt',
+  type: GlassSnackBarType.warning,
+  duration: const Duration(seconds: 2),
+);
           _startScanning();
         }
       }

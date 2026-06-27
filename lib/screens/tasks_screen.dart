@@ -13,6 +13,7 @@ import '../widgets/glass_kit.dart';
 import '../widgets/dictation_fab.dart';
 import '../widgets/glass_pickers.dart';
 import '../widgets/glass_dialogs.dart';
+import '../widgets/glass_snackbar.dart';
 import '../widgets/swipe_animation_mixin.dart';
 import '../services/notification_service.dart';
 import '../services/spoken_task_parser.dart';
@@ -1600,103 +1601,35 @@ class _TaskEditSheetState extends State<_TaskEditSheet> {
     }
   }
 
-  Future<void> _showReminderResetInfoDialog() {
-    final skin = widget.skin;
-    return showGeneralDialog<void>(
-      context: context,
-      barrierDismissible: true,
-      barrierLabel: 'Schließen',
-      barrierColor: Colors.black.withValues(alpha: 0.45),
-      transitionDuration: const Duration(milliseconds: 240),
-      transitionBuilder: (ctx, anim, _, child) {
-        final curved = CurvedAnimation(parent: anim, curve: Curves.easeOutBack, reverseCurve: Curves.easeInBack);
-        return ScaleTransition(
-          scale: Tween<double>(begin: 0.88, end: 1.0).animate(curved),
-          child: FadeTransition(opacity: anim, child: child),
-        );
-      },
-      pageBuilder: (ctx, _, __) => Center(
-        child: Material(
-          color: Colors.transparent,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(22),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-              child: Container(
-                margin: const EdgeInsets.symmetric(horizontal: 36),
-                padding: const EdgeInsets.all(22),
-                decoration: BoxDecoration(
-                  color: skin.isLight ? Colors.white.withValues(alpha: 0.94) : skin.bgCard.withValues(alpha: 0.94),
-                  borderRadius: BorderRadius.circular(22),
-                  border: Border.all(color: skin.glassBorder),
-                  boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.30), blurRadius: 28, offset: const Offset(0, 8))],
-                ),
-                child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Row(children: [
-                    Container(
-                      width: 38,
-                      height: 38,
-                      decoration: BoxDecoration(color: skin.primary.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
-                      child: Icon(Icons.notifications_off_outlined, color: skin.primary, size: 19),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text('Erinnerungen zurückgesetzt',
-                          style: TextStyle(color: skin.textPrimary, fontSize: 16, fontWeight: FontWeight.w700)),
-                    ),
-                  ]),
-                  const SizedBox(height: 10),
-                  Text(
-                    'Da sich der Fristen-Status geändert hat, wurden alle bisher gewählten Erinnerungen entfernt. Du kannst unten neue auswählen.',
-                    style: TextStyle(color: skin.textMuted, fontSize: 13, height: 1.4),
-                  ),
-                  const SizedBox(height: 18),
-                  GestureDetector(
-                    onTap: () => Navigator.pop(ctx),
-                    child: Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      decoration: BoxDecoration(
-                        color: skin.primary.withValues(alpha: 0.10),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: skin.primary.withValues(alpha: 0.25)),
-                      ),
-                      child: Center(
-                        child: Text('Verstanden',
-                            style: TextStyle(color: skin.primary, fontSize: 14, fontWeight: FontWeight.w700)),
-                      ),
-                    ),
-                  ),
-                ]),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+  Future<void> _showReminderResetInfoDialog() async {
+  await confirmActionDialog(
+    context: context,
+    skin: widget.skin,
+    icon: Icons.notifications_off_outlined,
+    title: 'Erinnerungen zurückgesetzt',
+    message: 'Da sich der Fristen-Status geändert hat, wurden alle bisher gewählten Erinnerungen entfernt. Du kannst unten neue auswählen.',
+    cancelLabel: 'Verstanden',
+    confirmLabel: 'Verstanden',
+  );
+}
 
   void _toggleReminderOption(String id) {
-    setState(() {
-      if (_selectedReminderIds.contains(id)) {
-        _selectedReminderIds.remove(id);
-      } else {
-        if (_selectedReminderIds.length >= ReminderManager.maxSelectable) {
-          HapticFeedback.heavyImpact();
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: const Text('Maximal 3 Erinnerungen pro Aufgabe.'),
-            backgroundColor: widget.skin.bgCard,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            margin: const EdgeInsets.fromLTRB(16, 0, 16, 100),
-          ));
-          return;
-        }
-        HapticFeedback.selectionClick();
-        _selectedReminderIds.add(id);
-      }
-    });
+  if (_selectedReminderIds.contains(id)) {
+    setState(() => _selectedReminderIds.remove(id));
+  } else {
+    if (_selectedReminderIds.length >= ReminderManager.maxSelectable) {
+      HapticFeedback.heavyImpact();
+      showGlassSnackBar(
+        context,
+        'Maximal 3 Erinnerungen pro Aufgabe.',
+        type: GlassSnackBarType.warning,
+      );
+      return;
+    }
+    HapticFeedback.selectionClick();
+    setState(() => _selectedReminderIds.add(id));
   }
+}
 
   List<DateTime> _computeReminderTimes() {
     final options = ReminderManager.optionsFor(_mode);
@@ -1921,11 +1854,10 @@ class _TaskEditSheetState extends State<_TaskEditSheet> {
                     ),
                     const SizedBox(height: 10),
                     _ReminderQuickChips(
-                      skin: skin,
-                      options: _quickOptions,
-                      selectedIds: _selectedReminderIds,
-                      onToggle: _toggleReminderOption,
-                    ),
+  options: _quickOptions,
+  selectedIds: _selectedReminderIds,
+  onToggle: _toggleReminderOption,
+),
                     if (_selectedReminderIds.isNotEmpty) ...[
                       const SizedBox(height: 8),
                       Text(
@@ -1959,109 +1891,37 @@ class _TaskEditSheetState extends State<_TaskEditSheet> {
 // REMINDER QUICK CHIPS
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _ReminderQuickChips extends StatefulWidget {
-  final AppSkin skin;
+class _ReminderQuickChips extends StatelessWidget {
   final List<ReminderOption> options;
   final List<String> selectedIds;
   final void Function(String id) onToggle;
 
   const _ReminderQuickChips({
-    required this.skin,
     required this.options,
     required this.selectedIds,
     required this.onToggle,
   });
 
   @override
-  State<_ReminderQuickChips> createState() => _ReminderQuickChipsState();
-}
-
-class _ReminderQuickChipsState extends State<_ReminderQuickChips> {
-  final ScrollController _scrollCtrl = ScrollController();
-  double _progress = 0.0;
-  double _visibleFraction = 1.0;
-
-  @override
-  void initState() {
-    super.initState();
-    _scrollCtrl.addListener(_updateProgress);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _updateProgress());
-  }
-
-  @override
-  void didUpdateWidget(_ReminderQuickChips oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.options.length != widget.options.length) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _updateProgress());
-    }
-  }
-
-  @override
-  void dispose() {
-    _scrollCtrl.removeListener(_updateProgress);
-    _scrollCtrl.dispose();
-    super.dispose();
-  }
-
-  void _updateProgress() {
-    if (!_scrollCtrl.hasClients) return;
-    final pos = _scrollCtrl.position;
-    final maxExtent = pos.maxScrollExtent;
-    final viewport = pos.viewportDimension;
-    final total = maxExtent + viewport;
-    setState(() {
-      _progress = maxExtent <= 0 ? 0.0 : (pos.pixels / maxExtent).clamp(0.0, 1.0);
-      _visibleFraction = total <= 0 ? 1.0 : (viewport / total).clamp(0.08, 1.0);
-    });
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final skin = widget.skin;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          height: 34,
-          child: ListView.separated(
-            controller: _scrollCtrl,
-            scrollDirection: Axis.horizontal,
-            physics: const BouncingScrollPhysics(),
-            itemCount: widget.options.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 6),
-            itemBuilder: (context, i) {
-              final opt = widget.options[i];
-              final selected = widget.selectedIds.contains(opt.id);
-              return GestureDetector(
-                onTap: () => widget.onToggle(opt.id),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 150),
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: selected ? skin.primary.withValues(alpha: 0.15) : skin.surface(0.06),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: selected ? skin.primary.withValues(alpha: 0.45) : skin.glassBorder,
-                      width: selected ? 1.5 : 1.0,
-                    ),
-                  ),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    if (selected) ...[
-                      Icon(Icons.check_rounded, size: 13, color: skin.primary),
-                      const SizedBox(width: 4),
-                    ],
-                    Text(
-                      opt.label,
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: selected ? skin.primary : skin.surface(0.5)),
-                    ),
-                  ]),
-                ),
-              );
-            },
-          ),
-        ),
-      ],
+    return SizedBox(
+      height: 34,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        itemCount: options.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 6),
+        itemBuilder: (context, i) {
+          final opt = options[i];
+          final selected = selectedIds.contains(opt.id);
+          return GlassChip(
+            label: opt.label,
+            active: selected,
+            icon: Icons.check_rounded,
+            onTap: () => onToggle(opt.id),
+          );
+        },
+      ),
     );
   }
 }

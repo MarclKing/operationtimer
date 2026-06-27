@@ -18,21 +18,6 @@ import '../services/weather_service.dart';
 import '../widgets/glass_kit.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// LIQUID GLASS EXTENSION
-// ─────────────────────────────────────────────────────────────────────────────
-
-extension _AppSkinGlass on AppSkin {
-  double get glassBlur => isLight ? 18.0 : 22.0;
-  double get glassOpacity => isLight ? 0.62 : 0.55;
-  Color get glassHighlight =>
-      isLight ? Colors.white.withValues(alpha: 0.70) : Colors.white.withValues(alpha: 0.12);
-  Color get glassBorder =>
-      isLight ? Colors.white.withValues(alpha: 0.55) : Colors.white.withValues(alpha: 0.16);
-  Color get glassShadow =>
-      Colors.black.withValues(alpha: isLight ? 0.08 : 0.35);
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // EINSTIEGSPUNKT — Apple-artige Kachel-Übersicht
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -63,111 +48,167 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     // ── Profil-Banner ────────────────────────────────────────
-                    _SettingsTileGroup(skin: skin, children: [
-                      _SettingsTile(
-                        skin: skin,
-                        icon: Icons.person_rounded,
-                        iconBg: const Color(0xFF5B8DEF),
-                        label: name.isEmpty ? 'Profil' : name,
-                        subtitle: name.isEmpty ? 'Name & Dienstplan-Name' : 'Profil & Dienstplan-Name',
-                        isLast: true,
-                        onTap: () => Navigator.push(
-                          context,
-                          CupertinoPageRoute(
-                            builder: (_) => const _ProfileSettingsScreen()),
+                    GlassSurface(
+                      borderRadius: 18,
+                      padding: EdgeInsets.zero,
+                      child: Column(children: [
+                        GlassListItem(
+                          leading: Container(
+                            width: 32, height: 32,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF5B8DEF),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(Icons.person_rounded, color: Colors.white, size: 18),
+                          ),
+                          title: name.isEmpty ? 'Profil' : name,
+                          subtitle: name.isEmpty ? 'Name & Dienstplan-Name' : 'Profil & Dienstplan-Name',
+                          isLast: true,
+                          trailing: Icon(Icons.chevron_right_rounded, size: 18, color: skin.surface(0.28)),
+                          onTap: () => Navigator.push(
+                            context,
+                            CupertinoPageRoute(
+                              builder: (_) => const _ProfileSettingsScreen()),
+                          ),
                         ),
-                      ),
-                    ]),
+                      ]),
+                    ),
                     const SizedBox(height: 24),
 
                     // ── Hauptgruppe ────────────────────────────────────────
-                    _SettingsTileGroup(skin: skin, children: [
-                      _SettingsTile(
-                        skin: skin,
-                        icon: Icons.notifications_rounded,
-                        iconBg: const Color(0xFFEF5B5B),
-                        label: 'Benachrichtigungen',
-                        subtitle: 'Tagesvorschau · Erinnerungszeit',
-                        onTap: () => Navigator.push(
-                          context,
-                          CupertinoPageRoute(
-                            builder: (_) => const _NotificationSettingsScreen()),
+                    GlassSurface(
+                      borderRadius: 18,
+                      padding: EdgeInsets.zero,
+                      child: Column(children: [
+                        GlassListItem(
+                          leading: Container(
+                            width: 32, height: 32,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFEF5B5B),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(Icons.notifications_rounded, color: Colors.white, size: 18),
+                          ),
+                          title: 'Benachrichtigungen',
+                          subtitle: 'Tagesvorschau · Erinnerungszeit',
+                          trailing: Icon(Icons.chevron_right_rounded, size: 18, color: skin.surface(0.28)),
+                          onTap: () => Navigator.push(
+                            context,
+                            CupertinoPageRoute(
+                              builder: (_) => const _NotificationSettingsScreen()),
+                          ),
                         ),
-                      ),
-                      _SettingsTile(
-                        skin: skin,
-                        icon: Icons.dashboard_rounded,
-                        iconBg: const Color(0xFF5B8DEF),
-                        label: 'Startbildschirm',
-                        subtitle: 'Wetter · Aufgabe hinzufügen',
-                        onTap: () => Navigator.push(
-                          context,
-                          CupertinoPageRoute(
-                            builder: (_) => const _HomescreenSettingsScreen()),
+                        GlassListItem(
+                          leading: Container(
+                            width: 32, height: 32,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF5B8DEF),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(Icons.dashboard_rounded, color: Colors.white, size: 18),
+                          ),
+                          title: 'Startbildschirm',
+                          subtitle: 'Wetter · Aufgabe hinzufügen',
+                          trailing: Icon(Icons.chevron_right_rounded, size: 18, color: skin.surface(0.28)),
+                          onTap: () => Navigator.push(
+                            context,
+                            CupertinoPageRoute(
+                              builder: (_) => const _HomescreenSettingsScreen()),
+                          ),
                         ),
-                      ),
-                      _SettingsTile(
-                        skin: skin,
-                        icon: Icons.access_time_filled_rounded,
-                        iconBg: const Color(0xFF2D6CFF),
-                        label: 'Arbeitszeiterfassung',
-                        subtitle: 'Nachtschicht · Reisemodus',
-                        onTap: () => Navigator.push(
-                          context,
-                          CupertinoPageRoute(
-                            builder: (_) => const _WorkTimeSettingsScreen()),
+                        GlassListItem(
+                          leading: Container(
+                            width: 32, height: 32,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF2D6CFF),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(Icons.access_time_filled_rounded, color: Colors.white, size: 18),
+                          ),
+                          title: 'Arbeitszeiterfassung',
+                          subtitle: 'Nachtschicht · Reisemodus',
+                          trailing: Icon(Icons.chevron_right_rounded, size: 18, color: skin.surface(0.28)),
+                          onTap: () => Navigator.push(
+                            context,
+                            CupertinoPageRoute(
+                              builder: (_) => const _WorkTimeSettingsScreen()),
+                          ),
                         ),
-                      ),
-                      _SettingsTile(
-                        skin: skin,
-                        icon: Icons.calendar_month_rounded,
-                        iconBg: const Color(0xFFFFB347),
-                        label: 'Dienstplan',
-                        subtitle: 'Import · Entwickler-Modus',
-                        onTap: () => Navigator.push(
-                          context,
-                          CupertinoPageRoute(
-                            builder: (_) => const _ScheduleSettingsScreen()),
+                        GlassListItem(
+                          leading: Container(
+                            width: 32, height: 32,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFFB347),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(Icons.calendar_month_rounded, color: Colors.white, size: 18),
+                          ),
+                          title: 'Dienstplan',
+                          subtitle: 'Import · Entwickler-Modus',
+                          trailing: Icon(Icons.chevron_right_rounded, size: 18, color: skin.surface(0.28)),
+                          onTap: () => Navigator.push(
+                            context,
+                            CupertinoPageRoute(
+                              builder: (_) => const _ScheduleSettingsScreen()),
+                          ),
                         ),
-                      ),
-                      _SettingsTile(
-                        skin: skin,
-                        icon: Icons.task_alt_rounded,
-                        iconBg: const Color(0xFF3DD68C),
-                        label: 'Aufgaben & Diktieren',
-                        subtitle: 'Diktat · Log · Sprach-Analyse',
-                        onTap: () => Navigator.push(
-                          context,
-                          CupertinoPageRoute(
-                            builder: (_) => const _TasksDictationSettingsScreen()),
+                        GlassListItem(
+                          leading: Container(
+                            width: 32, height: 32,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF3DD68C),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(Icons.task_alt_rounded, color: Colors.white, size: 18),
+                          ),
+                          title: 'Aufgaben & Diktieren',
+                          subtitle: 'Diktat · Log · Sprach-Analyse',
+                          trailing: Icon(Icons.chevron_right_rounded, size: 18, color: skin.surface(0.28)),
+                          onTap: () => Navigator.push(
+                            context,
+                            CupertinoPageRoute(
+                              builder: (_) => const _TasksDictationSettingsScreen()),
+                          ),
                         ),
-                      ),
-                      _SettingsTile(
-                        skin: skin,
-                        icon: Icons.folder_rounded,
-                        iconBg: const Color(0xFF8B8B9E),
-                        label: 'Datenverwaltung',
-                        subtitle: 'Aufbewahrung · Auto-Löschung',
-                        onTap: () => Navigator.push(
-                          context,
-                          CupertinoPageRoute(
-                            builder: (_) => const _DataManagementSettingsScreen()),
+                        GlassListItem(
+                          leading: Container(
+                            width: 32, height: 32,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF8B8B9E),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(Icons.folder_rounded, color: Colors.white, size: 18),
+                          ),
+                          title: 'Datenverwaltung',
+                          subtitle: 'Aufbewahrung · Auto-Löschung',
+                          trailing: Icon(Icons.chevron_right_rounded, size: 18, color: skin.surface(0.28)),
+                          onTap: () => Navigator.push(
+                            context,
+                            CupertinoPageRoute(
+                              builder: (_) => const _DataManagementSettingsScreen()),
+                          ),
                         ),
-                      ),
-                      _SettingsTile(
-                        skin: skin,
-                        icon: Icons.palette_rounded,
-                        iconBg: const Color(0xFF3DD6C8),
-                        label: 'Design',
-                        subtitle: 'Farbschema',
-                        isLast: true,
-                        onTap: () => Navigator.push(
-                          context,
-                          CupertinoPageRoute(
-                            builder: (_) => const _DesignSettingsScreen()),
+                        GlassListItem(
+                          leading: Container(
+                            width: 32, height: 32,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF3DD6C8),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(Icons.palette_rounded, color: Colors.white, size: 18),
+                          ),
+                          title: 'Design',
+                          subtitle: 'Farbschema',
+                          isLast: true,
+                          trailing: Icon(Icons.chevron_right_rounded, size: 18, color: skin.surface(0.28)),
+                          onTap: () => Navigator.push(
+                            context,
+                            CupertinoPageRoute(
+                              builder: (_) => const _DesignSettingsScreen()),
+                          ),
                         ),
-                      ),
-                    ]),
+                      ]),
+                    ),
 
                     const SizedBox(height: 40),
                     Center(
@@ -186,7 +227,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GEMEINSAME BAUSTEINE — Header, Tile-Gruppe, Tile, SwitchTile, Section-Labels
+// GEMEINSAME BAUSTEINE — Header, Section-Labels, etc.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _SettingsHeader extends StatelessWidget {
@@ -226,211 +267,6 @@ class _SettingsHeader extends StatelessWidget {
           if (trailing != null) trailing!,
         ],
       ),
-    );
-  }
-}
-
-class _SettingsTileGroup extends StatelessWidget {
-  final AppSkin skin;
-  final List<Widget> children;
-
-  const _SettingsTileGroup(
-      {required this.skin, required this.children});
-
-  @override
-  Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(18),
-      child: BackdropFilter(
-        filter:
-            ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
-        child: Container(
-          decoration: BoxDecoration(
-            color: skin.isLight
-                ? Colors.white.withValues(alpha: skin.glassOpacity)
-                : skin.bgCard.withValues(alpha: skin.glassOpacity),
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: skin.glassBorder, width: 1.0),
-            boxShadow: [
-              BoxShadow(
-                  color: skin.glassShadow,
-                  blurRadius: 24,
-                  offset: const Offset(0, 6)),
-              BoxShadow(
-                  color: skin.glassHighlight,
-                  blurRadius: 0,
-                  spreadRadius: -1,
-                  offset: const Offset(0, 1)),
-            ],
-          ),
-          child: Column(children: children),
-        ),
-      ),
-    );
-  }
-}
-
-class _SettingsTile extends StatelessWidget {
-  final AppSkin skin;
-  final IconData icon;
-  final Color iconBg;
-  final String label;
-  final String? subtitle;
-  final String? trailingValue;
-  final bool isLast;
-  final VoidCallback onTap;
-
-  const _SettingsTile({
-    required this.skin,
-    required this.icon,
-    required this.iconBg,
-    required this.label,
-    required this.onTap,
-    this.subtitle,
-    this.trailingValue,
-    this.isLast = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        GestureDetector(
-          onTap: onTap,
-          behavior: HitTestBehavior.opaque,
-          child: Padding(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            child: Row(
-              children: [
-                Container(
-                  width: 32,
-                  height: 32,
-                  decoration: BoxDecoration(
-                      color: iconBg,
-                      borderRadius: BorderRadius.circular(8)),
-                  child:
-                      Icon(icon, color: Colors.white, size: 18),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(label,
-                          style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w500,
-                              color: skin.textPrimary)),
-                      if (subtitle != null) ...[
-                        const SizedBox(height: 2),
-                        Text(subtitle!,
-                            style: TextStyle(
-                                fontSize: 12, color: skin.textMuted)),
-                      ],
-                    ],
-                  ),
-                ),
-                if (trailingValue != null) ...[
-                  Text(trailingValue!,
-                      style: TextStyle(
-                          fontSize: 14, color: skin.textMuted)),
-                  const SizedBox(width: 6),
-                ],
-                Icon(Icons.chevron_right_rounded,
-                    size: 18, color: skin.surface(0.28)),
-              ],
-            ),
-          ),
-        ),
-        if (!isLast)
-          Padding(
-            padding: const EdgeInsets.only(left: 60),
-            child: Divider(height: 0.5, color: skin.glassBorder),
-          ),
-      ],
-    );
-  }
-}
-
-class _SettingsSwitchTile extends StatelessWidget {
-  final AppSkin skin;
-  final IconData icon;
-  final Color iconBg;
-  final String label;
-  final String? subtitle;
-  final bool value;
-  final ValueChanged<bool> onChanged;
-  final bool isLast;
-
-  const _SettingsSwitchTile({
-    required this.skin,
-    required this.icon,
-    required this.iconBg,
-    required this.label,
-    required this.value,
-    required this.onChanged,
-    this.subtitle,
-    this.isLast = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Padding(
-          padding:
-              const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          child: Row(
-            children: [
-              Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                    color: iconBg,
-                    borderRadius: BorderRadius.circular(8)),
-                child: Icon(icon, color: Colors.white, size: 18),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(label,
-                        style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w500,
-                            color: skin.textPrimary)),
-                    if (subtitle != null) ...[
-                      const SizedBox(height: 2),
-                      Text(subtitle!,
-                          style: TextStyle(
-                              fontSize: 12,
-                              color: skin.textMuted,
-                              height: 1.35)),
-                    ],
-                  ],
-                ),
-              ),
-              Switch(
-                value: value,
-                onChanged: onChanged,
-                activeThumbColor: skin.primary,
-                activeTrackColor: skin.primary.withValues(alpha: 0.28),
-                inactiveThumbColor: skin.textMuted,
-                inactiveTrackColor: skin.surface(0.08),
-              ),
-            ],
-          ),
-        ),
-        if (!isLast)
-          Padding(
-            padding: const EdgeInsets.only(left: 60),
-            child: Divider(height: 0.5, color: skin.glassBorder),
-          ),
-      ],
     );
   }
 }
@@ -482,30 +318,10 @@ class _TiCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(20),
-      child: BackdropFilter(
-        filter:
-            ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            color: skin.isLight
-                ? Colors.white.withValues(alpha: skin.glassOpacity)
-                : skin.bgCard.withValues(alpha: skin.glassOpacity),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: skin.glassBorder, width: 1.0),
-            boxShadow: [
-              BoxShadow(
-                  color: skin.glassShadow,
-                  blurRadius: 24,
-                  offset: const Offset(0, 6)),
-            ],
-          ),
-          child: child,
-        ),
-      ),
+    return GlassSurface(
+      borderRadius: 20,
+      padding: const EdgeInsets.all(18),
+      child: child,
     );
   }
 }
@@ -742,437 +558,278 @@ class _SyncTokenCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(20),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            color: skin.isLight
-                ? Colors.white.withValues(alpha: skin.glassOpacity)
-                : skin.bgCard.withValues(alpha: skin.glassOpacity),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: skin.glassBorder, width: 1.0),
-            boxShadow: [
-              BoxShadow(color: skin.glassShadow, blurRadius: 24, offset: const Offset(0, 6)),
+    return GlassSurface(
+      borderRadius: 20,
+      padding: const EdgeInsets.all(18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header
+          Row(
+            children: [
+              Icon(Icons.sync_rounded, size: 18, color: skin.primary),
+              const SizedBox(width: 8),
+              Text('Sync-Token',
+                  style: TextStyle(
+                      fontSize: 15, fontWeight: FontWeight.w700, color: skin.textPrimary)),
+              const Spacer(),
+              if (syncToken != null)
+                GestureDetector(
+                  onTap: onUnlink,
+                  child: Text('Trennen',
+                      style: TextStyle(
+                          fontSize: 12,
+                          color: skin.deleteColor,
+                          fontWeight: FontWeight.w600)),
+                ),
             ],
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Header
-              Row(
+          const SizedBox(height: 10),
+          Text(
+            syncToken == null
+                ? 'Generiere einen Token, um deine Daten auf mehreren Geräten zu synchronisieren. Gib denselben Token auf einem anderen Gerät ein.'
+                : 'Dein Sync-Token. Gib ihn auf einem anderen Gerät ein, um die Daten zu synchronisieren.',
+            style: TextStyle(fontSize: 13, color: skin.textMuted, height: 1.5),
+          ),
+          const SizedBox(height: 16),
+
+          if (syncToken == null) ...[
+            // ── Kein Token — zwei Optionen ─────────────────────────────
+
+            // Neuen generieren
+            if (isGenerating)
+              Center(
+                child: SizedBox(
+                  width: 18, height: 18,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2, color: skin.primary),
+                ),
+              )
+            else
+              GlassPrimaryButton(
+                skin: skin,
+                label: 'Neuen Token generieren',
+                icon: Icons.add_circle_outline_rounded,
+                onTap: onGenerate,
+              ),
+
+            const SizedBox(height: 10),
+
+            // Bestehenden verknüpfen
+            GlassSecondaryButton(
+              skin: skin,
+              label: 'Token verknüpfen',
+              onTap: onToggleInput,
+            ),
+
+            // Token-Eingabe (aufklappbar)
+            AnimatedCrossFade(
+              duration: const Duration(milliseconds: 240),
+              crossFadeState: showTokenInput
+                  ? CrossFadeState.showSecond
+                  : CrossFadeState.showFirst,
+              firstChild: const SizedBox.shrink(),
+              secondChild: Column(
                 children: [
-                  Icon(Icons.sync_rounded, size: 18, color: skin.primary),
-                  const SizedBox(width: 8),
-                  Text('Sync-Token',
-                      style: TextStyle(
-                          fontSize: 15, fontWeight: FontWeight.w700, color: skin.textPrimary)),
-                  const Spacer(),
-                  if (syncToken != null)
-                    GestureDetector(
-                      onTap: onUnlink,
-                      child: Text('Trennen',
-                          style: TextStyle(
-                              fontSize: 12,
-                              color: skin.deleteColor,
-                              fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: skin.surface(0.05),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: skin.borderSubtle),
                     ),
+                    child: TextField(
+                      controller: tokenInputController,
+                      autofocus: showTokenInput,
+                      style: TextStyle(
+                        color: skin.textPrimary,
+                        fontSize: 14,
+                        fontFamily: 'monospace',
+                        letterSpacing: 0.5,
+                      ),
+                      decoration: InputDecoration(
+                        hintText: 'Token eingeben (22 Zeichen)',
+                        hintStyle: TextStyle(color: skin.textHint, fontSize: 13),
+                        border: InputBorder.none,
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                      ),
+                      onSubmitted: (_) => onLink(),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  if (isLinking)
+                    Center(
+                      child: SizedBox(
+                        width: 18, height: 18,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: skin.primary),
+                      ),
+                    )
+                  else
+                    GlassPrimaryButton(
+                      skin: skin,
+                      label: 'Verknüpfen',
+                      onTap: onLink,
+                    ),
+                  if (linkFeedback != null) ...[
+                    const SizedBox(height: 10),
+                    _FeedbackBadge(
+                        skin: skin,
+                        message: linkFeedback!,
+                        isSuccess: linkSuccess),
+                  ],
                 ],
               ),
-              const SizedBox(height: 10),
-              Text(
-                syncToken == null
-                    ? 'Generiere einen Token, um deine Daten auf mehreren Geräten zu synchronisieren. Gib denselben Token auf einem anderen Gerät ein.'
-                    : 'Dein Sync-Token. Gib ihn auf einem anderen Gerät ein, um die Daten zu synchronisieren.',
-                style: TextStyle(fontSize: 13, color: skin.textMuted, height: 1.5),
+            ),
+          ] else ...[
+            // ── Token vorhanden — anzeigen + Aktionen ──────────────────
+
+            // Token-Anzeige
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: skin.isLight
+                    ? Colors.white.withValues(alpha: 0.60)
+                    : Colors.white.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: skin.glassBorder),
               ),
-              const SizedBox(height: 16),
-
-              if (syncToken == null) ...[
-                // ── Kein Token — zwei Optionen ─────────────────────────────
-
-                // Neuen generieren
-                GestureDetector(
-                  onTap: isGenerating ? null : onGenerate,
-                  child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(vertical: 13),
-                    decoration: BoxDecoration(
-                      color: skin.primary.withValues(alpha: skin.isLight ? 0.10 : 0.18),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                          color: skin.primary.withValues(alpha: skin.isLight ? 0.25 : 0.40)),
-                    ),
-                    child: Center(
-                      child: isGenerating
-                          ? SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(
-                                  strokeWidth: 2, color: skin.primary))
-                          : Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.add_circle_outline_rounded,
-                                    size: 16,
-                                    color: skin.primary.withValues(
-                                        alpha: skin.isLight ? 0.85 : 0.90)),
-                                const SizedBox(width: 7),
-                                Text('Neuen Token generieren',
-                                    style: TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w700,
-                                        color: skin.primary.withValues(
-                                            alpha: skin.isLight ? 0.85 : 0.90))),
-                              ],
-                            ),
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 10),
-
-                // Bestehenden verknüpfen
-                GestureDetector(
-                  onTap: onToggleInput,
-                  child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(vertical: 13),
-                    decoration: BoxDecoration(
-                      color: skin.isLight
-                          ? Colors.white.withValues(alpha: 0.60)
-                          : Colors.white.withValues(alpha: 0.06),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: skin.glassBorder),
-                    ),
-                    child: Center(
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.link_rounded, size: 16, color: skin.textMuted),
-                          const SizedBox(width: 7),
-                          Text('Token verknüpfen',
-                              style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                  color: skin.textPrimary)),
-                        ],
+              child: Row(
+                children: [
+                  Icon(Icons.vpn_key_rounded,
+                      size: 16,
+                      color: skin.primary.withValues(alpha: 0.7)),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      syncToken!,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontFamily: 'monospace',
+                        letterSpacing: 0.8,
+                        color: skin.textPrimary,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),
-                ),
+                ],
+              ),
+            ),
 
-                // Token-Eingabe (aufklappbar)
-                AnimatedCrossFade(
-                  duration: const Duration(milliseconds: 240),
-                  crossFadeState: showTokenInput
-                      ? CrossFadeState.showSecond
-                      : CrossFadeState.showFirst,
-                  firstChild: const SizedBox.shrink(),
-                  secondChild: Column(
-                    children: [
-                      const SizedBox(height: 12),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: skin.surface(0.05),
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: skin.borderSubtle),
-                        ),
-                        child: TextField(
-                          controller: tokenInputController,
-                          autofocus: showTokenInput,
-                          style: TextStyle(
-                            color: skin.textPrimary,
-                            fontSize: 14,
-                            fontFamily: 'monospace',
-                            letterSpacing: 0.5,
-                          ),
-                          decoration: InputDecoration(
-                            hintText: 'Token eingeben (22 Zeichen)',
-                            hintStyle: TextStyle(color: skin.textHint, fontSize: 13),
-                            border: InputBorder.none,
-                            isDense: true,
-                            contentPadding: const EdgeInsets.symmetric(vertical: 10),
-                          ),
-                          onSubmitted: (_) => onLink(),
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      GestureDetector(
-                        onTap: isLinking ? null : onLink,
-                        child: Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.symmetric(vertical: 13),
-                          decoration: BoxDecoration(
-                            color: skin.primary.withValues(
-                                alpha: skin.isLight ? 0.10 : 0.18),
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(
-                                color: skin.primary.withValues(
-                                    alpha: skin.isLight ? 0.25 : 0.40)),
-                          ),
-                          child: Center(
-                            child: isLinking
-                                ? SizedBox(
-                                    width: 18,
-                                    height: 18,
-                                    child: CircularProgressIndicator(
-                                        strokeWidth: 2, color: skin.primary))
-                                : Text('Verknüpfen',
-                                    style: TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w700,
-                                        color: skin.primary.withValues(
-                                            alpha:
-                                                skin.isLight ? 0.85 : 0.90))),
-                          ),
-                        ),
-                      ),
-                      if (linkFeedback != null) ...[
-                        const SizedBox(height: 10),
-                        _FeedbackBadge(
-                            skin: skin,
-                            message: linkFeedback!,
-                            isSuccess: linkSuccess),
-                      ],
-                    ],
+            const SizedBox(height: 12),
+
+            // Aktions-Row: Kopieren + Teilen
+            Row(
+              children: [
+                Expanded(
+                  child: GlassSecondaryButton(
+                    skin: skin,
+                    label: (linkFeedback != null && linkSuccess) ? 'Kopiert!' : 'Kopieren',
+                    onTap: onCopy,
                   ),
                 ),
-              ] else ...[
-                // ── Token vorhanden — anzeigen + Aktionen ──────────────────
-
-                // Token-Anzeige
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                  decoration: BoxDecoration(
-                    color: skin.isLight
-                        ? Colors.white.withValues(alpha: 0.60)
-                        : Colors.white.withValues(alpha: 0.06),
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: skin.glassBorder),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.vpn_key_rounded,
-                          size: 16,
-                          color: skin.primary.withValues(alpha: 0.7)),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          syncToken!,
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontFamily: 'monospace',
-                            letterSpacing: 0.8,
-                            color: skin.textPrimary,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 12),
-
-                // Aktions-Row: Kopieren + Teilen
-                Row(
-                  children: [
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: onCopy,
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          decoration: BoxDecoration(
-                            color: (linkFeedback != null && linkSuccess)
-                                ? const Color(0xFF3DD68C).withValues(alpha: 0.12)
-                                : (skin.isLight
-                                    ? Colors.white.withValues(alpha: 0.60)
-                                    : Colors.white.withValues(alpha: 0.06)),
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(
-                              color: (linkFeedback != null && linkSuccess)
-                                  ? const Color(0xFF3DD68C).withValues(alpha: 0.4)
-                                  : skin.glassBorder,
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                (linkFeedback != null && linkSuccess)
-                                    ? Icons.check_rounded
-                                    : Icons.copy_rounded,
-                                size: 15,
-                                color: (linkFeedback != null && linkSuccess)
-                                    ? const Color(0xFF3DD68C)
-                                    : skin.textMuted,
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                (linkFeedback != null && linkSuccess)
-                                    ? 'Kopiert!'
-                                    : 'Kopieren',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                  color: (linkFeedback != null && linkSuccess)
-                                      ? const Color(0xFF3DD68C)
-                                      : skin.textPrimary,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: onShare,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          decoration: BoxDecoration(
-                            color: skin.primary.withValues(
-                                alpha: skin.isLight ? 0.10 : 0.18),
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(
-                                color: skin.primary.withValues(
-                                    alpha: skin.isLight ? 0.25 : 0.40)),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.ios_share_rounded,
-                                  size: 15,
-                                  color: skin.primary
-                                      .withValues(alpha: skin.isLight ? 0.85 : 0.90)),
-                              const SizedBox(width: 6),
-                              Text('Teilen',
-                                  style: TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w700,
-                                      color: skin.primary.withValues(
-                                          alpha: skin.isLight ? 0.85 : 0.90))),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-
-                // Weiteres Gerät verknüpfen (aufklappbar)
-                const SizedBox(height: 10),
-                GestureDetector(
-                  onTap: onToggleInput,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        showTokenInput
-                            ? Icons.keyboard_arrow_up_rounded
-                            : Icons.add_link_rounded,
-                        size: 15,
-                        color: skin.textMuted,
-                      ),
-                      const SizedBox(width: 5),
-                      Text(
-                        showTokenInput ? 'Schließen' : 'Anderen Token eingeben',
-                        style: TextStyle(
-                            fontSize: 12,
-                            color: skin.textMuted,
-                            fontWeight: FontWeight.w500),
-                      ),
-                    ],
-                  ),
-                ),
-
-                AnimatedCrossFade(
-                  duration: const Duration(milliseconds: 240),
-                  crossFadeState: showTokenInput
-                      ? CrossFadeState.showSecond
-                      : CrossFadeState.showFirst,
-                  firstChild: const SizedBox.shrink(),
-                  secondChild: Column(
-                    children: [
-                      const SizedBox(height: 12),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: skin.surface(0.05),
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: skin.borderSubtle),
-                        ),
-                        child: TextField(
-                          controller: tokenInputController,
-                          autofocus: showTokenInput,
-                          style: TextStyle(
-                            color: skin.textPrimary,
-                            fontSize: 14,
-                            fontFamily: 'monospace',
-                            letterSpacing: 0.5,
-                          ),
-                          decoration: InputDecoration(
-                            hintText: 'Token eingeben (22 Zeichen)',
-                            hintStyle: TextStyle(color: skin.textHint, fontSize: 13),
-                            border: InputBorder.none,
-                            isDense: true,
-                            contentPadding: const EdgeInsets.symmetric(vertical: 10),
-                          ),
-                          onSubmitted: (_) => onLink(),
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      GestureDetector(
-                        onTap: isLinking ? null : onLink,
-                        child: Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.symmetric(vertical: 13),
-                          decoration: BoxDecoration(
-                            color: skin.primary.withValues(
-                                alpha: skin.isLight ? 0.10 : 0.18),
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(
-                                color: skin.primary.withValues(
-                                    alpha: skin.isLight ? 0.25 : 0.40)),
-                          ),
-                          child: Center(
-                            child: isLinking
-                                ? SizedBox(
-                                    width: 18,
-                                    height: 18,
-                                    child: CircularProgressIndicator(
-                                        strokeWidth: 2, color: skin.primary))
-                                : Text('Verknüpfen',
-                                    style: TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w700,
-                                        color: skin.primary.withValues(
-                                            alpha:
-                                                skin.isLight ? 0.85 : 0.90))),
-                          ),
-                        ),
-                      ),
-                      if (linkFeedback != null) ...[
-                        const SizedBox(height: 10),
-                        _FeedbackBadge(
-                            skin: skin,
-                            message: linkFeedback!,
-                            isSuccess: linkSuccess),
-                      ],
-                    ],
+                const SizedBox(width: 10),
+                Expanded(
+                  child: GlassPrimaryButton(
+                    skin: skin,
+                    label: 'Teilen',
+                    icon: Icons.ios_share_rounded,
+                    onTap: onShare,
                   ),
                 ),
               ],
-            ],
-          ),
-        ),
+            ),
+
+            // Weiteres Gerät verknüpfen (aufklappbar)
+            const SizedBox(height: 10),
+            GestureDetector(
+              onTap: onToggleInput,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    showTokenInput
+                        ? Icons.keyboard_arrow_up_rounded
+                        : Icons.add_link_rounded,
+                    size: 15,
+                    color: skin.textMuted,
+                  ),
+                  const SizedBox(width: 5),
+                  Text(
+                    showTokenInput ? 'Schließen' : 'Anderen Token eingeben',
+                    style: TextStyle(
+                        fontSize: 12,
+                        color: skin.textMuted,
+                        fontWeight: FontWeight.w500),
+                  ),
+                ],
+              ),
+            ),
+
+            AnimatedCrossFade(
+              duration: const Duration(milliseconds: 240),
+              crossFadeState: showTokenInput
+                  ? CrossFadeState.showSecond
+                  : CrossFadeState.showFirst,
+              firstChild: const SizedBox.shrink(),
+              secondChild: Column(
+                children: [
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: skin.surface(0.05),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: skin.borderSubtle),
+                    ),
+                    child: TextField(
+                      controller: tokenInputController,
+                      autofocus: showTokenInput,
+                      style: TextStyle(
+                        color: skin.textPrimary,
+                        fontSize: 14,
+                        fontFamily: 'monospace',
+                        letterSpacing: 0.5,
+                      ),
+                      decoration: InputDecoration(
+                        hintText: 'Token eingeben (22 Zeichen)',
+                        hintStyle: TextStyle(color: skin.textHint, fontSize: 13),
+                        border: InputBorder.none,
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                      ),
+                      onSubmitted: (_) => onLink(),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  if (isLinking)
+                    Center(
+                      child: SizedBox(
+                        width: 18, height: 18,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: skin.primary),
+                      ),
+                    )
+                  else
+                    GlassPrimaryButton(
+                      skin: skin,
+                      label: 'Verknüpfen',
+                      onTap: onLink,
+                    ),
+                  if (linkFeedback != null) ...[
+                    const SizedBox(height: 10),
+                    _FeedbackBadge(
+                        skin: skin,
+                        message: linkFeedback!,
+                        isSuccess: linkSuccess),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -1390,29 +1047,33 @@ class _ProfileSettingsScreenState extends State<_ProfileSettingsScreen> {
                     const SizedBox(height: 16),
 
                     // ── Anrede ─────────────────────────────────────────────
-const _SectionHeader(label: 'Anrede'),
-_SettingsTileGroup(skin: skin, children: [
-  GlassDropdownButton<RelationshipStyle>(
-    value: _selectedStyle,
-    label: 'Umgangsform',
-    icon: Icons.chat_bubble_outline_rounded,
-    iconBg: const Color(0xFF5B8DEF),
-    isLast: true,
-    displayBuilder: (s) {
-      switch (s) {
-        case RelationshipStyle.bro:     return 'Locker';
-        case RelationshipStyle.vorname: return 'Vorname';
-        case RelationshipStyle.familie: return 'Formell';
-      }
-    },
-    items: [
-      GlassDropdownItem(value: RelationshipStyle.bro,     label: 'Locker',   icon: Icons.bolt_rounded),
-      GlassDropdownItem(value: RelationshipStyle.vorname, label: 'Normal',               icon: Icons.waving_hand_outlined),
-      GlassDropdownItem(value: RelationshipStyle.familie, label: 'Formell',    icon: Icons.workspace_premium_outlined),
-    ],
-    onChanged: _selectStyle,
-  ),
-]),
+                    const _SectionHeader(label: 'Anrede'),
+                    GlassSurface(
+                      borderRadius: 18,
+                      padding: EdgeInsets.zero,
+                      child: Column(children: [
+                        GlassDropdownButton<RelationshipStyle>(
+                          value: _selectedStyle,
+                          label: 'Umgangsform',
+                          icon: Icons.chat_bubble_outline_rounded,
+                          iconBg: const Color(0xFF5B8DEF),
+                          isLast: true,
+                          displayBuilder: (s) {
+                            switch (s) {
+                              case RelationshipStyle.bro:     return 'Locker';
+                              case RelationshipStyle.vorname: return 'Vorname';
+                              case RelationshipStyle.familie: return 'Formell';
+                            }
+                          },
+                          items: [
+                            GlassDropdownItem(value: RelationshipStyle.bro,     label: 'Locker',   icon: Icons.bolt_rounded),
+                            GlassDropdownItem(value: RelationshipStyle.vorname, label: 'Normal',               icon: Icons.waving_hand_outlined),
+                            GlassDropdownItem(value: RelationshipStyle.familie, label: 'Formell',    icon: Icons.workspace_premium_outlined),
+                          ],
+                          onChanged: _selectStyle,
+                        ),
+                      ]),
+                    ),
 
                     const SizedBox(height: 24),
 
@@ -1591,145 +1252,152 @@ class _NotificationSettingsScreenState
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const _SectionHeader(label: 'Tagesvorschau'),
-                    _SettingsTileGroup(skin: skin, children: [
-                      _SettingsSwitchTile(
-                        skin: skin,
-                        icon: Icons.today_rounded,
-                        iconBg: const Color(0xFF2D6CFF),
-                        label: 'Tagesvorschau aktiv',
-                        subtitle: 'Zeigt täglich Dienst & fällige Aufgaben',
-                        value: _overviewEnabled,
-                        onChanged: _setOverviewEnabled,
-                        isLast: !_overviewEnabled,
-                      ),
-                      if (_overviewEnabled) ...[
-                        // ── Modus-Auswahl ──────────────────────────────
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(
-                              14, 4, 14, 12),
-                          child: Row(children: [
-                            const SizedBox(width: 46),
-                            Expanded(
-                              child: ClipRRect(
-                                borderRadius:
-                                    BorderRadius.circular(12),
-                                child: BackdropFilter(
-                                  filter: ImageFilter.blur(
-                                      sigmaX: 8, sigmaY: 8),
-                                  child: Container(
-                                    padding: const EdgeInsets.all(4),
-                                    decoration: BoxDecoration(
-                                      color: skin.isLight
-                                          ? Colors.white.withValues(
-                                              alpha: 0.45)
-                                          : Colors.white.withValues(
-                                              alpha: 0.06),
-                                      borderRadius:
-                                          BorderRadius.circular(12),
-                                      border: Border.all(
-                                          color: skin.glassBorder),
-                                    ),
-                                    child: Row(children: [
-                                      Expanded(
-                                        child: _ModeSegment(
-                                          skin: skin,
-                                          label: 'Feste Uhrzeit',
-                                          selected:
-                                              _mode == 'fixed_time',
-                                          onTap: () =>
-                                              _setMode('fixed_time'),
-                                        ),
-                                      ),
-                                      Expanded(
-                                        child: _ModeSegment(
-                                          skin: skin,
-                                          label: 'Bei App-Start',
-                                          selected:
-                                              _mode == 'app_start',
-                                          onTap: () =>
-                                              _setMode('app_start'),
-                                        ),
-                                      ),
-                                    ]),
-                                  ),
-                                ),
-                              ),
+                    GlassSurface(
+                      borderRadius: 18,
+                      padding: EdgeInsets.zero,
+                      child: Column(children: [
+                        GlassListItem(
+                          leading: Container(
+                            width: 32, height: 32,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF2D6CFF),
+                              borderRadius: BorderRadius.circular(8),
                             ),
-                          ]),
+                            child: const Icon(Icons.today_rounded, color: Colors.white, size: 18),
+                          ),
+                          title: 'Tagesvorschau aktiv',
+                          subtitle: 'Zeigt täglich Dienst & fällige Aufgaben',
+                          switchValue: _overviewEnabled,
+                          onSwitchChanged: _setOverviewEnabled,
+                          isLast: !_overviewEnabled,
                         ),
-                        Padding(
-                          padding:
-                              const EdgeInsets.only(left: 60),
-                          child: Divider(
-                              height: 0.5, color: skin.glassBorder),
-                        ),
-
-                        if (_mode == 'fixed_time')
-                          _SettingsTile(
-                            skin: skin,
-                            icon: Icons.schedule_rounded,
-                            iconBg: const Color(0xFF5B8DEF),
-                            label: 'Uhrzeit',
-                            trailingValue: _formatTime(_morningTime),
-                            onTap: _pickMorningTime,
-                          )
-                        else
+                        if (_overviewEnabled) ...[
+                          // ── Modus-Auswahl ──────────────────────────────
                           Padding(
                             padding: const EdgeInsets.fromLTRB(
                                 14, 4, 14, 12),
                             child: Row(children: [
                               const SizedBox(width: 46),
                               Expanded(
-                                child: Text(
-                                  'Wird einmal pro Tag direkt beim Öffnen der App angezeigt.',
-                                  style: TextStyle(
-                                      fontSize: 12,
-                                      color: skin.textMuted,
-                                      height: 1.4),
-                                ),
+                                child: GlassSegmentedControl<String>(
+  value: _mode,
+  items: const [
+    GlassSegmentItem(value: 'fixed_time', label: 'Feste Uhrzeit'),
+    GlassSegmentItem(value: 'app_start',  label: 'Bei App-Start'),
+  ],
+  onChanged: _setMode,
+),
                               ),
                             ]),
                           ),
-
-                        Padding(
-                          padding:
-                              const EdgeInsets.only(left: 60),
-                          child: Divider(
-                              height: 0.5, color: skin.glassBorder),
-                        ),
-                        _SettingsSwitchTile(
-                          skin: skin,
-                          icon: Icons.filter_alt_outlined,
-                          iconBg: const Color(0xFF8B8B9E),
-                          label: 'Nur wenn relevant',
-                          subtitle:
-                              'Sonst auch "Heute ist nichts geplant"',
-                          value: _onlyIfRelevant,
-                          onChanged: _setOnlyIfRelevant,
-                        ),
-                        _SettingsSwitchTile(
-                          skin: skin,
-                          icon: Icons.nightlight_round,
-                          iconBg: const Color(0xFF6D7ADF),
-                          label: 'Vorabend-Vorschau',
-                          subtitle:
-                              'Zusätzlich abends Vorschau auf morgen',
-                          value: _eveningEnabled,
-                          onChanged: _setEveningEnabled,
-                          isLast: !_eveningEnabled,
-                        ),
-                        if (_eveningEnabled)
-                          _SettingsTile(
-                            skin: skin,
-                            icon: Icons.schedule_rounded,
-                            iconBg: const Color(0xFF6D7ADF),
-                            label: 'Uhrzeit (abends)',
-                            trailingValue: _formatTime(_eveningTime),
-                            isLast: true,
-                            onTap: _pickEveningTime,
+                          Padding(
+                            padding:
+                                const EdgeInsets.only(left: 60),
+                            child: Divider(
+                                height: 0.5, color: skin.glassBorder),
                           ),
-                      ],
-                    ]),
+
+                          if (_mode == 'fixed_time')
+                            GlassListItem(
+                              leading: Container(
+                                width: 32, height: 32,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF5B8DEF),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Icon(Icons.schedule_rounded, color: Colors.white, size: 18),
+                              ),
+                              title: 'Uhrzeit',
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(_formatTime(_morningTime),
+                                      style: TextStyle(fontSize: 14, color: skin.textMuted)),
+                                  const SizedBox(width: 6),
+                                  Icon(Icons.chevron_right_rounded, size: 18, color: skin.surface(0.28)),
+                                ],
+                              ),
+                              onTap: _pickMorningTime,
+                            )
+                          else
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(
+                                  14, 4, 14, 12),
+                              child: Row(children: [
+                                const SizedBox(width: 46),
+                                Expanded(
+                                  child: Text(
+                                    'Wird einmal pro Tag direkt beim Öffnen der App angezeigt.',
+                                    style: TextStyle(
+                                        fontSize: 12,
+                                        color: skin.textMuted,
+                                        height: 1.4),
+                                  ),
+                                ),
+                              ]),
+                            ),
+
+                          Padding(
+                            padding:
+                                const EdgeInsets.only(left: 60),
+                            child: Divider(
+                                height: 0.5, color: skin.glassBorder),
+                          ),
+                          GlassListItem(
+                            leading: Container(
+                              width: 32, height: 32,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF8B8B9E),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Icon(Icons.filter_alt_outlined, color: Colors.white, size: 18),
+                            ),
+                            title: 'Nur wenn relevant',
+                            subtitle: 'Sonst auch "Heute ist nichts geplant"',
+                            switchValue: _onlyIfRelevant,
+                            onSwitchChanged: _setOnlyIfRelevant,
+                          ),
+                          GlassListItem(
+                            leading: Container(
+                              width: 32, height: 32,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF6D7ADF),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Icon(Icons.nightlight_round, color: Colors.white, size: 18),
+                            ),
+                            title: 'Vorabend-Vorschau',
+                            subtitle: 'Zusätzlich abends Vorschau auf morgen',
+                            switchValue: _eveningEnabled,
+                            onSwitchChanged: _setEveningEnabled,
+                            isLast: !_eveningEnabled,
+                          ),
+                          if (_eveningEnabled)
+                            GlassListItem(
+                              leading: Container(
+                                width: 32, height: 32,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF6D7ADF),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Icon(Icons.schedule_rounded, color: Colors.white, size: 18),
+                              ),
+                              title: 'Uhrzeit (abends)',
+                              isLast: true,
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(_formatTime(_eveningTime),
+                                      style: TextStyle(fontSize: 14, color: skin.textMuted)),
+                                  const SizedBox(width: 6),
+                                  Icon(Icons.chevron_right_rounded, size: 18, color: skin.surface(0.28)),
+                                ],
+                              ),
+                              onTap: _pickEveningTime,
+                            ),
+                        ],
+                      ]),
+                    ),
                     const _SectionFootnote(
                       text:
                           'Die Tagesvorschau kombiniert deinen Dienst aus dem Dienstplan mit fälligen Aufgaben des jeweiligen Tages.',
@@ -1739,53 +1407,6 @@ class _NotificationSettingsScreenState
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ModeSegment extends StatelessWidget {
-  final AppSkin skin;
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  const _ModeSegment(
-      {required this.skin,
-      required this.label,
-      required this.selected,
-      required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        padding: const EdgeInsets.symmetric(vertical: 9),
-        decoration: BoxDecoration(
-          color: selected
-              ? (skin.isLight
-                  ? Colors.white.withValues(alpha: 0.80)
-                  : Colors.white.withValues(alpha: 0.14))
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(9),
-          border: selected
-              ? Border.all(color: skin.glassBorder)
-              : null,
-        ),
-        child: Center(
-          child: Text(label,
-              style: TextStyle(
-                fontSize: 12.5,
-                fontWeight: selected
-                    ? FontWeight.w700
-                    : FontWeight.w400,
-                color: selected
-                    ? skin.primary
-                    : skin.surface(0.45),
-              )),
         ),
       ),
     );
@@ -1846,27 +1467,41 @@ class _WorkTimeSettingsScreenState
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _SettingsTileGroup(skin: skin, children: [
-                      _SettingsSwitchTile(
-                        skin: skin,
-                        icon: Icons.dark_mode_outlined,
-                        iconBg: const Color(0xFF2E7D32),
-                        label: 'Nachtschicht-Modus',
-                        subtitle: 'Teilt Nachtschichten auf zwei Tage auf',
-                        value: _nachtschichtModus,
-                        onChanged: _setNachtschichtModus,
-                      ),
-                      _SettingsSwitchTile(
-                        skin: skin,
-                        icon: Icons.flight_takeoff_rounded,
-                        iconBg: const Color(0xFF6D7ADF),
-                        label: 'Reisemodus',
-                        subtitle: 'Zeitzonen-Anpassung · In Entwicklung',
-                        value: _reisemodus,
-                        isLast: true,
-                        onChanged: _setReisemodus,
-                      ),
-                    ]),
+                    GlassSurface(
+                      borderRadius: 18,
+                      padding: EdgeInsets.zero,
+                      child: Column(children: [
+                        GlassListItem(
+                          leading: Container(
+                            width: 32, height: 32,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF2E7D32),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(Icons.dark_mode_outlined, color: Colors.white, size: 18),
+                          ),
+                          title: 'Nachtschicht-Modus',
+                          subtitle: 'Teilt Nachtschichten auf zwei Tage auf',
+                          switchValue: _nachtschichtModus,
+                          onSwitchChanged: _setNachtschichtModus,
+                        ),
+                        GlassListItem(
+                          leading: Container(
+                            width: 32, height: 32,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF6D7ADF),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(Icons.flight_takeoff_rounded, color: Colors.white, size: 18),
+                          ),
+                          title: 'Reisemodus',
+                          subtitle: 'Zeitzonen-Anpassung · In Entwicklung',
+                          isLast: true,
+                          switchValue: _reisemodus,
+                          onSwitchChanged: _setReisemodus,
+                        ),
+                      ]),
+                    ),
                     const _SectionFootnote(
                       text: 'Nachtschicht: Kommen bis 23:59 (selber Tag) + 00:00 bis Gehen (nächster Tag). '
                             'Reisemodus hat aktuell noch keine Auswirkung.',
@@ -1924,23 +1559,31 @@ class _ScheduleSettingsScreenState
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     if (AuthService.instance.isAdmin) ...[
-                      _SettingsTileGroup(skin: skin, children: [
-                        _SettingsSwitchTile(
-                          skin: skin,
-                          icon: Icons.code_rounded,
-                          iconBg: const Color(0xFFEF5B5B),
-                          label: 'Entwickler-Modus',
-                          subtitle:
-                              'Erweiterte Fehlermeldungen beim PDF-Import',
-                          value: _dienstplanDevMode,
-                          isLast: true,
-                          onChanged: (v) {
-                            setState(() => _dienstplanDevMode = v);
-                            Hive.box('einstellungen')
-                                .put('dienstplan_dev_placeholder', v);
-                          },
-                        ),
-                      ]),
+                      GlassSurface(
+                        borderRadius: 18,
+                        padding: EdgeInsets.zero,
+                        child: Column(children: [
+                          GlassListItem(
+                            leading: Container(
+                              width: 32, height: 32,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFEF5B5B),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Icon(Icons.code_rounded, color: Colors.white, size: 18),
+                            ),
+                            title: 'Entwickler-Modus',
+                            subtitle: 'Erweiterte Fehlermeldungen beim PDF-Import',
+                            isLast: true,
+                            switchValue: _dienstplanDevMode,
+                            onSwitchChanged: (v) {
+                              setState(() => _dienstplanDevMode = v);
+                              Hive.box('einstellungen')
+                                  .put('dienstplan_dev_placeholder', v);
+                            },
+                          ),
+                        ]),
+                      ),
                       const SizedBox(height: 8),
                     ],
                     const _SectionFootnote(
@@ -2024,91 +1667,107 @@ class _DataManagementSettingsScreenState extends State<_DataManagementSettingsSc
                   children: [
 
                     // ── Zeiterfassung ──────────────────────────────────────
-                    _SettingsTileGroup(skin: skin, children: [
-                      GlassDropdownButton<int>(
-                        value: _zeitDeleteMonths,
-                        label: 'Zeiterfassung',
-                        subtitle: 'Einträge löschen nach',
-                        icon: Icons.access_time_outlined,
-                        iconBg: const Color(0xFF2D6CFF),
-                        isLast: true,
-                        displayBuilder: _monthLabel,
-                        items: [1, 3, 6, 12]
-                            .map((m) => GlassDropdownItem(value: m, label: _monthLabel(m)))
-                            .toList(),
-                        onChanged: (v) {
-                          setState(() => _zeitDeleteMonths = v);
-                          box.put('deleteAfterMonths_zeit', v);
-                        },
-                      ),
-                    ]),
+                    GlassSurface(
+                      borderRadius: 18,
+                      padding: EdgeInsets.zero,
+                      child: Column(children: [
+                        GlassDropdownButton<int>(
+                          value: _zeitDeleteMonths,
+                          label: 'Zeiterfassung',
+                          subtitle: 'Einträge löschen nach',
+                          icon: Icons.access_time_outlined,
+                          iconBg: const Color(0xFF2D6CFF),
+                          isLast: true,
+                          displayBuilder: _monthLabel,
+                          items: [1, 3, 6, 12]
+                              .map((m) => GlassDropdownItem(value: m, label: _monthLabel(m)))
+                              .toList(),
+                          onChanged: (v) {
+                            setState(() => _zeitDeleteMonths = v);
+                            box.put('deleteAfterMonths_zeit', v);
+                          },
+                        ),
+                      ]),
+                    ),
                     const SizedBox(height: 14),
 
                     // ── Dienstplan ─────────────────────────────────────────
-                    _SettingsTileGroup(skin: skin, children: [
-                      GlassDropdownButton<int>(
-                        value: _dienstplanDeleteMonths,
-                        label: 'Dienstplan',
-                        subtitle: 'Daten löschen nach',
-                        icon: Icons.calendar_month_outlined,
-                        iconBg: const Color(0xFFFFB347),
-                        isLast: true,
-                        displayBuilder: _monthLabel,
-                        items: [1, 3, 6, 12]
-                            .map((m) => GlassDropdownItem(value: m, label: _monthLabel(m)))
-                            .toList(),
-                        onChanged: (v) {
-                          setState(() => _dienstplanDeleteMonths = v);
-                          box.put('deleteAfterMonths_dienstplan', v);
-                        },
-                      ),
-                    ]),
+                    GlassSurface(
+                      borderRadius: 18,
+                      padding: EdgeInsets.zero,
+                      child: Column(children: [
+                        GlassDropdownButton<int>(
+                          value: _dienstplanDeleteMonths,
+                          label: 'Dienstplan',
+                          subtitle: 'Daten löschen nach',
+                          icon: Icons.calendar_month_outlined,
+                          iconBg: const Color(0xFFFFB347),
+                          isLast: true,
+                          displayBuilder: _monthLabel,
+                          items: [1, 3, 6, 12]
+                              .map((m) => GlassDropdownItem(value: m, label: _monthLabel(m)))
+                              .toList(),
+                          onChanged: (v) {
+                            setState(() => _dienstplanDeleteMonths = v);
+                            box.put('deleteAfterMonths_dienstplan', v);
+                          },
+                        ),
+                      ]),
+                    ),
                     const SizedBox(height: 14),
 
                     // ── Fahrtenbuch ────────────────────────────────────────
-                    _SettingsTileGroup(skin: skin, children: [
-                      GlassDropdownButton<int>(
-                        value: _fahrtenbuchDeleteMonths,
-                        label: 'Fahrtenbuch',
-                        subtitle: 'Eingetragene Fahrten löschen nach',
-                        icon: Icons.directions_car_outlined,
-                        iconBg: const Color(0xFF8B8B9E),
-                        isLast: true,
-                        displayBuilder: _monthLabel,
-                        items: [1, 3, 6, 12]
-                            .map((m) => GlassDropdownItem(value: m, label: _monthLabel(m)))
-                            .toList(),
-                        onChanged: (v) {
-                          setState(() => _fahrtenbuchDeleteMonths = v);
-                          box.put('deleteAfterMonths_fahrtenbuch', v);
-                        },
-                      ),
-                    ]),
+                    GlassSurface(
+                      borderRadius: 18,
+                      padding: EdgeInsets.zero,
+                      child: Column(children: [
+                        GlassDropdownButton<int>(
+                          value: _fahrtenbuchDeleteMonths,
+                          label: 'Fahrtenbuch',
+                          subtitle: 'Eingetragene Fahrten löschen nach',
+                          icon: Icons.directions_car_outlined,
+                          iconBg: const Color(0xFF8B8B9E),
+                          isLast: true,
+                          displayBuilder: _monthLabel,
+                          items: [1, 3, 6, 12]
+                              .map((m) => GlassDropdownItem(value: m, label: _monthLabel(m)))
+                              .toList(),
+                          onChanged: (v) {
+                            setState(() => _fahrtenbuchDeleteMonths = v);
+                            box.put('deleteAfterMonths_fahrtenbuch', v);
+                          },
+                        ),
+                      ]),
+                    ),
                     const SizedBox(height: 14),
 
-                    // ── Erledigte Aufgaben — jetzt als Tile + Dropdown ─────
-                    _SettingsTileGroup(skin: skin, children: [
-                      GlassDropdownButton<String>(
-                        value: _taskAutoDelete,
-                        label: 'Erledigte Aufgaben',
-                        subtitle: 'Automatisch löschen nach',
-                        icon: Icons.task_alt_outlined,
-                        iconBg: const Color(0xFF3DD68C),
-                        isLast: true,
-                        displayBuilder: _taskLabel,
-                        items: const [
-                          GlassDropdownItem(value: 'never', label: 'Nie'),
-                          GlassDropdownItem(value: '1d',    label: '1 Tag'),
-                          GlassDropdownItem(value: '2d',    label: '2 Tage'),
-                          GlassDropdownItem(value: '1w',    label: '1 Woche'),
-                          GlassDropdownItem(value: '1m',    label: '1 Monat'),
-                        ],
-                        onChanged: (v) {
-                          setState(() => _taskAutoDelete = v);
-                          box.put('task_auto_delete', v);
-                        },
-                      ),
-                    ]),
+                    // ── Erledigte Aufgaben ──────────────────────────────
+                    GlassSurface(
+                      borderRadius: 18,
+                      padding: EdgeInsets.zero,
+                      child: Column(children: [
+                        GlassDropdownButton<String>(
+                          value: _taskAutoDelete,
+                          label: 'Erledigte Aufgaben',
+                          subtitle: 'Automatisch löschen nach',
+                          icon: Icons.task_alt_outlined,
+                          iconBg: const Color(0xFF3DD68C),
+                          isLast: true,
+                          displayBuilder: _taskLabel,
+                          items: const [
+                            GlassDropdownItem(value: 'never', label: 'Nie'),
+                            GlassDropdownItem(value: '1d',    label: '1 Tag'),
+                            GlassDropdownItem(value: '2d',    label: '2 Tage'),
+                            GlassDropdownItem(value: '1w',    label: '1 Woche'),
+                            GlassDropdownItem(value: '1m',    label: '1 Monat'),
+                          ],
+                          onChanged: (v) {
+                            setState(() => _taskAutoDelete = v);
+                            box.put('task_auto_delete', v);
+                          },
+                        ),
+                      ]),
+                    ),
 
                     const SizedBox(height: 8),
                     const _SectionFootnote(
@@ -2152,112 +1811,115 @@ class _DesignSettingsScreenState
   }
 
   void _setSkin(String key) {
-  setState(() => _activeSkin = key);
-  Hive.box('einstellungen').put(AppTheme.hiveKey, key);
-}
+    setState(() => _activeSkin = key);
+    Hive.box('einstellungen').put(AppTheme.hiveKey, key);
+  }
 
-@override
-Widget build(BuildContext context) {
-  final skin = AppTheme.of(context);
-  const skins = [skinShield, skinChrome, skinCrystal, skinTitanium];
+  @override
+  Widget build(BuildContext context) {
+    final skin = AppTheme.of(context);
+    const skins = [skinShield, skinChrome, skinCrystal, skinTitanium];
 
-  return Scaffold(
-    backgroundColor: skin.bgBase,
-    body: SafeArea(
-      child: Column(
-        children: [
-          _SettingsHeader(
-              title: 'Design', onBack: () => Navigator.pop(context)),
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const _SectionHeader(label: 'Farbschema'),
-                  _SettingsTileGroup(
-                    skin: skin,
-                    children: skins.asMap().entries.map((entry) {
-                      final i = entry.key;
-                      final s = entry.value;
-                      final isSelected = s.key == _activeSkin;
-                      final isLast = i == skins.length - 1;
+    return Scaffold(
+      backgroundColor: skin.bgBase,
+      body: SafeArea(
+        child: Column(
+          children: [
+            _SettingsHeader(
+                title: 'Design', onBack: () => Navigator.pop(context)),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const _SectionHeader(label: 'Farbschema'),
+                    GlassSurface(
+                      borderRadius: 18,
+                      padding: EdgeInsets.zero,
+                      child: Column(
+                        children: skins.asMap().entries.map((entry) {
+                          final i = entry.key;
+                          final s = entry.value;
+                          final isSelected = s.key == _activeSkin;
+                          final isLast = i == skins.length - 1;
 
-                      return Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          GestureDetector(
-                            onTap: () {
-                              HapticFeedback.selectionClick();
-                              _setSkin(s.key);
-                            },
-                            behavior: HitTestBehavior.opaque,
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 14, vertical: 12),
-                              child: Row(
-                                children: [
-                                  // Farbvorschau-Dot
-                                  Container(
-                                    width: 32,
-                                    height: 32,
-                                    decoration: BoxDecoration(
-                                      gradient: LinearGradient(
-                                        begin: Alignment.topLeft,
-                                        end: Alignment.bottomRight,
-                                        colors: [s.primary, s.bgBase],
+                          return Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              GestureDetector(
+                                onTap: () {
+                                  HapticFeedback.selectionClick();
+                                  _setSkin(s.key);
+                                },
+                                behavior: HitTestBehavior.opaque,
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 14, vertical: 12),
+                                  child: Row(
+                                    children: [
+                                      // Farbvorschau-Dot
+                                      Container(
+                                        width: 32,
+                                        height: 32,
+                                        decoration: BoxDecoration(
+                                          gradient: LinearGradient(
+                                            begin: Alignment.topLeft,
+                                            end: Alignment.bottomRight,
+                                            colors: [s.primary, s.bgBase],
+                                          ),
+                                          borderRadius: BorderRadius.circular(8),
+                                          border: isSelected
+                                              ? Border.all(
+                                                  color: skin.primary,
+                                                  width: 2.0)
+                                              : null,
+                                        ),
                                       ),
-                                      borderRadius: BorderRadius.circular(8),
-                                      border: isSelected
-                                          ? Border.all(
-                                              color: skin.primary,
-                                              width: 2.0)
-                                          : null,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 14),
-                                  Expanded(
-                                    child: Text(
-                                      s.displayName,
-                                      style: TextStyle(
-                                        fontSize: 15,
-                                        fontWeight: isSelected
-                                            ? FontWeight.w600
-                                            : FontWeight.w500,
-                                        color: isSelected
-                                            ? skin.primary
-                                            : skin.textPrimary,
+                                      const SizedBox(width: 14),
+                                      Expanded(
+                                        child: Text(
+                                          s.displayName,
+                                          style: TextStyle(
+                                            fontSize: 15,
+                                            fontWeight: isSelected
+                                                ? FontWeight.w600
+                                                : FontWeight.w500,
+                                            color: isSelected
+                                                ? skin.primary
+                                                : skin.textPrimary,
+                                          ),
+                                        ),
                                       ),
-                                    ),
+                                      if (isSelected)
+                                        Icon(Icons.check_rounded,
+                                            size: 18, color: skin.primary),
+                                    ],
                                   ),
-                                  if (isSelected)
-                                    Icon(Icons.check_rounded,
-                                        size: 18, color: skin.primary),
-                                ],
+                                ),
                               ),
-                            ),
-                          ),
-                          if (!isLast)
-                            Padding(
-                              padding: const EdgeInsets.only(left: 60),
-                              child: Divider(
-                                  height: 0.5, color: skin.glassBorder),
-                            ),
-                        ],
-                      );
-                    }).toList(),
-                  ),
-                  const _SectionFootnote(
-                      text: 'Änderung wird sofort übernommen.'),
-                ],
+                              if (!isLast)
+                                Padding(
+                                  padding: const EdgeInsets.only(left: 60),
+                                  child: Divider(
+                                      height: 0.5, color: skin.glassBorder),
+                                ),
+                            ],
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                    const _SectionFootnote(
+                        text: 'Änderung wird sofort übernommen.'),
+                  ],
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
-    ),
-  );
-}
+    );
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2284,45 +1946,67 @@ class _TasksDictationSettingsScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _SettingsTileGroup(skin: skin, children: [
-                      _SettingsTile(
-                        skin: skin,
-                        icon: Icons.mic_outlined,
-                        iconBg: const Color(0xFF2D6CFF),
-                        label: 'Sprachbefehle & Hilfe',
-                        subtitle: 'Muster, Beispiele und Tipps',
-                        onTap: () => Navigator.push(
-                            context,
-                            CupertinoPageRoute(
-                                builder: (_) => const DictationHelpScreen())),
-                      ),
-                      _SettingsTile(
-                        skin: skin,
-                        icon: Icons.bar_chart_rounded,
-                        iconBg: const Color(0xFF5B9EF5),
-                        label: 'Sprach-Log',
-                        subtitle: 'Alle Diktiereingaben & Erkennungsrate',
-                        onTap: () => Navigator.push(
-                            context,
-                            CupertinoPageRoute(
-                                builder: (_) => const SpeechLogScreen())),
-                      ),
-                      if (AuthService.instance.isAdmin)
-                        _SettingsTile(
-                          skin: skin,
-                          icon: Icons.auto_awesome_outlined,
-                          iconBg: const Color(0xFF8B5CF6),
-                          label: 'Sprach-Analyse',
-                          subtitle: 'Eingaben analysieren · Regeln lernen',
-                          isLast: true,
+                    GlassSurface(
+                      borderRadius: 18,
+                      padding: EdgeInsets.zero,
+                      child: Column(children: [
+                        GlassListItem(
+                          leading: Container(
+                            width: 32, height: 32,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF2D6CFF),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(Icons.mic_outlined, color: Colors.white, size: 18),
+                          ),
+                          title: 'Sprachbefehle & Hilfe',
+                          subtitle: 'Muster, Beispiele und Tipps',
+                          trailing: Icon(Icons.chevron_right_rounded, size: 18, color: skin.surface(0.28)),
                           onTap: () => Navigator.push(
                               context,
                               CupertinoPageRoute(
-                                  builder: (_) => const AdminRulesScreen())),
-                        )
-                      else
-                        const SizedBox.shrink(),
-                    ]),
+                                  builder: (_) => const DictationHelpScreen())),
+                        ),
+                        GlassListItem(
+                          leading: Container(
+                            width: 32, height: 32,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF5B9EF5),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(Icons.bar_chart_rounded, color: Colors.white, size: 18),
+                          ),
+                          title: 'Sprach-Log',
+                          subtitle: 'Alle Diktiereingaben & Erkennungsrate',
+                          trailing: Icon(Icons.chevron_right_rounded, size: 18, color: skin.surface(0.28)),
+                          onTap: () => Navigator.push(
+                              context,
+                              CupertinoPageRoute(
+                                  builder: (_) => const SpeechLogScreen())),
+                        ),
+                        if (AuthService.instance.isAdmin)
+                          GlassListItem(
+                            leading: Container(
+                              width: 32, height: 32,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF8B5CF6),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Icon(Icons.auto_awesome_outlined, color: Colors.white, size: 18),
+                            ),
+                            title: 'Sprach-Analyse',
+                            subtitle: 'Eingaben analysieren · Regeln lernen',
+                            isLast: true,
+                            trailing: Icon(Icons.chevron_right_rounded, size: 18, color: skin.surface(0.28)),
+                            onTap: () => Navigator.push(
+                                context,
+                                CupertinoPageRoute(
+                                    builder: (_) => const AdminRulesScreen())),
+                          )
+                        else
+                          const SizedBox.shrink(),
+                      ]),
+                    ),
                   ],
                 ),
               ),
@@ -2371,85 +2055,67 @@ class _HomescreenSettingsScreenState extends State<_HomescreenSettingsScreen> {
   }
 
   void _showCityInputSheet(BuildContext context, AppSkin skin) {
-    final ctrl = TextEditingController(text: _weatherCity);
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (_) => Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-        child: ClipRRect(
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-            child: Container(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
-              decoration: BoxDecoration(
-                color: skin.isLight
-                    ? Colors.white.withValues(alpha: 0.92)
-                    : skin.bgCard.withValues(alpha: 0.92),
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-                border: Border.all(color: skin.glassBorder),
+  final ctrl = TextEditingController(text: _weatherCity);
+  showModalBottomSheet(
+    context: context,
+    backgroundColor: Colors.transparent,
+    isScrollControlled: true,
+    builder: (_) => Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: GlassSheet(
+        skin: skin,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SheetHandle(skin: skin),
+              const SizedBox(height: 16),
+              Text('Stadt eingeben',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700,
+                      color: skin.textPrimary)),
+              const SizedBox(height: 4),
+              Text('Das Wetter wird für diese Stadt geladen.',
+                  style: TextStyle(fontSize: 13, color: skin.textMuted)),
+              const SizedBox(height: 16),
+              _TiTextField(
+                skin: skin,
+                controller: ctrl,
+                hint: 'z.B. Berlin, München, Hamburg',
               ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 36, height: 4,
-                      decoration: BoxDecoration(
-                        color: skin.surface(0.2),
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
+              const SizedBox(height: 14),
+              GestureDetector(
+                onTap: () {
+                  final city = ctrl.text.trim();
+                  setState(() => _weatherCity = city);
+                  _set('weather_city', city);
+                  Hive.box('einstellungen').delete('weather_cache');
+                  Navigator.pop(context);
+                },
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  decoration: BoxDecoration(
+                    color: skin.primary.withValues(alpha: skin.isLight ? 0.12 : 0.20),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                        color: skin.primary.withValues(alpha: skin.isLight ? 0.30 : 0.45)),
                   ),
-                  const SizedBox(height: 16),
-                  Text('Stadt eingeben',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700,
-                          color: skin.textPrimary)),
-                  const SizedBox(height: 4),
-                  Text('Das Wetter wird für diese Stadt geladen.',
-                      style: TextStyle(fontSize: 13, color: skin.textMuted)),
-                  const SizedBox(height: 16),
-                  _TiTextField(
-                    skin: skin,
-                    controller: ctrl,
-                    hint: 'z.B. Berlin, München, Hamburg',
+                  child: Center(
+                    child: Text('Übernehmen',
+                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700,
+                            color: skin.primary)),
                   ),
-                  const SizedBox(height: 14),
-                  GestureDetector(
-                    onTap: () {
-                      final city = ctrl.text.trim();
-                      setState(() => _weatherCity = city);
-                      _set('weather_city', city);
-                      Hive.box('einstellungen').delete('weather_cache');
-                      Navigator.pop(context);
-                    },
-                    child: Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      decoration: BoxDecoration(
-                        color: skin.primary.withValues(alpha: skin.isLight ? 0.12 : 0.20),
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(
-                            color: skin.primary.withValues(alpha: skin.isLight ? 0.30 : 0.45)),
-                      ),
-                      child: Center(
-                        child: Text('Übernehmen',
-                            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700,
-                                color: skin.primary)),
-                      ),
-                    ),
-                  ),
-                ],
+                ),
               ),
-            ),
+            ],
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   void _set(String key, dynamic value) =>
       Hive.box('einstellungen').put(key, value);
@@ -2472,47 +2138,76 @@ class _HomescreenSettingsScreenState extends State<_HomescreenSettingsScreen> {
                   children: [
                     // ── Wetter ────────────────────────────────────────
                     const _SectionHeader(label: 'Wetter'),
-                    _SettingsTileGroup(skin: skin, children: [
-                      _SettingsSwitchTile(
-                        skin: skin,
-                        icon: Icons.wb_sunny_outlined,
-                        iconBg: const Color(0xFFFFB347),
-                        label: 'Wetter als große Kachel',
-                        subtitle: 'Zeigt mehr Wetterinformationen',
-                        value: _weatherBig,
-                        onChanged: (v) {
-                          setState(() => _weatherBig = v);
-                          _set('homescreen_weather_big', v);
-                        },
-                      ),
-                      _SettingsSwitchTile(
-                        skin: skin,
-                        icon: Icons.location_on_outlined,
-                        iconBg: const Color(0xFF5B9EF5),
-                        label: 'Per GPS-Standort',
-                        subtitle: 'Automatisch aktueller Standort',
-                        value: _weatherUseGps,
-                        onChanged: (v) {
-                          setState(() => _weatherUseGps = v);
-                          _set('weather_use_gps', v);
-                          Hive.box('einstellungen').delete('weather_cache');
-                          if (v) {
-                            WeatherService.instance.invalidateCache();
-                          }
-                        },
-                        isLast: _weatherUseGps,
-                      ),
-                      if (!_weatherUseGps)
-                        _SettingsTile(
-                          skin: skin,
-                          icon: Icons.location_city_outlined,
-                          iconBg: const Color(0xFF8B8B9E),
-                          label: 'Stadt',
-                          trailingValue: _weatherCity.isNotEmpty ? _weatherCity : 'nicht gesetzt',
-                          isLast: true,
-                          onTap: () => _showCityInputSheet(context, skin),
+                    GlassSurface(
+                      borderRadius: 18,
+                      padding: EdgeInsets.zero,
+                      child: Column(children: [
+                        GlassListItem(
+                          leading: Container(
+                            width: 32, height: 32,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFFB347),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(Icons.wb_sunny_outlined, color: Colors.white, size: 18),
+                          ),
+                          title: 'Wetter als große Kachel',
+                          subtitle: 'Zeigt mehr Wetterinformationen',
+                          switchValue: _weatherBig,
+                          onSwitchChanged: (v) {
+                            setState(() => _weatherBig = v);
+                            _set('homescreen_weather_big', v);
+                          },
                         ),
-                    ]),
+                        GlassListItem(
+                          leading: Container(
+                            width: 32, height: 32,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF5B9EF5),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(Icons.location_on_outlined, color: Colors.white, size: 18),
+                          ),
+                          title: 'Per GPS-Standort',
+                          subtitle: 'Automatisch aktueller Standort',
+                          switchValue: _weatherUseGps,
+                          onSwitchChanged: (v) {
+                            setState(() => _weatherUseGps = v);
+                            _set('weather_use_gps', v);
+                            Hive.box('einstellungen').delete('weather_cache');
+                            if (v) {
+                              WeatherService.instance.invalidateCache();
+                            }
+                          },
+                          isLast: _weatherUseGps,
+                        ),
+                        if (!_weatherUseGps)
+                          GlassListItem(
+                            leading: Container(
+                              width: 32, height: 32,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF8B8B9E),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Icon(Icons.location_city_outlined, color: Colors.white, size: 18),
+                            ),
+                            title: 'Stadt',
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  _weatherCity.isNotEmpty ? _weatherCity : 'nicht gesetzt',
+                                  style: TextStyle(fontSize: 14, color: skin.textMuted),
+                                ),
+                                const SizedBox(width: 6),
+                                Icon(Icons.chevron_right_rounded, size: 18, color: skin.surface(0.28)),
+                              ],
+                            ),
+                            isLast: true,
+                            onTap: () => _showCityInputSheet(context, skin),
+                          ),
+                      ]),
+                    ),
                     _SectionFootnote(
                       text: _weatherUseGps
                           ? 'Wetter wird per GPS geladen — immer aktuell für deinen Standort.'
@@ -2523,22 +2218,31 @@ class _HomescreenSettingsScreenState extends State<_HomescreenSettingsScreen> {
 
                     // ── Aufgabe hinzufügen ────────────────────────────
                     const _SectionHeader(label: 'Aufgabe hinzufügen'),
-                    _SettingsTileGroup(skin: skin, children: [
-                      _SettingsSwitchTile(
-                        skin: skin,
-                        icon: Icons.mic_outlined,
-                        iconBg: const Color(0xFF3DD68C),
-                        label: 'Diktieren',
-                        subtitle: 'Nutzt Schnell-Diktieren Funktion statt manuellem Formular',
-                        value: _taskAddMode == 'dictate',
-                        isLast: true,
-                        onChanged: (v) {
-                          final mode = v ? 'dictate' : 'sheet';
-                          setState(() => _taskAddMode = mode);
-                          _set('homescreen_task_add_mode', mode);
-                        },
-                      ),
-                    ]),
+                    GlassSurface(
+                      borderRadius: 18,
+                      padding: EdgeInsets.zero,
+                      child: Column(children: [
+                        GlassListItem(
+                          leading: Container(
+                            width: 32, height: 32,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF3DD68C),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(Icons.mic_outlined, color: Colors.white, size: 18),
+                          ),
+                          title: 'Diktieren',
+                          subtitle: 'Nutzt Schnell-Diktieren Funktion statt manuellem Formular',
+                          isLast: true,
+                          switchValue: _taskAddMode == 'dictate',
+                          onSwitchChanged: (v) {
+                            final mode = v ? 'dictate' : 'sheet';
+                            setState(() => _taskAddMode = mode);
+                            _set('homescreen_task_add_mode', mode);
+                          },
+                        ),
+                      ]),
+                    ),
                     const _SectionFootnote(
                       text: 'Mit Diktieren: langer Druck auf + öffnet direkt das Mikrofon. '
                             'Ohne: tippt direkt das Formular auf.',

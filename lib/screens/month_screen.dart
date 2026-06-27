@@ -10,6 +10,7 @@ import 'package:printing/printing.dart';
 import '../theme/app_theme.dart';
 import '../widgets/glass_kit.dart';
 import '../widgets/glass_pickers.dart';
+import '../widgets/glass_snackbar.dart';
 import '../services/night_shift_helper.dart';
 import '../services/pdf_service.dart';
 import '../services/sync_service.dart';
@@ -178,7 +179,8 @@ class MonthScreenState extends State<MonthScreen> with TickerProviderStateMixin 
 
   // ── MonthScreen State ─────────────────────────────────────────────────────
   late DateTime _selectedMonth;
-  final Map<String, GlobalKey<_SlidableRowState>> _rowKeys = {};
+  final Map<String, GlobalKey<GlassSwipeCardState>> _rowKeys = {};
+  String? _openSwipedEntryId;
 
   final Map<String, DateTime> _lastSnackbarTime = {};
   static const Duration _snackbarCooldown = Duration(seconds: 5);
@@ -457,16 +459,14 @@ class MonthScreenState extends State<MonthScreen> with TickerProviderStateMixin 
         now.difference(_lastAlertTime!) < const Duration(seconds: 2)) return;
     _lastAlertMessage = message;
     _lastAlertTime = now;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(message),
-      backgroundColor: skin.primary == Colors.white
-          ? const Color(0xFF3DD6C8)
-          : skin.primary,
-      behavior: SnackBarBehavior.floating,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 100),
-      duration: const Duration(milliseconds: 1500),
-    ));
+
+    final isError = message.startsWith('✗');
+    showGlassSnackBar(
+      context,
+      message,
+      type: isError ? GlassSnackBarType.error : GlassSnackBarType.success,
+      duration: const Duration(milliseconds: 1800),
+    );
   }
 
   Future<void> _selectDateWithPicker() async {
@@ -535,15 +535,18 @@ class MonthScreenState extends State<MonthScreen> with TickerProviderStateMixin 
     final last = _lastSnackbarTime[message];
     if (last != null && now.difference(last) < _snackbarCooldown) return;
     _lastSnackbarTime[message] = now;
+
     ScaffoldMessenger.of(context).removeCurrentSnackBar();
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(message),
-      backgroundColor: color,
-      behavior: SnackBarBehavior.floating,
-      duration: const Duration(seconds: 2),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 100),
-    ));
+
+    final isDelete = color == AppTheme.of(context).deleteColor;
+    final isError = message.startsWith('✗');
+    final type = isDelete
+        ? GlassSnackBarType.error
+        : isError
+            ? GlassSnackBarType.error
+            : GlassSnackBarType.success;
+
+    showGlassSnackBar(context, message, type: type);
   }
 
   List<Map<String, dynamic>> _getEntriesForMonth() {
@@ -607,14 +610,6 @@ class MonthScreenState extends State<MonthScreen> with TickerProviderStateMixin 
     }
   }
 
-  void _closeOtherRows(String currentEntryId) {
-    for (final entry in _rowKeys.entries) {
-      if (entry.key != currentEntryId) {
-        entry.value.currentState?.close();
-      }
-    }
-  }
-
   void _setMonth(DateTime month) {
     setState(() => _selectedMonth = month);
     widget.onMonthChanged(month);
@@ -670,12 +665,7 @@ class MonthScreenState extends State<MonthScreen> with TickerProviderStateMixin 
           setState(() {});
           Navigator.pop(context);
           final skin = AppTheme.of(context);
-          _showSnackbar(
-            'Aktualisiert ✓',
-            skin.primary == Colors.white
-                ? const Color(0xFF3DD6C8)
-                : skin.primary,
-          );
+          _showSnackbar('Aktualisiert ✓', skin.primary);
         },
       ),
     );
@@ -966,109 +956,44 @@ class MonthScreenState extends State<MonthScreen> with TickerProviderStateMixin 
             const SizedBox(height: 8),
 
             // Datumskarte
-            GestureDetector(
-              onHorizontalDragEnd: (d) {
-                final v = d.primaryVelocity ?? 0;
-                if (v < -300) _changeDate(1);
-                if (v > 300) _changeDate(-1);
-              },
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(20),
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: skin.isLight
-                        ? Colors.white.withValues(alpha: skin.glassOpacity)
-                        : skin.bgCard.withValues(alpha: skin.glassOpacity),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: DateFormat('yyyy-MM-dd').format(DateTime.now()) ==
-                              _dateKey
-                          ? skin.primary.withValues(alpha: 0.45)
-                          : skin.glassBorder,
-                      width: DateFormat('yyyy-MM-dd').format(DateTime.now()) ==
-                              _dateKey
-                          ? 1.5
-                          : 1.0,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                          color: skin.glassShadow,
-                          blurRadius: 24,
-                          offset: const Offset(0, 6)),
-                      BoxShadow(
-                          color: skin.glassHighlight,
-                          blurRadius: 0,
-                          spreadRadius: -1,
-                          offset: const Offset(0, 1)),
-                    ],
-                  ),
-                  child: Row(children: [
-                    GestureDetector(
-                      onTap: () => _changeDate(-1),
-                      child: const SizedBox(
-                          width: 44,
-                          height: 52,
-                          child: Center(
-                              child: Icon(Icons.chevron_left, size: 22))),
-                    ),
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: _selectDateWithPicker,
-                        onDoubleTap: () {
-                          HapticFeedback.selectionClick();
-                          _setDate(DateTime.now());
-                        },
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              Text(
-                                DateFormat('yyyy-MM-dd')
-                                            .format(DateTime.now()) ==
-                                        _dateKey
-                                    ? 'HEUTE'
-                                    : 'DATUM',
-                                style: TextStyle(
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.w700,
-                                    color: DateFormat('yyyy-MM-dd')
-                                                .format(DateTime.now()) ==
-                                            _dateKey
-                                        ? skin.primary
-                                        : skin.surface(0.35),
-                                    letterSpacing: 1.2),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                DateFormat('EEEE, d. MMMM yyyy', 'de')
-                                    .format(_selectedDate),
-                                style: TextStyle(
-                                    fontSize: 13,
-                                    color: skin.textPrimary,
-                                    fontWeight: FontWeight.w600),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                textAlign: TextAlign.center,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                    GestureDetector(
-                      onTap: () => _changeDate(1),
-                      child: SizedBox(
-                          width: 44,
-                          height: 52,
-                          child: Center(
-                              child: Icon(Icons.chevron_right,
-                                  size: 22, color: skin.surface(0.5)))),
-                    ),
-                  ]),
-                ),
-              ),
-            ),
+GlassNavCard(
+  onPrevious: () => _changeDate(-1),
+  onNext: () => _changeDate(1),
+  onTap: _selectDateWithPicker,
+  onDoubleTap: () {
+    HapticFeedback.selectionClick();
+    _setDate(DateTime.now());
+  },
+  onSwipe: (v) {
+    if (v < -300) _changeDate(1);
+    if (v > 300) _changeDate(-1);
+  },
+  highlighted: DateFormat('yyyy-MM-dd').format(DateTime.now()) == _dateKey,
+  child: Column(
+    mainAxisAlignment: MainAxisAlignment.center,
+    children: [
+      Text(
+        DateFormat('yyyy-MM-dd').format(DateTime.now()) == _dateKey
+            ? 'HEUTE' : 'DATUM',
+        style: TextStyle(
+          fontSize: 9,
+          fontWeight: FontWeight.w700,
+          color: DateFormat('yyyy-MM-dd').format(DateTime.now()) == _dateKey
+              ? skin.primary : skin.surface(0.35),
+          letterSpacing: 1.2,
+        ),
+      ),
+      const SizedBox(height: 2),
+      Text(
+        DateFormat('EEEE, d. MMMM yyyy', 'de').format(_selectedDate),
+        style: TextStyle(fontSize: 13, color: skin.textPrimary, fontWeight: FontWeight.w600),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        textAlign: TextAlign.center,
+      ),
+    ],
+  ),
+),
             const SizedBox(height: 16),
 
             Row(children: [
@@ -1169,259 +1094,422 @@ class MonthScreenState extends State<MonthScreen> with TickerProviderStateMixin 
     double bottomNavHeight,
   ) {
     return FadingListView(
-  fadeFromBottom: bottomNavHeight + 20,
-  child: CustomScrollView(
-    controller: _scrollController,
-    slivers: [
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: 8),
+      fadeFromBottom: bottomNavHeight + 20,
+      child: CustomScrollView(
+        controller: _scrollController,
+        slivers: [
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: 8),
 
-                // Monats-Navigation
-                GestureDetector(
-                  onHorizontalDragEnd: (d) {
-                    final v = d.primaryVelocity ?? 0;
-                    if (v < -300) _changeMonth(1);
-                    if (v > 300) _changeMonth(-1);
-                  },
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(20),
-                    child: BackdropFilter(
-                      filter: ImageFilter.blur(
-                          sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: skin.isLight
-                              ? Colors.white.withValues(alpha: skin.glassOpacity)
-                              : skin.bgCard.withValues(alpha: skin.glassOpacity),
-                          borderRadius: BorderRadius.circular(20),
-                          border:
-                              Border.all(color: skin.glassBorder, width: 1.0),
-                          boxShadow: [
-                            BoxShadow(
-                                color: skin.glassShadow,
-                                blurRadius: 24,
-                                offset: const Offset(0, 6)),
-                            BoxShadow(
-                                color: skin.glassHighlight,
-                                blurRadius: 0,
-                                spreadRadius: -1,
-                                offset: const Offset(0, 1)),
-                          ],
-                        ),
-                        child: Row(children: [
-                          GestureDetector(
-                            onTap: () => _changeMonth(-1),
-                            child: const SizedBox(
-                                width: 44,
-                                height: 52,
-                                child: Center(
-                                    child:
-                                        Icon(Icons.chevron_left, size: 22))),
-                          ),
-                          Expanded(
-                            child: GestureDetector(
-                              onTap: _showMonthPicker,
-                              onDoubleTap: () {
-                                HapticFeedback.selectionClick();
-                                final now = DateTime.now();
-                                _setMonth(DateTime(now.year, now.month));
-                              },
-                              child: Padding(
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 12),
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Text(monthName,
-                                        style: TextStyle(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.w600,
-                                            color: skin.textPrimary)),
-                                    const SizedBox(width: 6),
-                                    Icon(Icons.expand_more,
-                                        color: skin.surface(0.4), size: 18),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                          GestureDetector(
-                            onTap: () => _changeMonth(1),
-                            child: SizedBox(
-                                width: 44,
-                                height: 52,
-                                child: Center(
-                                    child: Icon(Icons.chevron_right,
-                                        size: 22, color: skin.surface(0.5)))),
-                          ),
-                        ]),
+                  // Monats-Navigation
+GlassNavCard(
+  onPrevious: () => _changeMonth(-1),
+  onNext: () => _changeMonth(1),
+  onTap: _showMonthPicker,
+  onDoubleTap: () {
+    HapticFeedback.selectionClick();
+    final now = DateTime.now();
+    _setMonth(DateTime(now.year, now.month));
+  },
+  onSwipe: (v) {
+    if (v < -300) _changeMonth(1);
+    if (v > 300) _changeMonth(-1);
+  },
+  child: Row(
+    mainAxisAlignment: MainAxisAlignment.center,
+    children: [
+      Text(monthName,
+          style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: skin.textPrimary)),
+      const SizedBox(width: 6),
+      Icon(Icons.expand_more, color: skin.surface(0.4), size: 18),
+    ],
+  ),
+),
+
+                  const SizedBox(height: 12),
+                  Row(children: [
+                    GlassStatCard(
+                        label: 'Arbeit',
+                        value: '${entries.length}',
+                        color: skin.statEntries),
+                    const SizedBox(width: 10),
+                    GlassStatCard(
+                        label: 'Tage',
+                        value: '$daysInMonth',
+                        color: skin.statComplete),
+                    const SizedBox(width: 10),
+                    GlassStatCard(
+                        label: 'Offen',
+                        value: '$offeneEntries',
+                        color: skin.statOpen),
+                  ]),
+                  const SizedBox(height: 8),
+                  Text('Wischen  ·  Doppeltippen',
+                      style: TextStyle(fontSize: 11, color: skin.surface(0.3))),
+                  const SizedBox(height: 12),
+                ],
+              ),
+            ),
+          ),
+          entries.isEmpty
+              ? SliverToBoxAdapter(
+                  child: SizedBox(
+                    height: 200,
+                    child: Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Text('📭', style: TextStyle(fontSize: 48)),
+                          const SizedBox(height: 12),
+                          Text('Keine Einträge für diesen Monat',
+                              style: TextStyle(
+                                  color: skin.surface(0.3), fontSize: 15)),
+                        ],
                       ),
                     ),
                   ),
-                ),
-
-                const SizedBox(height: 12),
-                Row(children: [
-                  GlassStatCard(
-                      label: 'Arbeit',
-                      value: '${entries.length}',
-                      color: skin.statEntries),
-                  const SizedBox(width: 10),
-                  GlassStatCard(
-                      label: 'Tage',
-                      value: '$daysInMonth',
-                      color: skin.statComplete),
-                  const SizedBox(width: 10),
-                  GlassStatCard(
-                      label: 'Offen',
-                      value: '$offeneEntries',
-                      color: skin.statOpen),
-                ]),
-                const SizedBox(height: 8),
-                Text('Wischen  ·  Doppeltippen',
-                    style: TextStyle(fontSize: 11, color: skin.surface(0.3))),
-                const SizedBox(height: 12),
-              ],
-            ),
-          ),
-        ),
-        entries.isEmpty
-            ? SliverToBoxAdapter(
-                child: SizedBox(
-                  height:200,
-                  child: Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Text('📭', style: TextStyle(fontSize: 48)),
-                        const SizedBox(height: 12),
-                        Text('Keine Einträge für diesen Monat',
-                            style: TextStyle(
-                                color: skin.surface(0.3), fontSize: 15)),
-                      ],
-                    ),
-                  ),
-                ),
-              )
-            : SliverPadding(
-                padding: const EdgeInsets.fromLTRB(24, 4, 24, 0),
-                sliver: SliverList(
-                  delegate: SliverChildBuilderDelegate(
-                    (context, index) {
-                      if (index == entries.length) {
-                        return Padding(
-                          padding: EdgeInsets.fromLTRB(
-                              0, 8, 0, bottomNavHeight + 32),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              GestureDetector(
-                                onTap: () async {
-                                  closeAllRows();
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                    content: Row(children: const [
-                                      SizedBox(
-                                        width: 16,
-                                        height: 16,
-                                        child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                            color: Colors.white),
-                                      ),
-                                      SizedBox(width: 12),
-                                      Text('PDF wird erstellt…'),
-                                    ]),
-                                    backgroundColor: skin.textMuted,
-                                    behavior: SnackBarBehavior.floating,
-                                    shape: RoundedRectangleBorder(
-                                        borderRadius:
-                                            BorderRadius.circular(12)),
-                                    margin: const EdgeInsets.fromLTRB(
-                                        16, 0, 16, 100),
-                                    duration: const Duration(seconds: 10),
-                                  ));
-                                  await PdfService.exportMonth(
-                                      context, _selectedMonth);
-                                  ScaffoldMessenger.of(context)
-                                      .hideCurrentSnackBar();
-                                },
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(12),
-                                  child: BackdropFilter(
-                                    filter: ImageFilter.blur(
-                                        sigmaX: 10, sigmaY: 10),
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(
-                                          vertical: 11, horizontal: 20),
-                                      decoration: BoxDecoration(
-                                        color: skin.primary
-                                            .withValues(alpha: 0.07),
-                                        borderRadius:
-                                            BorderRadius.circular(12),
-                                        border: Border.all(
-                                            color: skin.primary
-                                                .withValues(alpha: 0.22)),
-                                      ),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(
-                                              Icons.picture_as_pdf_outlined,
-                                              color: skin.primary,
-                                              size: 16),
-                                          const SizedBox(width: 7),
-                                          Text('Diesen Monat exportieren',
-                                              style: TextStyle(
-                                                  color: skin.primary,
-                                                  fontSize: 13,
-                                                  fontWeight:
-                                                      FontWeight.w600)),
-                                        ],
+                )
+              : SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(24, 4, 24, 0),
+                  sliver: SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) {
+                        if (index == entries.length) {
+                          return Padding(
+                            padding: EdgeInsets.fromLTRB(
+                                0, 8, 0, bottomNavHeight + 32),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                GestureDetector(
+                                  onTap: () async {
+                                    closeAllRows();
+                                    showGlassSnackBar(
+                                      context,
+                                      'PDF wird erstellt…',
+                                      type: GlassSnackBarType.loading,
+                                    );
+                                    await PdfService.exportMonth(
+                                        context, _selectedMonth);
+                                    hideGlassSnackBar(context);
+                                  },
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: BackdropFilter(
+                                      filter: ImageFilter.blur(
+                                          sigmaX: 10, sigmaY: 10),
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                            vertical: 11, horizontal: 20),
+                                        decoration: BoxDecoration(
+                                          color: skin.primary
+                                              .withValues(alpha: 0.07),
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                          border: Border.all(
+                                              color: skin.primary
+                                                  .withValues(alpha: 0.22)),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(
+                                                Icons.picture_as_pdf_outlined,
+                                                color: skin.primary,
+                                                size: 16),
+                                            const SizedBox(width: 7),
+                                            Text('Diesen Monat exportieren',
+                                                style: TextStyle(
+                                                    color: skin.primary,
+                                                    fontSize: 13,
+                                                    fontWeight:
+                                                        FontWeight.w600)),
+                                          ],
+                                        ),
                                       ),
                                     ),
                                   ),
                                 ),
+                              ],
+                            ),
+                          );
+                        }
+
+                        final entry = entries[index];
+                        final datum = entry['datum'] as String;
+                        final entryId = entry['id'] as String;
+                        _rowKeys[entryId] ??= GlobalKey<GlassSwipeCardState>();
+
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: GlassSwipeCard(
+                            key: _rowKeys[entryId],
+                            height: 90,
+                            cardKey: entryId,
+                            externallyOpen: _openSwipedEntryId,
+                            onCardSwiped: (key) =>
+                                setState(() => _openSwipedEntryId = key),
+                            leftActions: [
+                              GlassSwipeAction(
+                                icon: Icons.edit_outlined,
+                                label: 'Bearbeiten',
+                                color: skin.editColor,
+                                onTap: () => _editEntry(entry),
+                              ),
+                              GlassSwipeAction(
+                                icon: Icons.ios_share_outlined,
+                                label: 'Teilen',
+                                color: skin.statComplete,
+                                onTap: () => _shareEntry(entry),
                               ),
                             ],
+                            onDelete: () => _deleteEntry(datum, entryId),
+                            animateDelete: true,
+                            onDeleteAnimationDone: () {
+                              final date = DateTime.parse(datum);
+                              NightShiftHelper.deleteEntry(date, entryId);
+                              setState(() => _rowKeys.remove(entryId));
+                              final skin = AppTheme.of(context);
+                              _showSnackbar('Eintrag gelöscht', skin.deleteColor);
+                            },
+                            onDoubleTap: () => _editEntry(entry),
+                            child: _MonthEntryCard(
+                              entry: entry,
+                              duration: _calcDuration(
+                                  entry['kommen'] ?? '', entry['gehen'] ?? ''),
+                              isComplete: _isEntryComplete(entry),
+                            ),
                           ),
                         );
-                      }
-
-                      final entry = entries[index];
-                      final datum = entry['datum'] as String;
-                      final entryId = entry['id'] as String;
-                      _rowKeys[entryId] ??= GlobalKey<_SlidableRowState>();
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 10),
-                        child: _SlidableRow(
-                          key: _rowKeys[entryId],
-                          entry: entry,
-                          entryId: entryId,
-                          duration: _calcDuration(
-                              entry['kommen'] ?? '', entry['gehen'] ?? ''),
-                          isComplete: _isEntryComplete(entry),
-                          onEdit: () => _editEntry(entry),
-                          onDelete: () => _deleteEntry(datum, entryId),
-                          onShare: () => _shareEntry(entry),
-                          onCloseOthers: () => _closeOtherRows(entryId),
-                        ),
-                      );
-                    },
-                    childCount: entries.length + 1,
+                      },
+                      childCount: entries.length + 1,
+                    ),
                   ),
                 ),
-              ),
-      ],
-  ),
+        ],
+      ),
     );
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// MONTH ENTRY CARD (reiner Card-Inhalt ohne Swipe-Logik)
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _MonthEntryCard extends StatelessWidget {
+  final Map<String, dynamic> entry;
+  final String duration;
+  final bool isComplete;
+
+  const _MonthEntryCard({
+    required this.entry,
+    required this.duration,
+    required this.isComplete,
+  });
+
+  int _getEntryNumber() {
+    try {
+      final datum = DateTime.parse(entry['datum']);
+      final entries = NightShiftHelper.getEntriesForDay(datum);
+      final index = entries.indexWhere((e) => e['id'] == entry['id']);
+      return index + 1;
+    } catch (_) {
+      return 1;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final skin = AppTheme.of(context);
+    final datum = DateTime.parse(entry['datum']);
+    final dayName = DateFormat('EEE', 'de').format(datum);
+    final dayNum = DateFormat('dd').format(datum);
+    final kommen = entry['kommen'] ?? '';
+    final gehen = entry['gehen'] ?? '';
+    final tkf = entry['TKF'] ?? '';
+    final hasNotiz = (entry['Bemerkung'] ?? '').isNotEmpty;
+
+    final entriesForDay = NightShiftHelper.getEntriesForDay(datum);
+    final showNumber = entriesForDay.length > 1;
+    final entryNumber = _getEntryNumber();
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(14),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(
+            sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
+        child: Container(
+          decoration: BoxDecoration(
+            color: skin.isLight
+                ? Colors.white.withValues(alpha: skin.glassOpacity)
+                : skin.bgCard.withValues(alpha: skin.glassOpacity),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: skin.glassBorder, width: 1.0),
+            boxShadow: [
+              BoxShadow(
+                  color: skin.glassShadow,
+                  blurRadius: 16,
+                  offset: const Offset(0, 4)),
+              BoxShadow(
+                  color: skin.glassHighlight,
+                  blurRadius: 0,
+                  spreadRadius: -1,
+                  offset: const Offset(0, 1)),
+            ],
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              // ── Datum-Spalte ──
+              SizedBox(
+                width: 52,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(dayName.toUpperCase(),
+                        style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.8,
+                            color: skin.surface(0.38))),
+                    const SizedBox(height: 2),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.baseline,
+                      textBaseline: TextBaseline.alphabetic,
+                      children: [
+                        Text(dayNum,
+                            style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w700,
+                                color: skin.textPrimary,
+                                height: 1)),
+                        const SizedBox(width: 3),
+                        Text(DateFormat('MMM', 'de').format(datum),
+                            style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w500,
+                                color: skin.surface(0.3))),
+                      ],
+                    ),
+                    if (showNumber)
+                      Text('$entryNumber.',
+                          style: TextStyle(
+                              fontSize: 7,
+                              fontWeight: FontWeight.w600,
+                              color: skin.primary.withValues(alpha: 0.6))),
+                  ],
+                ),
+              ),
+
+              // ── Divider ──
+              Container(
+                  width: 1,
+                  height: 44,
+                  margin: const EdgeInsets.symmetric(horizontal: 12),
+                  color: skin.surface(0.07)),
+
+              // ── Zeiten + TKF ──
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Text(
+                          kommen.isEmpty ? '--:--' : kommen,
+                          style: TextStyle(
+                              fontSize: 26,
+                              fontWeight: FontWeight.w700,
+                              color: kommen.isEmpty
+                                  ? skin.surface(0.2)
+                                  : skin.kommenColor),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 6),
+                          child: Icon(Icons.arrow_forward,
+                              size: 16, color: skin.surface(0.2)),
+                        ),
+                        Text(
+                          gehen.isEmpty ? '--:--' : gehen,
+                          style: TextStyle(
+                              fontSize: 26,
+                              fontWeight: FontWeight.w700,
+                              color: gehen.isEmpty
+                                  ? skin.surface(0.2)
+                                  : skin.gehenColor),
+                        ),
+                      ],
+                    ),
+                    if (tkf.isNotEmpty || hasNotiz) ...[
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          if (tkf.isNotEmpty) ...[
+                            Icon(Icons.person_outline,
+                                size: 14, color: skin.surface(0.35)),
+                            const SizedBox(width: 4),
+                            Flexible(
+                              child: Text(tkf,
+                                  style: TextStyle(
+                                      fontSize: 12,
+                                      color: skin.surface(0.42)),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis),
+                            ),
+                          ],
+                          if (hasNotiz) ...[
+                            if (tkf.isNotEmpty) const SizedBox(width: 8),
+                            Icon(Icons.note_outlined,
+                                size: 14,
+                                color: skin.primary.withValues(alpha: 0.45)),
+                          ],
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+
+              // ── Dauer + Status ──
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  if (kommen.isNotEmpty && gehen.isNotEmpty)
+                    Text(duration,
+                        style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: skin.textPrimary)),
+                  const SizedBox(height: 4),
+                  Text(
+                    isComplete ? '✓ Ok' : '⏳ Offen',
+                    style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: isComplete ? skin.statComplete : skin.statOpen),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GLASS ZEIT-KARTE  (aus home_screen.dart übernommen)
@@ -1764,621 +1852,6 @@ class _FlyingCardOverlay extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SLIDABLE ROW  (unverändert aus original month_screen.dart)
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _SlidableRow extends StatefulWidget {
-  final Map<String, dynamic> entry;
-  final String entryId;
-  final String duration;
-  final bool isComplete;
-  final VoidCallback onEdit;
-  final VoidCallback onDelete;
-  final VoidCallback onShare;
-  final VoidCallback onCloseOthers;
-
-  const _SlidableRow({
-    super.key,
-    required this.entry,
-    required this.entryId,
-    required this.duration,
-    required this.isComplete,
-    required this.onEdit,
-    required this.onDelete,
-    required this.onShare,
-    required this.onCloseOthers,
-  });
-
-  @override
-  State<_SlidableRow> createState() => _SlidableRowState();
-}
-
-class _SlidableRowState extends State<_SlidableRow>
-    with TickerProviderStateMixin {
-  double _offset = 0;
-  static const double _deleteReveal = 80.0;
-  static const double _editReveal = 160.0;
-  static const double _snap = 40.0;
-
-  late AnimationController _deleteAnimController;
-  late Animation<double> _slideAnim;
-  late Animation<double> _fadeAnim;
-  late Animation<double> _heightAnim;
-  late Animation<double> _deleteScaleAnim;
-  late Animation<double> _deleteFadeAnim;
-
-  bool get _isOpen => _offset != 0;
-  double get _revealProgress =>
-      _offset < 0 ? (_offset.abs() / _deleteReveal).clamp(0.0, 1.0) : 0.0;
-  double get _editRevealProgress =>
-      (_offset / _editReveal).clamp(0.0, 1.0);
-
-  @override
-  void initState() {
-    super.initState();
-    _deleteAnimController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 550),
-    );
-    _slideAnim = Tween<double>(begin: 0, end: -440).animate(
-      CurvedAnimation(
-        parent: _deleteAnimController,
-        curve: const Interval(0.0, 0.65, curve: Curves.easeInBack),
-      ),
-    );
-    _fadeAnim = Tween<double>(begin: 1, end: 0).animate(
-      CurvedAnimation(
-        parent: _deleteAnimController,
-        curve: const Interval(0.3, 0.75, curve: Curves.easeOut),
-      ),
-    );
-    _heightAnim = Tween<double>(begin: 1, end: 0).animate(
-      CurvedAnimation(
-        parent: _deleteAnimController,
-        curve: const Interval(0.65, 1.0, curve: Curves.easeInOut),
-      ),
-    );
-    _deleteScaleAnim = Tween<double>(begin: 1, end: 1.18).animate(
-      CurvedAnimation(
-        parent: _deleteAnimController,
-        curve: const Interval(0.0, 0.5, curve: Curves.easeOut),
-      ),
-    );
-    _deleteFadeAnim = Tween<double>(begin: 1, end: 0).animate(
-      CurvedAnimation(
-        parent: _deleteAnimController,
-        curve: const Interval(0.5, 0.85, curve: Curves.easeIn),
-      ),
-    );
-    _deleteAnimController.addListener(() {
-      if (mounted) setState(() {});
-    });
-  }
-
-  @override
-  void dispose() {
-    _deleteAnimController.dispose();
-    super.dispose();
-  }
-
-  void close() => _animateTo(0);
-
-  void animateOutAndDelete(VoidCallback onDone) {
-    _deleteAnimController.forward().then((_) => onDone());
-  }
-
-  void _animateTo(double target) {
-    if (!mounted) return;
-    final start = _offset;
-    final dist = target - start;
-    int step = 0;
-    const steps = 12;
-    Future.doWhile(() async {
-      await Future.delayed(const Duration(milliseconds: 12));
-      if (!mounted) return false;
-      step++;
-      final t = step / steps;
-      final eased = 1 - (1 - t) * (1 - t);
-      setState(() => _offset = start + dist * eased);
-      if (step >= steps) {
-        if (mounted) setState(() => _offset = target);
-        return false;
-      }
-      return true;
-    });
-  }
-
-  void _onDragUpdate(DragUpdateDetails d) {
-    setState(() {
-      _offset =
-          (_offset + d.delta.dx).clamp(-_deleteReveal, _editReveal);
-    });
-  }
-
-  void _onDragEnd(DragEndDetails d) {
-    final v = d.primaryVelocity ?? 0;
-    if (_offset < -_snap || v < -500) {
-      _animateTo(-_deleteReveal);
-    } else if (_offset > _snap || v > 500) {
-      _animateTo(_editReveal);
-    } else {
-      _animateTo(0);
-    }
-  }
-
-  int _getEntryNumber() {
-    try {
-      final datum = DateTime.parse(widget.entry['datum']);
-      final entries = NightShiftHelper.getEntriesForDay(datum);
-      final index =
-          entries.indexWhere((e) => e['id'] == widget.entryId);
-      return index + 1;
-    } catch (e) {
-      return 1;
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final skin = AppTheme.of(context);
-    final entry = widget.entry;
-    final datum = DateTime.parse(entry['datum']);
-    final dayName = DateFormat('EEE', 'de').format(datum);
-    final dayNum = DateFormat('dd').format(datum);
-    final kommen = entry['kommen'] ?? '';
-    final gehen = entry['gehen'] ?? '';
-    final tkf = entry['TKF'] ?? '';
-    final hasNotiz = (entry['Bemerkung'] ?? '').isNotEmpty;
-    final isComplete = widget.isComplete;
-
-    final entryNumber = _getEntryNumber();
-    final entriesForDay = NightShiftHelper.getEntriesForDay(datum);
-    final showNumber = entriesForDay.length > 1;
-
-    const double rowHeight = 90.0;
-
-    return AnimatedBuilder(
-      animation: _deleteAnimController,
-      builder: (context, child) {
-        return SizeTransition(
-          sizeFactor: _heightAnim,
-          axisAlignment: -1,
-          child:
-              Opacity(opacity: _fadeAnim.value, child: child!),
-        );
-      },
-      child: GestureDetector(
-        onHorizontalDragStart: (_) => widget.onCloseOthers(),
-        onHorizontalDragUpdate: _onDragUpdate,
-        onHorizontalDragEnd: _onDragEnd,
-        onTap: () {
-          if (_isOpen) _animateTo(0);
-          widget.onCloseOthers();
-        },
-        onDoubleTap: () {
-          if (_isOpen) _animateTo(0);
-          widget.onEdit();
-        },
-        child: SizedBox(
-          height: rowHeight,
-          child: ClipRect(
-            child: Stack(
-              clipBehavior: Clip.hardEdge,
-              children: [
-                // Bearbeiten + Teilen
-                Positioned(
-                  left: 0,
-                  top: 4,
-                  bottom: 4,
-                  width: _editReveal,
-                  child: Row(children: [
-                    Expanded(
-                      child: Transform.scale(
-                        scale: _editRevealProgress,
-                        alignment: Alignment.center,
-                        child: GestureDetector(
-                          onTap: () {
-                            _animateTo(0);
-                            Future.delayed(
-                                const Duration(milliseconds: 200),
-                                widget.onEdit);
-                          },
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(14),
-                            child: BackdropFilter(
-                              filter: ImageFilter.blur(
-                                  sigmaX: 10, sigmaY: 10),
-                              child: Container(
-                                margin:
-                                    const EdgeInsets.only(right: 5),
-                                decoration: BoxDecoration(
-                                  color: skin.editColor
-                                      .withValues(alpha: 0.10),
-                                  borderRadius:
-                                      BorderRadius.circular(14),
-                                  border: Border.all(
-                                      color: skin.editColor
-                                          .withValues(alpha: 0.22)),
-                                ),
-                                child: Column(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.center,
-                                    children: [
-                                      Icon(Icons.edit_outlined,
-                                          color: skin.editColor,
-                                          size: 22),
-                                      const SizedBox(height: 4),
-                                      Text('Bearbeiten',
-                                          style: TextStyle(
-                                              color: skin.editColor,
-                                              fontSize: 11,
-                                              fontWeight:
-                                                  FontWeight.w600)),
-                                    ]),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    Expanded(
-                      child: Transform.scale(
-                        scale: _editRevealProgress,
-                        alignment: Alignment.center,
-                        child: GestureDetector(
-                          onTap: () {
-                            _animateTo(0);
-                            Future.delayed(
-                                const Duration(milliseconds: 200),
-                                widget.onShare);
-                          },
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(14),
-                            child: BackdropFilter(
-                              filter: ImageFilter.blur(
-                                  sigmaX: 10, sigmaY: 10),
-                              child: Container(
-                                margin:
-                                    const EdgeInsets.only(right: 5),
-                                decoration: BoxDecoration(
-                                  color: skin.statComplete
-                                      .withValues(alpha: 0.10),
-                                  borderRadius:
-                                      BorderRadius.circular(14),
-                                  border: Border.all(
-                                      color: skin.statComplete
-                                          .withValues(alpha: 0.22)),
-                                ),
-                                child: Column(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.center,
-                                    children: [
-                                      Icon(
-                                          Icons.ios_share_outlined,
-                                          color: skin.statComplete,
-                                          size: 22),
-                                      const SizedBox(height: 4),
-                                      Text('Teilen',
-                                          style: TextStyle(
-                                              color: skin.statComplete,
-                                              fontSize: 11,
-                                              fontWeight:
-                                                  FontWeight.w600)),
-                                    ]),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ]),
-                ),
-
-                // Löschen
-                Positioned(
-                  right: 0,
-                  top: 4,
-                  bottom: 4,
-                  width: _deleteReveal,
-                  child: GestureDetector(
-                    onTap: () => widget.onDelete(),
-                    child: Opacity(
-                      opacity: _deleteFadeAnim.value,
-                      child: Transform.scale(
-                        scale: _revealProgress,
-                        alignment: Alignment.center,
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(14),
-                          child: BackdropFilter(
-                            filter: ImageFilter.blur(
-                                sigmaX: 10, sigmaY: 10),
-                            child: Container(
-                              margin: const EdgeInsets.only(left: 5),
-                              decoration: BoxDecoration(
-                                color: skin.deleteColor
-                                    .withValues(alpha: 0.10),
-                                borderRadius:
-                                    BorderRadius.circular(14),
-                                border: Border.all(
-                                    color: skin.deleteColor
-                                        .withValues(alpha: 0.22)),
-                                boxShadow:
-                                    _deleteAnimController.value > 0
-                                        ? [
-                                            BoxShadow(
-                                              color: skin.deleteColor
-                                                  .withValues(
-                                                      alpha: 0.5 *
-                                                          _deleteAnimController
-                                                              .value),
-                                              blurRadius: 16 *
-                                                  _deleteAnimController
-                                                      .value,
-                                              spreadRadius: 2 *
-                                                  _deleteAnimController
-                                                      .value,
-                                            )
-                                          ]
-                                        : null,
-                              ),
-                              child: Column(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.center,
-                                  children: [
-                                    Icon(Icons.delete_outline,
-                                        color: skin.deleteColor,
-                                        size: 22),
-                                    const SizedBox(height: 4),
-                                    Text('Löschen',
-                                        style: TextStyle(
-                                            color: skin.deleteColor,
-                                            fontSize: 11,
-                                            fontWeight:
-                                                FontWeight.w600)),
-                                  ]),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-
-                // Hauptkarte
-                Positioned(
-                  left: 0,
-                  top: 0,
-                  right: 0,
-                  bottom: 0,
-                  child: Transform.translate(
-                    offset:
-                        Offset(_offset + _slideAnim.value, 0),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(14),
-                      child: BackdropFilter(
-                        filter: ImageFilter.blur(
-                            sigmaX: skin.glassBlur,
-                            sigmaY: skin.glassBlur),
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: skin.isLight
-                                ? Colors.white.withValues(
-                                    alpha: skin.glassOpacity)
-                                : skin.bgCard.withValues(
-                                    alpha: skin.glassOpacity),
-                            borderRadius:
-                                BorderRadius.circular(14),
-                            border: Border.all(
-                                color: skin.glassBorder,
-                                width: 1.0),
-                            boxShadow: [
-                              BoxShadow(
-                                  color: skin.glassShadow,
-                                  blurRadius: 16,
-                                  offset: const Offset(0, 4)),
-                              BoxShadow(
-                                  color: skin.glassHighlight,
-                                  blurRadius: 0,
-                                  spreadRadius: -1,
-                                  offset: const Offset(0, 1)),
-                            ],
-                          ),
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 14, vertical: 12),
-                          child: Row(
-                            crossAxisAlignment:
-                                CrossAxisAlignment.center,
-                            children: [
-                              SizedBox(
-                                width: 52,
-                                child: Column(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.center,
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                        dayName.toUpperCase(),
-                                        style: TextStyle(
-                                            fontSize: 10,
-                                            fontWeight:
-                                                FontWeight.w700,
-                                            letterSpacing: 0.8,
-                                            color:
-                                                skin.surface(0.38))),
-                                    const SizedBox(height: 2),
-                                    Row(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.baseline,
-                                      textBaseline:
-                                          TextBaseline.alphabetic,
-                                      children: [
-                                        Text(dayNum,
-                                            style: TextStyle(
-                                                fontSize: 20,
-                                                fontWeight:
-                                                    FontWeight.w700,
-                                                color:
-                                                    skin.textPrimary,
-                                                height: 1)),
-                                        const SizedBox(width: 3),
-                                        Text(
-                                            DateFormat('MMM', 'de')
-                                                .format(datum),
-                                            style: TextStyle(
-                                                fontSize: 10,
-                                                fontWeight:
-                                                    FontWeight.w500,
-                                                color:
-                                                    skin.surface(0.3))),
-                                      ],
-                                    ),
-                                    if (showNumber)
-                                      Text('$entryNumber.',
-                                          style: TextStyle(
-                                              fontSize: 7,
-                                              fontWeight:
-                                                  FontWeight.w600,
-                                              color: skin.primary
-                                                  .withValues(
-                                                      alpha: 0.6))),
-                                  ],
-                                ),
-                              ),
-                              Container(
-                                  width: 1,
-                                  height: 44,
-                                  margin: const EdgeInsets.symmetric(
-                                      horizontal: 12),
-                                  color: skin.surface(0.07)),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.start,
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.center,
-                                  children: [
-                                    Row(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.center,
-                                      children: [
-                                        Text(
-                                          kommen.isEmpty
-                                              ? '--:--'
-                                              : kommen,
-                                          style: TextStyle(
-                                              fontSize: 26,
-                                              fontWeight:
-                                                  FontWeight.w700,
-                                              color: kommen.isEmpty
-                                                  ? skin.surface(0.2)
-                                                  : skin.kommenColor),
-                                        ),
-                                        Padding(
-                                          padding:
-                                              const EdgeInsets.symmetric(
-                                                  horizontal: 6),
-                                          child: Icon(
-                                              Icons.arrow_forward,
-                                              size: 16,
-                                              color: skin.surface(0.2)),
-                                        ),
-                                        Text(
-                                          gehen.isEmpty
-                                              ? '--:--'
-                                              : gehen,
-                                          style: TextStyle(
-                                              fontSize: 26,
-                                              fontWeight:
-                                                  FontWeight.w700,
-                                              color: gehen.isEmpty
-                                                  ? skin.surface(0.2)
-                                                  : skin.gehenColor),
-                                        ),
-                                      ],
-                                    ),
-                                    if (tkf.isNotEmpty ||
-                                        hasNotiz) ...[
-                                      const SizedBox(height: 6),
-                                      Row(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.center,
-                                        children: [
-                                          if (tkf.isNotEmpty) ...[
-                                            Icon(
-                                                Icons.person_outline,
-                                                size: 14,
-                                                color:
-                                                    skin.surface(0.35)),
-                                            const SizedBox(width: 4),
-                                            Flexible(
-                                                child: Text(tkf,
-                                                    style: TextStyle(
-                                                        fontSize: 12,
-                                                        color: skin
-                                                            .surface(
-                                                                0.42)),
-                                                    maxLines: 1,
-                                                    overflow: TextOverflow
-                                                        .ellipsis)),
-                                          ],
-                                          if (hasNotiz) ...[
-                                            if (tkf.isNotEmpty)
-                                              const SizedBox(width: 8),
-                                            Icon(Icons.note_outlined,
-                                                size: 14,
-                                                color: skin.primary
-                                                    .withValues(
-                                                        alpha: 0.45)),
-                                          ],
-                                        ],
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                              ),
-                              Column(
-                                crossAxisAlignment:
-                                    CrossAxisAlignment.end,
-                                mainAxisAlignment:
-                                    MainAxisAlignment.center,
-                                children: [
-                                  if (kommen.isNotEmpty &&
-                                      gehen.isNotEmpty)
-                                    Text(widget.duration,
-                                        style: TextStyle(
-                                            fontSize: 14,
-                                            fontWeight: FontWeight.w600,
-                                            color: skin.textPrimary)),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    isComplete ? '✓ Ok' : '⏳ Offen',
-                                    style: TextStyle(
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w600,
-                                        color: isComplete
-                                            ? skin.statComplete
-                                            : skin.statOpen),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // EDIT SHEET  (unverändert aus original month_screen.dart)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -2450,37 +1923,37 @@ class _EditSheetState extends State<_EditSheet> {
   }
 
   Future<void> _pickTime(TextEditingController ctrl, bool isGehenField) async {
-  final skin = AppTheme.of(context);
+    final skin = AppTheme.of(context);
 
-  TimeOfDay initialTime;
-  if (ctrl.text.isNotEmpty && ctrl.text != '--:--') {
-    initialTime = _parse(ctrl.text) ?? TimeOfDay.now();
-  } else if (isGehenField) {
-    final kommenTime = _parse(widget.kommenCtrl.text);
-    initialTime = kommenTime != null
-        ? _getDefaultGehenTime(kommenTime)
-        : TimeOfDay.now();
-  } else {
-    initialTime = TimeOfDay.now();
+    TimeOfDay initialTime;
+    if (ctrl.text.isNotEmpty && ctrl.text != '--:--') {
+      initialTime = _parse(ctrl.text) ?? TimeOfDay.now();
+    } else if (isGehenField) {
+      final kommenTime = _parse(widget.kommenCtrl.text);
+      initialTime = kommenTime != null
+          ? _getDefaultGehenTime(kommenTime)
+          : TimeOfDay.now();
+    } else {
+      initialTime = TimeOfDay.now();
+    }
+
+    await showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => IOSTimePicker(
+        initialTime: initialTime,
+        skin: skin,
+        label: isGehenField ? 'Uhrzeit Gehen' : 'Uhrzeit Kommen',
+        confirmOnDismiss: false,
+        onTimeSelected: (t) {
+          setState(() {
+            ctrl.text =
+                '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+          });
+        },
+      ),
+    );
   }
-
-  await showModalBottomSheet(
-    context: context,
-    backgroundColor: Colors.transparent,
-    builder: (_) => IOSTimePicker(
-      initialTime: initialTime,
-      skin: skin,
-      label: isGehenField ? 'Uhrzeit Gehen' : 'Uhrzeit Kommen',
-      confirmOnDismiss: false,
-      onTimeSelected: (t) {
-        setState(() {
-          ctrl.text =
-              '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
-        });
-      },
-    ),
-  );
-}
 
   @override
   Widget build(BuildContext context) {

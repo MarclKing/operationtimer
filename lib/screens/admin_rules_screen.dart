@@ -4,7 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../theme/app_theme.dart';
 import '../widgets/glass_kit.dart';
-import '../widgets/swipe_animation_mixin.dart';
+import '../widgets/glass_snackbar.dart';
 import '../services/auth_service.dart';
 import '../services/speech_log.dart';
 import 'dart:convert';
@@ -84,9 +84,6 @@ class _AdminRulesScreenState extends State<AdminRulesScreen>
 
   Future<void> _deleteSingle(String docId) async {
     HapticFeedback.mediumImpact();
-    // Lokalen Hive-Log-Eintrag über die Firestore-Doc-ID syncen — NICHT
-    // mehr über rawText, weil rawText bei zwei identischen Diktaten nicht
-    // eindeutig ist und sonst der falsche lokale Eintrag getroffen wird.
     _removeFromLocalLog(docId);
     await FirebaseFirestore.instance
         .collection('speech_logs')
@@ -95,108 +92,84 @@ class _AdminRulesScreenState extends State<AdminRulesScreen>
     if (mounted) setState(() {});
   }
 
-Future<void> _deleteSelected(List<QueryDocumentSnapshot> docs) async {
-  if (_selectedIds.isEmpty) return;
-  HapticFeedback.mediumImpact();
-  final batch = FirebaseFirestore.instance.batch();
-  for (final id in List<String>.from(_selectedIds)) {
-    // Lokalen Log über die Doc-ID syncen (siehe _deleteSingle für Begründung).
-    _removeFromLocalLog(id);
-    batch.delete(FirebaseFirestore.instance.collection('speech_logs').doc(id));
+  Future<void> _deleteSelected(List<QueryDocumentSnapshot> docs) async {
+    if (_selectedIds.isEmpty) return;
+    HapticFeedback.mediumImpact();
+    final batch = FirebaseFirestore.instance.batch();
+    for (final id in List<String>.from(_selectedIds)) {
+      _removeFromLocalLog(id);
+      batch.delete(FirebaseFirestore.instance.collection('speech_logs').doc(id));
+    }
+    await batch.commit();
+    _exitSelectionMode();
   }
-  await batch.commit();
-  _exitSelectionMode();
-}
 
-void _removeFromLocalLog(String firestoreId) {
-  // Entfernt den Hive-Log-Eintrag, der zu diesem Firestore-Doc gehört.
-  // Matching läuft über firestoreId statt rawText, weil rawText bei
-  // doppelten Diktaten (z.B. zwei identische Testsätze) nicht eindeutig
-  // ist — über die ID gibt es diese Verwechslungsgefahr nicht.
-  // Delegiert an SpeechLog, damit das Hive-Schema an einer Stelle gepflegt
-  // wird statt hier eine zweite, leicht abweichende Kopie zu pflegen.
-  SpeechLog.deleteEntryByFirestoreId(firestoreId);
-}
+  void _removeFromLocalLog(String firestoreId) {
+    SpeechLog.deleteEntryByFirestoreId(firestoreId);
+  }
 
   @override
   Widget build(BuildContext context) {
-  final skin = AppTheme.of(context);
+    final skin = AppTheme.of(context);
 
-  if (!AuthService.instance.isAdmin) {
+    if (!AuthService.instance.isAdmin) {
+      return Scaffold(
+        backgroundColor: skin.bgBase,
+        body: Center(
+          child: Text('Kein Zugriff', style: TextStyle(color: skin.textMuted)),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: skin.bgBase,
-      body: Center(
-        child: Text('Kein Zugriff', style: TextStyle(color: skin.textMuted)),
+      body: SafeArea(
+        child: GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onTap: () {
+            if (_selectionMode) _exitSelectionMode();
+            if (_openSwipedId != null) setState(() => _openSwipedId = null);
+          },
+          child: Column(
+            children: [
+              // Header
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
+                child: Row(
+                  children: [
+                    GestureDetector(
+                      onTap: () => Navigator.pop(context),
+                      behavior: HitTestBehavior.opaque,
+                      child: const SizedBox(
+                        width: 48, height: 48,
+                        child: Center(child: Icon(Icons.arrow_back_ios_new, size: 18)),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text('Sprach-Analyse',
+                        style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700,
+                            color: skin.textPrimary, letterSpacing: -0.5)),
+                    ),
+                    const GlassStatusBadge(label: 'ADMIN', color: Color(0xFF8B5CF6)),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(left: 74, bottom: 16),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('Spracheingaben analysieren · Regeln lernen',
+                      style: TextStyle(fontSize: 12.5, color: skin.textMuted)),
+                ),
+              ),
+              Expanded(child: _buildBody(context, skin)),
+            ],
+          ),
+        ),
       ),
     );
   }
-
-  return Scaffold(
-    backgroundColor: skin.bgBase,
-    body: SafeArea(
-      child: GestureDetector(
-        behavior: HitTestBehavior.translucent,
-        onTap: () {
-          if (_selectionMode) _exitSelectionMode();
-          if (_openSwipedId != null) setState(() => _openSwipedId = null);
-        },
-        child: Column(
-          children: [
-            // Header
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
-              child: Row(
-                children: [
-                  GestureDetector(
-                    onTap: () => Navigator.pop(context),
-                    behavior: HitTestBehavior.opaque,
-                    child: const SizedBox(
-                      width: 48, height: 48,
-                      child: Center(child: Icon(Icons.arrow_back_ios_new, size: 18)),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text('Sprach-Analyse',
-                      style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700,
-                          color: skin.textPrimary, letterSpacing: -0.5)),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF8B5CF6).withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: const Color(0xFF8B5CF6).withValues(alpha: 0.30)),
-                    ),
-                    child: const Text('ADMIN',
-                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700,
-                          color: Color(0xFF8B5CF6), letterSpacing: 0.8)),
-                  ),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.only(left: 74, bottom: 16),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text('Spracheingaben analysieren · Regeln lernen',
-                    style: TextStyle(fontSize: 12.5, color: skin.textMuted)),
-              ),
-            ),
-            Expanded(child: _buildBody(context, skin)),
-          ],
-        ),
-      ),
-    ),
-  );
-}
-
-  // ── Selection Bar mit echten docs ─────────────────────────────────────────
-  // Da wir docs aus dem StreamBuilder brauchen, bauen wir den Scaffold anders.
-  // Wir rendern die SelectionBar als Overlay über dem Content.
-  // → Korrektur: Selection Bar wird als Positioned in einem Stack gebaut.
-  // Der Scaffold oben hat kein bottomNavigationBar mehr, stattdessen
-  // nutzen wir einen Stack im body. Siehe _buildWithDocs unten.
 
   Widget _buildBody(BuildContext context, AppSkin skin) {
     return StreamBuilder<QuerySnapshot>(
@@ -273,142 +246,32 @@ void _removeFromLocalLog(String firestoreId) {
         padding: const EdgeInsets.fromLTRB(20, 0, 20, 120),
         children: [
           // ── Status-Kachel ──────────────────────────────────────────
-          ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(
-                  sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                decoration: BoxDecoration(
-                  color: skin.primary
-                      .withValues(alpha: skin.isLight ? 0.06 : 0.10),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                      color: skin.primary.withValues(alpha: 0.22)),
-                ),
-                child: Row(children: [
-                  Container(
-  width: 32,
-  height: 32,
-  decoration: BoxDecoration(
-    color: skin.primary.withValues(alpha: 0.12),
-    borderRadius: BorderRadius.circular(10),
-  ),
-                    child: Icon(Icons.inbox_outlined,
-                        size: 20, color: skin.primary),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-  '${docs.length} offene Eingaben',
-  style: TextStyle(
-      fontSize: 14,
-      fontWeight: FontWeight.w700,
-      color: skin.textPrimary),
-),
-                        Text(
-  'Warten auf Analyse',
-  style: TextStyle(
-      fontSize: 11, color: skin.textMuted),
-),
-                      ],
-                    ),
-                  ),
-                ]),
-              ),
-            ),
+          GlassInfoCard(
+            icon: Icons.inbox_outlined,
+            iconColor: skin.primary,
+            title: '${docs.length} offene Eingaben',
+            description: 'Warten auf Analyse',
           ),
 
           const SizedBox(height: 14),
 
           // ── Prompt-Button ──────────────────────────────────────────
           if (docs.isNotEmpty)
-            GestureDetector(
-              onTap: () =>
-                  _generateAndCopyPrompt(context, docs, skin),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(14),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(
-                      sigmaX: skin.glassBlur,
-                      sigmaY: skin.glassBlur),
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(vertical: 14),
-                    decoration: BoxDecoration(
-                      color: skin.primary.withValues(
-                          alpha: skin.isLight ? 0.10 : 0.18),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                          color:
-                              skin.primary.withValues(alpha: 0.35),
-                          width: 1.3),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.auto_awesome_outlined,
-                            size: 18, color: skin.primary),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Analyse-Prompt erstellen & kopieren',
-                          style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                              color: skin.primary),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
+            GlassPrimaryButton(
+              skin: skin,
+              label: 'Analyse-Prompt erstellen & kopieren',
+              icon: Icons.auto_awesome_outlined,
+              onTap: () => _generateAndCopyPrompt(context, docs, skin),
             ),
 
           const SizedBox(height: 10),
 
           // ── KI-Antwort Button ──────────────────────────────────────
-          GestureDetector(
-            onTap: () =>
-                _openAnswerImportSheet(context, skin, docs),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(14),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(
-                    sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(vertical: 13),
-                  decoration: BoxDecoration(
-                    color: skin.isLight
-                        ? Colors.white
-                            .withValues(alpha: skin.glassOpacity)
-                        : skin.bgCard
-                            .withValues(alpha: skin.glassOpacity),
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: skin.glassBorder),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.content_paste_go_outlined,
-                          size: 17, color: skin.textPrimary),
-                      const SizedBox(width: 8),
-                      Text(
-                        'KI-Antwort einfügen',
-                        style: TextStyle(
-                            fontSize: 13.5,
-                            fontWeight: FontWeight.w600,
-                            color: skin.textPrimary),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
+          GlassSecondaryButton(
+            skin: skin,
+            label: 'KI-Antwort einfügen',
+            icon: Icons.content_paste_go_outlined,
+            onTap: () => _openAnswerImportSheet(context, skin, docs),
           ),
 
           const SizedBox(height: 24),
@@ -443,60 +306,20 @@ void _removeFromLocalLog(String firestoreId) {
                     child: Container(
                         height: 0.5, color: skin.surface(0.12))),
                 const SizedBox(width: 8),
-                GestureDetector(
+                GlassChip(
+                  label: _selectionMode ? 'Abbrechen' : 'Auswählen',
+                  active: _selectionMode,
+                  color: skin.deleteColor,
+                  icon: _selectionMode ? Icons.close_rounded : Icons.checklist_rounded,
+                  showIconWhenInactive: true,
                   onTap: () {
                     if (_selectionMode) {
                       _exitSelectionMode();
                     } else {
-                      HapticFeedback.selectionClick();
                       setState(() => _selectionMode = true);
                       _selectionBarCtrl.forward();
                     }
                   },
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: _selectionMode
-                          ? skin.deleteColor.withValues(alpha: 0.12)
-                          : skin.surface(0.06),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: _selectionMode
-                            ? skin.deleteColor
-                                .withValues(alpha: 0.30)
-                            : skin.glassBorder,
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          _selectionMode
-                              ? Icons.close_rounded
-                              : Icons.checklist_rounded,
-                          size: 13,
-                          color: _selectionMode
-                              ? skin.deleteColor
-                              : skin.textMuted,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          _selectionMode
-                              ? 'Abbrechen'
-                              : 'Auswählen',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: _selectionMode
-                                ? skin.deleteColor
-                                : skin.textMuted,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
                 ),
               ]),
             ),
@@ -507,11 +330,11 @@ void _removeFromLocalLog(String firestoreId) {
                 key: ValueKey(doc.id),
                 skin: skin,
                 text: data['rawText'] as String? ?? '',
+                cardKey: doc.id,
                 isSelected: _selectedIds.contains(doc.id),
                 selectionMode: _selectionMode,
-                isOpen: _openSwipedId == doc.id,
-                onSwiped: (id) =>
-                    setState(() => _openSwipedId = id),
+                externallyOpen: _openSwipedId,
+                onCardSwiped: (id) => setState(() => _openSwipedId = id),
                 onLongPress: () => _enterSelectionMode(doc.id),
                 onSelectTap: () => _toggleSelection(doc.id),
                 onDelete: () => _deleteSingle(doc.id),
@@ -534,73 +357,70 @@ void _removeFromLocalLog(String firestoreId) {
   }
 
   void _generateAndCopyPrompt(
-  BuildContext context,
-  List<QueryDocumentSnapshot> docs,
-  AppSkin skin,
-) {
-  final sentences = docs
-      .map((d) =>
-          (d.data() as Map<String, dynamic>)['rawText'] as String? ?? '')
-      .where((s) => s.trim().isNotEmpty)
-      .toList();
-  if (sentences.isEmpty) return;
+    BuildContext context,
+    List<QueryDocumentSnapshot> docs,
+    AppSkin skin,
+  ) {
+    final sentences = docs
+        .map((d) =>
+            (d.data() as Map<String, dynamic>)['rawText'] as String? ?? '')
+        .where((s) => s.trim().isNotEmpty)
+        .toList();
+    if (sentences.isEmpty) return;
 
-  final buffer = StringBuffer();
-  buffer.writeln('Du analysierst deutsche Sprachbefehle für eine Task-App.');
-  buffer.writeln('Die App erkennt bereits diese festen Muster:');
-  buffer.writeln('  - "Füge die Aufgabe [TITEL] hinzu"');
-  buffer.writeln('  - "Füge die Aufgabe [TITEL] für [DATUM] hinzu"');
-  buffer.writeln('  - "Erinnere mich an: [TITEL]"');
-  buffer.writeln('  - "Erinnere mich [DATUM] an: [TITEL]"');
-  buffer.writeln('  - "Ich muss [TITEL]"');
-  buffer.writeln('  - "Nicht vergessen: [TITEL]"');
-  buffer.writeln();
-  buffer.writeln('Für jeden Satz unten:');
-  buffer.writeln('1. Ist es ein echter Task/Reminder-Befehl? (kein Test, kein Unsinn)');
-  buffer.writeln('2. Extrahiere Titel und optionales Datum.');
-  buffer.writeln('3. Erstelle ein PATTERN — das ist das wichtigste Feld!');
-  buffer.writeln();
-  buffer.writeln('PATTERN-REGELN (sehr wichtig):');
-  buffer.writeln('  - Beschreibe die Satzstruktur generisch, nicht den konkreten Satz');
-  buffer.writeln('  - Pflichtteile: normaler Text');
-  buffer.writeln('  - Optionale Teile: in [eckigen Klammern]');
-  buffer.writeln('  - Titel-Platzhalter: immer [TITEL]');
-  buffer.writeln('  - Datum-Platzhalter: immer [DATUM]');
-  buffer.writeln('  - Beispiele:');
-  buffer.writeln('      "Ich muss noch Zahnarzt anrufen" → "Ich muss [noch] [TITEL]"');
-  buffer.writeln('      "Morgen früh Auto waschen" → "[DATUM] [TITEL]"');
-  buffer.writeln('      "Kannst du mich an X erinnern" → "Kannst du mich [DATUM] an [TITEL] erinnern"');
-  buffer.writeln('      "Dringend: Reisepass verlängern" → "Dringend [TITEL]"');
-  buffer.writeln('      "Nicht vergessen Zahnarzt" → "Nicht vergessen [TITEL]"');
-  buffer.writeln();
-  buffer.writeln('Antworte NUR mit einem JSON-Array, kein Markdown, kein Fließtext:');
-  buffer.writeln('[');
-  buffer.writeln('  {');
-  buffer.writeln('    "originalText": "...",');
-  buffer.writeln('    "isTaskIntent": true/false,');
-  buffer.writeln('    "title": "...",');
-  buffer.writeln('    "dateHint": "..." oder null,');
-  buffer.writeln('    "pattern": "..."');
-  buffer.writeln('  }');
-  buffer.writeln(']');
-  buffer.writeln();
-  buffer.writeln('Sätze:');
-  for (var i = 0; i < sentences.length; i++) {
-    buffer.writeln('${i + 1}. "${sentences[i]}"');
+    final buffer = StringBuffer();
+    buffer.writeln('Du analysierst deutsche Sprachbefehle für eine Task-App.');
+    buffer.writeln('Die App erkennt bereits diese festen Muster:');
+    buffer.writeln('  - "Füge die Aufgabe [TITEL] hinzu"');
+    buffer.writeln('  - "Füge die Aufgabe [TITEL] für [DATUM] hinzu"');
+    buffer.writeln('  - "Erinnere mich an: [TITEL]"');
+    buffer.writeln('  - "Erinnere mich [DATUM] an: [TITEL]"');
+    buffer.writeln('  - "Ich muss [TITEL]"');
+    buffer.writeln('  - "Nicht vergessen: [TITEL]"');
+    buffer.writeln();
+    buffer.writeln('Für jeden Satz unten:');
+    buffer.writeln('1. Ist es ein echter Task/Reminder-Befehl? (kein Test, kein Unsinn)');
+    buffer.writeln('2. Extrahiere Titel und optionales Datum.');
+    buffer.writeln('3. Erstelle ein PATTERN — das ist das wichtigste Feld!');
+    buffer.writeln();
+    buffer.writeln('PATTERN-REGELN (sehr wichtig):');
+    buffer.writeln('  - Beschreibe die Satzstruktur generisch, nicht den konkreten Satz');
+    buffer.writeln('  - Pflichtteile: normaler Text');
+    buffer.writeln('  - Optionale Teile: in [eckigen Klammern]');
+    buffer.writeln('  - Titel-Platzhalter: immer [TITEL]');
+    buffer.writeln('  - Datum-Platzhalter: immer [DATUM]');
+    buffer.writeln('  - Beispiele:');
+    buffer.writeln('      "Ich muss noch Zahnarzt anrufen" → "Ich muss [noch] [TITEL]"');
+    buffer.writeln('      "Morgen früh Auto waschen" → "[DATUM] [TITEL]"');
+    buffer.writeln('      "Kannst du mich an X erinnern" → "Kannst du mich [DATUM] an [TITEL] erinnern"');
+    buffer.writeln('      "Dringend: Reisepass verlängern" → "Dringend [TITEL]"');
+    buffer.writeln('      "Nicht vergessen Zahnarzt" → "Nicht vergessen [TITEL]"');
+    buffer.writeln();
+    buffer.writeln('Antworte NUR mit einem JSON-Array, kein Markdown, kein Fließtext:');
+    buffer.writeln('[');
+    buffer.writeln('  {');
+    buffer.writeln('    "originalText": "...",');
+    buffer.writeln('    "isTaskIntent": true/false,');
+    buffer.writeln('    "title": "...",');
+    buffer.writeln('    "dateHint": "..." oder null,');
+    buffer.writeln('    "pattern": "..."');
+    buffer.writeln('  }');
+    buffer.writeln(']');
+    buffer.writeln();
+    buffer.writeln('Sätze:');
+    for (var i = 0; i < sentences.length; i++) {
+      buffer.writeln('${i + 1}. "${sentences[i]}"');
+    }
+
+    Clipboard.setData(ClipboardData(text: buffer.toString()));
+    HapticFeedback.mediumImpact();
+
+    showGlassSnackBar(
+      context,
+      'Prompt kopiert (${sentences.length} Sätze) — jetzt in dein KI-Tool einfügen',
+      type: GlassSnackBarType.success,
+    );
   }
-
-  Clipboard.setData(ClipboardData(text: buffer.toString()));
-  HapticFeedback.mediumImpact();
-
-  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-    content: Text(
-        'Prompt kopiert (${sentences.length} Sätze) — jetzt in dein KI-Tool einfügen'),
-    backgroundColor: skin.statComplete,
-    behavior: SnackBarBehavior.floating,
-    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-    margin: const EdgeInsets.fromLTRB(16, 0, 16, 100),
-  ));
-}
 
   void _openAnswerImportSheet(
     BuildContext context,
@@ -667,16 +487,11 @@ void _removeFromLocalLog(String firestoreId) {
                   onTap: () {
                     final parsed = _parseAnswer(ctrl.text, docs);
                     if (parsed == null) {
-                      ScaffoldMessenger.of(sheetContext)
-                          .showSnackBar(SnackBar(
-                        content: const Text(
-                            'Konnte JSON nicht lesen — bitte Format prüfen.'),
-                        backgroundColor: skin.deleteColor,
-                        behavior: SnackBarBehavior.floating,
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12)),
-                        margin: const EdgeInsets.fromLTRB(16, 0, 16, 100),
-                      ));
+                      showGlassSnackBar(
+                        sheetContext,
+                        'Konnte JSON nicht lesen — bitte Format prüfen.',
+                        type: GlassSnackBarType.error,
+                      );
                       return;
                     }
                     Navigator.pop(sheetContext);
@@ -759,111 +574,103 @@ void _removeFromLocalLog(String firestoreId) {
                           if (!p.isTaskIntent) {
                             return Opacity(
                               opacity: 0.4,
-                              child: Container(
-                                margin: const EdgeInsets.only(bottom: 8),
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: skin.surface(0.04),
-                                  borderRadius:
-                                      BorderRadius.circular(12),
-                                  border:
-                                      Border.all(color: skin.glassBorder),
-                                ),
-                                child: Text(
+                              child: Padding(
+                                padding: const EdgeInsets.only(bottom: 8),
+                                child: GlassSurface(
+                                  borderRadius: 12,
+                                  padding: const EdgeInsets.all(12),
+                                  useBlur: false,
+                                  child: Text(
                                     '„${p.originalText}" — kein Task-Intent',
                                     style: TextStyle(
                                         fontSize: 12,
-                                        color: skin.textMuted)),
+                                        color: skin.textMuted),
+                                  ),
+                                ),
                               ),
                             );
                           }
-                          return Container(
-                            margin: const EdgeInsets.only(bottom: 8),
-                            padding: const EdgeInsets.all(13),
-                            decoration: BoxDecoration(
-                              color: skin.isLight
-                                  ? Colors.white.withValues(
-                                      alpha: skin.glassOpacity)
-                                  : skin.bgCard.withValues(
-                                      alpha: skin.glassOpacity),
-                              borderRadius: BorderRadius.circular(12),
-                              border:
-                                  Border.all(color: skin.glassBorder),
-                            ),
-                            child: Column(
-                              crossAxisAlignment:
-                                  CrossAxisAlignment.start,
-                              children: [
-                                Text('„${p.originalText}"',
-                                    style: TextStyle(
-                                        fontSize: 12.5,
-                                        fontStyle: FontStyle.italic,
-                                        color: skin.textPrimary
-                                            .withValues(alpha: 0.7))),
-                                const SizedBox(height: 6),
-                                Text('Titel: ${p.title}',
-                                    style: TextStyle(
-                                        fontSize: 13.5,
-                                        fontWeight: FontWeight.w600,
-                                        color: skin.textPrimary)),
-                                if (p.dateHint != null)
-                                  Text('Datum: ${p.dateHint}',
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: GlassSurface(
+                              borderRadius: 12,
+                              padding: const EdgeInsets.all(13),
+                              useBlur: false,
+                              child: Column(
+                                crossAxisAlignment:
+                                    CrossAxisAlignment.start,
+                                children: [
+                                  Text('„${p.originalText}"',
                                       style: TextStyle(
-                                          fontSize: 12,
-                                          color: skin.textMuted)),
-                                const SizedBox(height: 10),
-                                Row(children: [
-                                  Expanded(
-                                    child: GestureDetector(
-                                      onTap: () => setSheetState(
-                                          () => _proposals.removeAt(i)),
-                                      child: Container(
-                                        padding:
-                                            const EdgeInsets.symmetric(
-                                                vertical: 9),
-                                        decoration: BoxDecoration(
-                                          color: skin.surface(0.06),
-                                          borderRadius:
-                                              BorderRadius.circular(10),
-                                          border: Border.all(
-                                              color: skin.glassBorder),
+                                          fontSize: 12.5,
+                                          fontStyle: FontStyle.italic,
+                                          color: skin.textPrimary
+                                              .withValues(alpha: 0.7))),
+                                  const SizedBox(height: 6),
+                                  Text('Titel: ${p.title}',
+                                      style: TextStyle(
+                                          fontSize: 13.5,
+                                          fontWeight: FontWeight.w600,
+                                          color: skin.textPrimary)),
+                                  if (p.dateHint != null)
+                                    Text('Datum: ${p.dateHint}',
+                                        style: TextStyle(
+                                            fontSize: 12,
+                                            color: skin.textMuted)),
+                                  const SizedBox(height: 10),
+                                  Row(children: [
+                                    Expanded(
+                                      child: GestureDetector(
+                                        onTap: () => setSheetState(
+                                            () => _proposals.removeAt(i)),
+                                        child: Container(
+                                          padding:
+                                              const EdgeInsets.symmetric(
+                                                  vertical: 9),
+                                          decoration: BoxDecoration(
+                                            color: skin.surface(0.06),
+                                            borderRadius:
+                                                BorderRadius.circular(10),
+                                            border: Border.all(
+                                                color: skin.glassBorder),
+                                          ),
+                                          child: Icon(Icons.close_rounded,
+                                              size: 16,
+                                              color: skin.textMuted),
                                         ),
-                                        child: Icon(Icons.close_rounded,
-                                            size: 16,
-                                            color: skin.textMuted),
                                       ),
                                     ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: GestureDetector(
-                                      onTap: () async {
-                                        await _confirmRule(p);
-                                        setSheetState(() =>
-                                            _proposals.removeAt(i));
-                                      },
-                                      child: Container(
-                                        padding:
-                                            const EdgeInsets.symmetric(
-                                                vertical: 9),
-                                        decoration: BoxDecoration(
-                                          color: skin.statComplete
-                                              .withValues(alpha: 0.15),
-                                          borderRadius:
-                                              BorderRadius.circular(10),
-                                          border: Border.all(
-                                              color: skin.statComplete
-                                                  .withValues(
-                                                      alpha: 0.35)),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: GestureDetector(
+                                        onTap: () async {
+                                          await _confirmRule(p);
+                                          setSheetState(() =>
+                                              _proposals.removeAt(i));
+                                        },
+                                        child: Container(
+                                          padding:
+                                              const EdgeInsets.symmetric(
+                                                  vertical: 9),
+                                          decoration: BoxDecoration(
+                                            color: skin.statComplete
+                                                .withValues(alpha: 0.15),
+                                            borderRadius:
+                                                BorderRadius.circular(10),
+                                            border: Border.all(
+                                                color: skin.statComplete
+                                                    .withValues(
+                                                        alpha: 0.35)),
+                                          ),
+                                          child: Icon(Icons.check_rounded,
+                                              size: 16,
+                                              color: skin.statComplete),
                                         ),
-                                        child: Icon(Icons.check_rounded,
-                                            size: 16,
-                                            color: skin.statComplete),
                                       ),
                                     ),
-                                  ),
-                                ]),
-                              ],
+                                  ]),
+                                ],
+                              ),
                             ),
                           );
                         },
@@ -899,16 +706,17 @@ void _removeFromLocalLog(String firestoreId) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// LOG ITEM — Swipe-to-Delete + LongPress-Selection (wie _FahrtCard)
+// LOG ITEM — Swipe-to-Delete + LongPress-Selection (via GlassSwipeCard)
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _LogItem extends StatefulWidget {
+class _LogItem extends StatelessWidget {
   final AppSkin skin;
   final String text;
+  final String cardKey;
   final bool isSelected;
   final bool selectionMode;
-  final bool isOpen;
-  final void Function(String? id) onSwiped;
+  final String? externallyOpen;
+  final void Function(String?) onCardSwiped;
   final VoidCallback onLongPress;
   final VoidCallback onSelectTap;
   final VoidCallback onDelete;
@@ -917,314 +725,125 @@ class _LogItem extends StatefulWidget {
     super.key,
     required this.skin,
     required this.text,
+    required this.cardKey,
     required this.isSelected,
     required this.selectionMode,
-    required this.isOpen,
-    required this.onSwiped,
+    required this.externallyOpen,
+    required this.onCardSwiped,
     required this.onLongPress,
     required this.onSelectTap,
     required this.onDelete,
   });
 
   @override
-  State<_LogItem> createState() => _LogItemState();
-}
-
-class _LogItemState extends State<_LogItem>
-    with TickerProviderStateMixin, SwipeAnimationMixin {
-  static const double _revealWidth = 80.0;
-  static const double _snapThreshold = 40.0;
-
-  bool _isOpen = false;
-  bool _dragging = false;
-  double _dragStartX = 0, _dragStartY = 0;
-
-  @override
-  void initState() {
-    super.initState();
-    initSwipeAnimation(vsync: this);
-  }
-
-  @override
-  void dispose() {
-    disposeSwipeAnimation();
-    super.dispose();
-  }
-
-  @override
-  void didUpdateWidget(_LogItem oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    // Wenn ein anderes Item geöffnet wurde → dieses schließen
-    if (!widget.isOpen && _isOpen) {
-      animateSwipeTo(0);
-      setState(() => _isOpen = false);
-    }
-  }
-
-  void _onPanStart(DragStartDetails d) {
-    _dragging = false;
-    _dragStartX = d.globalPosition.dx;
-    _dragStartY = d.globalPosition.dy;
-  }
-
-  void _onPanUpdate(DragUpdateDetails d) {
-    final dx = d.globalPosition.dx - _dragStartX;
-    final dy = (d.globalPosition.dy - _dragStartY).abs();
-    if (!_dragging) {
-      if (dy > dx.abs()) return;
-      if (dx.abs() < 6) return;
-      _dragging = true;
-    }
-    final newOffset =
-        (swipeOffset + d.delta.dx).clamp(-_revealWidth, 0.0);
-    setSwipeOffsetImmediate(newOffset);
-  }
-
-  void _onPanEnd(DragEndDetails d) {
-    if (!_dragging) return;
-    _dragging = false;
-    final v = d.primaryVelocity ?? 0;
-
-    if (swipeOffset < -_snapThreshold || v < -400) {
-      animateSwipeTo(-_revealWidth);
-      setState(() => _isOpen = true);
-      widget.onSwiped(_getKey());
-    } else {
-      animateSwipeTo(0);
-      setState(() => _isOpen = false);
-      widget.onSwiped(null);
-    }
-  }
-
-  String _getKey() {
-    // Key aus dem ValueKey des Widgets lesen
-    final k = widget.key;
-    if (k is ValueKey) return k.value.toString();
-    return '';
-  }
-
-  void _close() {
-    animateSwipeTo(0);
-    if (mounted) setState(() => _isOpen = false);
-    widget.onSwiped(null);
-  }
-
-  @override
-Widget build(BuildContext context) {
-  final skin = widget.skin;
-  final revealRatio =
-      (swipeOffset.abs() / _revealWidth).clamp(0.0, 1.0);
-
-  return Padding(
-    padding: const EdgeInsets.only(bottom: 10),
-    child: GestureDetector(
-      onHorizontalDragStart:
-          widget.selectionMode ? null : _onPanStart,
-      onHorizontalDragUpdate:
-          widget.selectionMode ? null : _onPanUpdate,
-      onHorizontalDragEnd:
-          widget.selectionMode ? null : _onPanEnd,
-      onTap: widget.selectionMode
-          ? widget.onSelectTap
-          : (_isOpen ? _close : null),
-      onLongPress:
-          widget.selectionMode ? null : widget.onLongPress,
-      child: ClipRect(
-        child: Stack(
-          clipBehavior: Clip.hardEdge,
-          children: [
-            // ── Roter Hintergrund (rechts) ─────────────────
-            Positioned(
-              right: 0,
-              top: 2,
-              bottom: 2,
-              width: _revealWidth,
-              child: Opacity(
-                opacity: revealRatio,
-                child: Transform.scale(
-                  scale: revealRatio,
-                  alignment: Alignment.centerLeft,
-                  child: GestureDetector(
-                    onTap: () {
-                      _close();
-                      widget.onDelete();
-                    },
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(14),
-                      child: BackdropFilter(
-                        filter: ImageFilter.blur(
-                            sigmaX: 10, sigmaY: 10),
-                        child: Container(
-                          margin: const EdgeInsets.only(left: 6),
-                          decoration: BoxDecoration(
-                            color: skin.deleteColor
-                                .withValues(alpha: 0.10),
-                            borderRadius:
-                                BorderRadius.circular(14),
-                            border: Border.all(
-                                color: skin.deleteColor
-                                    .withValues(alpha: 0.22)),
-                          ),
-                          child: Column(
-                              mainAxisAlignment:
-                                  MainAxisAlignment.center,
-                              children: [
-                                Icon(Icons.delete_outline,
-                                    color: skin.deleteColor,
-                                    size: 20),
-                                const SizedBox(height: 3),
-                                Text('Löschen',
-                                    style: TextStyle(
-                                        color: skin.deleteColor,
-                                        fontSize: 10,
-                                        fontWeight:
-                                            FontWeight.w600)),
-                              ]),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: GlassSwipeCard(
+        cardKey: cardKey,
+        externallyOpen: externallyOpen,
+        onCardSwiped: onCardSwiped,
+        disableSwipe: selectionMode,
+        onDelete: onDelete,
+        onTap: selectionMode ? onSelectTap : null,
+        onLongPress: selectionMode ? null : onLongPress,
+        rightRevealWidth: 80.0,
+        snapThreshold: 40.0,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? skin.deleteColor.withValues(alpha: 0.08)
+                : (skin.isLight
+                    ? Colors.white.withValues(alpha: skin.glassOpacity)
+                    : skin.bgCard.withValues(alpha: skin.glassOpacity)),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: isSelected ? skin.deleteColor.withValues(alpha: 0.35) : skin.glassBorder,
+              width: isSelected ? 1.5 : 1.0,
             ),
-
-            // ── Vordergrund-Karte ───────────────────────────
-            Transform.translate(
-              offset: Offset(
-                  widget.selectionMode ? 0 : swipeOffset, 0),
-              child: AnimatedContainer(
+            boxShadow: [
+              BoxShadow(color: skin.glassShadow, blurRadius: 16, offset: const Offset(0, 4)),
+            ],
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              AnimatedSwitcher(
                 duration: const Duration(milliseconds: 180),
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 14, vertical: 13),
-                decoration: BoxDecoration(
-                  color: widget.isSelected
-                      ? skin.deleteColor.withValues(alpha: 0.08)
-                      : (skin.isLight
-                          ? Colors.white.withValues(
-                              alpha: skin.glassOpacity)
-                          : skin.bgCard.withValues(
-                              alpha: skin.glassOpacity)),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
-                    color: widget.isSelected
-                        ? skin.deleteColor
-                            .withValues(alpha: 0.35)
-                        : skin.glassBorder,
-                    width: widget.isSelected ? 1.5 : 1.0,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                        color: skin.glassShadow,
-                        blurRadius: 16,
-                        offset: const Offset(0, 4)),
-                  ],
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    // Linkes Icon
-                    AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 180),
-                      child: widget.selectionMode
-                          ? Icon(
-                              widget.isSelected
-                                  ? Icons.check_circle_rounded
-                                  : Icons
-                                      .radio_button_unchecked_rounded,
-                              key: ValueKey(widget.isSelected),
-                              size: 20,
-                              color: widget.isSelected
-                                  ? skin.deleteColor
-                                  : skin.surface(0.35),
-                            )
-                          : Container(
-                              key: const ValueKey('mic'),
-                              width: 34,
-                              height: 34,
-                              decoration: BoxDecoration(
-                                color: skin.primary
-                                    .withValues(alpha: 0.08),
-                                borderRadius:
-                                    BorderRadius.circular(9),
-                                border: Border.all(
-                                    color: skin.primary
-                                        .withValues(alpha: 0.18)),
-                              ),
-                              child: Icon(
-                                Icons.mic_none_rounded,
-                                size: 16,
-                                color: skin.primary
-                                    .withValues(alpha: 0.65),
-                              ),
-                            ),
-                    ),
-                    const SizedBox(width: 12),
-                    // Text
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment:
-                            CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            '„${widget.text}"',
-                            style: TextStyle(
-                              fontSize: 13.5,
-                              fontStyle: FontStyle.italic,
-                              color: skin.textPrimary
-                                  .withValues(alpha: 0.85),
-                              height: 1.35,
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 4),
-                          Row(children: [
-                            Container(
-                              width: 5,
-                              height: 5,
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFF59E0B)
-                                    .withValues(alpha: 0.80),
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                            const SizedBox(width: 5),
-                            Text(
-                              'Ausstehend',
-                              style: TextStyle(
-                                fontSize: 10.5,
-                                fontWeight: FontWeight.w500,
-                                color: skin.textMuted
-                                    .withValues(alpha: 0.65),
-                                letterSpacing: 0.2,
-                              ),
-                            ),
-                          ]),
-                        ],
+                child: selectionMode
+                    ? Icon(
+                        isSelected ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+                        key: ValueKey(isSelected),
+                        size: 20,
+                        color: isSelected ? skin.deleteColor : skin.surface(0.35),
+                      )
+                    : Container(
+                        key: const ValueKey('mic'),
+                        width: 34,
+                        height: 34,
+                        decoration: BoxDecoration(
+                          color: skin.primary.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(9),
+                          border: Border.all(color: skin.primary.withValues(alpha: 0.18)),
+                        ),
+                        child: Icon(Icons.mic_none_rounded, size: 16, color: skin.primary.withValues(alpha: 0.65)),
                       ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      '„$text"',
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontStyle: FontStyle.italic,
+                        color: skin.textPrimary.withValues(alpha: 0.85),
+                        height: 1.35,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    // Rechts: Swipe-Hint
-                    if (!widget.selectionMode)
-                      Padding(
-                        padding: const EdgeInsets.only(left: 6),
-                        child: Icon(
-                          Icons.chevron_left_rounded,
-                          size: 14,
-                          color: skin.surface(0.18),
+                    const SizedBox(height: 4),
+                    Row(children: [
+                      Container(
+                        width: 5,
+                        height: 5,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF59E0B).withValues(alpha: 0.80),
+                          shape: BoxShape.circle,
                         ),
                       ),
+                      const SizedBox(width: 5),
+                      Text(
+                        'Ausstehend',
+                        style: TextStyle(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w500,
+                          color: skin.textMuted.withValues(alpha: 0.65),
+                          letterSpacing: 0.2,
+                        ),
+                      ),
+                    ]),
                   ],
                 ),
               ),
-            ),
-          ],
+              if (!selectionMode)
+                Padding(
+                  padding: const EdgeInsets.only(left: 6),
+                  child: Icon(Icons.chevron_left_rounded, size: 14, color: skin.surface(0.18)),
+                ),
+            ],
+          ),
         ),
       ),
-    ),
-  );
-}
+    );
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1435,93 +1054,78 @@ class _CalibrationCardState extends State<_CalibrationCard> {
     final skin = widget.skin;
     final result = _result;
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: skin.isLight
-                ? Colors.white.withValues(alpha: skin.glassOpacity)
-                : skin.bgCard.withValues(alpha: skin.glassOpacity),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: skin.glassBorder),
-            boxShadow: [
-              BoxShadow(color: skin.glassShadow, blurRadius: 16, offset: const Offset(0, 4))
-            ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(children: [
-                Icon(Icons.insights_outlined, size: 15, color: skin.primary.withValues(alpha: 0.70)),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Schwellwert-Kalibrierung (Diktat)',
-                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: skin.textPrimary),
+    return GlassSurface(
+      borderRadius: 16,
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Icon(Icons.insights_outlined, size: 15, color: skin.primary.withValues(alpha: 0.70)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Schwellwert-Kalibrierung (Diktat)',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: skin.textPrimary),
+              ),
+            ),
+            GestureDetector(
+              onTap: _runCalibration,
+              child: Icon(Icons.refresh_rounded, size: 16, color: skin.primary.withValues(alpha: 0.65)),
+            ),
+          ]),
+          const SizedBox(height: 10),
+          if (!_checked)
+            Text('Lädt…', style: TextStyle(fontSize: 12.5, color: skin.textMuted))
+          else if (result == null)
+            Text(
+              'Noch nicht genug Daten — mindestens 8 bearbeitete und 8 unveränderte '
+              'Diktat-Tasks nötig. Einfach die App weiter normal benutzen, '
+              'hier später nochmal vorbeischauen.',
+              style: TextStyle(fontSize: 12.5, color: skin.textMuted, height: 1.45),
+            )
+          else
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _CalibrationRow(
+                  skin: skin,
+                  label: 'Median bei bearbeiteten Tasks',
+                  value: '${result.editedMedianWordCount.toStringAsFixed(1)} Wörter (n=${result.editedSampleCount})',
+                ),
+                _CalibrationRow(
+                  skin: skin,
+                  label: 'Median bei unveränderten Tasks',
+                  value: '${result.cleanMedianWordCount.toStringAsFixed(1)} Wörter (n=${result.cleanSampleCount})',
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: skin.primary.withValues(alpha: skin.isLight ? 0.06 : 0.10),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: skin.primary.withValues(alpha: 0.22)),
                   ),
-                ),
-                GestureDetector(
-                  onTap: _runCalibration,
-                  child: Icon(Icons.refresh_rounded, size: 16, color: skin.primary.withValues(alpha: 0.65)),
-                ),
-              ]),
-              const SizedBox(height: 10),
-              if (!_checked)
-                Text('Lädt…', style: TextStyle(fontSize: 12.5, color: skin.textMuted))
-              else if (result == null)
-                Text(
-                  'Noch nicht genug Daten — mindestens 8 bearbeitete und 8 unveränderte '
-                  'Diktat-Tasks nötig. Einfach die App weiter normal benutzen, '
-                  'hier später nochmal vorbeischauen.',
-                  style: TextStyle(fontSize: 12.5, color: skin.textMuted, height: 1.45),
-                )
-              else
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _CalibrationRow(
-                      skin: skin,
-                      label: 'Median bei bearbeiteten Tasks',
-                      value: '${result.editedMedianWordCount.toStringAsFixed(1)} Wörter (n=${result.editedSampleCount})',
-                    ),
-                    _CalibrationRow(
-                      skin: skin,
-                      label: 'Median bei unveränderten Tasks',
-                      value: '${result.cleanMedianWordCount.toStringAsFixed(1)} Wörter (n=${result.cleanSampleCount})',
-                    ),
-                    const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: skin.primary.withValues(alpha: skin.isLight ? 0.06 : 0.10),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: skin.primary.withValues(alpha: 0.22)),
+                  child: Row(children: [
+                    Icon(Icons.lightbulb_outline_rounded, size: 15, color: skin.primary),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Empfohlene wordCount-Schwelle: ${result.suggestedThreshold}',
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: skin.primary),
                       ),
-                      child: Row(children: [
-                        Icon(Icons.lightbulb_outline_rounded, size: 15, color: skin.primary),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'Empfohlene wordCount-Schwelle: ${result.suggestedThreshold}',
-                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: skin.primary),
-                          ),
-                        ),
-                      ]),
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Diesen Wert in tasks_screen.dart → _onRevealComplete für '
-                      '"wordCount > X" in der needsReview-Bedingung eintragen.',
-                      style: TextStyle(fontSize: 11, color: skin.surface(0.4), height: 1.4),
-                    ),
-                  ],
+                  ]),
                 ),
-            ],
-          ),
-        ),
+                const SizedBox(height: 8),
+                Text(
+                  'Diesen Wert in tasks_screen.dart → _onRevealComplete für '
+                  '"wordCount > X" in der needsReview-Bedingung eintragen.',
+                  style: TextStyle(fontSize: 11, color: skin.surface(0.4), height: 1.4),
+                ),
+              ],
+            ),
+        ],
       ),
     );
   }
@@ -1559,106 +1163,87 @@ class _HowItWorksCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(
-            sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: skin.isLight
-                ? Colors.white.withValues(alpha: skin.glassOpacity)
-                : skin.bgCard.withValues(alpha: skin.glassOpacity),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: skin.glassBorder),
-            boxShadow: [
-              BoxShadow(
-                  color: skin.glassShadow,
-                  blurRadius: 16,
-                  offset: const Offset(0, 4))
-            ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(children: [
-                Icon(Icons.help_outline_rounded,
-                    size: 15,
-                    color: skin.primary.withValues(alpha: 0.70)),
+    return GlassSurface(
+      borderRadius: 16,
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Icon(Icons.help_outline_rounded,
+                size: 15,
+                color: skin.primary.withValues(alpha: 0.70)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Wie funktioniert die Selbsterweiterung?',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: skin.textPrimary,
+                ),
+              ),
+            ),
+          ]),
+          const SizedBox(height: 12),
+          _StepRow(
+              skin: skin,
+              step: '1',
+              text:
+                  'Nutzer diktiert einen Satz — wird der Satz nicht vollständig erkannt (kein Muster, kein Datum), wird er automatisch als „pending" in Firestore gespeichert.'),
+          _StepRow(
+              skin: skin,
+              step: '2',
+              text:
+                  'Du (Admin) klickst auf „Analyse-Prompt erstellen" — alle offenen Sätze werden in einen KI-Prompt gepackt und in die Zwischenablage kopiert.'),
+          _StepRow(
+              skin: skin,
+              step: '3',
+              text:
+                  'Den Prompt in Gemini, ChatGPT oder Claude einfügen — das KI-Tool analysiert die Sätze und gibt ein JSON-Array zurück.'),
+          _StepRow(
+              skin: skin,
+              step: '4',
+              text:
+                  'JSON-Antwort über „KI-Antwort einfügen" importieren — du siehst eine Review-Liste und kannst einzelne Regeln bestätigen oder ablehnen.'),
+          _StepRow(
+              skin: skin,
+              step: '5',
+              text:
+                  'Bestätigte Regeln werden als aktive Regeln in Firestore gespeichert und sind sofort für alle Geräte verfügbar — die App erkennt diese Formulierungen ab sofort direkt.',
+              isLast: true),
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: skin.primary.withValues(
+                  alpha: skin.isLight ? 0.05 : 0.08),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                  color:
+                      skin.primary.withValues(alpha: 0.18)),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.info_outline_rounded,
+                    size: 13,
+                    color:
+                        skin.primary.withValues(alpha: 0.65)),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'Wie funktioniert die Selbsterweiterung?',
+                    'Nur Sätze die nicht erkannt wurden landen in Firestore. Vollständig erkannte Eingaben werden nie hochgeladen — Datenschutz first.',
                     style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: skin.textPrimary,
-                    ),
+                        fontSize: 11.5,
+                        color: skin.textMuted,
+                        height: 1.45),
                   ),
                 ),
-              ]),
-              const SizedBox(height: 12),
-              _StepRow(
-                  skin: skin,
-                  step: '1',
-                  text:
-                      'Nutzer diktiert einen Satz — wird der Satz nicht vollständig erkannt (kein Muster, kein Datum), wird er automatisch als „pending" in Firestore gespeichert.'),
-              _StepRow(
-                  skin: skin,
-                  step: '2',
-                  text:
-                      'Du (Admin) klickst auf „Analyse-Prompt erstellen" — alle offenen Sätze werden in einen KI-Prompt gepackt und in die Zwischenablage kopiert.'),
-              _StepRow(
-                  skin: skin,
-                  step: '3',
-                  text:
-                      'Den Prompt in Gemini, ChatGPT oder Claude einfügen — das KI-Tool analysiert die Sätze und gibt ein JSON-Array zurück.'),
-              _StepRow(
-                  skin: skin,
-                  step: '4',
-                  text:
-                      'JSON-Antwort über „KI-Antwort einfügen" importieren — du siehst eine Review-Liste und kannst einzelne Regeln bestätigen oder ablehnen.'),
-              _StepRow(
-                  skin: skin,
-                  step: '5',
-                  text:
-                      'Bestätigte Regeln werden als aktive Regeln in Firestore gespeichert und sind sofort für alle Geräte verfügbar — die App erkennt diese Formulierungen ab sofort direkt.',
-                  isLast: true),
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: skin.primary.withValues(
-                      alpha: skin.isLight ? 0.05 : 0.08),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                      color:
-                          skin.primary.withValues(alpha: 0.18)),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(Icons.info_outline_rounded,
-                        size: 13,
-                        color:
-                            skin.primary.withValues(alpha: 0.65)),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Nur Sätze die nicht erkannt wurden landen in Firestore. Vollständig erkannte Eingaben werden nie hochgeladen — Datenschutz first.',
-                        style: TextStyle(
-                            fontSize: 11.5,
-                            color: skin.textMuted,
-                            height: 1.45),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }

@@ -93,13 +93,27 @@ class _BugAdminScreenState extends State<BugAdminScreen> {
                           if (confirmed == true) _deleteWithAnimation(r);
                         },
                         onViewScreenshot: r.screenshotUrl != null ? () {
-                          showDialog(context: context, builder: (_) => Dialog(
-                            backgroundColor: Colors.transparent,
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(16),
-                              child: Image.network(r.screenshotUrl!),
+                          showGeneralDialog(
+                            context: context,
+                            barrierDismissible: true,
+                            barrierLabel: 'Schließen',
+                            barrierColor: Colors.black.withValues(alpha: 0.75),
+                            transitionDuration: const Duration(milliseconds: 220),
+                            transitionBuilder: (ctx, anim, _, child) =>
+                                FadeTransition(opacity: anim, child: child),
+                            pageBuilder: (ctx, _, __) => GestureDetector(
+                              onTap: () => Navigator.pop(ctx),
+                              child: Center(
+                                child: Padding(
+                                  padding: const EdgeInsets.all(24),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(16),
+                                    child: Image.network(r.screenshotUrl!),
+                                  ),
+                                ),
+                              ),
                             ),
-                          ));
+                          );
                         } : null,
                       ),
                     );
@@ -114,7 +128,7 @@ class _BugAdminScreenState extends State<BugAdminScreen> {
   }
 }
 
-// ── Bug Card mit Swipe-Delete (analog TaskCard) ────────────────────────────
+// ── Bug Card mit Swipe-Delete über GlassSwipeCard ──────────────────────────
 
 class _BugCard extends StatefulWidget {
   final BugReport report;
@@ -136,66 +150,16 @@ class _BugCard extends StatefulWidget {
   State<_BugCard> createState() => _BugCardState();
 }
 
-class _BugCardState extends State<_BugCard> with TickerProviderStateMixin {
-  static const double _revealWidth = 80.0;
-  static const double _snapThreshold = 40.0;
-  double _swipeOffset = 0.0;
-  bool _isOpen = false;
-  bool _dragging = false;
-  double _dragStartX = 0, _dragStartY = 0;
+class _BugCardState extends State<_BugCard> {
+  // Verweis auf das GlassSwipeCard-Widget, das die eigentliche
+  // Wisch- und Lösch-Animation übernimmt.
+  final _swipeKey = GlobalKey<GlassSwipeCardState>();
 
-  late AnimationController _deleteCtrl;
-  late Animation<double> _slideOut, _fadeOut, _heightCollapse;
-
-  @override
-  void initState() {
-    super.initState();
-    _deleteCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 500));
-    _slideOut = Tween<double>(begin: 0, end: -420).animate(
-        CurvedAnimation(parent: _deleteCtrl, curve: const Interval(0.0, 0.6, curve: Curves.easeInBack)));
-    _fadeOut = Tween<double>(begin: 1, end: 0).animate(
-        CurvedAnimation(parent: _deleteCtrl, curve: const Interval(0.25, 0.7, curve: Curves.easeOut)));
-    _heightCollapse = Tween<double>(begin: 1, end: 0).animate(
-        CurvedAnimation(parent: _deleteCtrl, curve: const Interval(0.6, 1.0, curve: Curves.easeInOut)));
-    _deleteCtrl.addListener(() { if (mounted) setState(() {}); });
-  }
-
-  @override
-  void dispose() {
-    _deleteCtrl.dispose();
-    super.dispose();
-  }
-
+  /// Wird vom Eltern-Screen (BugAdminScreen._deleteWithAnimation) aufgerufen,
+  /// NACHDEM der Nutzer im Dialog "Löschen" bestätigt hat.
+  /// Reicht den Befehl einfach an GlassSwipeCard weiter.
   void animateOutAndDelete(VoidCallback onDone) {
-    _deleteCtrl.forward().then((_) => onDone());
-  }
-
-  void _onPanStart(DragStartDetails d) {
-    _dragging = false;
-    _dragStartX = d.globalPosition.dx;
-    _dragStartY = d.globalPosition.dy;
-  }
-
-  void _onPanUpdate(DragUpdateDetails d) {
-    final dx = d.globalPosition.dx - _dragStartX;
-    final dy = (d.globalPosition.dy - _dragStartY).abs();
-    if (!_dragging) {
-      if (dy > dx.abs() || dx > 0 || dx.abs() < 8) return;
-      _dragging = true;
-    }
-    setState(() => _swipeOffset = ((_isOpen ? -_revealWidth : 0) + (d.globalPosition.dx - _dragStartX))
-        .clamp(-_revealWidth, 0.0));
-  }
-
-  void _onPanEnd(DragEndDetails d) {
-    if (!_dragging) return;
-    _dragging = false;
-    final v = d.primaryVelocity ?? 0;
-    if (_swipeOffset < -_snapThreshold || v < -400) {
-      setState(() { _swipeOffset = -_revealWidth; _isOpen = true; });
-    } else {
-      setState(() { _swipeOffset = 0; _isOpen = false; });
-    }
+    _swipeKey.currentState?.animateOutAndDelete(onDone);
   }
 
   @override
@@ -204,151 +168,99 @@ class _BugCardState extends State<_BugCard> with TickerProviderStateMixin {
     final r = widget.report;
     final dateStr = DateFormat('dd.MM.yy · HH:mm').format(r.createdAt);
 
-    return AnimatedBuilder(
-      animation: _deleteCtrl,
-      builder: (context, child) => SizeTransition(
-        sizeFactor: _heightCollapse,
-        axisAlignment: -1,
-        child: Opacity(
-          opacity: _fadeOut.value,
-          child: Transform.translate(offset: Offset(_slideOut.value, 0), child: child!),
-        ),
-      ),
-      child: GestureDetector(
-        onHorizontalDragStart: _onPanStart,
-        onHorizontalDragUpdate: _onPanUpdate,
-        onHorizontalDragEnd: _onPanEnd,
-        onTap: _isOpen ? () => setState(() { _swipeOffset = 0; _isOpen = false; }) : null,
-        child: ClipRect(
-          child: Stack(clipBehavior: Clip.hardEdge, children: [
-            // Delete-Bereich
-            Positioned(
-              right: 0, top: 4, bottom: 4, width: _revealWidth,
-              child: GestureDetector(
-                onTap: () {
-                  setState(() { _swipeOffset = 0; _isOpen = false; });
-                  widget.onDelete();
-                },
-                child: Opacity(
-                  opacity: (_swipeOffset.abs() / _revealWidth).clamp(0.0, 1.0),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(14),
-                    child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                      child: Container(
-                        margin: const EdgeInsets.only(left: 6),
-                        decoration: BoxDecoration(
-                          color: skin.deleteColor.withValues(alpha: 0.10),
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: skin.deleteColor.withValues(alpha: 0.25)),
-                        ),
-                        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                          Icon(Icons.delete_outline, color: skin.deleteColor, size: 20),
-                          const SizedBox(height: 3),
-                          Text('Löschen', style: TextStyle(
-                              color: skin.deleteColor, fontSize: 10, fontWeight: FontWeight.w600)),
-                        ]),
-                      ),
-                    ),
-                  ),
-                ),
+    return GlassSwipeCard(
+      key: _swipeKey,
+      cardKey: r.id,
+      onDelete: widget.onDelete,
+      animateDelete: false,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
+          child: Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: r.resolved
+                  ? skin.surface(0.04)
+                  : (skin.isLight ? Colors.white.withValues(alpha: skin.glassOpacity)
+                      : skin.bgCard.withValues(alpha: skin.glassOpacity)),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: r.resolved
+                    ? skin.surface(0.12)
+                    : skin.deleteColor.withValues(alpha: 0.30),
+                width: r.resolved ? 0.8 : 1.3,
               ),
             ),
-            // Card
-            Transform.translate(
-              offset: Offset(_swipeOffset, 0),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(14),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
-                  child: Container(
-                    padding: const EdgeInsets.all(14),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                // Resolved-Toggle
+                GestureDetector(
+                  onTap: widget.onToggleResolved,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    width: 22, height: 22,
                     decoration: BoxDecoration(
-                      color: r.resolved
-                          ? skin.surface(0.04)
-                          : (skin.isLight ? Colors.white.withValues(alpha: skin.glassOpacity)
-                              : skin.bgCard.withValues(alpha: skin.glassOpacity)),
-                      borderRadius: BorderRadius.circular(14),
+                      shape: BoxShape.circle,
+                      color: r.resolved ? skin.statComplete : Colors.transparent,
                       border: Border.all(
-                        color: r.resolved
-                            ? skin.surface(0.12)
-                            : const Color(0xFFEF5B5B).withValues(alpha: 0.30),
-                        width: r.resolved ? 0.8 : 1.3,
-                      ),
+                        color: r.resolved ? skin.statComplete : skin.surface(0.28),
+                        width: 1.8),
                     ),
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Row(children: [
-                        // Resolved-Toggle
-                        GestureDetector(
-                          onTap: widget.onToggleResolved,
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 180),
-                            width: 22, height: 22,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: r.resolved ? skin.statComplete : Colors.transparent,
-                              border: Border.all(
-                                color: r.resolved ? skin.statComplete : skin.surface(0.28),
-                                width: 1.8),
-                            ),
-                            child: r.resolved
-                                ? const Icon(Icons.check, size: 13, color: Colors.white) : null,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(child: Text(r.title,
-                          style: TextStyle(
-                            fontSize: 14, fontWeight: FontWeight.w700,
-                            color: r.resolved ? skin.surface(0.35) : skin.textPrimary,
-                            decoration: r.resolved ? TextDecoration.lineThrough : null,
-                            decorationColor: skin.surface(0.35),
-                          ))),
-                        if (r.screenshotUrl != null)
-                          GestureDetector(
-                            onTap: widget.onViewScreenshot,
-                            child: Padding(
-                              padding: const EdgeInsets.only(left: 8),
-                              child: Icon(Icons.image_outlined, size: 18, color: skin.primary),
-                            ),
-                          ),
-                      ]),
-                      if (r.description.isNotEmpty) ...[
-                        const SizedBox(height: 6),
-                        Padding(
-                          padding: const EdgeInsets.only(left: 32),
-                          child: Text(r.description,
-                            style: TextStyle(fontSize: 13, color: skin.surface(0.5), height: 1.4),
-                            maxLines: 3, overflow: TextOverflow.ellipsis),
-                        ),
-                      ],
-                      const SizedBox(height: 6),
-                      Padding(
-                        padding: const EdgeInsets.only(left: 32),
-                        child: Row(children: [
-                          Icon(Icons.access_time_outlined, size: 11, color: skin.surface(0.3)),
-                          const SizedBox(width: 4),
-                          Text(dateStr, style: TextStyle(fontSize: 11, color: skin.surface(0.3))),
-                          if (r.resolved) ...[
-                            const SizedBox(width: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: skin.statComplete.withValues(alpha: 0.15),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text('Erledigt',
-                                  style: TextStyle(fontSize: 10, color: skin.statComplete,
-                                      fontWeight: FontWeight.w600)),
-                            ),
-                          ],
-                        ]),
-                      ),
-                    ]),
+                    child: r.resolved
+                        ? const Icon(Icons.check, size: 13, color: Colors.white) : null,
                   ),
                 ),
+                const SizedBox(width: 10),
+                Expanded(child: Text(r.title,
+                  style: TextStyle(
+                    fontSize: 14, fontWeight: FontWeight.w700,
+                    color: r.resolved ? skin.surface(0.35) : skin.textPrimary,
+                    decoration: r.resolved ? TextDecoration.lineThrough : null,
+                    decorationColor: skin.surface(0.35),
+                  ))),
+                if (r.screenshotUrl != null)
+                  GestureDetector(
+                    onTap: widget.onViewScreenshot,
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 8),
+                      child: Icon(Icons.image_outlined, size: 18, color: skin.primary),
+                    ),
+                  ),
+              ]),
+              if (r.description.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Padding(
+                  padding: const EdgeInsets.only(left: 32),
+                  child: Text(r.description,
+                    style: TextStyle(fontSize: 13, color: skin.surface(0.5), height: 1.4),
+                    maxLines: 3, overflow: TextOverflow.ellipsis),
+                ),
+              ],
+              const SizedBox(height: 6),
+              Padding(
+                padding: const EdgeInsets.only(left: 32),
+                child: Row(children: [
+                  Icon(Icons.access_time_outlined, size: 11, color: skin.surface(0.3)),
+                  const SizedBox(width: 4),
+                  Text(dateStr, style: TextStyle(fontSize: 11, color: skin.surface(0.3))),
+                  if (r.resolved) ...[
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: skin.statComplete.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text('Erledigt',
+                          style: TextStyle(fontSize: 10, color: skin.statComplete,
+                              fontWeight: FontWeight.w600)),
+                    ),
+                  ],
+                ]),
               ),
-            ),
-          ]),
+            ]),
+          ),
         ),
       ),
     );
