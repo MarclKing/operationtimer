@@ -43,6 +43,10 @@ private extension Color {
             blue:  Double( rgb        & 0xFF) / 255
         )
     }
+    
+    func blendedDim() -> Color {
+        Color(hex: "#1B1E2A")
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -197,20 +201,203 @@ struct DayTile: View {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SMALL WIDGET — Schnellstart Fahrtenbuch
+// SMALL WIDGET — Fahrtenbuch KM-Scan Schnellstart
+// Tacho-Design mit Punkt-Skala und Nadel
 // ─────────────────────────────────────────────────────────────────────────────
 
-   struct SmallWidgetView: View {
+struct SmallWidgetView: View {
+    var progress: Double = 0.36
+
     var body: some View {
-        Image("road_bg")
-            .resizable()
-            .aspectRatio(contentMode: .fill)
-            .widgetURL(
-                URL(string: "optimes://fahrtenbuch/neue-fahrt/scan-km-start")
+        Canvas { context, size in
+            let cx = size.width / 2
+            let cy = size.height / 2
+            // ── Größerer Radius ──────────────────────────────────────
+            let r: CGFloat = min(size.width, size.height) * 0.50
+
+            let startAngle: Double = 150
+            let sweep: Double = 240
+            let endAngle: Double = startAngle + sweep
+
+            // ── Äußerer Bezel-Ring ──
+            let bezelRadius = r + 6
+            let bezelPath = Path(ellipseIn: CGRect(
+                x: cx - bezelRadius, y: cy - bezelRadius,
+                width: bezelRadius * 2, height: bezelRadius * 2
+            ))
+            context.stroke(
+                bezelPath,
+                with: .color(Shield.primary.opacity(0.10)),
+                style: StrokeStyle(lineWidth: 1.5)
             )
-            .containerBackground(for: .widget) {
-                Color.black
+
+            // ── Haupt-Ticks alle 30° ──
+            let majorTicks: [Double] = [150, 180, 210, 240, 270, 300, 330, 0, 30]
+            for angleDeg in majorTicks {
+                drawTick(
+                    context: context, cx: cx, cy: cy,
+                    angleDeg: angleDeg,
+                    innerR: r - 6, outerR: bezelRadius,   // ← bis zum Bezel-Rand
+                    color: Shield.secondary.opacity(0.55),
+                    lineWidth: 2
+                )
             }
+
+            // ── Neben-Ticks alle 10° ──
+            let minorTicks: [Double] = [160, 170, 190, 200, 220, 230,
+                                         250, 260, 280, 290, 310, 320,
+                                         340, 350, 10, 20]
+            for angleDeg in minorTicks {
+                drawTick(
+                    context: context, cx: cx, cy: cy,
+                    angleDeg: angleDeg,
+                    innerR: r - 4, outerR: bezelRadius - 2, // ← nahe am Rand
+                    color: Shield.primary.opacity(0.18),
+                    lineWidth: 1.2
+                )
+            }
+
+            // ── Punkt-Skala ──
+            let dotRadius = r - 11
+            let dotCount = 21
+            let dotStep = sweep / Double(dotCount - 1)
+            let activeDotCount = Int((Double(dotCount - 1) * progress).rounded())
+
+            for i in 0..<dotCount {
+                let angleDeg = startAngle + Double(i) * dotStep
+                let isActive = i <= activeDotCount
+                let distanceFromEnd = activeDotCount - i
+
+                let (fillColor, dotSize): (Color, CGFloat) = {
+                    if !isActive {
+                        return (Shield.bgCard.opacity(0.9).blendedDim(), 1.7)
+                    }
+                    switch distanceFromEnd {
+                    case 0: return (Color(hex: "#9DBBFF"), 2.8)
+                    case 1: return (Color(hex: "#7FA6FF"), 2.6)
+                    case 2, 3: return (Color(hex: "#5A8CFF"), 2.4)
+                    default: return (Shield.primary, 2.2)
+                    }
+                }()
+
+                drawDot(
+                    context: context, cx: cx, cy: cy,
+                    angleDeg: angleDeg, radius: dotRadius,
+                    size: dotSize, color: fillColor,
+                    glow: isActive && distanceFromEnd <= 1
+                )
+            }
+
+            // ── Tacho-Nadel — schließt bündig am äußersten Bezel ab ──
+            let needleAngleDeg = startAngle + Double(activeDotCount) * dotStep
+            let needleRad = needleAngleDeg * .pi / 180
+
+            // Spitze genau auf dem Bezel-Ring
+            let needleOuter = CGPoint(
+                x: cx + bezelRadius * cos(needleRad),
+                y: cy + bezelRadius * sin(needleRad)
+            )
+            // Basis leicht innerhalb der Dot-Skala
+            let needleInner = CGPoint(
+                x: cx + (dotRadius - 4) * cos(needleRad),
+                y: cy + (dotRadius - 4) * sin(needleRad)
+            )
+            var needlePath = Path()
+            needlePath.move(to: needleOuter)
+            needlePath.addLine(to: needleInner)
+
+            context.stroke(
+                needlePath,
+                with: .color(.white),
+                style: StrokeStyle(lineWidth: 3, lineCap: .round)
+            )
+            context.stroke(
+                needlePath,
+                with: .color(Color(hex: "#5A8CFF").opacity(0.6)),
+                style: StrokeStyle(lineWidth: 1, lineCap: .round)
+            )
+
+            // ── Zahlen-Skala — nach innen verschoben wegen größerem r ──
+            drawLabel(context: context, cx: cx, cy: cy, r: r,
+                      angleDeg: startAngle, text: "", radiusOffset: 28)
+            drawLabel(context: context, cx: cx, cy: cy, r: r,
+                      angleDeg: startAngle + sweep / 2, text: "", radiusOffset: 30)
+            drawLabel(context: context, cx: cx, cy: cy, r: r,
+                      angleDeg: endAngle, text: "", radiusOffset: 28)
+        }
+        .overlay(alignment: .center) {
+            VStack(spacing: 0) {
+                Image(systemName: "car.fill")
+                    .font(.system(size: 28, weight: .regular))
+                    .foregroundColor(.white)
+
+                Spacer().frame(height: 14)
+                Text("Fahrt starten")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.white)
+                Text("KM scannen")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(Color(hex: "#5A8CFF"))
+            }
+            .offset(y: 22)  // etwas nach unten, damit Platz zum Tacho-Rand bleibt
+        }
+        .widgetURL(URL(string: "optimes://fahrtenbuch/neue-fahrt/scan-km-start"))
+        .modifier(SmallBackgroundModifier())
+    }
+
+    // ── Hilfsfunktionen (unverändert) ──────────────────────────────────────
+
+    private func drawTick(context: GraphicsContext, cx: CGFloat, cy: CGFloat,
+                           angleDeg: Double, innerR: CGFloat, outerR: CGFloat,
+                           color: Color, lineWidth: CGFloat) {
+        let rad = angleDeg * .pi / 180
+        let inner = CGPoint(x: cx + innerR * cos(rad), y: cy + innerR * sin(rad))
+        let outer = CGPoint(x: cx + outerR * cos(rad), y: cy + outerR * sin(rad))
+        var path = Path()
+        path.move(to: inner)
+        path.addLine(to: outer)
+        context.stroke(path, with: .color(color),
+                        style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+    }
+
+    private func drawDot(context: GraphicsContext, cx: CGFloat, cy: CGFloat,
+                          angleDeg: Double, radius: CGFloat, size: CGFloat,
+                          color: Color, glow: Bool) {
+        let rad = angleDeg * .pi / 180
+        let point = CGPoint(x: cx + radius * cos(rad), y: cy + radius * sin(rad))
+        let rect = CGRect(x: point.x - size, y: point.y - size,
+                           width: size * 2, height: size * 2)
+        if glow {
+            context.fill(Path(ellipseIn: rect.insetBy(dx: -1.5, dy: -1.5)),
+                          with: .color(color.opacity(0.35)))
+        }
+        context.fill(Path(ellipseIn: rect), with: .color(color))
+    }
+
+    private func drawLabel(context: GraphicsContext, cx: CGFloat, cy: CGFloat,
+                            r: CGFloat, angleDeg: Double, text: String,
+                            radiusOffset: CGFloat) {
+        let rad = angleDeg * .pi / 180
+        let labelR = r - radiusOffset
+        let point = CGPoint(x: cx + labelR * cos(rad), y: cy + labelR * sin(rad))
+        context.draw(
+            Text(text)
+                .font(.system(size: 8.5, weight: .regular))
+                .foregroundColor(Shield.secondary.opacity(0.8)),
+            at: point
+        )
+    }
+}
+
+struct SmallBackgroundModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 17.0, *) {
+            content.containerBackground(for: .widget) {
+                Color(hex: "#0A0B0F")
+            }
+        } else {
+            content.background(Color(hex: "#0A0B0F"))
+        }
     }
 }
 
@@ -331,7 +518,7 @@ struct LargeWidgetView: View {
                     let thisFirst = weekDates.first!
                     if Calendar.current.component(.month, from: thisFirst) !=
                        Calendar.current.component(.month, from: prevLast) {
-                        // Trennlinie mit Verlauf (simuliert glasige Tiefe)
+                        // Trennlinie mit Verlauf
                         Rectangle()
                             .fill(
                                 LinearGradient(
@@ -403,30 +590,29 @@ struct DienstplanWidgetView: View {
     }
 
     var body: some View {
-    Group {
-        switch family {
-        case .systemSmall:
-    SmallWidgetView()
+        Group {
+            switch family {
+            case .systemSmall:
+                SmallWidgetView()
 
-        case .systemMedium:
-            MediumWidgetView(entry: entry, todayStr: todayStr)
-                .modifier(ShieldBackgroundModifier())
+            case .systemMedium:
+                MediumWidgetView(entry: entry, todayStr: todayStr)
+                    .modifier(ShieldBackgroundModifier())
 
-        case .systemLarge:
-            LargeWidgetView(entry: entry, todayStr: todayStr)
-                .modifier(ShieldBackgroundModifier())
+            case .systemLarge:
+                LargeWidgetView(entry: entry, todayStr: todayStr)
+                    .modifier(ShieldBackgroundModifier())
 
-        default:
-            MediumWidgetView(entry: entry, todayStr: todayStr)
-                .modifier(ShieldBackgroundModifier())
+            default:
+                MediumWidgetView(entry: entry, todayStr: todayStr)
+                    .modifier(ShieldBackgroundModifier())
+            }
         }
     }
-   } // ← .modifier weg von hier
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Hintergrund-Modifier — Shield bgBase + Glasrand oben
-// Ersetzt WidgetBackgroundModifier
 // ─────────────────────────────────────────────────────────────────────────────
 
 struct ShieldBackgroundModifier: ViewModifier {
@@ -437,7 +623,7 @@ struct ShieldBackgroundModifier: ViewModifier {
                     // Basis: tiefes Dunkel
                     Shield.bgBase
 
-                    // Obere Glas-Schimmer-Schicht (simuliert BackdropFilter)
+                    // Obere Glas-Schimmer-Schicht
                     LinearGradient(
                         colors: [Shield.primary.opacity(0.10), Color.clear],
                         startPoint: .top,
@@ -463,7 +649,7 @@ struct ShieldBackgroundModifier: ViewModifier {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Widget-Definition (unverändert)
+// Widget-Definition
 // ─────────────────────────────────────────────────────────────────────────────
 
 struct DienstplanWidget: Widget {
