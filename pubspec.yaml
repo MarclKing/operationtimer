@@ -26,7 +26,7 @@ dependencies:
   image_picker: ^1.1.2
   google_mlkit_text_recognition: ^0.13.0
   permission_handler: ^11.3.1
-  camera: ^0.11.0+2
+  camera: ^0.11.1
   flutter_native_splash: ^2.4.8  # ← auf 2.4.8 erhöht
   speech_to_text: ^7.0.0 
   flutter_local_notifications: ^18.0.0

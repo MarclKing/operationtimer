@@ -149,6 +149,7 @@ class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
   static final mainScreenKey = GlobalKey<_MainScreenState>();
+  static final navigatorKey = GlobalKey<NavigatorState>();
 
   @override
   Widget build(BuildContext context) {
@@ -160,6 +161,7 @@ class MyApp extends StatelessWidget {
         return SkinProvider(
           skin: skin,
           child: MaterialApp(
+            navigatorKey: MyApp.navigatorKey,
             title: 'OpTimes',
             debugShowCheckedModeBanner: false,
             onGenerateRoute: (settings) {
@@ -234,6 +236,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   DateTime _scheduleViewMonth = DateTime(DateTime.now().year, DateTime.now().month);
 
   StreamSubscription? _intentSub;
+  Timer? _cleanupTimer;
   final _homeKey = GlobalKey<HomeScreenState>();
   final _scheduleKey = GlobalKey<ScheduleScreenState>();
   final _monthKey = GlobalKey<MonthScreenState>();
@@ -355,6 +358,12 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       NotificationService.instance.requestPermissions();
     });
 
+     // NEU: periodischer Cleanup-Check, damit erledigte Aufgaben auch
+    // gelöscht werden, ohne dass die App komplett neu gestartet wird.
+    _cleanupTimer = Timer.periodic(const Duration(hours: 1), (_) {
+      runAutoCleanup();
+    });
+
     // ── NEU: Review-Callback für Homescreen ──
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _homeKey.currentState?.onReviewFromHomescreen = (parsed, logRef) {
@@ -368,6 +377,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
 
   @override
   void dispose() {
+    _cleanupTimer?.cancel();
     _intentSub?.cancel();
     _slideCtrl.dispose();
     _menuAnimController.dispose();
@@ -1144,12 +1154,12 @@ class _KfzVerwaltungSheetState extends State<_KfzVerwaltungSheet> {
     child: GlassSheet(
       skin: skin,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SheetHandle(skin: skin),
+  padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
+  child: Column(
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Center(child: SheetHandle(skin: skin)),
             const SizedBox(height: 16),
             Text('KM-Stand bearbeiten – $kz',
                 style: TextStyle(color: skin.textPrimary, fontSize: 16, fontWeight: FontWeight.w700)),

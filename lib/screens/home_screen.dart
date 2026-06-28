@@ -75,6 +75,12 @@ class HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     // ── NEU: Wetter-Fetch erst NACH dem ersten Frame anstoßen ──────────────
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _refreshWeather();
+      // Falls der erste Versuch scheitert (z.B. GPS-Permission-Dialog war
+      // noch nicht beantwortet, langsamer Fix), nach 8s automatisch erneut
+      // versuchen, statt für immer "Wird geladen…" anzuzeigen.
+      Future.delayed(const Duration(seconds: 8), () {
+        if (mounted && _weatherData == null) _refreshWeather();
+      });
     });
   }
 

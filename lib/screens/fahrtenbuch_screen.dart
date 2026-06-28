@@ -234,6 +234,19 @@ class KmMemory {
       'datum': DateTime.now().toIso8601String(),
       'kennzeichen': kennzeichen.toUpperCase(),
     };
+    // Einträge auf 30 begrenzen — älteste zuerst entfernen
+    if (all.length > 30) {
+      final sorted = all.entries.toList()
+        ..sort((a, b) {
+          final da = DateTime.tryParse(a.value['datum'] as String? ?? '') ?? DateTime(2000);
+          final db = DateTime.tryParse(b.value['datum'] as String? ?? '') ?? DateTime(2000);
+          return da.compareTo(db); // älteste zuerst
+        });
+      final toRemove = sorted.take(all.length - 30);
+      for (final entry in toRemove) {
+        all.remove(entry.key);
+      }
+    }
     box.put(_hiveKey, all);
   }
 
@@ -850,6 +863,16 @@ _selectionBarAnim = CurvedAnimation(
     final box = Hive.box('einstellungen');
     final monthKey = DateFormat('yyyy-MM').format(_selectedMonth);
     final existing = _getFahrtenForMonth();
+    // Foto-Dateien löschen bevor Eintrag entfernt wird
+    final toDelete = existing.where((f) => f.id == id).firstOrNull;
+    if (toDelete != null) {
+      if (toDelete.fotoStartPath != null) {
+        try { dartio.File(toDelete.fotoStartPath!).deleteSync(); } catch (_) {}
+      }
+      if (toDelete.fotoEndPath != null) {
+        try { dartio.File(toDelete.fotoEndPath!).deleteSync(); } catch (_) {}
+      }
+    }
     existing.removeWhere((f) => f.id == id);
     box.put('fahrten_$monthKey', existing.map((f) => f.toMap()).toList());
     setState(() {});
@@ -2352,7 +2375,8 @@ class _FahrtEintragenSheetState extends State<_FahrtEintragenSheet> {
       final kmInt = int.tryParse(km);
       if (kmInt != null && kmInt > 0 && _kennzeichenCtrl.text.trim().isEmpty) {
         final candidates = KmMemory.findCandidates(kmInt);
-        if (candidates.isNotEmpty && mounted) {
+        if (candidates.isNotEmpty && mounted && !_kmCandidateShown) {
+          _kmCandidateShown = true;
           await Future.delayed(const Duration(milliseconds: 400));
           if (mounted) _showKmCandidateDialog(candidates);
         }
@@ -3404,7 +3428,7 @@ class _KmCandidate {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// KENNZEICHEN INPUT MIT AUTOVERVOLLSTÄNDIGUNG
+// KENNZEICHEN 3-FELDER EINGABE
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _KennzeichenInputRow extends StatefulWidget {
@@ -3417,130 +3441,420 @@ class _KennzeichenInputRow extends StatefulWidget {
 }
 
 class _KennzeichenInputRowState extends State<_KennzeichenInputRow> {
-  late List<String> _known;
-  final _focusNode = FocusNode();
+  final _ortCtrl = TextEditingController();
+  final _buchCtrl = TextEditingController();
+  final _numCtrl  = TextEditingController();
+
+  final _ortFocus  = FocusNode();
+  final _buchFocus = FocusNode();
+  final _numFocus  = FocusNode();
+
+  List<String> _known = [];
+
+  bool _syncing = false;
 
   @override
   void initState() {
     super.initState();
     _known = KennzeichenHelper.loadKnownKennzeichen();
-    _focusNode.addListener(() {
-      if (!_focusNode.hasFocus) {
-        final input = widget.ctrl.text.trim();
-        if (input.isEmpty) return;
-        for (final k in _known) {
-          if (k.replaceAll(RegExp(r'[\s\-]'), '').toLowerCase() ==
-              input.replaceAll(RegExp(r'[\s\-]'), '').toLowerCase()) {
-            widget.ctrl.value = TextEditingValue(text: k, selection: TextSelection.collapsed(offset: k.length));
-            return;
-          }
-        }
-        final upper = input.toUpperCase();
-        if (upper != widget.ctrl.text) {
-          widget.ctrl.value = TextEditingValue(text: upper, selection: TextSelection.collapsed(offset: upper.length));
-        }
-      }
-    });
+
+    // Beim Start: vorhandenen Wert aus ctrl aufsplitten
+    _splitIntoFields(widget.ctrl.text);
+
+    // Wenn ctrl von außen gesetzt wird (z.B. KM-Scan-Erkennung)
+    widget.ctrl.addListener(_onExternalChange);
+
+    _ortCtrl.addListener(_onFieldChange);
+    _buchCtrl.addListener(_onFieldChange);
+    _numCtrl.addListener(_onFieldChange);
+  }
+
+  void _onExternalChange() {
+    if (_syncing) return;
+    // Nur reagieren wenn sich der zusammengesetzte Wert wirklich unterscheidet
+    final assembled = _assemble();
+    if (widget.ctrl.text != assembled) {
+      _splitIntoFields(widget.ctrl.text);
+    }
+  }
+
+  /// Zerlegt "B-UX 157" oder "BUX157" in die drei Felder
+  void _splitIntoFields(String raw) {
+    if (raw.isEmpty) {
+      _ortCtrl.text  = '';
+      _buchCtrl.text = '';
+      _numCtrl.text  = '';
+      return;
+    }
+
+    final upper = raw.trim().toUpperCase();
+
+    // ── Strategie 1: Format "ORT-BUCH NR" mit Bindestrich als Anker ──
+    // Bindestrich trennt Ort von Buchstaben zuverlässig
+    final dashMatch = RegExp(
+      r'^([A-ZÄÖÜ]{1,3})\-([A-ZÄÖÜ]{1,2})\s*(\d{1,4}[EH]?)$',
+    ).firstMatch(upper);
+    if (dashMatch != null) {
+      _ortCtrl.text  = dashMatch.group(1)!;
+      _buchCtrl.text = dashMatch.group(2)!;
+      _numCtrl.text  = dashMatch.group(3)!;
+      return;
+    }
+
+    // ── Strategie 2: Format "ORT-BUCH" ohne Nummer ──
+    final dashNoNumMatch = RegExp(
+      r'^([A-ZÄÖÜ]{1,3})\-([A-ZÄÖÜ]{1,2})$',
+    ).firstMatch(upper);
+    if (dashNoNumMatch != null) {
+      _ortCtrl.text  = dashNoNumMatch.group(1)!;
+      _buchCtrl.text = dashNoNumMatch.group(2)!;
+      _numCtrl.text  = '';
+      return;
+    }
+
+    // ── Strategie 3: Kein Bindestrich — nur Buchstabenblock + Zahlen ──
+    // Hier ist Ambiguität unvermeidbar; wir nehmen max 3 für Ort,
+    // dann max 2 für Buchstaben, dann Zahlen
+    final cleaned = upper.replaceAll(RegExp(r'[\s\-]'), '');
+    final noSepMatch = RegExp(
+      r'^([A-ZÄÖÜ]{1,3})([A-ZÄÖÜ]{1,2})(\d{1,4}[EH]?)$',
+    ).firstMatch(cleaned);
+    if (noSepMatch != null) {
+      _ortCtrl.text  = noSepMatch.group(1)!;
+      _buchCtrl.text = noSepMatch.group(2)!;
+      _numCtrl.text  = noSepMatch.group(3)!;
+      return;
+    }
+
+    // ── Fallback: nur Buchstaben, kein Muster erkannt ──
+    _ortCtrl.text  = cleaned.length >= 1
+        ? cleaned.replaceAll(RegExp(r'\d'), '').substring(
+            0, cleaned.replaceAll(RegExp(r'\d'), '').length.clamp(0, 3))
+        : '';
+    _buchCtrl.text = '';
+    _numCtrl.text  = cleaned.replaceAll(RegExp(r'[^\d]'), '').substring(
+        0, cleaned.replaceAll(RegExp(r'[^\d]'), '').length.clamp(0, 4));
+  }
+
+  String _assemble() {
+    final ort  = _ortCtrl.text.trim().toUpperCase();
+    final buch = _buchCtrl.text.trim().toUpperCase();
+    final num  = _numCtrl.text.trim();
+    if (ort.isEmpty && buch.isEmpty && num.isEmpty) return '';
+    if (ort.isNotEmpty && buch.isEmpty && num.isEmpty) return ort;
+    if (ort.isNotEmpty && buch.isNotEmpty && num.isEmpty) return '$ort-$buch';
+    return '$ort-$buch $num';
+  }
+
+  void _onFieldChange() {
+    _syncing = true;
+    widget.ctrl.value = TextEditingValue(
+      text: _assemble(),
+      selection: const TextSelection.collapsed(offset: 0),
+    );
+    _syncing = false;
   }
 
   @override
-  void dispose() { _focusNode.dispose(); super.dispose(); }
+  void dispose() {
+    widget.ctrl.removeListener(_onExternalChange);
+    _ortCtrl.dispose();
+    _buchCtrl.dispose();
+    _numCtrl.dispose();
+    _ortFocus.dispose();
+    _buchFocus.dispose();
+    _numFocus.dispose();
+    super.dispose();
+  }
+
+  /// Chip antippen → alle Felder befüllen
+  void _applyKennzeichen(String kz) {
+    HapticFeedback.selectionClick();
+    _splitIntoFields(kz);
+    _onFieldChange();
+    setState(() {});
+    FocusManager.instance.primaryFocus?.unfocus();
+  }
 
   @override
   Widget build(BuildContext context) {
     final skin = widget.skin;
-    return RawAutocomplete<String>(
-      textEditingController: widget.ctrl,
-      focusNode: _focusNode,
-      optionsBuilder: (textValue) {
-        if (textValue.text.trim().isEmpty) return _known.take(5);
-        return KennzeichenHelper.suggestions(textValue.text, _known).take(5);
-      },
-      onSelected: (selection) {
-        widget.ctrl.value = TextEditingValue(text: selection, selection: TextSelection.collapsed(offset: selection.length));
-      },
-      fieldViewBuilder: (context, controller, focusNode, onSubmitted) {
-        return GestureDetector(
-          onDoubleTap: () { HapticFeedback.lightImpact(); controller.clear(); },
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                decoration: BoxDecoration(
-                  color: skin.isLight ? Colors.white.withValues(alpha: skin.glassOpacity) : skin.bgCard.withValues(alpha: skin.glassOpacity),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: skin.glassBorder),
-                  boxShadow: [BoxShadow(color: skin.glassShadow, blurRadius: 16, offset: const Offset(0, 4))],
-                ),
-                child: Row(children: [
-                  Icon(Icons.directions_car_outlined, size: 18, color: skin.primary),
-                  const SizedBox(width: 12),
-                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text('KENNZEICHEN', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: skin.primary, letterSpacing: 1.0)),
-                    const SizedBox(height: 4),
-                    TextField(
-                      controller: controller, focusNode: focusNode,
-                      textCapitalization: TextCapitalization.characters,
-                      autocorrect: false,
-                      enableSuggestions: false,
-                      smartDashesType: SmartDashesType.disabled,
-                      smartQuotesType: SmartQuotesType.disabled,
-                      style: TextStyle(color: skin.textPrimary, fontSize: 15, fontWeight: FontWeight.w600),
-                      decoration: InputDecoration(
-                        hintText: 'z.B. B-AB 1234 oder bab1234',
-                        hintStyle: TextStyle(color: skin.surface(0.3), fontSize: 15),
-                        border: InputBorder.none, isDense: true, contentPadding: EdgeInsets.zero,
+
+    // Vorschläge aus bekannten Kennzeichen
+    final chips = _known.take(8).toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // ── 3-Felder Zeile ──────────────────────────────────────────────
+        ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: skin.isLight
+                    ? Colors.white.withValues(alpha: skin.glassOpacity)
+                    : skin.bgCard.withValues(alpha: skin.glassOpacity),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: skin.glassBorder),
+                boxShadow: [BoxShadow(color: skin.glassShadow, blurRadius: 16, offset: const Offset(0, 4))],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Header-Zeile
+                  Row(children: [
+                    Icon(Icons.directions_car_outlined, size: 18, color: skin.primary),
+                    const SizedBox(width: 10),
+                    Text(
+                      'KENNZEICHEN',
+                      style: TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w700,
+                        color: skin.primary,
+                        letterSpacing: 1.0,
                       ),
-                      onSubmitted: (_) => onSubmitted(),
                     ),
-                  ])),
-                ]),
-              ),
-            ),
-          ),
-        );
-      },
-      optionsViewBuilder: (context, onSelected, options) {
-        return Align(
-          alignment: Alignment.topLeft,
-          child: Material(
-            color: Colors.transparent,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(14),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
-                child: Container(
-                  width: 220,
-                  constraints: const BoxConstraints(maxHeight: 200),
-                  decoration: BoxDecoration(
-                    color: skin.isLight ? Colors.white.withValues(alpha: 0.92) : skin.bgCard.withValues(alpha: 0.92),
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: skin.glassBorder),
-                    boxShadow: [BoxShadow(color: skin.glassShadow, blurRadius: 16, offset: const Offset(0, 4))],
-                  ),
-                  child: ListView.builder(
-                    padding: EdgeInsets.zero, shrinkWrap: true,
-                    itemCount: options.length,
-                    itemBuilder: (context, index) {
-                      final option = options.elementAt(index);
-                      return InkWell(
-                        onTap: () => onSelected(option),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                          child: Text(option, style: TextStyle(color: skin.textPrimary, fontSize: 14, fontWeight: FontWeight.w500)),
+                  ]),
+                  const SizedBox(height: 10),
+                  // Die drei Eingabefelder
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      // Feld 1: Ortskennung (max 3 Buchstaben) — flex 3
+                      Expanded(
+                        flex: 3,
+                        child: _KzField(
+                          skin: skin,
+                          ctrl: _ortCtrl,
+                          focus: _ortFocus,
+                          hint: 'B',
+                          sublabel: 'ORT',
+                          maxLen: 3,
+                          lettersOnly: true,
+                          onChanged: (v) {
+                            if (v.length == 3) {
+                              FocusScope.of(context).requestFocus(_buchFocus);
+                            }
+                            _onFieldChange();
+                            setState(() {});
+                          },
                         ),
-                      );
-                    },
+                      ),
+                      // Trennstrich
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 6),
+                        child: Text(
+                          '–',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w300,
+                            color: skin.surface(0.4),
+                          ),
+                        ),
+                      ),
+                      // Feld 2: Buchstaben (max 2) — flex 2
+                      Expanded(
+                        flex: 2,
+                        child: _KzField(
+                          skin: skin,
+                          ctrl: _buchCtrl,
+                          focus: _buchFocus,
+                          hint: 'AB',
+                          sublabel: 'BUCHST.',
+                          maxLen: 2,
+                          lettersOnly: true,
+                          onChanged: (v) {
+                            if (v.length == 2) {
+                              FocusScope.of(context).requestFocus(_numFocus);
+                            }
+                            _onFieldChange();
+                            setState(() {});
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      // Feld 3: Nummer (max 4 Ziffern) — flex 3
+                      Expanded(
+                        flex: 3,
+                        child: _KzField(
+                          skin: skin,
+                          ctrl: _numCtrl,
+                          focus: _numFocus,
+                          hint: '1234',
+                          sublabel: 'NR.',
+                          maxLen: 4,
+                          lettersOnly: false,
+                          onChanged: (v) {
+                            if (v.length == 4) {
+                              FocusManager.instance.primaryFocus?.unfocus();
+                            }
+                            _onFieldChange();
+                            setState(() {});
+                          },
+                        ),
+                      ),
+                    ],
                   ),
-                ),
+                ],
               ),
             ),
           ),
-        );
-      },
+        ),
+
+        // ── Chips: zuletzt benutzte Kennzeichen ────────────────────────
+        if (chips.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 30,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              itemCount: chips.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 6),
+              itemBuilder: (_, i) {
+                final kz = chips[i];
+                final isActive = _assemble().toUpperCase() == kz.toUpperCase();
+                return GestureDetector(
+                  onTap: () => _applyKennzeichen(kz),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 150),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: isActive
+                          ? skin.primary.withValues(alpha: 0.14)
+                          : skin.surface(0.06),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: isActive
+                            ? skin.primary.withValues(alpha: 0.45)
+                            : skin.surface(0.12),
+                        width: isActive ? 1.5 : 1.0,
+                      ),
+                    ),
+                    child: Text(
+                      kz,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: isActive ? skin.primary : skin.surface(0.5),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ],
     );
+  }
+}
+
+// ── Einzelnes KZ-Eingabefeld ──────────────────────────────────────────────────
+
+class _KzField extends StatelessWidget {
+  final AppSkin skin;
+  final TextEditingController ctrl;
+  final FocusNode focus;
+  final String hint;
+  final String sublabel;
+  final int maxLen;
+  final bool lettersOnly;
+  final void Function(String) onChanged;
+
+  const _KzField({
+    required this.skin,
+    required this.ctrl,
+    required this.focus,
+    required this.hint,
+    required this.sublabel,
+    required this.maxLen,
+    required this.lettersOnly,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Text(
+            sublabel,
+            style: TextStyle(
+              fontSize: 8,
+              fontWeight: FontWeight.w600,
+              color: skin.surface(0.35),
+              letterSpacing: 0.8,
+            ),
+          ),
+          const SizedBox(height: 4),
+          TextField(
+            controller: ctrl,
+            focusNode: focus,
+            textAlign: TextAlign.center,
+            textCapitalization: TextCapitalization.characters,
+            keyboardType: lettersOnly
+                ? TextInputType.text
+                : TextInputType.number,
+            inputFormatters: lettersOnly
+                ? [
+                    FilteringTextInputFormatter.allow(RegExp(r'[A-ZÄÖÜa-zäöü]')),
+                    TextInputFormatter.withFunction((old, nw) {
+                      return nw.copyWith(text: nw.text.toUpperCase());
+                    }),
+                    LengthLimitingTextInputFormatter(maxLen),
+                  ]
+                : [
+                    FilteringTextInputFormatter.digitsOnly,
+                    // Keine führende Null
+                    TextInputFormatter.withFunction((old, nw) {
+                      final t = nw.text;
+                      if (t.length > 1 && t.startsWith('0')) {
+                        return old;
+                      }
+                      return nw;
+                    }),
+                    LengthLimitingTextInputFormatter(maxLen),
+                  ],
+            onChanged: onChanged,
+            style: TextStyle(
+              color: skin.textPrimary,
+              fontSize: 17,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.5,
+            ),
+            decoration: InputDecoration(
+              hintText: hint,
+              hintStyle: TextStyle(
+                color: skin.surface(0.22),
+                fontSize: 17,
+                fontWeight: FontWeight.w400,
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide(color: skin.glassBorder, width: 1.0),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide(color: skin.glassBorder, width: 1.0),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide(color: skin.primary.withValues(alpha: 0.6), width: 1.5),
+              ),
+              isDense: true,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+              filled: true,
+              fillColor: skin.isLight
+                  ? Colors.white.withValues(alpha: 0.5)
+                  : Colors.white.withValues(alpha: 0.05),
+            ),
+          ),
+        ],
+      );
   }
 }
 

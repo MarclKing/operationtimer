@@ -10,6 +10,9 @@ import '../services/spoken_task_parser.dart';
 import '../services/speech_normalizer.dart';
 import '../services/speech_log.dart';
 import '../services/rule_engine.dart';
+import '../services/speech_service.dart';
+import 'glass_snackbar.dart';
+import '../main.dart' show MyApp;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DICTATION FAB — wiederverwendbarer Diktier-Button mit Live-Bubble
@@ -51,8 +54,8 @@ class DictationFab extends StatefulWidget {
 
 class DictationFabState extends State<DictationFab>
     with TickerProviderStateMixin {
-  final stt.SpeechToText _speech = stt.SpeechToText();
-  bool _speechAvailable = false;
+  stt.SpeechToText get _speech => SpeechService.instance.speech;
+  bool get _speechAvailable => SpeechService.instance.isAvailable;
 
   DictationPhase _phase = DictationPhase.idle;
   String _liveTranscript = '';
@@ -149,7 +152,7 @@ class DictationFabState extends State<DictationFab>
   }
 
   Future<void> _initSpeech() async {
-    final available = await _speech.initialize(
+    await SpeechService.instance.ensureInitialized(
       onStatus: _onSpeechStatus,
       onError: (err) {
         if (_aborted) return;
@@ -161,7 +164,7 @@ class DictationFabState extends State<DictationFab>
         }
       },
     );
-    if (mounted) setState(() => _speechAvailable = available);
+    if (mounted) setState(() {});
   }
 
   void _onSpeechStatus(String status) {
@@ -219,18 +222,23 @@ class DictationFabState extends State<DictationFab>
 
   Future<void> _startListening() async {
     if (!_speechAvailable) {
-      HapticFeedback.heavyImpact();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: const Text('🎙 Spracherkennung nicht verfügbar — Berechtigung prüfen.'),
-          backgroundColor: widget.skin.bgCard,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          margin: const EdgeInsets.fromLTRB(16, 0, 16, 100),
-        ));
+      // Nochmal versuchen — vielleicht war initialize() noch nicht fertig
+      await _initSpeech();
+      if (!_speechAvailable) {
+        HapticFeedback.heavyImpact();
+        final overlayContext = MyApp.navigatorKey.currentContext;
+        if (overlayContext != null && mounted) {
+          showGlassSnackBar(
+            overlayContext,
+            'Mikrofon nicht verfügbar — Berechtigung prüfen',
+            type: GlassSnackBarType.error,
+            duration: const Duration(seconds: 3),
+          );
+        }
+        return;
       }
-      return;
     }
+
     HapticFeedback.mediumImpact();
     _aborted = false;
     _isCancelling = false;

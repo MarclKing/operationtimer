@@ -206,124 +206,148 @@ struct DayTile: View {
 // ─────────────────────────────────────────────────────────────────────────────
 
 struct SmallWidgetView: View {
-    var progress: Double = 0.36
+    var progress: Double = 0.36   // 0.0 – 1.0, aus echten KM-Daten
+
+    // ── Tacho-Geometrie ─────────────────────────────────────────────
+    // 0° = rechts (3 Uhr), Uhrzeigersinn
+    // Lücke unten: 225° bis 315° (kurzer Weg = 90°)
+    // Arc läuft:   225° → 315° (langer Weg = 270°, sweep=1)
+    private let startDeg: Double = 225
+    private let sweepDeg: Double = 270
+
+    private var endDeg: Double { startDeg + sweepDeg * progress }
+
+    // Polar → kartesisch, center-relativ
+    private func pt(angleDeg: Double, r: CGFloat, cx: CGFloat, cy: CGFloat) -> CGPoint {
+        let rad = angleDeg * .pi / 180
+        return CGPoint(x: cx + r * cos(rad), y: cy + r * sin(rad))
+    }
 
     var body: some View {
         Canvas { context, size in
-            let cx = size.width / 2
+            let cx = size.width  / 2
             let cy = size.height / 2
-            // ── Größerer Radius ──────────────────────────────────────
-            let r: CGFloat = min(size.width, size.height) * 0.50
+            let r: CGFloat   = min(size.width, size.height) * 0.41   // Ring-Radius
 
-            let startAngle: Double = 150
-            let sweep: Double = 240
-            let endAngle: Double = startAngle + sweep
+            // ── Innerer Kreis (Tiefe) ────────────────────────────────
+            let innerCircle = Path(ellipseIn: CGRect(
+                x: cx - r * 0.85, y: cy - r * 0.85,
+                width: r * 1.70,  height: r * 1.70))
+            context.fill(innerCircle, with: .color(Color(hex: "#1c1f2e")))
 
-            // ── Äußerer Bezel-Ring ──
-            let bezelRadius = r + 6
-            let bezelPath = Path(ellipseIn: CGRect(
-                x: cx - bezelRadius, y: cy - bezelRadius,
-                width: bezelRadius * 2, height: bezelRadius * 2
-            ))
-            context.stroke(
-                bezelPath,
-                with: .color(Shield.primary.opacity(0.10)),
-                style: StrokeStyle(lineWidth: 1.5)
-            )
+            // ── Basis-Ring (grau, volle 270°) ────────────────────────
+            var basePath = Path()
+            basePath.addArc(
+                center:     CGPoint(x: cx, y: cy),
+                radius:     r,
+                startAngle: .degrees(startDeg),
+                endAngle:   .degrees(startDeg + sweepDeg),
+                clockwise:  false)
+            context.stroke(basePath,
+                with: .color(Color(hex: "#1e2540")),
+                style: StrokeStyle(lineWidth: 3, lineCap: .butt))
 
-            // ── Haupt-Ticks alle 30° ──
-            let majorTicks: [Double] = [150, 180, 210, 240, 270, 300, 330, 0, 30]
-            for angleDeg in majorTicks {
-                drawTick(
-                    context: context, cx: cx, cy: cy,
-                    angleDeg: angleDeg,
-                    innerR: r - 6, outerR: bezelRadius,   // ← bis zum Bezel-Rand
-                    color: Shield.secondary.opacity(0.55),
-                    lineWidth: 2
-                )
+            // ── Ticks ────────────────────────────────────────────────
+            let majorAngles: [Double] = stride(
+                from: startDeg, through: startDeg + sweepDeg, by: 30).map { $0 }
+            for angleDeg in majorAngles {
+                let outer = pt(angleDeg: angleDeg, r: r,        cx: cx, cy: cy)
+                let inner = pt(angleDeg: angleDeg, r: r - 14,   cx: cx, cy: cy)
+                var tick = Path()
+                tick.move(to: outer)
+                tick.addLine(to: inner)
+                context.stroke(tick,
+                    with: .color(.white.opacity(0.22)),
+                    style: StrokeStyle(lineWidth: 2, lineCap: .round))
+            }
+            let minorAngles: [Double] = stride(
+                from: startDeg + 10, to: startDeg + sweepDeg, by: 10)
+                .filter { !majorAngles.contains($0) }
+            for angleDeg in minorAngles {
+                let outer = pt(angleDeg: angleDeg, r: r,        cx: cx, cy: cy)
+                let inner = pt(angleDeg: angleDeg, r: r - 8,    cx: cx, cy: cy)
+                var tick = Path()
+                tick.move(to: outer)
+                tick.addLine(to: inner)
+                context.stroke(tick,
+                    with: .color(.white.opacity(0.10)),
+                    style: StrokeStyle(lineWidth: 1, lineCap: .round))
             }
 
-            // ── Neben-Ticks alle 10° ──
-            let minorTicks: [Double] = [160, 170, 190, 200, 220, 230,
-                                         250, 260, 280, 290, 310, 320,
-                                         340, 350, 10, 20]
-            for angleDeg in minorTicks {
-                drawTick(
-                    context: context, cx: cx, cy: cy,
-                    angleDeg: angleDeg,
-                    innerR: r - 4, outerR: bezelRadius - 2, // ← nahe am Rand
-                    color: Shield.primary.opacity(0.18),
-                    lineWidth: 1.2
-                )
-            }
+            // ── Progress-Arc ─────────────────────────────────────────
+            // endDeg ist der EINZIGE Wert — Arc, Leuchtdot und Nadel
+            // teilen sich dieselbe Berechnung, kein Drift möglich.
+            guard progress > 0 else { return }
 
-            // ── Punkt-Skala ──
-            let dotRadius = r - 11
-            let dotCount = 21
-            let dotStep = sweep / Double(dotCount - 1)
-            let activeDotCount = Int((Double(dotCount - 1) * progress).rounded())
+            var arcPath = Path()
+            arcPath.addArc(
+                center:     CGPoint(x: cx, y: cy),
+                radius:     r,
+                startAngle: .degrees(startDeg),
+                endAngle:   .degrees(endDeg),
+                clockwise:  false)
 
-            for i in 0..<dotCount {
-                let angleDeg = startAngle + Double(i) * dotStep
-                let isActive = i <= activeDotCount
-                let distanceFromEnd = activeDotCount - i
+            // Glow-Schicht
+            context.stroke(arcPath,
+                with: .color(Color(hex: "#2D6CFF").opacity(0.30)),
+                style: StrokeStyle(lineWidth: 10, lineCap: .round))
 
-                let (fillColor, dotSize): (Color, CGFloat) = {
-                    if !isActive {
-                        return (Shield.bgCard.opacity(0.9).blendedDim(), 1.7)
-                    }
-                    switch distanceFromEnd {
-                    case 0: return (Color(hex: "#9DBBFF"), 2.8)
-                    case 1: return (Color(hex: "#7FA6FF"), 2.6)
-                    case 2, 3: return (Color(hex: "#5A8CFF"), 2.4)
-                    default: return (Shield.primary, 2.2)
-                    }
-                }()
+            // Haupt-Arc (hellblau)
+            context.stroke(arcPath,
+                with: .color(Color(hex: "#6BAAFF")),
+                style: StrokeStyle(lineWidth: 3.2, lineCap: .round))
 
-                drawDot(
-                    context: context, cx: cx, cy: cy,
-                    angleDeg: angleDeg, radius: dotRadius,
-                    size: dotSize, color: fillColor,
-                    glow: isActive && distanceFromEnd <= 1
-                )
-            }
+            // Heller Kern-Strich
+            context.stroke(arcPath,
+                with: .color(Color(hex: "#A8CBFF")),
+                style: StrokeStyle(lineWidth: 1.2, lineCap: .round))
 
-            // ── Tacho-Nadel — schließt bündig am äußersten Bezel ab ──
-            let needleAngleDeg = startAngle + Double(activeDotCount) * dotStep
-            let needleRad = needleAngleDeg * .pi / 180
+            // ── Arc-Endpunkt Leuchtdot ────────────────────────────────
+            // Dieselbe pt()-Funktion mit endDeg → sitzt exakt auf Arc-Ende
+            let arcEnd = pt(angleDeg: endDeg, r: r, cx: cx, cy: cy)
 
-            // Spitze genau auf dem Bezel-Ring
-            let needleOuter = CGPoint(
-                x: cx + bezelRadius * cos(needleRad),
-                y: cy + bezelRadius * sin(needleRad)
-            )
-            // Basis leicht innerhalb der Dot-Skala
-            let needleInner = CGPoint(
-                x: cx + (dotRadius - 4) * cos(needleRad),
-                y: cy + (dotRadius - 4) * sin(needleRad)
-            )
-            var needlePath = Path()
-            needlePath.move(to: needleOuter)
-            needlePath.addLine(to: needleInner)
+            // Äußerer Glow
+            context.fill(Path(ellipseIn: CGRect(
+                x: arcEnd.x - 8, y: arcEnd.y - 8, width: 16, height: 16)),
+                with: .color(Color(hex: "#2D6CFF").opacity(0.35)))
+            // Weißer Dot
+            context.fill(Path(ellipseIn: CGRect(
+                x: arcEnd.x - 3, y: arcEnd.y - 3, width: 6, height: 6)),
+                with: .color(.white))
 
-            context.stroke(
-                needlePath,
+            // ── Nadel ─────────────────────────────────────────────────
+            // Spitze = arcEnd (gleiche Koordinate!)
+            // Basis  = pt mit kleinerem Radius nahe Zentrum
+            let needleBase = pt(angleDeg: endDeg, r: r * 0.17, cx: cx, cy: cy)
+
+            var needle = Path()
+            needle.move(to: needleBase)
+            needle.addLine(to: arcEnd)
+
+            // Glow
+            context.stroke(needle,
+                with: .color(.white.opacity(0.15)),
+                style: StrokeStyle(lineWidth: 6, lineCap: .round))
+            // Weiß
+            context.stroke(needle,
                 with: .color(.white),
-                style: StrokeStyle(lineWidth: 3, lineCap: .round)
-            )
-            context.stroke(
-                needlePath,
-                with: .color(Color(hex: "#5A8CFF").opacity(0.6)),
-                style: StrokeStyle(lineWidth: 1, lineCap: .round)
-            )
+                style: StrokeStyle(lineWidth: 2.8, lineCap: .round))
+            // Blauer Kern
+            context.stroke(needle,
+                with: .color(Color(hex: "#7AB4FF")),
+                style: StrokeStyle(lineWidth: 1.0, lineCap: .round))
 
-            // ── Zahlen-Skala — nach innen verschoben wegen größerem r ──
-            drawLabel(context: context, cx: cx, cy: cy, r: r,
-                      angleDeg: startAngle, text: "", radiusOffset: 28)
-            drawLabel(context: context, cx: cx, cy: cy, r: r,
-                      angleDeg: startAngle + sweep / 2, text: "", radiusOffset: 30)
-            drawLabel(context: context, cx: cx, cy: cy, r: r,
-                      angleDeg: endAngle, text: "", radiusOffset: 28)
+            // ── Pivot-Ring ────────────────────────────────────────────
+            context.fill(Path(ellipseIn: CGRect(
+                x: cx - 6, y: cy - 6, width: 12, height: 12)),
+                with: .color(Color(hex: "#0d0f18")))
+            context.stroke(Path(ellipseIn: CGRect(
+                x: cx - 6, y: cy - 6, width: 12, height: 12)),
+                with: .color(Color(hex: "#2D6CFF").opacity(0.6)),
+                style: StrokeStyle(lineWidth: 1.5))
+            context.fill(Path(ellipseIn: CGRect(
+                x: cx - 2.5, y: cy - 2.5, width: 5, height: 5)),
+                with: .color(Color(hex: "#2D6CFF").opacity(0.8)))
         }
         .overlay(alignment: .center) {
             VStack(spacing: 0) {
@@ -332,18 +356,21 @@ struct SmallWidgetView: View {
                     .foregroundColor(.white)
 
                 Spacer().frame(height: 14)
+
                 Text("Fahrt starten")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundColor(.white)
+
                 Text("KM scannen")
                     .font(.system(size: 10, weight: .medium))
                     .foregroundColor(Color(hex: "#5A8CFF"))
             }
-            .offset(y: 22)  // etwas nach unten, damit Platz zum Tacho-Rand bleibt
+            .offset(y: 22)
         }
         .widgetURL(URL(string: "optimes://fahrtenbuch/neue-fahrt/scan-km-start"))
         .modifier(SmallBackgroundModifier())
     }
+}
 
     // ── Hilfsfunktionen (unverändert) ──────────────────────────────────────
 

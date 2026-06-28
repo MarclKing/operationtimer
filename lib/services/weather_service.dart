@@ -133,6 +133,7 @@ class WeatherService {
 
   WeatherData? _cached;
   bool _fetching = false;
+  DateTime? _lastFailedAttempt;
 
   WeatherData? get cached {
     if (_cached != null) return _cached;
@@ -164,25 +165,50 @@ class WeatherService {
       final modeChanged = useGps != c.isGps;
       final cityChanged = !useGps && cityName.isNotEmpty &&
           c.city.toLowerCase() != cityName.toLowerCase();
-      if (!modeChanged && !cityChanged) return c;
+      if (modeChanged || cityChanged) {
+        // Cache explizit invalidieren damit alte Stadt/GPS nicht angezeigt wird
+        invalidateCache();
+        // c nicht als Fallback verwenden — es ist der ungültige alte Wert
+        if (_fetching) return null;
+      } else {
+        return c;
+      }
     }
     if (_fetching) return c;
+
+    // Nach einem gescheiterten Versuch nicht öfter als alle 20 Sekunden
+    // erneut versuchen, aber NICHT für immer blockieren wie bisher.
+    if (_lastFailedAttempt != null &&
+        DateTime.now().difference(_lastFailedAttempt!) < const Duration(seconds: 20)) {
+      return c;
+    }
 
     _fetching = true;
     try {
       if (useGps) {
         final gpsData = await _fetchByGps();
-        if (gpsData != null) { _save(gpsData); return gpsData; }
+        if (gpsData != null) {
+          _lastFailedAttempt = null;
+          _save(gpsData);
+          return gpsData;
+        }
+        _lastFailedAttempt = DateTime.now();
         return c;
       } else {
         if (cityName.trim().isNotEmpty) {
           final cityData = await _fetchByCity(cityName.trim());
-          if (cityData != null) { _save(cityData); return cityData; }
+          if (cityData != null) {
+            _lastFailedAttempt = null;
+            _save(cityData);
+            return cityData;
+          }
         }
+        _lastFailedAttempt = DateTime.now();
         return c;
       }
     } catch (e) {
       debugPrint('[WeatherService] Fehler: $e');
+      _lastFailedAttempt = DateTime.now();
       return c;
     } finally {
       _fetching = false;
@@ -203,8 +229,8 @@ class WeatherService {
 
       final pos = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.low,
-          timeLimit: Duration(seconds: 6),
+          accuracy: LocationAccuracy.medium,
+          timeLimit: Duration(seconds: 15),
         ),
       );
       return await _fetchFromCoords(pos.latitude, pos.longitude, 'GPS');

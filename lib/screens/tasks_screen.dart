@@ -181,14 +181,22 @@ class TasksScreenState extends State<TasksScreen> with TickerProviderStateMixin 
 
   final Map<String, GlobalKey<_TaskCardState>> _taskCardKeys = {};
 
+  Timer? _periodicReloadTimer;
+
   @override
   void initState() {
     super.initState();
     _load();
+    // Damit nach dem stündlichen App-weiten Cleanup auch dieser Screen
+    // (falls gerade offen) die aktualisierte Liste zeigt.
+    _periodicReloadTimer = Timer.periodic(const Duration(minutes: 5), (_) {
+      if (mounted) _load();
+    });
   }
 
   @override
   void dispose() {
+    _periodicReloadTimer?.cancel();
     _scrollController.dispose();
     super.dispose();
   }
@@ -503,7 +511,22 @@ class TasksScreenState extends State<TasksScreen> with TickerProviderStateMixin 
 
     return Scaffold(
       backgroundColor: skin.bgBase,
-      body: GestureDetector(
+      body: NotificationListener<ScrollNotification>(
+  onNotification: (notification) {
+    // Greift zuverlässig auch wenn die ListView selbst scrollt — anders als
+    // ein reiner GestureDetector, der gegen das Scrollable die Gesture-Arena
+    // meist verliert.
+    if (_inlineEditId != null &&
+        notification is ScrollUpdateNotification &&
+        notification.scrollDelta != null &&
+        notification.scrollDelta! < -6) {
+      FocusManager.instance.primaryFocus?.unfocus();
+      _taskCardKeys[_inlineEditId]?.currentState?.commitInlineEditNow();
+      setState(() => _inlineEditId = null);
+    }
+    return false;
+  },
+  child: GestureDetector(
   onTap: () {
     FocusManager.instance.primaryFocus?.unfocus();
     if (_inlineEditId != null) {
@@ -511,14 +534,6 @@ class TasksScreenState extends State<TasksScreen> with TickerProviderStateMixin 
       setState(() => _inlineEditId = null);
     }
     if (_openSwipedId != null) setState(() => _openSwipedId = null);
-  },
-  onVerticalDragUpdate: (d) {
-    // Nach-unten-Wischen schließt Tastatur
-    if (d.delta.dy > 6 && _inlineEditId != null) {
-      FocusManager.instance.primaryFocus?.unfocus();
-      _taskCardKeys[_inlineEditId]?.currentState?.commitInlineEditNow();
-      setState(() => _inlineEditId = null);
-    }
   },
   behavior: HitTestBehavior.translucent,
   child: Stack(
@@ -685,6 +700,7 @@ class TasksScreenState extends State<TasksScreen> with TickerProviderStateMixin 
             ),
           ],
         ),
+      ),
       ),
     );
   }

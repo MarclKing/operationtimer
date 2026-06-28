@@ -2070,7 +2070,7 @@ class _HomescreenSettingsScreenState extends State<_HomescreenSettingsScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              SheetHandle(skin: skin),
+              Center(child: SheetHandle(skin: skin)),
               const SizedBox(height: 16),
               Text('Stadt eingeben',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700,

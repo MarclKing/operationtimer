@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'dart:io' as dartio;
+import 'dart:typed_data';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:image_picker/image_picker.dart';
 import '../theme/app_theme.dart';
+import '../widgets/glass_snackbar.dart';
 
 class FuelScannerScreen extends StatefulWidget {
   final String label; // 'KRAFTSTOFF LITER'
@@ -28,10 +30,10 @@ class _FuelScannerScreenState extends State<FuelScannerScreen>
   bool _isInitialized = false;
   bool _isProcessing = false;
   bool _isDisposed = false;
+  bool _initError = false;
 
   // OCR
   final _recognizer = TextRecognizer(script: TextRecognitionScript.latin);
-  Timer? _scanTimer;
   String? _lastDetected;
   bool _showConfirm = false;
   String? _pendingLiter;
@@ -50,65 +52,130 @@ class _FuelScannerScreenState extends State<FuelScannerScreen>
   Future<void> _initCamera() async {
     try {
       _cameras = await availableCameras();
-      if (_cameras.isEmpty) return;
+      if (_cameras.isEmpty) {
+        if (mounted) setState(() => _initError = true);
+        return;
+      }
       final back = _cameras.firstWhere(
         (c) => c.lensDirection == CameraLensDirection.back,
         orElse: () => _cameras.first,
       );
-      _controller = CameraController(
-        back,
-        ResolutionPreset.high,
-        enableAudio: false,
-        imageFormatGroup: ImageFormatGroup.yuv420,
-      );
-      await _controller!.initialize();
+
+      // Erst mit high versuchen, bei Fehler auf medium zurückfallen —
+      // manche neueren Geräte/Sensor-Generationen unterstützen die
+      // Kombination high + yuv420 nicht zuverlässig.
+      try {
+        _controller = CameraController(
+          back,
+          ResolutionPreset.high,
+          enableAudio: false,
+          imageFormatGroup: ImageFormatGroup.yuv420,
+        );
+        await _controller!.initialize();
+      } catch (e) {
+        debugPrint('Kamera Init (high) fehlgeschlagen, Fallback auf medium: $e');
+        await _controller?.dispose();
+        _controller = CameraController(
+          back,
+          ResolutionPreset.medium,
+          enableAudio: false,
+          imageFormatGroup: ImageFormatGroup.yuv420,
+        );
+        await _controller!.initialize();
+      }
+
+      try {
+        final ctrl = _controller;
+        if (ctrl != null) {
+          final double minZoom = await ctrl.getMinZoomLevel();
+          final double maxZoom = await ctrl.getMaxZoomLevel();
+          final double targetZoom = 1.1.clamp(minZoom, maxZoom);
+          await ctrl.setZoomLevel(targetZoom);
+        }
+      } catch (_) {}
+
       if (_isDisposed) return;
       setState(() => _isInitialized = true);
       _startScanning();
     } catch (e) {
       debugPrint('Kamera Init Fehler: $e');
+      if (mounted) setState(() => _initError = true);
     }
   }
 
   void _startScanning() {
-    _scanTimer = Timer.periodic(const Duration(milliseconds: 800), (_) {
-      if (!_isProcessing && !_showConfirm) {
-        _scanFrame();
-      }
-    });
+    if (_controller == null) return;
+    _controller!.startImageStream(_onCameraFrame);
   }
 
-  Future<void> _scanFrame() async {
-    if (_controller == null || !_controller!.value.isInitialized) return;
-    if (_isProcessing || _isDisposed) return;
-    _isProcessing = true;
+  DateTime _lastFrameProcessed = DateTime.fromMillisecondsSinceEpoch(0);
 
+  void _onCameraFrame(CameraImage image) {
+    if (_isProcessing || _isDisposed || _showConfirm) return;
+    // Throttle: nicht jeden Frame verarbeiten (zu teuer), alle ~800ms reicht.
+    final now = DateTime.now();
+    if (now.difference(_lastFrameProcessed) < const Duration(milliseconds: 800)) return;
+    _lastFrameProcessed = now;
+    _isProcessing = true;
+    _processFrame(image).whenComplete(() => _isProcessing = false);
+  }
+
+  Future<void> _processFrame(CameraImage image) async {
     try {
-      final xFile = await _controller!.takePicture();
-      final inputImage = InputImage.fromFilePath(xFile.path);
+      final inputImage = _inputImageFromCameraImage(image);
+      if (inputImage == null) return;
       final result = await _recognizer.processImage(inputImage);
 
       final liter = _extractLiter(result);
       if (liter != null && liter != _lastDetected) {
         _lastDetected = liter;
         if (mounted && !_showConfirm) {
+          if (_controller != null && _controller!.value.isStreamingImages) {
+            await _controller!.stopImageStream();
+          }
+          final xFile = await _controller!.takePicture();
           HapticFeedback.mediumImpact();
-          setState(() {
-            _pendingLiter = liter;
-            _showConfirm = true;
-            _resultImagePath = xFile.path;
-          });
-          _scanTimer?.cancel();
+          if (mounted) {
+            setState(() {
+              _pendingLiter = liter;
+              _showConfirm = true;
+              _resultImagePath = xFile.path;
+            });
+          }
         }
-      } else {
-        // Temp-Datei löschen wenn kein Treffer
-        try { dartio.File(xFile.path).deleteSync(); } catch (_) {}
       }
     } catch (e) {
       debugPrint('Scan Fehler: $e');
-    } finally {
-      _isProcessing = false;
     }
+  }
+
+  InputImage? _inputImageFromCameraImage(CameraImage image) {
+    try {
+      final bytes = _concatenatePlanes(image.planes);
+      final imageRotation = InputImageRotation.rotation0deg;
+      final inputImageFormat =
+          InputImageFormatValue.fromRawValue(image.format.raw) ?? InputImageFormat.nv21;
+      return InputImage.fromBytes(
+        bytes: bytes,
+        metadata: InputImageMetadata(
+          size: Size(image.width.toDouble(), image.height.toDouble()),
+          rotation: imageRotation,
+          format: inputImageFormat,
+          bytesPerRow: image.planes.first.bytesPerRow,
+        ),
+      );
+    } catch (e) {
+      debugPrint('InputImage Konvertierung Fehler: $e');
+      return null;
+    }
+  }
+
+  Uint8List _concatenatePlanes(List<Plane> planes) {
+    final allBytes = WriteBuffer();
+    for (final plane in planes) {
+      allBytes.putUint8List(plane.bytes);
+    }
+    return allBytes.done().buffer.asUint8List();
   }
 
   /// 🔥 ANGEPASSTE Methode für Liter-Erkennung
@@ -181,11 +248,15 @@ class _FuelScannerScreenState extends State<FuelScannerScreen>
       _lastDetected = null;
       _resultImagePath = null;
     });
-    _startScanning();
+    if (_controller != null && !_controller!.value.isStreamingImages) {
+      _startScanning();
+    }
   }
 
   Future<void> _openGallery() async {
-    _scanTimer?.cancel();
+    if (_controller != null && _controller!.value.isStreamingImages) {
+      await _controller!.stopImageStream();
+    }
     final picker = ImagePicker();
     try {
       final xFile = await picker.pickImage(
@@ -194,7 +265,9 @@ class _FuelScannerScreenState extends State<FuelScannerScreen>
         maxWidth: 1920,
       );
       if (xFile == null || !mounted) {
-        _startScanning();
+        if (_controller != null && !_controller!.value.isStreamingImages) {
+          _startScanning();
+        }
         return;
       }
 
@@ -212,16 +285,22 @@ class _FuelScannerScreenState extends State<FuelScannerScreen>
         });
       } else {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('Kein Liter-Wert im Bild erkannt'),
-            duration: Duration(seconds: 2),
-          ));
-          _startScanning();
+          showGlassSnackBar(
+            context,
+            'Kein Liter-Wert im Bild erkannt',
+            type: GlassSnackBarType.warning,
+            duration: const Duration(seconds: 2),
+          );
+          if (_controller != null && !_controller!.value.isStreamingImages) {
+            _startScanning();
+          }
         }
       }
     } catch (e) {
       debugPrint('Galerie Fehler: $e');
-      _startScanning();
+      if (_controller != null && !_controller!.value.isStreamingImages) {
+        _startScanning();
+      }
     }
   }
 
@@ -229,7 +308,7 @@ class _FuelScannerScreenState extends State<FuelScannerScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (_controller == null) return;
     if (state == AppLifecycleState.inactive) {
-      _scanTimer?.cancel();
+      if (_controller!.value.isStreamingImages) _controller!.stopImageStream();
       _controller?.dispose();
     } else if (state == AppLifecycleState.resumed) {
       _initCamera();
@@ -240,7 +319,9 @@ class _FuelScannerScreenState extends State<FuelScannerScreen>
   void dispose() {
     _isDisposed = true;
     WidgetsBinding.instance.removeObserver(this);
-    _scanTimer?.cancel();
+    if (_controller != null && _controller!.value.isStreamingImages) {
+      _controller!.stopImageStream();
+    }
     _recognizer.close();
     _controller?.dispose();
     super.dispose();
@@ -281,6 +362,36 @@ class _FuelScannerScreenState extends State<FuelScannerScreen>
             // Kamera-Preview
             if (_isInitialized && _controller != null)
               CameraPreview(_controller!)
+            else if (_initError)
+              Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.camera_alt_outlined, color: Colors.white54, size: 40),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'Kamera konnte nicht gestartet werden.',
+                      style: TextStyle(color: Colors.white70, fontSize: 14),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 16),
+                    GestureDetector(
+                      onTap: () {
+                        setState(() => _initError = false);
+                        _initCamera();
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: const Text('Erneut versuchen', style: TextStyle(color: Colors.white)),
+                      ),
+                    ),
+                  ],
+                ),
+              )
             else
               const Center(
                 child: CircularProgressIndicator(color: Colors.white),
