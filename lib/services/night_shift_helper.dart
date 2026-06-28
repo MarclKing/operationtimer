@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
 import '../theme/app_theme.dart';
+import '../widgets/glass_dialogs.dart';
+import '../widgets/glass_snackbar.dart';
 
 enum SaveResult { saved, splitSaved, invalid, cancelled }
 
@@ -63,6 +65,12 @@ class NightShiftHelper {
     } catch (_) {
       return null;
     }
+  }
+
+  static String _fromMinutes(int minutes) {
+    final hour = (minutes ~/ 60) % 24;
+    final minute = minutes % 60;
+    return '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
   }
 
   static bool _hasConflict(List<Map<String, dynamic>> entries, String kommen, String gehen, [String? excludeId]) {
@@ -168,37 +176,25 @@ class NightShiftHelper {
 
   static Future<void> _showErrorDialog(BuildContext context) async {
     final skin = AppTheme.of(context);
-    final isChromeSkin = skin.key == 'chrome';
-    
-    await showDialog(
+    await infoDialog(
       context: context,
-      builder: (_) => _NightShiftDialog(
-        title: 'Ungültige Zeit',
-        message: '"Gehen" muss nach "Kommen" liegen.\n\nFür Nachtschichten aktiviere den Nachtschicht-Modus in den Einstellungen.',
-        confirmLabel: 'OK',
-        isError: true,
-        onConfirm: () {},
-        skin: skin,
-        isChromeSkin: isChromeSkin,
-      ),
+      skin: skin,
+      title: 'Ungültige Zeit',
+      message: '"Gehen" muss nach "Kommen" liegen.\n\nFür Nachtschichten aktiviere den Nachtschicht-Modus in den Einstellungen.',
+      icon: Icons.error_outline_rounded,
+      isError: true,
     );
   }
 
   static Future<void> _showConflictDialog(BuildContext context) async {
     final skin = AppTheme.of(context);
-    final isChromeSkin = skin.key == 'chrome';
-    
-    await showDialog(
+    await infoDialog(
       context: context,
-      builder: (_) => _NightShiftDialog(
-        title: 'Zeitüberschneidung',
-        message: 'Diese Zeit überschneidet sich mit einem bereits vorhandenen Eintrag.\n\nBitte bearbeite den bestehenden Eintrag in der Monatsübersicht.',
-        confirmLabel: 'OK',
-        isError: true,
-        onConfirm: () {},
-        skin: skin,
-        isChromeSkin: isChromeSkin,
-      ),
+      skin: skin,
+      title: 'Zeitüberschneidung',
+      message: 'Diese Zeit überschneidet sich mit einem bereits vorhandenen Eintrag.\n\nBitte bearbeite den bestehenden Eintrag in der Monatsübersicht.',
+      icon: Icons.error_outline_rounded,
+      isError: true,
     );
   }
 
@@ -209,159 +205,29 @@ class NightShiftHelper {
     String gehen,
   ) async {
     final skin = AppTheme.of(context);
-    final isChromeSkin = skin.key == 'chrome';
     final nextDay = datum.add(const Duration(days: 1));
     final datumStr = DateFormat('dd.MM.', 'de').format(datum);
     final nextStr = DateFormat('dd.MM.', 'de').format(nextDay);
 
-    bool confirmed = false;
-    await showDialog(
+    final confirmed = await confirmActionDialog(
       context: context,
-      builder: (_) => _NightShiftDialog(
-        title: '🌙 Nachtschicht erkannt',
-        message: 'Die App legt automatisch zwei Einträge an:\n\n'
-            '📅 $datumStr  $kommen → 23:59\n'
-            '📅 $nextStr  00:00 → $gehen',
-        confirmLabel: 'Speichern',
-        isError: false,
-        onConfirm: () => confirmed = true,
-        skin: skin,
-        isChromeSkin: isChromeSkin,
-      ),
+      skin: skin,
+      title: '🌙 Nachtschicht erkannt',
+      message: 'Die App legt automatisch zwei Einträge an:\n\n'
+          '📅 $datumStr  $kommen → 23:59\n'
+          '📅 $nextStr  00:00 → $gehen',
+      icon: Icons.nightlight_round,
+      confirmLabel: 'Speichern',
     );
-    return confirmed;
+    return confirmed == true;
   }
 
   static void _showSplitSuccessSnackBar(BuildContext context) {
-    final skin = AppTheme.of(context);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('✓ Nachtschicht als zwei Einträge gespeichert'),
-        backgroundColor: skin.statComplete,
-        duration: const Duration(seconds: 2),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Dialog-Widget mit Skin-Unterstützung
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _NightShiftDialog extends StatelessWidget {
-  final String title;
-  final String message;
-  final String confirmLabel;
-  final bool isError;
-  final VoidCallback onConfirm;
-  final AppSkin skin;
-  final bool isChromeSkin;
-
-  const _NightShiftDialog({
-    required this.title,
-    required this.message,
-    required this.confirmLabel,
-    required this.isError,
-    required this.onConfirm,
-    required this.skin,
-    required this.isChromeSkin,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Dialog(
-      backgroundColor: skin.bgCard,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.w700,
-                color: skin.textPrimary,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              message,
-              style: TextStyle(
-                fontSize: 14,
-                color: skin.textMuted,
-                height: 1.5,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 24),
-            Row(
-              children: [
-                if (!isError) ...[
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: () => Navigator.pop(context),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        decoration: BoxDecoration(
-                          color: skin.surface(0.06),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Center(
-                          child: Text(
-                            'Abbrechen',
-                            style: TextStyle(
-                              color: skin.textPrimary,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                ],
-                Expanded(
-                  child: GestureDetector(
-                    onTap: () {
-                      onConfirm();
-                      Navigator.pop(context);
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      decoration: BoxDecoration(
-                        gradient: isError
-                            ? null
-                            : (isChromeSkin
-                                ? const LinearGradient(
-                                    colors: [Color(0xFF333333), Color(0xFF555555)],
-                                    begin: Alignment.centerLeft,
-                                    end: Alignment.centerRight,
-                                  )
-                                : skin.gradient),
-                        color: isError ? skin.deleteColor : null,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Center(
-                        child: Text(
-                          confirmLabel,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
+    showGlassSnackBar(
+      context,
+      'Nachtschicht als zwei Einträge gespeichert',
+      type: GlassSnackBarType.success,
+      duration: const Duration(seconds: 2),
     );
   }
 }

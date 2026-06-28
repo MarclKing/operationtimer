@@ -173,33 +173,17 @@ class _SpeechLogScreenState extends State<SpeechLogScreen> {
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
                 child: Row(
                   children: [
-                    _StatTile(
-                      skin: skin,
-                      label: 'Gesamt',
-                      value: '${_stats['total'] ?? 0}',
-                      color: skin.statEntries,
-                    ),
+                    GlassStatCard(
+  label: 'Gesamt',
+  value: '${_stats['total'] ?? 0}',
+  color: skin.statEntries,
+),
                     const SizedBox(width: 8),
-                    _StatTile(
-                      skin: skin,
-                      label: 'Vollständig',
-                      value: '${_stats['fullSuccess'] ?? 0}',
-                      color: skin.statComplete,
-                    ),
+                    GlassStatCard(label: 'Vollständig', value: '${_stats['fullSuccess'] ?? 0}', color: skin.statComplete),
                     const SizedBox(width: 8),
-                    _StatTile(
-                      skin: skin,
-                      label: 'Kein Datum',
-                      value: '${_stats['noDate'] ?? 0}',
-                      color: skin.statOpen,
-                    ),
+                    GlassStatCard(label: 'Kein Datum',  value: '${_stats['noDate'] ?? 0}',      color: skin.statOpen),
                     const SizedBox(width: 8),
-                    _StatTile(
-                      skin: skin,
-                      label: 'Nicht erk.',
-                      value: '${_stats['normalizerMiss'] ?? 0}',
-                      color: skin.deleteColor,
-                    ),
+                    GlassStatCard(label: 'Nicht erk.', value: '${_stats['normalizerMiss'] ?? 0}', color: skin.deleteColor),
                   ],
                 ),
               ),
@@ -307,52 +291,6 @@ class _SpeechLogScreenState extends State<SpeechLogScreen> {
       ),
     ),
   );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Statistik-Kachel
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _StatTile extends StatelessWidget {
-  final AppSkin skin;
-  final String label;
-  final String value;
-  final Color color;
-  const _StatTile({required this.skin, required this.label, required this.value, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-          child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 8),
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: skin.isLight ? 0.07 : 0.12),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: color.withValues(alpha: 0.22)),
-            ),
-            child: Column(
-              children: [
-                Text(
-                  value,
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: color),
-                ),
-                const SizedBox(height: 1),
-                Text(
-                  label,
-                  style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: color.withValues(alpha: 0.7)),
-                  textAlign: TextAlign.center,
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
   }
 }
 

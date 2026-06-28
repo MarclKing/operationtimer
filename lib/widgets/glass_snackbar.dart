@@ -20,6 +20,8 @@ void showGlassSnackBar(
   String message, {
   GlassSnackBarType type = GlassSnackBarType.info,
   Duration duration = const Duration(milliseconds: 2500),
+  String? actionLabel,
+  VoidCallback? onAction,
 }) {
   final skin = AppTheme.of(context);
 
@@ -105,6 +107,23 @@ void showGlassSnackBar(
                 ),
               ),
             ),
+            if (actionLabel != null && onAction != null) ...[
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: () {
+                  ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                  onAction();
+                },
+                child: Text(
+                  actionLabel,
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ),

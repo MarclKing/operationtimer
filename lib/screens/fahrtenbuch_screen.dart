@@ -1255,151 +1255,6 @@ class _DraftBannerState extends State<_DraftBanner> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ANIMIERTER EXPORT / SELECTION BAR
-// Morpht vom "Alle Fahrten exportieren" Button zur Selection-Bar
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _AnimatedExportSelectionBar extends StatelessWidget {
-  final AppSkin skin;
-  final double progress; // 0 = normaler Export-Button, 1 = Selection-Bar
-  final bool selectionMode;
-  final int selectedCount;
-  final VoidCallback onExportAll;
-  final VoidCallback onExportSelected;
-  final VoidCallback onExitSelection;
-
-  const _AnimatedExportSelectionBar({
-    required this.skin,
-    required this.progress,
-    required this.selectionMode,
-    required this.selectedCount,
-    required this.onExportAll,
-    required this.onExportSelected,
-    required this.onExitSelection,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    // Höhe bleibt konstant, Breite wird durch right: im Positioned gesteuert
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-        child: Container(
-          height: 52,
-          decoration: BoxDecoration(
-            color: skin.isLight
-                ? Colors.white.withValues(alpha: 0.88)
-                : Colors.black.withValues(alpha: 0.70),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: skin.glassBorder),
-            boxShadow: [BoxShadow(
-              color: Colors.black.withValues(alpha: 0.18),
-              blurRadius: 16, offset: const Offset(0, 4),
-            )],
-          ),
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              // ── Normal: "Alle Fahrten exportieren" ──
-              Opacity(
-                opacity: (1 - progress * 2).clamp(0.0, 1.0),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.upload_outlined, size: 15, color: skin.primary),
-                    const SizedBox(width: 7),
-                    Text(
-                      'Alle Fahrten exportieren',
-                      style: TextStyle(
-                        color: skin.primary,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              // ── Selection: X + Count + Export-Chips ──
-              Opacity(
-                opacity: ((progress - 0.5) * 2).clamp(0.0, 1.0),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      // X Button
-                      Transform.scale(
-                        scale: ((progress - 0.4) / 0.6).clamp(0.0, 1.0),
-                        child: GestureDetector(
-                          onTap: onExitSelection,
-                          child: Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: skin.surface(0.08),
-                              borderRadius: BorderRadius.circular(9),
-                            ),
-                            child: Icon(Icons.close_rounded, size: 20, color: skin.textMuted),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      // Count
-                      Transform.scale(
-                        scale: ((progress - 0.5) / 0.5).clamp(0.0, 1.0),
-                        child: Text(
-                          '$selectedCount ausgewählt',
-                          style: TextStyle(
-                            color: skin.textPrimary,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      // Export Chip
-                      Transform.scale(
-                        scale: ((progress - 0.45) / 0.55).clamp(0.0, 1.0),
-                        child: GestureDetector(
-                          onTap: onExportSelected,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-                            decoration: BoxDecoration(
-                              gradient: skin.gradient,
-                              borderRadius: BorderRadius.circular(11),
-                              boxShadow: [BoxShadow(
-                                color: skin.primaryWithAlpha(0.30),
-                                blurRadius: 8, offset: const Offset(0, 3),
-                              )],
-                            ),
-                            child: Row(mainAxisSize: MainAxisSize.min, children: [
-                              Icon(Icons.upload_outlined, size: 14, color: skin.onGradient),
-                              const SizedBox(width: 5),
-                              Text('Exportieren',
-                                  style: TextStyle(
-                                    color: skin.onGradient,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w700,
-                                  )),
-                            ]),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // EXPORT BUTTON MIT SELECTION-ANIMATION
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1605,78 +1460,6 @@ class _ExportButtonAnimated extends StatelessWidget {
           ],
         );
       },
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// MONATSNAVIGATION
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _MonthNavBar extends StatefulWidget {
-  final String monthName;
-  final AppSkin skin;
-  final VoidCallback onPrev, onNext, onDoubleTap;
-  final Future<void> Function() onPicker;
-  const _MonthNavBar({required this.monthName, required this.skin, required this.onPrev, required this.onNext, required this.onPicker, required this.onDoubleTap});
-
-  @override
-  State<_MonthNavBar> createState() => _MonthNavBarState();
-}
-
-class _MonthNavBarState extends State<_MonthNavBar> {
-  double _dragStart = 0;
-  bool _gestureConsumed = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final skin = widget.skin;
-    return GestureDetector(
-      onHorizontalDragStart: (d) { _dragStart = d.globalPosition.dx; _gestureConsumed = false; },
-      onHorizontalDragEnd: (d) {
-        if (_gestureConsumed) return;
-        final dx = d.globalPosition.dx - _dragStart;
-        final v = d.primaryVelocity ?? 0;
-        if (dx < -40 || v < -300) { _gestureConsumed = true; widget.onNext(); }
-        else if (dx > 40 || v > 300) { _gestureConsumed = true; widget.onPrev(); }
-      },
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
-          child: Container(
-            decoration: BoxDecoration(
-              color: skin.isLight ? Colors.white.withValues(alpha: skin.glassOpacity) : skin.bgCard.withValues(alpha: skin.glassOpacity),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: skin.glassBorder, width: 1.0),
-              boxShadow: [
-                BoxShadow(color: skin.glassShadow, blurRadius: 24, offset: const Offset(0, 6)),
-                BoxShadow(color: skin.glassHighlight, blurRadius: 0, spreadRadius: -1, offset: const Offset(0, 1)),
-              ],
-            ),
-            child: Row(children: [
-              GestureDetector(onTap: widget.onPrev,
-                  child: const SizedBox(width: 44, height: 52, child: Center(child: Icon(Icons.chevron_left, size: 22)))),
-              Expanded(
-                child: GestureDetector(
-                  onTap: widget.onPicker,
-                  onDoubleTap: widget.onDoubleTap,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                      Text(widget.monthName, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: skin.textPrimary)),
-                      const SizedBox(width: 6),
-                      Icon(Icons.expand_more, color: skin.primary, size: 18),
-                    ]),
-                  ),
-                ),
-              ),
-              GestureDetector(onTap: widget.onNext,
-                  child: SizedBox(width: 44, height: 52, child: Center(child: Icon(Icons.chevron_right, size: 22, color: skin.surface(0.5))))),
-            ]),
-          ),
-        ),
-      ),
     );
   }
 }
@@ -2211,7 +1994,7 @@ class _AdaptiveKmRow extends StatelessWidget {
         style: TextStyle(
           fontSize: 22,
           fontWeight: FontWeight.w700,
-          color: skin.textPrimary.withOpacity(0.3),
+          color: skin.textPrimary.withValues(alpha: 0.3),
           letterSpacing: -1,
         ),
       );
@@ -2239,7 +2022,7 @@ class _AdaptiveKmRow extends StatelessWidget {
             style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w600,
-              color: skin.textPrimary.withOpacity(0.5),
+              color: skin.textPrimary.withValues(alpha: 0.5),
               letterSpacing: -0.3,
             ),
           ),
@@ -4002,7 +3785,7 @@ class _KmInputCardState extends State<_KmInputCard> {
       context: context,
       barrierDismissible: true,
       barrierLabel: 'Schließen',
-      barrierColor: Colors.black.withOpacity(0.85),
+      barrierColor: Colors.black.withValues(alpha: 0.85),
       transitionDuration: const Duration(milliseconds: 220),
       transitionBuilder: (ctx, anim, _, child) => FadeTransition(
         opacity: anim,
@@ -4054,9 +3837,9 @@ class _KmInputCardState extends State<_KmInputCard> {
                       child: Container(
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         decoration: BoxDecoration(
-                          color: widget.color.withOpacity(0.15),
+                          color: widget.color.withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: widget.color.withOpacity(0.4)),
+                          border: Border.all(color: widget.color.withValues(alpha: 0.4)),
                         ),
                         child: Center(
                           child: Row(
@@ -4087,19 +3870,16 @@ class _KmInputCardState extends State<_KmInputCard> {
                       padding: const EdgeInsets.symmetric(
                           vertical: 14, horizontal: 20),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(
-                            color: Colors.white.withOpacity(0.2)),
+                        color: widget.skin.surface(0.08),
+borderRadius: BorderRadius.circular(14),
+border: Border.all(color: widget.skin.glassBorder),
                       ),
-                      child: const Text(
-                        'Schließen',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          decoration: TextDecoration.none,
-                        ),
+                      child: Text('Schließen', style: TextStyle(
+  color: widget.skin.textPrimary,
+  fontSize: 14,
+  fontWeight: FontWeight.w600,
+  decoration: TextDecoration.none,
+),
                       ),
                     ),
                   ),

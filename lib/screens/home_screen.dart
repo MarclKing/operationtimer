@@ -913,20 +913,15 @@ class _StempeluhrKachelState extends State<_StempeluhrKachel>
     setState(() => _justStamped = true);
 
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('✓ Kommen $kommenTime gestempelt'),
-        backgroundColor: widget.skin.statComplete,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        margin: const EdgeInsets.fromLTRB(16, 0, 16, 100),
-        duration: const Duration(seconds: 2),
-        action: SnackBarAction(
-          label: 'Öffnen',
-          textColor: Colors.white,
-          onPressed: widget.onNavigateToMonth,
-        ),
-      ));
-    }
+  showGlassSnackBar(
+    context,
+    '✓ Kommen $kommenTime gestempelt',
+    type: GlassSnackBarType.success,
+    duration: const Duration(seconds: 2),
+    actionLabel: 'Öffnen',
+    onAction: widget.onNavigateToMonth,
+  );
+}
 
     Future.delayed(const Duration(seconds: 3), () {
       if (mounted) setState(() => _justStamped = false);
