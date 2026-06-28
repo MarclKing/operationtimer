@@ -43,10 +43,6 @@ private extension Color {
             blue:  Double( rgb        & 0xFF) / 255
         )
     }
-    
-    func blendedDim() -> Color {
-        Color(hex: "#1B1E2A")
-    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -201,230 +197,20 @@ struct DayTile: View {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SMALL WIDGET — Fahrtenbuch KM-Scan Schnellstart
-// Tacho-Design mit Punkt-Skala und Nadel
+// SMALL WIDGET — Schnellstart Fahrtenbuch
 // ─────────────────────────────────────────────────────────────────────────────
 
-struct SmallWidgetView: View {
-    var progress: Double = 0.36   // 0.0 – 1.0, aus echten KM-Daten
-
-    // ── Tacho-Geometrie ─────────────────────────────────────────────
-    // 0° = rechts (3 Uhr), Uhrzeigersinn
-    // Lücke unten: 225° bis 315° (kurzer Weg = 90°)
-    // Arc läuft:   225° → 315° (langer Weg = 270°, sweep=1)
-    private let startDeg: Double = 225
-    private let sweepDeg: Double = 270
-
-    private var endDeg: Double { startDeg + sweepDeg * progress }
-
-    // Polar → kartesisch, center-relativ
-    private func pt(angleDeg: Double, r: CGFloat, cx: CGFloat, cy: CGFloat) -> CGPoint {
-        let rad = angleDeg * .pi / 180
-        return CGPoint(x: cx + r * cos(rad), y: cy + r * sin(rad))
-    }
-
+   struct SmallWidgetView: View {
     var body: some View {
-        Canvas { context, size in
-            let cx = size.width  / 2
-            let cy = size.height / 2
-            let r: CGFloat   = min(size.width, size.height) * 0.41   // Ring-Radius
-
-            // ── Innerer Kreis (Tiefe) ────────────────────────────────
-            let innerCircle = Path(ellipseIn: CGRect(
-                x: cx - r * 0.85, y: cy - r * 0.85,
-                width: r * 1.70,  height: r * 1.70))
-            context.fill(innerCircle, with: .color(Color(hex: "#1c1f2e")))
-
-            // ── Basis-Ring (grau, volle 270°) ────────────────────────
-            var basePath = Path()
-            basePath.addArc(
-                center:     CGPoint(x: cx, y: cy),
-                radius:     r,
-                startAngle: .degrees(startDeg),
-                endAngle:   .degrees(startDeg + sweepDeg),
-                clockwise:  false)
-            context.stroke(basePath,
-                with: .color(Color(hex: "#1e2540")),
-                style: StrokeStyle(lineWidth: 3, lineCap: .butt))
-
-            // ── Ticks ────────────────────────────────────────────────
-            let majorAngles: [Double] = stride(
-                from: startDeg, through: startDeg + sweepDeg, by: 30).map { $0 }
-            for angleDeg in majorAngles {
-                let outer = pt(angleDeg: angleDeg, r: r,        cx: cx, cy: cy)
-                let inner = pt(angleDeg: angleDeg, r: r - 14,   cx: cx, cy: cy)
-                var tick = Path()
-                tick.move(to: outer)
-                tick.addLine(to: inner)
-                context.stroke(tick,
-                    with: .color(.white.opacity(0.22)),
-                    style: StrokeStyle(lineWidth: 2, lineCap: .round))
+        Image("road_bg")
+            .resizable()
+            .aspectRatio(contentMode: .fill)
+            .widgetURL(
+                URL(string: "optimes://fahrtenbuch/neue-fahrt/scan-km-start")
+            )
+            .containerBackground(for: .widget) {
+                Color.black
             }
-            let minorAngles: [Double] = stride(
-                from: startDeg + 10, to: startDeg + sweepDeg, by: 10)
-                .filter { !majorAngles.contains($0) }
-            for angleDeg in minorAngles {
-                let outer = pt(angleDeg: angleDeg, r: r,        cx: cx, cy: cy)
-                let inner = pt(angleDeg: angleDeg, r: r - 8,    cx: cx, cy: cy)
-                var tick = Path()
-                tick.move(to: outer)
-                tick.addLine(to: inner)
-                context.stroke(tick,
-                    with: .color(.white.opacity(0.10)),
-                    style: StrokeStyle(lineWidth: 1, lineCap: .round))
-            }
-
-            // ── Progress-Arc ─────────────────────────────────────────
-            // endDeg ist der EINZIGE Wert — Arc, Leuchtdot und Nadel
-            // teilen sich dieselbe Berechnung, kein Drift möglich.
-            guard progress > 0 else { return }
-
-            var arcPath = Path()
-            arcPath.addArc(
-                center:     CGPoint(x: cx, y: cy),
-                radius:     r,
-                startAngle: .degrees(startDeg),
-                endAngle:   .degrees(endDeg),
-                clockwise:  false)
-
-            // Glow-Schicht
-            context.stroke(arcPath,
-                with: .color(Color(hex: "#2D6CFF").opacity(0.30)),
-                style: StrokeStyle(lineWidth: 10, lineCap: .round))
-
-            // Haupt-Arc (hellblau)
-            context.stroke(arcPath,
-                with: .color(Color(hex: "#6BAAFF")),
-                style: StrokeStyle(lineWidth: 3.2, lineCap: .round))
-
-            // Heller Kern-Strich
-            context.stroke(arcPath,
-                with: .color(Color(hex: "#A8CBFF")),
-                style: StrokeStyle(lineWidth: 1.2, lineCap: .round))
-
-            // ── Arc-Endpunkt Leuchtdot ────────────────────────────────
-            // Dieselbe pt()-Funktion mit endDeg → sitzt exakt auf Arc-Ende
-            let arcEnd = pt(angleDeg: endDeg, r: r, cx: cx, cy: cy)
-
-            // Äußerer Glow
-            context.fill(Path(ellipseIn: CGRect(
-                x: arcEnd.x - 8, y: arcEnd.y - 8, width: 16, height: 16)),
-                with: .color(Color(hex: "#2D6CFF").opacity(0.35)))
-            // Weißer Dot
-            context.fill(Path(ellipseIn: CGRect(
-                x: arcEnd.x - 3, y: arcEnd.y - 3, width: 6, height: 6)),
-                with: .color(.white))
-
-            // ── Nadel ─────────────────────────────────────────────────
-            // Spitze = arcEnd (gleiche Koordinate!)
-            // Basis  = pt mit kleinerem Radius nahe Zentrum
-            let needleBase = pt(angleDeg: endDeg, r: r * 0.17, cx: cx, cy: cy)
-
-            var needle = Path()
-            needle.move(to: needleBase)
-            needle.addLine(to: arcEnd)
-
-            // Glow
-            context.stroke(needle,
-                with: .color(.white.opacity(0.15)),
-                style: StrokeStyle(lineWidth: 6, lineCap: .round))
-            // Weiß
-            context.stroke(needle,
-                with: .color(.white),
-                style: StrokeStyle(lineWidth: 2.8, lineCap: .round))
-            // Blauer Kern
-            context.stroke(needle,
-                with: .color(Color(hex: "#7AB4FF")),
-                style: StrokeStyle(lineWidth: 1.0, lineCap: .round))
-
-            // ── Pivot-Ring ────────────────────────────────────────────
-            context.fill(Path(ellipseIn: CGRect(
-                x: cx - 6, y: cy - 6, width: 12, height: 12)),
-                with: .color(Color(hex: "#0d0f18")))
-            context.stroke(Path(ellipseIn: CGRect(
-                x: cx - 6, y: cy - 6, width: 12, height: 12)),
-                with: .color(Color(hex: "#2D6CFF").opacity(0.6)),
-                style: StrokeStyle(lineWidth: 1.5))
-            context.fill(Path(ellipseIn: CGRect(
-                x: cx - 2.5, y: cy - 2.5, width: 5, height: 5)),
-                with: .color(Color(hex: "#2D6CFF").opacity(0.8)))
-        }
-        .overlay(alignment: .center) {
-            VStack(spacing: 0) {
-                Image(systemName: "car.fill")
-                    .font(.system(size: 28, weight: .regular))
-                    .foregroundColor(.white)
-
-                Spacer().frame(height: 14)
-
-                Text("Fahrt starten")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(.white)
-
-                Text("KM scannen")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundColor(Color(hex: "#5A8CFF"))
-            }
-            .offset(y: 22)
-        }
-        .widgetURL(URL(string: "optimes://fahrtenbuch/neue-fahrt/scan-km-start"))
-        .modifier(SmallBackgroundModifier())
-    }
-}
-
-    // ── Hilfsfunktionen (unverändert) ──────────────────────────────────────
-
-    private func drawTick(context: GraphicsContext, cx: CGFloat, cy: CGFloat,
-                           angleDeg: Double, innerR: CGFloat, outerR: CGFloat,
-                           color: Color, lineWidth: CGFloat) {
-        let rad = angleDeg * .pi / 180
-        let inner = CGPoint(x: cx + innerR * cos(rad), y: cy + innerR * sin(rad))
-        let outer = CGPoint(x: cx + outerR * cos(rad), y: cy + outerR * sin(rad))
-        var path = Path()
-        path.move(to: inner)
-        path.addLine(to: outer)
-        context.stroke(path, with: .color(color),
-                        style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
-    }
-
-    private func drawDot(context: GraphicsContext, cx: CGFloat, cy: CGFloat,
-                          angleDeg: Double, radius: CGFloat, size: CGFloat,
-                          color: Color, glow: Bool) {
-        let rad = angleDeg * .pi / 180
-        let point = CGPoint(x: cx + radius * cos(rad), y: cy + radius * sin(rad))
-        let rect = CGRect(x: point.x - size, y: point.y - size,
-                           width: size * 2, height: size * 2)
-        if glow {
-            context.fill(Path(ellipseIn: rect.insetBy(dx: -1.5, dy: -1.5)),
-                          with: .color(color.opacity(0.35)))
-        }
-        context.fill(Path(ellipseIn: rect), with: .color(color))
-    }
-
-    private func drawLabel(context: GraphicsContext, cx: CGFloat, cy: CGFloat,
-                            r: CGFloat, angleDeg: Double, text: String,
-                            radiusOffset: CGFloat) {
-        let rad = angleDeg * .pi / 180
-        let labelR = r - radiusOffset
-        let point = CGPoint(x: cx + labelR * cos(rad), y: cy + labelR * sin(rad))
-        context.draw(
-            Text(text)
-                .font(.system(size: 8.5, weight: .regular))
-                .foregroundColor(Shield.secondary.opacity(0.8)),
-            at: point
-        )
-    }
-}
-
-struct SmallBackgroundModifier: ViewModifier {
-    func body(content: Content) -> some View {
-        if #available(iOS 17.0, *) {
-            content.containerBackground(for: .widget) {
-                Color(hex: "#0A0B0F")
-            }
-        } else {
-            content.background(Color(hex: "#0A0B0F"))
-        }
     }
 }
 
@@ -545,7 +331,7 @@ struct LargeWidgetView: View {
                     let thisFirst = weekDates.first!
                     if Calendar.current.component(.month, from: thisFirst) !=
                        Calendar.current.component(.month, from: prevLast) {
-                        // Trennlinie mit Verlauf
+                        // Trennlinie mit Verlauf (simuliert glasige Tiefe)
                         Rectangle()
                             .fill(
                                 LinearGradient(
@@ -617,29 +403,30 @@ struct DienstplanWidgetView: View {
     }
 
     var body: some View {
-        Group {
-            switch family {
-            case .systemSmall:
-                SmallWidgetView()
+    Group {
+        switch family {
+        case .systemSmall:
+    SmallWidgetView()
 
-            case .systemMedium:
-                MediumWidgetView(entry: entry, todayStr: todayStr)
-                    .modifier(ShieldBackgroundModifier())
+        case .systemMedium:
+            MediumWidgetView(entry: entry, todayStr: todayStr)
+                .modifier(ShieldBackgroundModifier())
 
-            case .systemLarge:
-                LargeWidgetView(entry: entry, todayStr: todayStr)
-                    .modifier(ShieldBackgroundModifier())
+        case .systemLarge:
+            LargeWidgetView(entry: entry, todayStr: todayStr)
+                .modifier(ShieldBackgroundModifier())
 
-            default:
-                MediumWidgetView(entry: entry, todayStr: todayStr)
-                    .modifier(ShieldBackgroundModifier())
-            }
+        default:
+            MediumWidgetView(entry: entry, todayStr: todayStr)
+                .modifier(ShieldBackgroundModifier())
         }
     }
+   } // ← .modifier weg von hier
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Hintergrund-Modifier — Shield bgBase + Glasrand oben
+// Ersetzt WidgetBackgroundModifier
 // ─────────────────────────────────────────────────────────────────────────────
 
 struct ShieldBackgroundModifier: ViewModifier {
@@ -650,7 +437,7 @@ struct ShieldBackgroundModifier: ViewModifier {
                     // Basis: tiefes Dunkel
                     Shield.bgBase
 
-                    // Obere Glas-Schimmer-Schicht
+                    // Obere Glas-Schimmer-Schicht (simuliert BackdropFilter)
                     LinearGradient(
                         colors: [Shield.primary.opacity(0.10), Color.clear],
                         startPoint: .top,
@@ -676,7 +463,7 @@ struct ShieldBackgroundModifier: ViewModifier {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Widget-Definition
+// Widget-Definition (unverändert)
 // ─────────────────────────────────────────────────────────────────────────────
 
 struct DienstplanWidget: Widget {

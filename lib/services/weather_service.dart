@@ -166,15 +166,13 @@ class WeatherService {
       final cityChanged = !useGps && cityName.isNotEmpty &&
           c.city.toLowerCase() != cityName.toLowerCase();
       if (modeChanged || cityChanged) {
-        // Cache explizit invalidieren damit alte Stadt/GPS nicht angezeigt wird
         invalidateCache();
-        // c nicht als Fallback verwenden — es ist der ungültige alte Wert
-        if (_fetching) return null;
+        // Cache war ungültig → Fetch erzwingen, nicht zurückgeben
       } else {
         return c;
       }
     }
-    if (_fetching) return c;
+    if (_fetching) return cached; // cached ist nach invalidateCache() null
 
     // Nach einem gescheiterten Versuch nicht öfter als alle 20 Sekunden
     // erneut versuchen, aber NICHT für immer blockieren wie bisher.
@@ -268,7 +266,7 @@ class WeatherService {
       '?latitude=$lat&longitude=$lon'
       '&current=temperature_2m,apparent_temperature,weather_code,'
       'precipitation,wind_speed_10m,is_day,relative_humidity_2m'
-      '&daily=sunrise,sunset,temperature_2m_max,weather_code_10m_dominant'
+      '&daily=sunrise,sunset,temperature_2m_max,weather_code'
       '&timezone=auto',
     );
     final wResp = await http
@@ -296,7 +294,7 @@ class WeatherService {
       if (ssList.isNotEmpty) sunset = DateTime.parse(ssList.first as String);
 
       final maxList = daily['temperature_2m_max'] as List?;
-      final codeList = daily['weather_code_10m_dominant'] as List?;
+      final codeList = daily['weather_code'] as List?;
       if (maxList != null && maxList.isNotEmpty) {
         dailyMaxTemp = (maxList.first as num).toDouble();
       }
