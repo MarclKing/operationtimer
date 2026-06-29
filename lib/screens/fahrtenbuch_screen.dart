@@ -2912,6 +2912,50 @@ class _FahrtEintragenSheetState extends State<_FahrtEintragenSheet> {
                       _hint('Doppeltipp'),
                       const SizedBox(height: 20),
 
+                      _SectionLabel(label: 'KILOMETERSTAND', skin: skin),
+                      const SizedBox(height: 8),
+                      Row(children: [
+                        Expanded(child: _KmInputCard(
+                          label: 'ABFAHRT KM', ctrl: _kmStartCtrl, skin: skin, color: skin.kommenColor,
+                          fotoPath: _fotoStartPath, hintKm: _lastKmHint,
+                          onTap: () => _openKmInput(_kmStartCtrl, 'Abfahrtkilometer', isStart: true),
+                          onCameraPressed: () => _pickPhoto(true),
+                          onDoubleTap: () {
+                            HapticFeedback.lightImpact();
+                            if (_kmStartCtrl.text.isEmpty && _lastKmHint != null) {
+                              _set(() => _kmStartCtrl.text = _lastKmHint.toString());
+                            } else {
+                              _set(() { _kmStartCtrl.clear(); _fotoStartPath = null; _d.fotoStartPath = null; });
+                            }
+                          },
+                        )),
+                        const SizedBox(width: 12),
+                        Expanded(child: _KmInputCard(
+                          label: 'ANKUNFT KM', ctrl: _kmEndCtrl, skin: skin, color: skin.gehenColor,
+                          fotoPath: _fotoEndPath,
+                          onTap: () => _openKmInput(_kmEndCtrl, 'Ankunftkilometer'),
+                          onCameraPressed: () => _pickPhoto(false),
+                          onDoubleTap: () {
+                            HapticFeedback.lightImpact();
+                            _set(() { _kmEndCtrl.clear(); _fotoEndPath = null; _d.fotoEndPath = null; });
+                          },
+                        )),
+                      ]),
+                      if (kmStart != null && kmEnd != null && kmEnd >= kmStart) ...[
+                        const SizedBox(height: 8),
+                        Center(child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: skin.primary.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: skin.primary.withValues(alpha: 0.2)),
+                          ),
+                          child: Text('${kmEnd - kmStart} km gefahren',
+                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: skin.primary.withValues(alpha: 0.8))),
+                        )),
+                      ],
+                      _hint('Tippen · Doppeltipp · Scannen'),
+                      const SizedBox(height: 20),
+
                       _SectionLabel(label: 'ZEITRAUM', skin: skin),
                       const SizedBox(height: 8),
                       Row(children: [
@@ -2955,50 +2999,6 @@ class _FahrtEintragenSheetState extends State<_FahrtEintragenSheet> {
                         )),
                       ]),
                       _hint('Tippen · Doppeltipp · Wischen'),
-                      const SizedBox(height: 20),
-
-                      _SectionLabel(label: 'KILOMETERSTAND', skin: skin),
-                      const SizedBox(height: 8),
-                      Row(children: [
-                        Expanded(child: _KmInputCard(
-                          label: 'ABFAHRT KM', ctrl: _kmStartCtrl, skin: skin, color: skin.kommenColor,
-                          fotoPath: _fotoStartPath, hintKm: _lastKmHint,
-                          onTap: () => _openKmInput(_kmStartCtrl, 'Abfahrtkilometer', isStart: true),
-                          onCameraPressed: () => _pickPhoto(true),
-                          onDoubleTap: () {
-                            HapticFeedback.lightImpact();
-                            if (_kmStartCtrl.text.isEmpty && _lastKmHint != null) {
-                              _set(() => _kmStartCtrl.text = _lastKmHint.toString());
-                            } else {
-                              _set(() { _kmStartCtrl.clear(); _fotoStartPath = null; _d.fotoStartPath = null; });
-                            }
-                          },
-                        )),
-                        const SizedBox(width: 12),
-                        Expanded(child: _KmInputCard(
-                          label: 'ANKUNFT KM', ctrl: _kmEndCtrl, skin: skin, color: skin.gehenColor,
-                          fotoPath: _fotoEndPath,
-                          onTap: () => _openKmInput(_kmEndCtrl, 'Ankunftkilometer'),
-                          onCameraPressed: () => _pickPhoto(false),
-                          onDoubleTap: () {
-                            HapticFeedback.lightImpact();
-                            _set(() { _kmEndCtrl.clear(); _fotoEndPath = null; _d.fotoEndPath = null; });
-                          },
-                        )),
-                      ]),
-                      if (kmStart != null && kmEnd != null && kmEnd >= kmStart) ...[
-                        const SizedBox(height: 8),
-                        Center(child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
-                          decoration: BoxDecoration(
-                            color: skin.primary.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: skin.primary.withValues(alpha: 0.2)),
-                          ),
-                          child: Text('${kmEnd - kmStart} km gefahren',
-                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: skin.primary.withValues(alpha: 0.8))),
-                        )),
-                      ],
-                      _hint('Tippen · Doppeltipp · Scannen'),
                       const SizedBox(height: 20),
 
                       _SectionLabel(label: 'FAHRTTYP', skin: skin),
@@ -3587,118 +3587,122 @@ class _KennzeichenInputRowState extends State<_KennzeichenInputRow> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // ── 3-Felder Zeile ──────────────────────────────────────────────
-        ClipRRect(
-          borderRadius: BorderRadius.circular(16),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-              decoration: BoxDecoration(
-                color: skin.isLight
-                    ? Colors.white.withValues(alpha: skin.glassOpacity)
-                    : skin.bgCard.withValues(alpha: skin.glassOpacity),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: skin.glassBorder),
-                boxShadow: [BoxShadow(color: skin.glassShadow, blurRadius: 16, offset: const Offset(0, 4))],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Header-Zeile
-                  Row(children: [
-                    Icon(Icons.directions_car_outlined, size: 18, color: skin.primary),
-                    const SizedBox(width: 10),
-                    Text(
-                      'KENNZEICHEN',
-                      style: TextStyle(
-                        fontSize: 9,
-                        fontWeight: FontWeight.w700,
-                        color: skin.primary,
-                        letterSpacing: 1.0,
-                      ),
-                    ),
-                  ]),
-                  const SizedBox(height: 10),
-                  // Die drei Eingabefelder
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      // Feld 1: Ortskennung (max 3 Buchstaben) — flex 3
-                      Expanded(
-                        flex: 3,
-                        child: _KzField(
-                          skin: skin,
-                          ctrl: _ortCtrl,
-                          focus: _ortFocus,
-                          hint: 'B',
-                          sublabel: 'ORT',
-                          maxLen: 3,
-                          lettersOnly: true,
-                          onChanged: (v) {
-                            if (v.length == 3) {
-                              FocusScope.of(context).requestFocus(_buchFocus);
-                            }
-                            _onFieldChange();
-                            setState(() {});
-                          },
+        GestureDetector(
+          onDoubleTap: () {
+            HapticFeedback.mediumImpact();
+            _ortCtrl.clear();
+            _buchCtrl.clear();
+            _numCtrl.clear();
+            _onFieldChange();
+            setState(() {});
+          },
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(
+                  color: skin.isLight
+                      ? Colors.white.withValues(alpha: skin.glassOpacity)
+                      : skin.bgCard.withValues(alpha: skin.glassOpacity),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: skin.glassBorder),
+                  boxShadow: [BoxShadow(color: skin.glassShadow, blurRadius: 16, offset: const Offset(0, 4))],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(children: [
+                      Icon(Icons.directions_car_outlined, size: 18, color: skin.primary),
+                      const SizedBox(width: 10),
+                      Text(
+                        'KENNZEICHEN',
+                        style: TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w700,
+                          color: skin.primary,
+                          letterSpacing: 1.0,
                         ),
                       ),
-                      // Trennstrich
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 6),
-                        child: Text(
-                          '–',
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w300,
-                            color: skin.surface(0.4),
+                    ]),
+                    const SizedBox(height: 10),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Expanded(
+                          flex: 3,
+                          child: _KzField(
+                            skin: skin,
+                            ctrl: _ortCtrl,
+                            focus: _ortFocus,
+                            hint: 'B',
+                            sublabel: 'ORT',
+                            maxLen: 3,
+                            lettersOnly: true,
+                            onChanged: (v) {
+                              if (v.length == 3) {
+                                FocusScope.of(context).requestFocus(_buchFocus);
+                              }
+                              _onFieldChange();
+                              setState(() {});
+                            },
                           ),
                         ),
-                      ),
-                      // Feld 2: Buchstaben (max 2) — flex 2
-                      Expanded(
-                        flex: 2,
-                        child: _KzField(
-                          skin: skin,
-                          ctrl: _buchCtrl,
-                          focus: _buchFocus,
-                          hint: 'AB',
-                          sublabel: 'BUCHST.',
-                          maxLen: 2,
-                          lettersOnly: true,
-                          onChanged: (v) {
-                            if (v.length == 2) {
-                              FocusScope.of(context).requestFocus(_numFocus);
-                            }
-                            _onFieldChange();
-                            setState(() {});
-                          },
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 6),
+                          child: Text(
+                            '–',
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w300,
+                              color: skin.surface(0.4),
+                            ),
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      // Feld 3: Nummer (max 4 Ziffern) — flex 3
-                      Expanded(
-                        flex: 3,
-                        child: _KzField(
-                          skin: skin,
-                          ctrl: _numCtrl,
-                          focus: _numFocus,
-                          hint: '1234',
-                          sublabel: 'NR.',
-                          maxLen: 4,
-                          lettersOnly: false,
-                          onChanged: (v) {
-                            if (v.length == 4) {
-                              FocusManager.instance.primaryFocus?.unfocus();
-                            }
-                            _onFieldChange();
-                            setState(() {});
-                          },
+                        Expanded(
+                          flex: 2,
+                          child: _KzField(
+                            skin: skin,
+                            ctrl: _buchCtrl,
+                            focus: _buchFocus,
+                            hint: 'AB',
+                            sublabel: 'BUCHST.',
+                            maxLen: 2,
+                            lettersOnly: true,
+                            onChanged: (v) {
+                              if (v.length == 2) {
+                                FocusScope.of(context).requestFocus(_numFocus);
+                              }
+                              _onFieldChange();
+                              setState(() {});
+                            },
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                ],
+                        const SizedBox(width: 8),
+                        Expanded(
+                          flex: 3,
+                          child: _KzField(
+                            skin: skin,
+                            ctrl: _numCtrl,
+                            focus: _numFocus,
+                            hint: '1234',
+                            sublabel: 'NR.',
+                            maxLen: 4,
+                            lettersOnly: false,
+                            onChanged: (v) {
+                              if (v.length == 4) {
+                                FocusManager.instance.primaryFocus?.unfocus();
+                              }
+                              _onFieldChange();
+                              setState(() {});
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -3778,7 +3782,13 @@ class _KzField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    return GestureDetector(
+      onDoubleTap: () {
+        HapticFeedback.lightImpact();
+        ctrl.clear();
+        onChanged('');
+      },
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Text(
@@ -3854,7 +3864,8 @@ class _KzField extends StatelessWidget {
             ),
           ),
         ],
-      );
+      ),
+    );
   }
 }
 

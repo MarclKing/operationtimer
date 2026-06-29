@@ -244,6 +244,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   final _tasksKey = GlobalKey<TasksScreenState>();
   final ValueNotifier<bool> _dayCardDragging = ValueNotifier(false);
   final ValueNotifier<bool> _homeOverlayActive = ValueNotifier(false);
+  final ValueNotifier<bool> _navCompact = ValueNotifier(false);
   static const _navChannel = MethodChannel('de.marcel.optimes/navigation');
 
   bool get _dienstplanEnabled => true;
@@ -382,6 +383,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     _slideCtrl.dispose();
     _menuAnimController.dispose();
     _dayCardDragging.dispose();
+    _navCompact.dispose();
     super.dispose();
   }
 
@@ -715,6 +717,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     if (!_isDragging) return;
     _isDragging = false;
     _dayCardDragging.value = false;
+    _navCompact.value = false;
 
     final velocity = d.primaryVelocity ?? 0;
     final current = _slideCtrl.value;
@@ -749,8 +752,18 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     );
   }
 
+  Widget _wrapWithScrollListener(Widget child) {
+    return NotificationListener<ScrollNotification>(
+      onNotification: (notification) {
+        _onScrollNotification(notification);
+        return false;
+      },
+      child: child,
+    );
+  }
+
   List<Widget> _buildPages() => [
-        HomeScreen(
+        _wrapWithScrollListener(HomeScreen(
           key: _homeKey,
           selectedDate: _sharedDate,
           onDateChanged: (d) => setState(() => _sharedDate = d),
@@ -764,31 +777,31 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
           },
           onNavigateToTasks: () => _goToPage(_dienstplanEnabled ? 4 : 3),
           onNavigateToScheduleAndImport: () async {
-            await _animateToPage(2); // Dienstplan-Tab
+            await _animateToPage(2);
             await Future.delayed(const Duration(milliseconds: 400));
             if (!mounted) return;
             _showUploadSheet(context, AppTheme.of(context));
           },
-        ),
-        MonthScreen(
+        )),
+        _wrapWithScrollListener(MonthScreen(
           key: _monthKey,
           selectedMonth: _sharedMonth,
           onMonthChanged: (m) => setState(() => _sharedMonth = m),
           onNavigateToHome: () => _goToPage(0),
-        ),
+        )),
         if (_dienstplanEnabled)
-          ScheduleScreen(
+          _wrapWithScrollListener(ScheduleScreen(
             key: _scheduleKey,
             onNavigateToHome: () => _goToPage(0),
             onNavigateToMonth: () => _goToPage(1),
             onMonthChanged: (m) => setState(() => _scheduleViewMonth = m),
             dayCardDragging: _dayCardDragging,
-          ),
-        FahrtenbuchScreen(
+          )),
+        _wrapWithScrollListener(FahrtenbuchScreen(
           key: _fahrtenbuchKey,
           onDraftChanged: () => setState(() {}),
-        ),
-        TasksScreen(key: _tasksKey),
+        )),
+        _wrapWithScrollListener(TasksScreen(key: _tasksKey)),
       ];
 
   void _toggleMenu() {
@@ -806,6 +819,17 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     if (!_menuOpen) return;
     setState(() => _menuOpen = false);
     _menuAnimController.reverse();
+  }
+
+  void _onScrollNotification(ScrollNotification notification) {
+    if (notification is ScrollUpdateNotification) {
+      final delta = notification.scrollDelta ?? 0;
+      if (delta > 4 && !_navCompact.value) {
+        _navCompact.value = true;
+      } else if (delta < -4 && _navCompact.value) {
+        _navCompact.value = false;
+      }
+    }
   }
 
   void _showKfzVerwaltung(BuildContext context) {
@@ -865,10 +889,18 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                 left: 0,
                 right: 0,
                 child: Center(
-                  child: _GlassBottomNav(
-                    selectedIndex: _currentPage,
-                    dienstplanEnabled: _dienstplanEnabled,
-                    onTap: _selectTab,
+                  child: ValueListenableBuilder<bool>(
+                    valueListenable: _navCompact,
+                    builder: (context, compact, _) => _GlassBottomNav(
+                      selectedIndex: _currentPage,
+                      dienstplanEnabled: _dienstplanEnabled,
+                      onTap: (index) {
+                        // Tap expandiert die Navbar sofort wieder
+                        _navCompact.value = false;
+                        _selectTab(index);
+                      },
+                      compact: compact,
+                    ),
                   ),
                 ),
               ),
@@ -1334,11 +1366,13 @@ class _GlassBottomNav extends StatefulWidget {
   final int selectedIndex;
   final bool dienstplanEnabled;
   final Function(int) onTap;
+  final bool compact;
 
   const _GlassBottomNav({
     required this.selectedIndex,
     required this.dienstplanEnabled,
     required this.onTap,
+    this.compact = false,
   });
 
   @override
@@ -1506,42 +1540,53 @@ class _GlassBottomNavState extends State<_GlassBottomNav>
       ),
     );
 
-    return RawGestureDetector(
-      behavior: HitTestBehavior.opaque,
-      gestures: {
-        HorizontalDragGestureRecognizer:
-            GestureRecognizerFactoryWithHandlers<HorizontalDragGestureRecognizer>(
-          () => HorizontalDragGestureRecognizer(),
-          (instance) {
-            instance
-              ..onStart = (details) {
-                _isDraggingNav = true;
-                _dragStartX = details.localPosition.dx;
-                _dragStartIndex = widget.selectedIndex;
-              }
-              ..onUpdate = (details) {
-                if (!_isDraggingNav) return;
-                final delta = details.localPosition.dx - _dragStartX;
-                final itemCount = widget.dienstplanEnabled ? 5 : 4;
-                final steps = (delta / _scrubItemWidth).round();
-                final newIndex =
-                    (_dragStartIndex + steps).clamp(0, itemCount - 1);
-                if (newIndex != widget.selectedIndex) {
-                  HapticFeedback.selectionClick();
-                  _stretchDirection =
-                      newIndex > widget.selectedIndex ? 1.0 : -1.0;
-                  _lastIndex = newIndex;
-                  _bounceCtrl.forward(from: 0);
-                  widget.onTap(newIndex);
-                }
-              }
-              ..onEnd = (details) {
-                _isDraggingNav = false;
-              };
+    return AnimatedScale(
+      scale: widget.compact ? 0.82 : 1.0,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOutCubic,
+      alignment: Alignment.bottomCenter,
+      child: AnimatedOpacity(
+        opacity: widget.compact ? 0.72 : 1.0,
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeInOut,
+        child: RawGestureDetector(
+          behavior: HitTestBehavior.opaque,
+          gestures: {
+            HorizontalDragGestureRecognizer:
+                GestureRecognizerFactoryWithHandlers<HorizontalDragGestureRecognizer>(
+              () => HorizontalDragGestureRecognizer(),
+              (instance) {
+                instance
+                  ..onStart = (details) {
+                    _isDraggingNav = true;
+                    _dragStartX = details.localPosition.dx;
+                    _dragStartIndex = widget.selectedIndex;
+                  }
+                  ..onUpdate = (details) {
+                    if (!_isDraggingNav) return;
+                    final delta = details.localPosition.dx - _dragStartX;
+                    final itemCount = widget.dienstplanEnabled ? 5 : 4;
+                    final steps = (delta / _scrubItemWidth).round();
+                    final newIndex =
+                        (_dragStartIndex + steps).clamp(0, itemCount - 1);
+                    if (newIndex != widget.selectedIndex) {
+                      HapticFeedback.selectionClick();
+                      _stretchDirection =
+                          newIndex > widget.selectedIndex ? 1.0 : -1.0;
+                      _lastIndex = newIndex;
+                      _bounceCtrl.forward(from: 0);
+                      widget.onTap(newIndex);
+                    }
+                  }
+                  ..onEnd = (details) {
+                    _isDraggingNav = false;
+                  };
+              },
+            ),
           },
+          child: navContent,
         ),
-      },
-      child: navContent,
+      ),
     );
   }
 }

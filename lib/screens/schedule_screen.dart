@@ -1008,9 +1008,16 @@ class ScheduleScreenState extends State<ScheduleScreen> {
   onNext: () => _changeMonth(1),
   onTap: _showMonthPicker,
   onDoubleTap: () {
-    HapticFeedback.selectionClick();
+  HapticFeedback.selectionClick();
+  final now = DateTime.now();
+  final isAlreadyCurrentMonth =
+      _selectedMonth.year == now.year && _selectedMonth.month == now.month;
+  if (isAlreadyCurrentMonth) {
+    scrollToToday();
+  } else {
     scrollToCurrentMonth();
-  },
+  }
+},
   onSwipe: (v) {
     if (v < -300) _changeMonth(1);
     if (v > 300) _changeMonth(-1);
