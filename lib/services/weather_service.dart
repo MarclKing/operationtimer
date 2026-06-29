@@ -17,8 +17,10 @@ class WeatherData {
   final DateTime? sunset;    // Sonnenuntergang
   final bool isDay;          // Tag/Nacht-Status
   final int? humidityPercent;   // Luftfeuchtigkeit in %
-  final double? dailyMaxTempC;
+   final double? dailyMaxTempC;
   final int? dailyWeatherCode;
+  final double? tomorrowMaxTempC;      // NEU
+  final int? tomorrowWeatherCode;  
 
   const WeatherData({
     required this.tempC,
@@ -34,6 +36,8 @@ class WeatherData {
     this.humidityPercent,
     this.dailyMaxTempC,
     this.dailyWeatherCode,
+    this.tomorrowMaxTempC,             // NEU
+    this.tomorrowWeatherCode,
   });
 
   String get icon {
@@ -106,6 +110,8 @@ class WeatherData {
     'humidityPercent': humidityPercent,
     'dailyMaxTempC': dailyMaxTempC,
     'dailyWeatherCode': dailyWeatherCode,
+    'tomorrowMaxTempC': tomorrowMaxTempC,      // NEU
+    'tomorrowWeatherCode': tomorrowWeatherCode,
   };
 
   factory WeatherData.fromJson(Map<String, dynamic> j) => WeatherData(
@@ -122,6 +128,8 @@ class WeatherData {
     humidityPercent: j['humidityPercent'] as int?,
     dailyMaxTempC: (j['dailyMaxTempC'] as num?)?.toDouble(),
     dailyWeatherCode: j['dailyWeatherCode'] as int?,
+    tomorrowMaxTempC: (j['tomorrowMaxTempC'] as num?)?.toDouble(),    // NEU
+    tomorrowWeatherCode: j['tomorrowWeatherCode'] as int?,  
   );
 }
 
@@ -285,6 +293,8 @@ class WeatherService {
     DateTime? sunrise, sunset;
     double? dailyMaxTemp;
     int? dailyWeatherCodeValue;
+    double? tomorrowMaxTemp;       // NEU
+    int? tomorrowWeatherCodeValue;
 
     try {
       final daily = wJson['daily'] as Map<String, dynamic>;
@@ -297,9 +307,11 @@ class WeatherService {
       final codeList = daily['weather_code'] as List?;
       if (maxList != null && maxList.isNotEmpty) {
         dailyMaxTemp = (maxList.first as num).toDouble();
+        if (maxList.length > 1) tomorrowMaxTemp = (maxList[1] as num).toDouble();  // NEU
       }
       if (codeList != null && codeList.isNotEmpty) {
         dailyWeatherCodeValue = (codeList.first as num).toInt();
+        if (codeList.length > 1) tomorrowWeatherCodeValue = (codeList[1] as num).toInt(); // NEU
       }
     } catch (_) {
       // Sunrise/Sunset oder daily-Daten nicht verfügbar → ignoriert
@@ -319,7 +331,21 @@ class WeatherService {
       humidityPercent: humidity,
       dailyMaxTempC: dailyMaxTemp,
       dailyWeatherCode: dailyWeatherCodeValue,
+      tomorrowMaxTempC: tomorrowMaxTemp,           // NEU
+      tomorrowWeatherCode: tomorrowWeatherCodeValue,
     );
+  }
+
+  /// Für Notifications: holt immer frische Daten (ignoriert Cache),
+  /// liest GPS/City-Einstellung direkt aus Hive.
+  Future<WeatherData?> fetchForecastForNotification() async {
+    final box = Hive.box('einstellungen');
+    final useGps = box.get('weather_use_gps', defaultValue: true) as bool;
+    final city = box.get('weather_city', defaultValue: '') as String;
+
+    // Cache leeren → fetchIfNeeded erzwingt einen echten API-Call
+    invalidateCache();
+    return fetchIfNeeded(city, useGps: useGps);
   }
 
   void _save(WeatherData data) {

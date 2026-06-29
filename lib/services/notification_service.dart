@@ -507,38 +507,44 @@ String _resolveShift(String code) {
   /// übernimmt der reguläre WeatherService-Aufruf z.B. beim App-Start im
   /// Homescreen) und mappt sie auf eine WeatherCategory. Liefert null, wenn
   /// keine (auch keine veralteten) Wetterdaten vorliegen.
-  ({WeatherCategory category, double tempC})? _currentWeatherInfo() {
-  final cached = WeatherService.instance.cached;
-  if (cached == null) return null;
-  final category = categoryFor(
-  cached.forecastWeatherCode,
-  cached.forecastTempC,
-  isDay: true,
-);
-return (category: category, tempC: cached.forecastTempC);
-}
+  ({WeatherCategory category, double tempC})? _weatherInfoFrom(
+      WeatherData? data, {required bool forTomorrow}) {
+    if (data == null) return null;
+    final tempC = forTomorrow
+        ? (data.tomorrowMaxTempC ?? data.forecastTempC)
+        : data.forecastTempC;
+    final code = forTomorrow
+        ? (data.tomorrowWeatherCode ?? data.forecastWeatherCode)
+        : data.forecastWeatherCode;
+    final category = categoryFor(code, tempC, isDay: true);
+    return (category: category, tempC: tempC);
+  }
 
   /// Baut Titel+Subtitle+Body für die Tagesvorschau eines bestimmten Tages.
-  NotificationCopy _buildOverviewCopy({required DateTime day}) {
-  final shiftInfo = _shiftInfoForDay(day);
-  final hasNote = _hasNoteForDay(day);
-  final weather = _currentWeatherInfo();
-  final taskInfo = _taskInfoForDay(day);
+  NotificationCopy _buildOverviewCopy({
+    required DateTime day,
+    required WeatherData? weatherData,
+    required bool forTomorrow,
+  }) {
+    final shiftInfo = _shiftInfoForDay(day);
+    final hasNote = _hasNoteForDay(day);
+    final weather = _weatherInfoFrom(weatherData, forTomorrow: forTomorrow);
+    final taskInfo = _taskInfoForDay(day);
 
-  return RelationshipTexts.dailyOverview(
-    style: _style,
-    fullName: _fullName,
-    hasShift: shiftInfo.hasShift,
-    isFree: shiftInfo.isFree,
-    shiftCode: shiftInfo.resolvedShift ?? shiftInfo.code, // aufgelöster String
-    hasNote: hasNote,
-    weatherCategory: weather?.category,
-    weatherTempC: weather?.tempC,
-    dueTodayCount: taskInfo.dueTodayCount,
-    dueTodayTaskTitle: taskInfo.dueTodayTaskTitle,
-    otherOpenCount: taskInfo.otherOpenCount,
-  );
-}
+    return RelationshipTexts.dailyOverview(
+      style: _style,
+      fullName: _fullName,
+      hasShift: shiftInfo.hasShift,
+      isFree: shiftInfo.isFree,
+      shiftCode: shiftInfo.resolvedShift ?? shiftInfo.code,
+      hasNote: hasNote,
+      weatherCategory: weather?.category,
+      weatherTempC: weather?.tempC,
+      dueTodayCount: taskInfo.dueTodayCount,
+      dueTodayTaskTitle: taskInfo.dueTodayTaskTitle,
+      otherOpenCount: taskInfo.otherOpenCount,
+    );
+  }
 
   bool _dayHasRelevantContent(DateTime day) {
     final shiftInfo = _shiftInfoForDay(day);
@@ -561,9 +567,12 @@ return (category: category, tempC: cached.forecastTempC);
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
 
+    // Frische Wetterdaten einmalig für beide Notifications holen
+    final weatherData = await WeatherService.instance.fetchForecastForNotification();
+
     // ── Morgen-Vorschau für HEUTE ──
     if (!DailyOverviewSettings.onlyIfRelevant || _dayHasRelevantContent(today)) {
-      final copy = _buildOverviewCopy(day: today);
+      final copy = _buildOverviewCopy(day: today, weatherData: weatherData, forTomorrow: false);
       var fireTime = DateTime(
         now.year, now.month, now.day,
         DailyOverviewSettings.hour, DailyOverviewSettings.minute,
@@ -587,7 +596,7 @@ return (category: category, tempC: cached.forecastTempC);
     if (DailyOverviewSettings.eveningPreviewEnabled) {
       final tomorrow = today.add(const Duration(days: 1));
       if (!DailyOverviewSettings.onlyIfRelevant || _dayHasRelevantContent(tomorrow)) {
-        final copy = _buildOverviewCopy(day: tomorrow);
+        final copy = _buildOverviewCopy(day: tomorrow, weatherData: weatherData, forTomorrow: true);
         var fireTime = DateTime(
           now.year, now.month, now.day,
           DailyOverviewSettings.eveningHour, DailyOverviewSettings.eveningMinute,
@@ -622,7 +631,8 @@ return (category: category, tempC: cached.forecastTempC);
     final dayOnly = DateTime(today.year, today.month, today.day);
     if (DailyOverviewSettings.onlyIfRelevant && !_dayHasRelevantContent(dayOnly)) return;
 
-    final copy = _buildOverviewCopy(day: dayOnly);
+    final weatherData = await WeatherService.instance.fetchForecastForNotification();
+    final copy = _buildOverviewCopy(day: dayOnly, weatherData: weatherData, forTomorrow: false);
     await _plugin.show(
       _dailyOverviewMorningId,
       copy.title,
