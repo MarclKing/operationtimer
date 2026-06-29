@@ -374,6 +374,10 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
         );
       };
     });
+
+    Future.delayed(const Duration(milliseconds: 800), () {
+      if (mounted) _scrollListenerActive = true;
+    });
   }
 
   @override
@@ -821,7 +825,10 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     _menuAnimController.reverse();
   }
 
+  bool _scrollListenerActive = false;
+
   void _onScrollNotification(ScrollNotification notification) {
+    if (!_scrollListenerActive) return;
     if (notification is ScrollUpdateNotification) {
       final delta = notification.scrollDelta ?? 0;
       if (delta > 4 && !_navCompact.value) {
