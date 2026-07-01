@@ -648,21 +648,22 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   }
 
   void _goToPage(int index) {
-    FocusManager.instance.primaryFocus?.unfocus();
-    _closeMenu();
-    _homeKey.currentState?.closeOverlays();
-    _scheduleKey.currentState?.closeOverlays();
-    _monthKey.currentState?.closeAllRows();
-    _fahrtenbuchKey.currentState?.closeOverlays();
-    _tasksKey.currentState?.closeOverlays(); // ← NEU
+  FocusManager.instance.primaryFocus?.unfocus();
+  _closeMenu();
+  _homeKey.currentState?.closeOverlays();
+  _scheduleKey.currentState?.closeOverlays();
+  _monthKey.currentState?.closeAllRows();
+  _fahrtenbuchKey.currentState?.closeOverlays();
+  _tasksKey.currentState?.closeOverlays();
 
-    // NEU: Wenn wir zum Schedule-Tab (Index 2) wechseln, Task-Marker aktualisieren
-    if (index == 2 && _dienstplanEnabled) {
-      _scheduleKey.currentState?.refreshTaskMarkers();
-    }
+  if (index == 0) _navCompact.value = false; // ← NEU
 
-    _animateToPage(index);
+  if (index == 2 && _dienstplanEnabled) {
+    _scheduleKey.currentState?.refreshTaskMarkers();
   }
+
+  _animateToPage(index);
+}
 
   void _onPlusPressed() {
     final hasDraft = _fahrtenbuchKey.currentState?.hasDraft ?? false;
@@ -736,24 +737,25 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     }
 
     if (targetPage != _currentPage) {
-      _homeKey.currentState?.closeOverlays();
-      _scheduleKey.currentState?.closeOverlays();
-      _monthKey.currentState?.closeAllRows();
-      _fahrtenbuchKey.currentState?.closeOverlays();
-      _tasksKey.currentState?.closeOverlays(); // ← NEU
+  _homeKey.currentState?.closeOverlays();
+  _scheduleKey.currentState?.closeOverlays();
+  _monthKey.currentState?.closeAllRows();
+  _fahrtenbuchKey.currentState?.closeOverlays();
+  _tasksKey.currentState?.closeOverlays();
 
-      // NEU: Wenn wir zum Schedule-Tab (Index 2) wechseln, Task-Marker aktualisieren
-      if (targetPage == 2 && _dienstplanEnabled) {
-        _scheduleKey.currentState?.refreshTaskMarkers();
-      }
-    }
+  if (targetPage == 2 && _dienstplanEnabled) {
+    _scheduleKey.currentState?.refreshTaskMarkers();
+  }
+}
 
-    setState(() => _currentPage = targetPage);
-    _slideCtrl.animateTo(
-      targetPage.toDouble(),
-      duration: const Duration(milliseconds: 260),
-      curve: Curves.easeOutCubic,
-    );
+if (targetPage == 0) _navCompact.value = false; // ← NEU
+
+setState(() => _currentPage = targetPage);
+_slideCtrl.animateTo(
+  targetPage.toDouble(),
+  duration: const Duration(milliseconds: 260),
+  curve: Curves.easeOutCubic,
+);
   }
 
   Widget _wrapWithScrollListener(Widget child) {
@@ -767,46 +769,46 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   }
 
   List<Widget> _buildPages() => [
-        _wrapWithScrollListener(HomeScreen(
-          key: _homeKey,
-          selectedDate: _sharedDate,
-          onDateChanged: (d) => setState(() => _sharedDate = d),
-          onNavigateToMonth: () => _goToPage(1),
-          onNavigateToFahrtenbuch: () => _goToPage(_dienstplanEnabled ? 3 : 2),
-          onNavigateToFahrtenbuchNeueFahrt: () async {
-            await _animateToPage(_dienstplanEnabled ? 3 : 2);
-            await Future.delayed(const Duration(milliseconds: 500));
-            if (!mounted) return;
-            _fahrtenbuchKey.currentState?.triggerKmStartScan();
-          },
-          onNavigateToTasks: () => _goToPage(_dienstplanEnabled ? 4 : 3),
-          onNavigateToScheduleAndImport: () async {
-            await _animateToPage(2);
-            await Future.delayed(const Duration(milliseconds: 400));
-            if (!mounted) return;
-            _showUploadSheet(context, AppTheme.of(context));
-          },
-        )),
-        _wrapWithScrollListener(MonthScreen(
-          key: _monthKey,
-          selectedMonth: _sharedMonth,
-          onMonthChanged: (m) => setState(() => _sharedMonth = m),
+      HomeScreen(
+        key: _homeKey,
+        selectedDate: _sharedDate,
+        onDateChanged: (d) => setState(() => _sharedDate = d),
+        onNavigateToMonth: () => _goToPage(1),
+        onNavigateToFahrtenbuch: () => _goToPage(_dienstplanEnabled ? 3 : 2),
+        onNavigateToFahrtenbuchNeueFahrt: () async {
+          await _animateToPage(_dienstplanEnabled ? 3 : 2);
+          await Future.delayed(const Duration(milliseconds: 500));
+          if (!mounted) return;
+          _fahrtenbuchKey.currentState?.triggerKmStartScan();
+        },
+        onNavigateToTasks: () => _goToPage(_dienstplanEnabled ? 4 : 3),
+        onNavigateToScheduleAndImport: () async {
+          await _animateToPage(2);
+          await Future.delayed(const Duration(milliseconds: 400));
+          if (!mounted) return;
+          _showUploadSheet(context, AppTheme.of(context));
+        },
+      ),
+      _wrapWithScrollListener(MonthScreen(
+        key: _monthKey,
+        selectedMonth: _sharedMonth,
+        onMonthChanged: (m) => setState(() => _sharedMonth = m),
+        onNavigateToHome: () => _goToPage(0),
+      )),
+      if (_dienstplanEnabled)
+        _wrapWithScrollListener(ScheduleScreen(
+          key: _scheduleKey,
           onNavigateToHome: () => _goToPage(0),
+          onNavigateToMonth: () => _goToPage(1),
+          onMonthChanged: (m) => setState(() => _scheduleViewMonth = m),
+          dayCardDragging: _dayCardDragging,
         )),
-        if (_dienstplanEnabled)
-          _wrapWithScrollListener(ScheduleScreen(
-            key: _scheduleKey,
-            onNavigateToHome: () => _goToPage(0),
-            onNavigateToMonth: () => _goToPage(1),
-            onMonthChanged: (m) => setState(() => _scheduleViewMonth = m),
-            dayCardDragging: _dayCardDragging,
-          )),
-        _wrapWithScrollListener(FahrtenbuchScreen(
-          key: _fahrtenbuchKey,
-          onDraftChanged: () => setState(() {}),
-        )),
-        _wrapWithScrollListener(TasksScreen(key: _tasksKey)),
-      ];
+      _wrapWithScrollListener(FahrtenbuchScreen(
+        key: _fahrtenbuchKey,
+        onDraftChanged: () => setState(() {}),
+      )),
+      _wrapWithScrollListener(TasksScreen(key: _tasksKey)),
+    ];
 
   void _toggleMenu() {
     setState(() {

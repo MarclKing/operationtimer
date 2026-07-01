@@ -849,7 +849,10 @@ class ScheduleScreenState extends State<ScheduleScreen> {
   bool get _hasSchedule => _scheduleData.isNotEmpty;
   int get _workDays => _scheduleData.values.where((v) { final cat = ScheduleEntry(v).category; return cat == ShiftCategory.work || cat == ShiftCategory.mixed; }).length;
   int get _freeDays => _scheduleData.values.where((v) => ScheduleEntry(v).category == ShiftCategory.free).length;
-  int get _sonderDays => _scheduleData.values.where((v) { final upper = v.trim().toUpperCase(); return upper == 'VK' || upper == 'IS'; }).length;
+  int get _sonderDays => _scheduleData.values.where((v) {
+  final parts = v.trim().toUpperCase().split('/').map((p) => p.trim());
+  return parts.contains('VK') || parts.contains('IS');
+}).length;
 
   List<DateTime> get _daysInMonth {
     final year = _selectedMonth.year; final month = _selectedMonth.month;
@@ -1473,6 +1476,8 @@ class _ColleaguesOverlayState extends State<_ColleaguesOverlay> with TickerProvi
   late Animation<double> _expandAnim;
   Map<String, String> _colleagues = {};
   String? _eventText;
+  List<String> _ownShiftParts = []; // NEU: eigener Dienst des Tages, gesplittet an "/"
+  String _ownName = '';             // NEU: eigener Anzeigename
   String? _debugLog;
   bool _debugLogCopied = false;
   double _dragStartGlobalY = 0.0;
@@ -1496,6 +1501,25 @@ class _ColleaguesOverlayState extends State<_ColleaguesOverlay> with TickerProvi
   void _loadData() {
     final box = Hive.box('einstellungen');
     final monthKey = widget.dateKey.substring(0, 7);
+
+    // NEU: eigenen Dienst + Namen laden, um sich selbst mit anzuzeigen
+    final scheduleRaw = box.get('schedule_$monthKey');
+    String ownShift = '';
+    if (scheduleRaw is Map) { ownShift = (scheduleRaw[widget.dateKey] ?? '').toString(); }
+    final scheduleName = box.get('dienstplan_name', defaultValue: '') as String;
+    final mainName = box.get('name', defaultValue: '') as String;
+    final ownFullName = scheduleName.isNotEmpty ? scheduleName : mainName;
+    // NEU: nur Nachname extrahieren, analog zu den Kollegen (Format "Nachname, Vorname")
+    String ownDisplayName;
+    if (ownFullName.contains(',')) {
+      ownDisplayName = ownFullName.split(',').first.trim();
+    } else {
+      final nameParts = ownFullName.trim().split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
+      ownDisplayName = nameParts.isNotEmpty ? nameParts.last : '';
+    }
+    _ownShiftParts = ownShift.trim().toUpperCase().split('/').map((s) => s.trim()).toList();
+    _ownName = ownDisplayName;
+
     final raw = box.get('colleagues_$monthKey');
     if (raw is String) {
       try {
@@ -1539,8 +1563,8 @@ class _ColleaguesOverlayState extends State<_ColleaguesOverlay> with TickerProvi
 
   AppSkin get skin => widget.skin;
 
-  List<String> _namesForShifts(List<String> shiftCodes) {
-    final result = <String>[];
+  List<({String name, bool isSelf})> _namesForShifts(List<String> shiftCodes) {
+    final result = <({String name, bool isSelf})>[];
     final upperCodes = shiftCodes.map((c) => c.toUpperCase()).toList();
     for (final entry in _colleagues.entries) {
       final rawShift = entry.value.trim().toUpperCase();
@@ -1549,10 +1573,16 @@ class _ColleaguesOverlayState extends State<_ColleaguesOverlay> with TickerProvi
       for (final code in upperCodes) { if (shiftParts.contains(code)) { matches = true; break; } }
       if (matches) {
         final name = entry.key.contains(',') ? entry.key.split(',').first.trim() : entry.key.trim();
-        result.add(name);
+        result.add((name: name, isSelf: false));
       }
     }
-    result.sort();
+    // NEU: eigenen Dienst nahtlos mit einsortieren
+    if (_ownName.isNotEmpty) {
+      for (final code in upperCodes) {
+        if (_ownShiftParts.contains(code)) { result.add((name: _ownName, isSelf: true)); break; }
+      }
+    }
+    result.sort((a, b) => a.name.compareTo(b.name));
     return result;
   }
 
@@ -1563,7 +1593,7 @@ class _ColleaguesOverlayState extends State<_ColleaguesOverlay> with TickerProvi
         .toList()..sort();
   }
 
-  Widget _shiftGroup({required List<({String label, List<String> names, Color color})> slots}) {
+  Widget _shiftGroup({required List<({String label, List<({String name, bool isSelf})> names, Color color})> slots}) {
     if (slots.isEmpty) return const SizedBox.shrink();
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),
@@ -1593,7 +1623,13 @@ class _ColleaguesOverlayState extends State<_ColleaguesOverlay> with TickerProvi
                     const SizedBox(height: 5),
                     ...slots[i].names.map((n) => Padding(
                           padding: const EdgeInsets.only(bottom: 2),
-                          child: Text(n, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: skin.textPrimary, height: 1.3)),
+                          child: Row(mainAxisSize: MainAxisSize.min, children: [
+                            Flexible(child: Text(n.name, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: skin.textPrimary, height: 1.3))),
+                            if (n.isSelf) ...[
+                              const SizedBox(width: 4),
+                              Icon(Icons.person_rounded, size: 13, color: skin.primary),
+                            ],
+                          ]),
                         )),
                   ]),
                 ),
@@ -1622,18 +1658,26 @@ class _ColleaguesOverlayState extends State<_ColleaguesOverlay> with TickerProvi
     final xNames = _namesForShifts(['X']);
 
     final knownShifts = {'P1','P2','P','F1','F2','F','VK','GEB','T','IS','AUF','AF','DA','U','X'};
-    final otherEntries = <String, List<String>>{};
+    final otherEntries = <String, List<({String name, bool isSelf})>>{};
     for (final entry in _colleagues.entries) {
       final rawShift = entry.value.trim().toUpperCase();
       final parts = rawShift.split('/').map((s) => s.trim()).toList();
       for (final p in parts) {
         if (!knownShifts.contains(p) && p.isNotEmpty && p != 'LÜ' && p != 'LUE') {
           final name = entry.key.contains(',') ? entry.key.split(',').first.trim() : entry.key.trim();
-          otherEntries.putIfAbsent(p, () => []).add(name);
+          otherEntries.putIfAbsent(p, () => []).add((name: name, isSelf: false));
         }
       }
     }
-    for (final k in otherEntries.keys) otherEntries[k]!.sort();
+    // NEU: eigene "sonstige" Dienste ebenfalls einmischen
+    if (_ownName.isNotEmpty) {
+      for (final p in _ownShiftParts) {
+        if (!knownShifts.contains(p) && p.isNotEmpty && p != 'LÜ' && p != 'LUE') {
+          otherEntries.putIfAbsent(p, () => []).add((name: _ownName, isSelf: true));
+        }
+      }
+    }
+    for (final k in otherEntries.keys) otherEntries[k]!.sort((a, b) => a.name.compareTo(b.name));
 
     final hasTGroup = tNames.isNotEmpty || isNames.isNotEmpty || aufNames.isNotEmpty;
     final hasFreeGroup = daNames.isNotEmpty || uNames.isNotEmpty || xNames.isNotEmpty;

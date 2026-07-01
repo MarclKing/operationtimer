@@ -42,7 +42,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => HomeScreenState();
 }
 
-class HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
+class HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, WidgetsBindingObserver {
   late DateTime _selectedDate;
   late AnimationController _greetingCtrl;
   late Animation<double> _greetingFade;
@@ -51,7 +51,8 @@ class HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   late DateTime _now;
 
   // ── NEU: Wetter-State, wird verzögert nach erstem Frame befüllt ──────────
-  WeatherData? _weatherData;
+WeatherData? _weatherData;
+bool _isRefreshingWeather = false;   // ← NEU: für Tap-to-Refresh Icon
 
   // Review-Callback von main.dart
   void Function(ParsedSpokenTask, String)? onReviewFromHomescreen;
@@ -59,11 +60,14 @@ class HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this); 
     _selectedDate = widget.selectedDate;
     _now = DateTime.now();
 
     // Sofort verfügbaren Cache zeigen (kein Warten, kein Netzwerk-Call)
-    _weatherData = WeatherService.instance.cached;
+_weatherData = WeatherService.instance.cached;
+
+WeatherService.instance.refreshSignal.addListener(_onWeatherInvalidated);   // ← NEU
 
     _greetingCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 600));
     _greetingFade = CurvedAnimation(parent: _greetingCtrl, curve: Curves.easeOut);
@@ -94,6 +98,30 @@ class HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     setState(() => _weatherData = data);
   }
 
+  void _onWeatherInvalidated() {
+  if (mounted) _refreshWeather();
+}
+
+  // NEU
+Future<void> _refreshWeatherManual() async {
+  if (_isRefreshingWeather) return;
+  HapticFeedback.mediumImpact();
+  setState(() => _isRefreshingWeather = true);
+
+  WeatherService.instance.invalidateCache(); // Cache umgehen → echter Fetch erzwungen
+  final box = Hive.box('einstellungen');
+  final useGps = box.get('weather_use_gps', defaultValue: true) as bool;
+  final cityName = useGps ? '' : (_getWeatherCity() ?? '');
+
+  final data = await WeatherService.instance.fetchIfNeeded(cityName, useGps: useGps);
+
+  if (!mounted) return;
+  setState(() {
+    _weatherData = data;
+    _isRefreshingWeather = false;
+  });
+}
+
   void _scheduleNextMinuteTick() {
     final now = DateTime.now();
     final msUntilNextMinute = (60 - now.second) * 1000 - now.millisecond;
@@ -106,10 +134,20 @@ class HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   @override
-  void dispose() {
-    _greetingCtrl.dispose();
-    super.dispose();
+void dispose() {
+  WidgetsBinding.instance.removeObserver(this);
+  WeatherService.instance.refreshSignal.removeListener(_onWeatherInvalidated);   // ← NEU
+  _greetingCtrl.dispose();
+  super.dispose();
+}
+
+@override
+void didChangeAppLifecycleState(AppLifecycleState state) {
+  super.didChangeAppLifecycleState(state);
+  if (state == AppLifecycleState.resumed) {
+    _refreshWeather(); // App wieder im Vordergrund → still im Hintergrund nachladen
   }
+}
 
   @override
   void didUpdateWidget(HomeScreen oldWidget) {
@@ -275,7 +313,7 @@ Future<void> _showDuplicateDialog(ParsedSpokenTask parsed, String logRef) async 
       if (b.dueDate == null) return -1;
       return a.dueDate!.compareTo(b.dueDate!);
     });
-    return open.take(3).toList();
+    return open.take(7).toList();
   }
 
   bool get _hasScheduleThisMonth {
@@ -316,12 +354,15 @@ Future<void> _showDuplicateDialog(ParsedSpokenTask parsed, String logRef) async 
     final useDictate = taskAddMode == 'dictate';
 
     return Scaffold(
-      backgroundColor: skin.bgBase,
-      body: SafeArea(
-        bottom: false,
-        child: FadingListView(
-          fadeFromBottom: bottomNavHeight + 20,
+  backgroundColor: skin.bgBase,
+  body: SafeArea(
+    bottom: false,
+    child: Column(
+      children: [
+        FadingListView(
+          fadeFromBottom: 0,
           child: ListView(
+            shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             padding: EdgeInsets.zero,
             children: [
@@ -333,9 +374,7 @@ Future<void> _showDuplicateDialog(ParsedSpokenTask parsed, String logRef) async 
               ),
 
               const SizedBox(height: 16),
-
               _buildWeatherRow(skin),
-
               const SizedBox(height: 14),
 
               if (todayShift != null) ...[
@@ -359,7 +398,6 @@ Future<void> _showDuplicateDialog(ParsedSpokenTask parsed, String logRef) async 
                 const SizedBox(height: 14),
               ],
 
-              // ── Quick-Access Kacheln ──────────────────────────────────────────
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: Row(
@@ -399,25 +437,28 @@ Future<void> _showDuplicateDialog(ParsedSpokenTask parsed, String logRef) async 
               ),
 
               const SizedBox(height: 14),
-
-              if (upcomingTasks.isNotEmpty) ...[
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: _TaskPreviewKachel(
-                    skin: skin,
-                    tasks: upcomingTasks,
-                    onTapAll: widget.onNavigateToTasks,
-                  ),
-                ),
-                const SizedBox(height: 14),
-              ],
-
-              SizedBox(height: bottomNavHeight + 16),
             ],
           ),
         ),
-      ),
-    );
+
+        // ── Aufgaben-Kachel: wächst bis max. zur Navbar, scrollt intern ──
+        if (upcomingTasks.isNotEmpty)
+          Flexible(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(20, 0, 20, bottomNavHeight + 16),
+              child: _TaskPreviewKachel(
+                skin: skin,
+                tasks: upcomingTasks,
+                onTapAll: widget.onNavigateToTasks,
+              ),
+            ),
+          )
+        else
+          SizedBox(height: bottomNavHeight + 16),
+      ],
+    ),
+  ),
+);
   }
 
   // ── Hero: Zeit + Greeting ─────────────────────────────────────────────────
@@ -515,31 +556,35 @@ Future<void> _showDuplicateDialog(ParsedSpokenTask parsed, String logRef) async 
         : 'Lädt…';
 
     if (weatherEnabled) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        child: _WeatherKachelGross(
-          skin: skin,
-          data: data,
-          icon: weatherIcon,
-          temp: tempStr,
-          city: cityLabel,
-          detail: detail,
-        ),
-      );
-    } else {
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
-        child: Align(
-          alignment: Alignment.centerRight,
-          child: _WeatherChip(
-            skin: skin,
-            icon: weatherIcon,
-            temp: tempStr,
-            city: cityLabel,
-          ),
-        ),
-      );
-    }
+  return Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 20),
+    child: _WeatherKachelGross(
+      skin: skin,
+      data: data,
+      icon: weatherIcon,
+      temp: tempStr,
+      city: cityLabel,
+      detail: detail,
+      isRefreshing: _isRefreshingWeather,      // ← NEU
+      onRefresh: _refreshWeatherManual,        // ← NEU
+    ),
+  );
+} else {
+  return Padding(
+    padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
+    child: Align(
+      alignment: Alignment.centerRight,
+      child: _WeatherChip(
+        skin: skin,
+        icon: weatherIcon,
+        temp: tempStr,
+        city: cityLabel,
+        isRefreshing: _isRefreshingWeather,    // ← NEU
+        onRefresh: _refreshWeatherManual,      // ← NEU
+      ),
+    ),
+  );
+}
   }
 }
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1061,6 +1106,56 @@ class _TaskPreviewKachel extends StatelessWidget {
     return DateFormat('EEE', 'de').format(due).substring(0, 2).capitalize();
   }
 
+  Widget _buildTaskRow(Task t) {
+    final isOverdue = t.isOverdue;
+    final dueLabel = _formatDue(t);
+    final dueColor = isOverdue
+        ? const Color(0xFFEF5B5B)
+        : (t.isToday ? const Color(0xFFFFB347) : skin.surface(0.45));
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 11, 16, 11),
+      child: Row(
+        children: [
+          Container(
+            width: 22,
+            height: 22,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: isOverdue ? const Color(0xFFEF5B5B) : skin.surface(0.25),
+                width: 1.8,
+              ),
+              color: isOverdue
+                  ? const Color(0xFFEF5B5B).withValues(alpha: 0.08)
+                  : Colors.transparent,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              t.title,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: skin.textPrimary,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          if (dueLabel.isNotEmpty) ...[
+            const SizedBox(width: 8),
+            Text(
+              dueLabel,
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: dueColor),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return ClipRRect(
@@ -1079,8 +1174,9 @@ class _TaskPreviewKachel extends StatelessWidget {
             ],
           ),
           child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              // Header
+              // Header — bleibt fix, scrollt nicht mit
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 14, 12, 10),
                 child: Row(
@@ -1099,87 +1195,25 @@ class _TaskPreviewKachel extends StatelessWidget {
                       onTap: onTapAll,
                       child: Text(
                         'alle →',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: skin.primary,
-                        ),
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: skin.primary),
                       ),
                     ),
                   ],
                 ),
               ),
-              // Task-Einträge
-              ...tasks.asMap().entries.map((entry) {
-                final i = entry.key;
-                final t = entry.value;
-                final isOverdue = t.isOverdue;
-                final dueLabel = _formatDue(t);
-                final dueColor = isOverdue
-                    ? const Color(0xFFEF5B5B)
-                    : (t.isToday ? const Color(0xFFFFB347) : skin.surface(0.45));
-
-                return Column(
-                  children: [
-                    if (i > 0)
-                      Padding(
-                        padding: const EdgeInsets.only(left: 16),
-                        child: Divider(height: 0.5, color: skin.glassBorder),
-                      ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 11, 16, 11),
-                      child: Row(
-                        children: [
-                          // Checkbox-Ring
-                          Container(
-                            width: 22,
-                            height: 22,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: isOverdue
-                                    ? const Color(0xFFEF5B5B)
-                                    : skin.surface(0.25),
-                                width: 1.8,
-                              ),
-                              color: isOverdue
-                                  ? const Color(0xFFEF5B5B).withValues(alpha: 0.08)
-                                  : Colors.transparent,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          // Titel
-                          Expanded(
-                            child: Text(
-                              t.title,
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
-                                color: skin.textPrimary,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          // Due Label
-                          if (dueLabel.isNotEmpty) ...[
-                            const SizedBox(width: 8),
-                            Text(
-                              dueLabel,
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                                color: dueColor,
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ],
-                );
-              }),
-              const SizedBox(height: 4),
+              // Task-Liste — wächst bis zum Rest-Platz, scrollt dann intern
+              Flexible(
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  padding: const EdgeInsets.only(bottom: 4),
+                  itemCount: tasks.length,
+                  separatorBuilder: (_, __) => Padding(
+                    padding: const EdgeInsets.only(left: 16),
+                    child: Divider(height: 0.5, color: skin.glassBorder),
+                  ),
+                  itemBuilder: (context, i) => _buildTaskRow(tasks[i]),
+                ),
+              ),
             ],
           ),
         ),
@@ -1197,12 +1231,16 @@ class _WeatherChip extends StatelessWidget {
   final String icon;
   final String temp;
   final String city;
+  final bool isRefreshing;          // ← NEU
+  final VoidCallback? onRefresh;    // ← NEU
 
   const _WeatherChip({
     required this.skin,
     required this.icon,
     required this.temp,
     required this.city,
+    this.isRefreshing = false,      // ← NEU
+    this.onRefresh,                 // ← NEU
   });
 
   @override
@@ -1222,41 +1260,36 @@ class _WeatherChip extends StatelessWidget {
             boxShadow: [BoxShadow(color: skin.glassShadow, blurRadius: 12, offset: const Offset(0, 3))],
           ),
           child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(icon, style: const TextStyle(fontSize: 14)),
-              const SizedBox(width: 6),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    temp,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: skin.textPrimary,
-                    ),
-                  ),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.location_on, size: 9, color: Color(0xFF5B8DEF)),
-                      const SizedBox(width: 2),
-                      Text(
-                        city,
-                        style: TextStyle(
-                          fontSize: 9,
-                          color: skin.surface(0.38),
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ],
-          ),
+  mainAxisSize: MainAxisSize.min,
+  children: [
+    Text(icon, style: const TextStyle(fontSize: 14)),
+    const SizedBox(width: 6),
+    Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(temp, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: skin.textPrimary)),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.location_on, size: 9, color: Color(0xFF5B8DEF)),
+            const SizedBox(width: 2),
+            Text(city, style: TextStyle(fontSize: 9, color: skin.surface(0.38), fontWeight: FontWeight.w500)),
+          ],
+        ),
+      ],
+    ),
+    if (onRefresh != null) ...[                              // ← NEU
+      const SizedBox(width: 4),                               // ← NEU
+      _RefreshButton(                                         // ← NEU
+        skin: skin,                                           // ← NEU
+        isRefreshing: isRefreshing,                           // ← NEU
+        onTap: onRefresh!,                                    // ← NEU
+        size: 13,                                             // ← NEU
+      ),                                                       // ← NEU
+    ],                                                         // ← NEU
+  ],
+),
         ),
       ),
     );
@@ -1274,6 +1307,8 @@ class _WeatherKachelGross extends StatelessWidget {
   final String temp;
   final String city;
   final String detail;
+  final bool isRefreshing;          // ← NEU
+  final VoidCallback? onRefresh;    // ← NEU
 
   const _WeatherKachelGross({
     required this.skin,
@@ -1282,6 +1317,8 @@ class _WeatherKachelGross extends StatelessWidget {
     required this.temp,
     required this.city,
     required this.detail,
+    this.isRefreshing = false,      // ← NEU
+    this.onRefresh,                 // ← NEU
   });
 
   List<({String time, String label, Color color})> _nextTwoSunEvents() {
@@ -1399,31 +1436,38 @@ class _WeatherKachelGross extends StatelessWidget {
                     ),
                   ),
 
-                  // ── Sonnen-Ereignis: elegant neu designt ──────────────
-                  if (sunEvents.isNotEmpty) ...[
-  const SizedBox(width: 12),
+                  // ── Sonnen-Ereignis ─────────────────────────────────────
+if (sunEvents.isNotEmpty)
   _SunEventBadge(
     skin: skin,
     events: sunEvents,
   ),
-],
                 ],
               ),
 
               // ── Trennlinie + Details ─────────────────────────────────
-              if (data != null) ...[
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Container(height: 0.5, color: skin.surface(0.10)),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(detail,
-                        style: TextStyle(fontSize: 9, color: skin.surface(0.28))),
-                  ],
-                ),
-                const SizedBox(height: 10),
+if (data != null) ...[
+  const SizedBox(height: 2),
+  Row(
+    children: [
+      Expanded(
+        child: Container(height: 0.5, color: skin.surface(0.10)),
+      ),
+      const SizedBox(width: 8),
+      Text(detail,
+          style: TextStyle(fontSize: 9, color: skin.surface(0.28))),
+      if (onRefresh != null) ...[
+        const SizedBox(width: 4),
+        _RefreshButton(
+          skin: skin,
+          isRefreshing: isRefreshing,
+          onTap: onRefresh!,
+          size: 12,
+        ),
+      ],
+    ],
+  ),
+  const SizedBox(height: 2),
                 Row(
                   children: [
                     _WeatherDetailRow(
@@ -1432,7 +1476,7 @@ class _WeatherKachelGross extends StatelessWidget {
                       label: 'Niederschlag',
                       value: data!.precipStr,
                     ),
-                    const SizedBox(width: 20),
+                    const SizedBox(width: 30),
                     _WeatherDetailRow(
                       skin: skin,
                       icon: Icons.air_outlined,
@@ -1441,7 +1485,7 @@ class _WeatherKachelGross extends StatelessWidget {
                     ),
                     // NEU: Luftfeuchtigkeit
                     if (data!.humidityPercent != null) ...[
-                      const SizedBox(width: 20),
+                      const SizedBox(width: 30),
                       _WeatherDetailRow(
                         skin: skin,
                         icon: Icons.water_outlined,
@@ -1507,6 +1551,105 @@ class _SunEventBadge extends StatelessWidget {
           ),
         ],
       ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// REFRESH BUTTON — Tap-to-Refresh mit Spin-Animation + kurzer "Fertig"-Bestätigung
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _RefreshButton extends StatefulWidget {
+  final AppSkin skin;
+  final bool isRefreshing;
+  final VoidCallback onTap;
+  final double size;
+
+  const _RefreshButton({
+    required this.skin,
+    required this.isRefreshing,
+    required this.onTap,
+    this.size = 14,
+  });
+
+  @override
+  State<_RefreshButton> createState() => _RefreshButtonState();
+}
+
+class _RefreshButtonState extends State<_RefreshButton>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _spinCtrl;
+  bool _showCheck = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _spinCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    );
+    if (widget.isRefreshing) _spinCtrl.repeat();
+  }
+
+  @override
+  void didUpdateWidget(covariant _RefreshButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    if (widget.isRefreshing && !oldWidget.isRefreshing) {
+      // Refresh startet → Icon dreht sich
+      _spinCtrl.repeat();
+    } else if (!widget.isRefreshing && oldWidget.isRefreshing) {
+      // Refresh fertig → Drehung stoppen, kurz Häkchen zeigen
+      _spinCtrl.stop();
+      _spinCtrl.value = 0;
+      setState(() => _showCheck = true);
+      Future.delayed(const Duration(milliseconds: 1100), () {
+        if (mounted) setState(() => _showCheck = false);
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _spinCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final skin = widget.skin;
+
+    return GestureDetector(
+      onTap: widget.isRefreshing ? null : widget.onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.all(4.0),
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 200),
+          transitionBuilder: (child, anim) => ScaleTransition(
+            scale: anim,
+            child: FadeTransition(opacity: anim, child: child),
+          ),
+          child: _showCheck
+              ? Icon(
+                  Icons.check_rounded,
+                  key: const ValueKey('check'),
+                  size: widget.size,
+                  color: const Color(0xFF3DD68C),
+                )
+              : RotationTransition(
+                  key: const ValueKey('refresh'),
+                  turns: _spinCtrl,
+                  child: Icon(
+                    Icons.refresh_rounded,
+                    size: widget.size,
+                    color: widget.isRefreshing
+                        ? skin.primary.withValues(alpha: 0.85)
+                        : skin.surface(0.38),
+                  ),
+                ),
+        ),
+      ),
     );
   }
 }

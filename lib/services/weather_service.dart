@@ -143,6 +143,10 @@ class WeatherService {
   bool _fetching = false;
   DateTime? _lastFailedAttempt;
 
+  /// Wird bei jeder Cache-Invalidierung hochgezählt. Listener (z.B. HomeScreen)
+  /// können darauf reagieren, um automatisch neu zu laden.
+  final ValueNotifier<int> refreshSignal = ValueNotifier(0);   // ← NEU
+
   WeatherData? get cached {
     if (_cached != null) return _cached;
     try {
@@ -159,11 +163,12 @@ class WeatherService {
   /// Löscht den In-Memory Cache, damit beim nächsten fetchIfNeeded
   /// frisch geladen wird.
   void invalidateCache() {
-    _cached = null;
-    try {
-      Hive.box('einstellungen').delete(_cacheKey);
-    } catch (_) {}
-  }
+  _cached = null;
+  try {
+    Hive.box('einstellungen').delete(_cacheKey);
+  } catch (_) {}
+  refreshSignal.value++;   // ← NEU: benachrichtigt alle Listener
+}
 
   /// Versucht zuerst GPS, fällt auf cityName zurück.
   /// cityName kann leer sein — dann nur GPS.
@@ -266,6 +271,41 @@ class WeatherService {
       return null;
     }
   }
+
+  /// Prüft per Geocoding, ob ein Ortsname gefunden wird, und liefert einen
+/// lesbaren Anzeigenamen (z.B. "Berlin, Deutschland") zur Bestätigung zurück.
+/// Gibt null zurück, wenn nichts gefunden wurde oder die Anfrage fehlschlägt.
+Future<String?> verifyCityName(String cityName) async {
+  try {
+    final geoUri = Uri.parse(
+      'https://nominatim.openstreetmap.org/search'
+      '?q=${Uri.encodeComponent(cityName)}&format=json&limit=1&addressdetails=1',
+    );
+    final geoResp = await http
+        .get(geoUri, headers: {'User-Agent': 'OpTimes/1.0'})
+        .timeout(const Duration(seconds: 8));
+
+    if (geoResp.statusCode != 200) return null;
+    final geoList = jsonDecode(geoResp.body) as List;
+    if (geoList.isEmpty) return null;
+
+    final result = geoList[0] as Map<String, dynamic>;
+    final address = result['address'] as Map<String, dynamic>?;
+    final place = address?['city'] ?? address?['town'] ??
+        address?['village'] ?? address?['municipality'];
+    final country = address?['country'];
+
+    if (place != null && country != null) {
+      return '$place, $country';
+    }
+    // Fallback: gekürzter display_name
+    final display = result['display_name'] as String?;
+    if (display == null) return null;
+    return display.split(',').take(2).map((s) => s.trim()).join(', ');
+  } catch (_) {
+    return null;
+  }
+}
 
   Future<WeatherData?> _fetchFromCoords(
       double lat, double lon, String label) async {

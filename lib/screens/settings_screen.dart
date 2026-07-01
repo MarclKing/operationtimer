@@ -2056,6 +2056,12 @@ class _HomescreenSettingsScreenState extends State<_HomescreenSettingsScreen> {
 
   void _showCityInputSheet(BuildContext context, AppSkin skin) {
   final ctrl = TextEditingController(text: _weatherCity);
+
+  // ── State-Variablen AUSSERHALB des StatefulBuilder-builders ──────────
+  bool isVerifying = false;
+  String? verifiedLabel;
+  String? errorMsg;
+
   showModalBottomSheet(
     context: context,
     backgroundColor: Colors.transparent,
@@ -2064,53 +2070,189 @@ class _HomescreenSettingsScreenState extends State<_HomescreenSettingsScreen> {
       padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: GlassSheet(
         skin: skin,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(child: SheetHandle(skin: skin)),
-              const SizedBox(height: 16),
-              Text('Stadt eingeben',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700,
-                      color: skin.textPrimary)),
-              const SizedBox(height: 4),
-              Text('Das Wetter wird für diese Stadt geladen.',
-                  style: TextStyle(fontSize: 13, color: skin.textMuted)),
-              const SizedBox(height: 16),
-              _TiTextField(
-                skin: skin,
-                controller: ctrl,
-                hint: 'z.B. Berlin, München, Hamburg',
-              ),
-              const SizedBox(height: 14),
-              GestureDetector(
-                onTap: () {
-                  final city = ctrl.text.trim();
-                  setState(() => _weatherCity = city);
-                  _set('weather_city', city);
-                  Hive.box('einstellungen').delete('weather_cache');
-                  Navigator.pop(context);
-                },
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  decoration: BoxDecoration(
-                    color: skin.primary.withValues(alpha: skin.isLight ? 0.12 : 0.20),
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(
-                        color: skin.primary.withValues(alpha: skin.isLight ? 0.30 : 0.45)),
+        child: StatefulBuilder(
+          builder: (context, setSheetState) {
+            // ── keine Deklarationen mehr hier! ─────────────────────────
+
+            Future<void> doVerify() async {
+              final input = ctrl.text.trim();
+              if (input.isEmpty) return;
+              setSheetState(() {
+                isVerifying = true;
+                errorMsg = null;
+                verifiedLabel = null;
+              });
+              final result = await WeatherService.instance.verifyCityName(input);
+              setSheetState(() {
+                isVerifying = false;
+                if (result != null) {
+                  verifiedLabel = result;
+                } else {
+                  errorMsg = 'Stadt nicht gefunden. Bitte prüfe die Schreibweise.';
+                }
+              });
+            }
+
+            void saveAndClose(String label) {
+              setState(() => _weatherCity = ctrl.text.trim());
+              _set('weather_city', ctrl.text.trim());
+              WeatherService.instance.invalidateCache();
+              Navigator.pop(context);
+            }
+
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(child: SheetHandle(skin: skin)),
+                  const SizedBox(height: 16),
+                  Text('Stadt eingeben',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700,
+                          color: skin.textPrimary)),
+                  const SizedBox(height: 4),
+                  Text('Das Wetter wird für diese Stadt geladen.',
+                      style: TextStyle(fontSize: 13, color: skin.textMuted)),
+                  const SizedBox(height: 16),
+                  _TiTextField(
+                    skin: skin,
+                    controller: ctrl,
+                    hint: 'z.B. Berlin, München, Hamburg',
+                    onChanged: (_) => setSheetState(() {
+                      verifiedLabel = null;
+                      errorMsg = null;
+                    }),
+                    onSubmitted: (_) => doVerify(),
                   ),
-                  child: Center(
-                    child: Text('Übernehmen',
-                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700,
-                            color: skin.primary)),
-                  ),
-                ),
+
+                  // ── Bestätigung / Fehler ──────────────────────────────
+                  if (isVerifying) ...[
+                    const SizedBox(height: 14),
+                    Row(
+                      children: [
+                        SizedBox(
+                          width: 16, height: 16,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: skin.primary),
+                        ),
+                        const SizedBox(width: 10),
+                        Text('Prüfe Ort…',
+                            style: TextStyle(fontSize: 13, color: skin.textMuted)),
+                      ],
+                    ),
+                  ],
+                  if (verifiedLabel != null) ...[
+                    const SizedBox(height: 14),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF3DD68C).withValues(alpha: 0.10),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFF3DD68C).withValues(alpha: 0.25)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.check_circle_outline_rounded,
+                              size: 16, color: Color(0xFF3DD68C)),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text('Gefunden: $verifiedLabel',
+                                style: const TextStyle(
+                                    fontSize: 12.5,
+                                    color: Color(0xFF3DD68C),
+                                    fontWeight: FontWeight.w600)),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  if (errorMsg != null) ...[
+                    const SizedBox(height: 14),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: skin.deleteColor.withValues(alpha: 0.10),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: skin.deleteColor.withValues(alpha: 0.25)),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(Icons.error_outline_rounded, size: 16, color: skin.deleteColor),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(errorMsg!,
+                                style: TextStyle(
+                                    fontSize: 12.5, color: skin.deleteColor, height: 1.4)),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+
+                  const SizedBox(height: 16),
+
+                  // ── Buttons ───────────────────────────────────────────
+                  if (verifiedLabel == null)
+                    GestureDetector(
+                      onTap: isVerifying ? null : doVerify,
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        decoration: BoxDecoration(
+                          color: skin.primary.withValues(alpha: skin.isLight ? 0.12 : 0.20),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                              color: skin.primary.withValues(alpha: skin.isLight ? 0.30 : 0.45)),
+                        ),
+                        child: Center(
+                          child: Text('Prüfen',
+                              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700,
+                                  color: skin.primary)),
+                        ),
+                      ),
+                    )
+                  else
+                    GestureDetector(
+                      onTap: () => saveAndClose(verifiedLabel!),
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF3DD68C).withValues(alpha: 0.18),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: const Color(0xFF3DD68C).withValues(alpha: 0.45)),
+                        ),
+                        child: const Center(
+                          child: Text('Übernehmen',
+                              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700,
+                                  color: Color(0xFF3DD68C))),
+                        ),
+                      ),
+                    ),
+
+                  // Fallback: trotzdem ohne Prüfung speichern (falls API down/Ort exotisch)
+                  if (errorMsg != null) ...[
+                    const SizedBox(height: 10),
+                    Center(
+                      child: GestureDetector(
+                        onTap: () => saveAndClose(ctrl.text.trim()),
+                        child: Text('Trotzdem speichern',
+                            style: TextStyle(
+                                fontSize: 12.5,
+                                color: skin.textMuted,
+                                fontWeight: FontWeight.w500,
+                                decoration: TextDecoration.underline)),
+                      ),
+                    ),
+                  ],
+                ],
               ),
-            ],
-          ),
+            );
+          },
         ),
       ),
     ),
@@ -2172,13 +2314,10 @@ class _HomescreenSettingsScreenState extends State<_HomescreenSettingsScreen> {
                           subtitle: 'Automatisch aktueller Standort',
                           switchValue: _weatherUseGps,
                           onSwitchChanged: (v) {
-                            setState(() => _weatherUseGps = v);
-                            _set('weather_use_gps', v);
-                            Hive.box('einstellungen').delete('weather_cache');
-                            if (v) {
-                              WeatherService.instance.invalidateCache();
-                            }
-                          },
+  setState(() => _weatherUseGps = v);
+  _set('weather_use_gps', v);
+  WeatherService.instance.invalidateCache();   // ← einheitlich, egal ob v true oder false
+},
                           isLast: _weatherUseGps,
                         ),
                         if (!_weatherUseGps)
