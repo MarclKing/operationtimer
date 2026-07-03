@@ -90,8 +90,11 @@ class _KmScannerScreenState extends State<KmScannerScreen>
         if (ctrl != null) {
           final double minZoom = await ctrl.getMinZoomLevel();
           final double maxZoom = await ctrl.getMaxZoomLevel();
-          final double targetZoom = 1.5.clamp(minZoom, maxZoom);
+          final double targetZoom = 2.2.clamp(minZoom, maxZoom);
           await ctrl.setZoomLevel(targetZoom);
+          // Autofokus explizit aktivieren – manche Geräte starten sonst
+          // mit fixem/gesperrtem Fokus, was das Cockpit-Display unscharf lässt.
+          await ctrl.setFocusMode(FocusMode.auto);
         }
       } catch (_) {}
 
@@ -187,13 +190,22 @@ class _KmScannerScreenState extends State<KmScannerScreen>
     for (final block in result.blocks) {
       for (final line in block.lines) {
         final text = line.text.trim();
+        final lower = text.toLowerCase();
+        final noSpace = text.replaceAll(' ', '');
 
-        // Uhrzeiten raus
+        // Uhrzeiten raus (z.B. "12:32")
         if (RegExp(r'^\d{1,2}:\d{2}$').hasMatch(text)) continue;
-        // Trip-Zähler mit einer Dezimalstelle raus
-        if (RegExp(r'^\d{1,4}[.,]\d{1}$').hasMatch(text.replaceAll(' ', ''))) continue;
 
-        String cleaned = text.replaceAll(' ', '');
+        // Volle Datumsangaben raus (z.B. "3.7.2026", "03.07.2026")
+        if (RegExp(r'^\d{1,2}\.\d{1,2}\.\d{2,4}$').hasMatch(noSpace)) continue;
+
+        // Temperaturangaben raus (z.B. "+21.0°c")
+        if (lower.contains('°') || lower.contains('grad') || text.contains('+')) continue;
+
+        // Trip-Zähler mit einer Dezimalstelle raus (z.B. "9917.7")
+        if (RegExp(r'^\d{1,4}[.,]\d{1}$').hasMatch(noSpace)) continue;
+
+        String cleaned = noSpace;
         cleaned = cleaned.replaceAll(RegExp(r'(?<=\d)\.(?=\d{3}\b)'), '');
         final digitsOnly = cleaned.replaceAll(RegExp(r'[^\d]'), '');
 
@@ -208,17 +220,25 @@ class _KmScannerScreenState extends State<KmScannerScreen>
           if (afterSep.length == 1) continue;
         }
 
+        // Zeile enthält explizit "km" -> sehr wahrscheinlich der KM-Stand
+        final hasKmLabel = lower.contains('km');
+
         candidates.add(_KmScanCandidate(
           value: value,
           digitCount: digitsOnly.length,
           yPosition: line.boundingBox?.top ?? 0,
+          hasKmLabel: hasKmLabel,
         ));
       }
     }
 
     if (candidates.isEmpty) return null;
     candidates.sort((a, b) {
+      // 1. Zeilen mit "km"-Label immer bevorzugen
+      if (a.hasKmLabel != b.hasKmLabel) return a.hasKmLabel ? -1 : 1;
+      // 2. Mehr Ziffern = wahrscheinlicher der Gesamt-KM-Stand
       if (b.digitCount != a.digitCount) return b.digitCount.compareTo(a.digitCount);
+      // 3. Höherer Wert bevorzugen (Gesamt-KM > Trip-KM)
       return b.value.compareTo(a.value);
     });
     return candidates.first.value.toString();
@@ -833,5 +853,11 @@ class _KmScanCandidate {
   final int value;
   final int digitCount;
   final double yPosition;
-  _KmScanCandidate({required this.value, required this.digitCount, required this.yPosition});
+  final bool hasKmLabel;
+  _KmScanCandidate({
+    required this.value,
+    required this.digitCount,
+    required this.yPosition,
+    this.hasKmLabel = false,
+  });
 }

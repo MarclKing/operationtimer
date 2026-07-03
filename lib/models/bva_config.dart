@@ -123,6 +123,7 @@ class BvaConfig {
   String ortVon;
   String ortAn;
   bool waffentraeger;
+  String kommentarWaffentraeger;
   String ortDienstgeschaeft;
   String zweckDienstgeschaeft;
 
@@ -137,6 +138,7 @@ class BvaConfig {
     this.ortVon = '0',
     this.ortAn = '0',
     this.waffentraeger = false,
+    this.kommentarWaffentraeger = '',
     this.ortDienstgeschaeft = '',
     this.zweckDienstgeschaeft = '',
     this.zeitBeginnReise = '07:00',
@@ -154,6 +156,7 @@ class BvaConfig {
         'ortVon': ortVon,
         'ortAn': ortAn,
         'waffentraeger': waffentraeger,
+        'kommentarWaffentraeger': kommentarWaffentraeger,
         'ortDienstgeschaeft': ortDienstgeschaeft,
         'zweckDienstgeschaeft': zweckDienstgeschaeft,
         'zeitBeginnReise': zeitBeginnReise,
@@ -168,6 +171,7 @@ class BvaConfig {
         ortVon: (map['ortVon'] as String?) ?? '0',
         ortAn: (map['ortAn'] as String?) ?? '0',
         waffentraeger: (map['waffentraeger'] as bool?) ?? false,
+        kommentarWaffentraeger: (map['kommentarWaffentraeger'] as String?) ?? '',
         ortDienstgeschaeft: (map['ortDienstgeschaeft'] as String?) ?? '',
         zweckDienstgeschaeft: (map['zweckDienstgeschaeft'] as String?) ?? '',
         zeitBeginnReise: (map['zeitBeginnReise'] as String?) ?? '07:00',

@@ -89,8 +89,9 @@ class _FuelScannerScreenState extends State<FuelScannerScreen>
         if (ctrl != null) {
           final double minZoom = await ctrl.getMinZoomLevel();
           final double maxZoom = await ctrl.getMaxZoomLevel();
-          final double targetZoom = 1.1.clamp(minZoom, maxZoom);
+          final double targetZoom = 1.3.clamp(minZoom, maxZoom);
           await ctrl.setZoomLevel(targetZoom);
+          await ctrl.setFocusMode(FocusMode.auto);
         }
       } catch (_) {}
 
@@ -180,52 +181,50 @@ class _FuelScannerScreenState extends State<FuelScannerScreen>
 
   /// 🔥 ANGEPASSTE Methode für Liter-Erkennung
   String? _extractLiter(RecognizedText result) {
-    for (final block in result.blocks) {
-      for (final line in block.lines) {
-        final text = line.text.trim();
+  final candidates = <_LiterCandidate>[];
 
-        // Suche nach Muster: Zahl mit 1-2 Nachkommastellen + "l" oder "L" oder "Liter"
-        // Unterstützt: "45.6l", "45,6L", "50.00 Liter", "12,5 l", "7.5L"
-        final match = RegExp(
-          r'(\d{1,3}[.,]\d{1,2})\s*[lL](?:iter)?',
-          caseSensitive: false,
-        ).firstMatch(text);
+  for (final block in result.blocks) {
+    for (final line in block.lines) {
+      final text = line.text.trim();
+      final lower = text.toLowerCase();
 
-        if (match != null) {
-          final raw = match.group(1)!.replaceAll(',', '.');
-          final val = double.tryParse(raw);
-          if (val != null && val > 1.0 && val < 300.0) {
-            // Format: deutsche Komma-Darstellung (z.B. "45,6")
-            final formatted = raw.replaceAll('.', ',');
-            // Wenn nur eine Nachkommastelle, eine Null anhängen (z.B. "45,6" → "45,60")
-            if (formatted.contains(',') && formatted.split(',').last.length == 1) {
-              return '$formatted' '0';
-            }
-            return formatted;
-          }
-        }
+      if (lower.contains('eur') || lower.contains('€')) continue;
+      if (RegExp(r'^\d{1,2}:\d{2}(:\d{2})?$').hasMatch(text)) continue;
+      if (RegExp(r'^\d{1,2}\.\d{1,2}\.\d{2,4}$').hasMatch(text.replaceAll(' ', ''))) continue;
 
-        // Fallback: Zahl + "L" ohne Leerzeichen (z.B. "45,6L")
-        final matchNoSpace = RegExp(
-          r'(\d{1,3}[.,]\d{1,2})[lL]',
-          caseSensitive: false,
-        ).firstMatch(text.replaceAll(' ', ''));
+      final numberMatches = RegExp(r'(\d{1,3}[.,]\d{1,2})').allMatches(text);
+      for (final m in numberMatches) {
+        final raw = m.group(1)!;
+        final value = double.tryParse(raw.replaceAll(',', '.'));
+        if (value == null) continue;
+        if (value <= 1.0 || value >= 300.0) continue;
 
-        if (matchNoSpace != null) {
-          final raw = matchNoSpace.group(1)!.replaceAll(',', '.');
-          final val = double.tryParse(raw);
-          if (val != null && val > 1.0 && val < 300.0) {
-            final formatted = raw.replaceAll('.', ',');
-            if (formatted.contains(',') && formatted.split(',').last.length == 1) {
-              return '$formatted' '0';
-            }
-            return formatted;
-          }
-        }
+        final hasLiterLabel =
+            RegExp(r'l\s?[i1]\s?t\s?e\s?r', caseSensitive: false).hasMatch(lower) ||
+            RegExp(r'\d\s?[lL]\b').hasMatch(text);
+
+        candidates.add(_LiterCandidate(
+          raw: raw,
+          hasLiterLabel: hasLiterLabel,
+          yPosition: line.boundingBox?.top.toDouble() ?? 0,
+        ));
       }
     }
-    return null;
   }
+
+  if (candidates.isEmpty) return null;
+
+  candidates.sort((a, b) {
+    if (a.hasLiterLabel != b.hasLiterLabel) return a.hasLiterLabel ? -1 : 1;
+    return a.yPosition.compareTo(b.yPosition);
+  });
+
+  var formatted = candidates.first.raw.replaceAll('.', ',');
+  if (formatted.contains(',') && formatted.split(',').last.length == 1) {
+    formatted = '${formatted}0';
+  }
+  return formatted;
+}
 
   void _acceptLiter() {
     HapticFeedback.heavyImpact();
@@ -695,6 +694,13 @@ class _CornerPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_CornerPainter old) => false;
+}
+
+class _LiterCandidate {
+  final String raw;
+  final bool hasLiterLabel;
+  final double yPosition;
+  _LiterCandidate({required this.raw, required this.hasLiterLabel, required this.yPosition});
 }
 
 // ─── Bestätigungs-Overlay ────────────────────────────────────────────────────

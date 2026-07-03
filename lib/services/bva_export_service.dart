@@ -1,6 +1,5 @@
 import 'dart:convert';
-import 'dart:io';
-import 'package:path_provider/path_provider.dart';
+import 'dart:typed_data';
 import 'package:share_plus/share_plus.dart';
 import 'package:flutter/foundation.dart';
 import '../models/bva_config.dart';
@@ -15,6 +14,7 @@ class BvaExportService {
       'ortAn': c.ortAn,
       'ortAnLabel': bvaOrtLabel(c.ortAn),
       'waffentraeger': c.waffentraeger,
+      'kommentarWaffentr': c.kommentarWaffentraeger,
       'ortDG': c.ortDienstgeschaeft,
       'zweck': c.zweckDienstgeschaeft,
       'zeitBeginnReise': c.zeitBeginnReise,
@@ -27,8 +27,10 @@ class BvaExportService {
       'zeitEndeReise': c.zeitEndeReise,
     });
 
-    // Raw-String (r'''...'''), damit ${...} innerhalb des JS NICHT von Dart
-    // interpoliert wird. __CONFIG__ wird danach per replaceFirst ersetzt.
+    // Styles ausgelagert in EINEN <style>-Block (Klassen statt cssText pro
+    // Element) — reduziert die Roh-Scriptlänge deutlich, da vorher pro
+    // DOM-Element ein langer Inline-cssText-String im Quellcode stand.
+    // Kürzere Quelle → kürzere javascript:-URL → zuverlässiges Drag-Verhalten.
     final template = r'''
 (function(){
   var CFG = __CONFIG__;
@@ -71,54 +73,65 @@ class BvaExportService {
   var old = document.getElementById('bva-optimes-overlay');
   if(old) old.remove();
 
+  var CSS = '.ov{position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,.65);color:#e8e9f0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;display:flex;align-items:center;justify-content:center;padding:24px 16px;overflow:auto}.wr{max-width:480px;width:100%;margin:auto;background:#14161D;border:1px solid rgba(255,255,255,.08);border-radius:20px;padding:24px 24px 24px;padding-top:44px;max-height:88vh;overflow-y:auto;position:relative;box-shadow:0 20px 60px rgba(0,0,0,.5);box-sizing:border-box}.cl{position:absolute;top:14px;right:14px;width:32px;height:32px;border-radius:9px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px}.ti{font-size:20px;font-weight:800;margin-bottom:4px}.su{font-size:13px;color:#7A8699;margin-bottom:20px}.db{background:#14161D;border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:16px;margin-bottom:16px}.dr{margin-bottom:12px}.dl{font-size:12px;color:#7A8699;margin-bottom:6px}.di{width:100%;background:#0A0B0F;border:1px solid rgba(255,255,255,.14);border-radius:10px;padding:10px 12px;color:#fff;font-size:15px;box-sizing:border-box}.cd{background:#14161D;border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:13px 14px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;transition:opacity .15s}.cd.off{opacity:.35}.ct{flex:1;min-width:0}.cl2{font-size:11px;color:#7A8699;margin-bottom:3px}.cv{font-size:14px;font-weight:600;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ey{width:34px;height:34px;border-radius:9px;background:rgba(45,108,255,.14);border:1px solid rgba(45,108,255,.30);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:15px;flex-shrink:0}.ey.off{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.10)}.fb{margin-top:10px;background:rgba(45,108,255,.18);border:1px solid rgba(45,108,255,.40);color:#fff;text-align:center;padding:15px;border-radius:14px;font-weight:700;font-size:15px;cursor:pointer}.fb.err{background:rgba(239,91,91,.20);border-color:rgba(239,91,91,.45)}';
+  var styleTag = document.createElement('style');
+  styleTag.textContent = CSS;
+
   var FIELDS = [
     {key:'ortVon', label:'Von', value: CFG.ortVonLabel},
     {key:'ortAn', label:'An', value: CFG.ortAnLabel},
-    {key:'waffentraeger', label:'Waffenträger', value: CFG.waffentraeger ? 'Ja' : 'Nein'},
-    {key:'ortDG', label:'Ort des Dienstgeschäftes', value: CFG.ortDG},
-    {key:'zweck', label:'Zweck des Dienstgeschäftes', value: CFG.zweck},
     {key:'zeitBeginnReise', label:'Beginn Dienstreise – Uhrzeit', value: CFG.zeitBeginnReise},
     {key:'versatzBeginnDG', label:'Beginn Dienstgeschäft – Datum', value: CFG.versatzBeginnDGLabel},
     {key:'zeitBeginnDG', label:'Beginn Dienstgeschäft – Uhrzeit', value: CFG.zeitBeginnDG},
     {key:'versatzEndeDG', label:'Ende Dienstgeschäft – Datum', value: CFG.versatzEndeDGLabel},
     {key:'zeitEndeDG', label:'Ende Dienstgeschäft – Uhrzeit', value: CFG.zeitEndeDG},
-    {key:'zeitEndeReise', label:'Ende Dienstreise – Uhrzeit', value: CFG.zeitEndeReise}
+    {key:'zeitEndeReise', label:'Ende Dienstreise – Uhrzeit', value: CFG.zeitEndeReise},
+    {key:'ortDG', label:'Ort des Dienstgeschäftes', value: CFG.ortDG},
+    {key:'zweck', label:'Zweck des Dienstgeschäftes', value: CFG.zweck},
+    {key:'waffentraeger', label:'Waffenträger', value: CFG.waffentraeger ? 'Ja' : 'Nein'},
+    {key:'kommentarWaffentr', label:'Kommentar Waffenträger', value: CFG.kommentarWaffentr}
   ];
   FIELDS.forEach(function(f){ f.active = true; });
 
+  if(!CFG.waffentraeger){
+    FIELDS = FIELDS.filter(function(f){ return f.key !== 'kommentarWaffentr'; });
+  }
+
   var overlay = document.createElement('div');
   overlay.id = 'bva-optimes-overlay';
-  overlay.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:#0A0B0F;color:#e8e9f0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;overflow:auto;padding:28px 16px 60px;';
+  overlay.className = 'ov';
+  overlay.onclick = function(e){ if(e.target === overlay) overlay.remove(); };
 
   var wrap = document.createElement('div');
-  wrap.style.cssText = 'max-width:480px;margin:0 auto;';
+  wrap.className = 'wr';
+  wrap.onclick = function(e){ e.stopPropagation(); };
 
   var closeBtn = document.createElement('div');
   closeBtn.textContent = '✕';
-  closeBtn.style.cssText='position:fixed;top:16px;right:20px;width:36px;height:36px;border-radius:10px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.14);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px;';
+  closeBtn.className = 'cl';
   closeBtn.onclick = function(){ overlay.remove(); };
 
   var title = document.createElement('div');
   title.textContent = 'BVA · Dienstreiseantrag ausfüllen';
-  title.style.cssText='font-size:20px;font-weight:800;margin-bottom:4px;';
+  title.className = 'ti';
 
   var sub = document.createElement('div');
   sub.textContent = 'Daten prüfen, ggf. abwählen, dann ausfüllen';
-  sub.style.cssText='font-size:13px;color:#7A8699;margin-bottom:20px;';
+  sub.className = 'su';
 
   var dateBox = document.createElement('div');
-  dateBox.style.cssText='background:#14161D;border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:16px;margin-bottom:16px;';
+  dateBox.className = 'db';
 
   function makeDateRow(labelText, inputId){
     var row = document.createElement('div');
-    row.style.cssText='margin-bottom:12px;';
+    row.className = 'dr';
     var lbl = document.createElement('div');
     lbl.textContent = labelText;
-    lbl.style.cssText='font-size:12px;color:#7A8699;margin-bottom:6px;';
+    lbl.className = 'dl';
     var inp = document.createElement('input');
     inp.type='date';
     inp.id=inputId;
-    inp.style.cssText='width:100%;background:#0A0B0F;border:1px solid rgba(255,255,255,0.14);border-radius:10px;padding:10px 12px;color:#fff;font-size:15px;box-sizing:border-box;';
+    inp.className = 'di';
     row.appendChild(lbl); row.appendChild(inp);
     return row;
   }
@@ -129,34 +142,26 @@ class BvaExportService {
 
   FIELDS.forEach(function(f){
     var card = document.createElement('div');
-    card.style.cssText='background:#14161D;border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:13px 14px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;transition:opacity 0.15s;';
+    card.className = 'cd';
 
     var textWrap = document.createElement('div');
-    textWrap.style.cssText='flex:1;min-width:0;';
+    textWrap.className = 'ct';
     var lbl = document.createElement('div');
     lbl.textContent = f.label;
-    lbl.style.cssText='font-size:11px;color:#7A8699;margin-bottom:3px;';
+    lbl.className = 'cl2';
     var val = document.createElement('div');
     val.textContent = f.value && f.value.length ? f.value : '—';
-    val.style.cssText='font-size:14px;font-weight:600;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+    val.className = 'cv';
     textWrap.appendChild(lbl); textWrap.appendChild(val);
 
     var eye = document.createElement('div');
     eye.textContent = '👁';
-    eye.style.cssText='width:34px;height:34px;border-radius:9px;background:rgba(45,108,255,0.14);border:1px solid rgba(45,108,255,0.30);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:15px;flex-shrink:0;';
+    eye.className = 'ey';
     eye.onclick = function(){
       f.active = !f.active;
-      if(f.active){
-        card.style.opacity='1';
-        eye.style.background='rgba(45,108,255,0.14)';
-        eye.style.borderColor='rgba(45,108,255,0.30)';
-        eye.textContent='👁';
-      } else {
-        card.style.opacity='0.35';
-        eye.style.background='rgba(255,255,255,0.06)';
-        eye.style.borderColor='rgba(255,255,255,0.10)';
-        eye.textContent='🚫';
-      }
+      card.className = 'cd' + (f.active ? '' : ' off');
+      eye.className = 'ey' + (f.active ? '' : ' off');
+      eye.textContent = f.active ? '👁' : '🚫';
     };
 
     card.appendChild(textWrap);
@@ -166,19 +171,17 @@ class BvaExportService {
 
   var fillBtn = document.createElement('div');
   fillBtn.textContent = 'Ausfüllen';
-  fillBtn.style.cssText='margin-top:10px;background:rgba(45,108,255,0.18);border:1px solid rgba(45,108,255,0.40);color:#fff;text-align:center;padding:15px;border-radius:14px;font-weight:700;font-size:15px;cursor:pointer;';
+  fillBtn.className = 'fb';
 
   fillBtn.onclick = function(){
     var beginnIso = document.getElementById('bva-datum-beginn').value;
     var endeIso = document.getElementById('bva-datum-ende').value;
     if(!beginnIso || !endeIso){
       fillBtn.textContent = 'Bitte beide Daten wählen!';
-      fillBtn.style.background = 'rgba(239,91,91,0.20)';
-      fillBtn.style.borderColor = 'rgba(239,91,91,0.45)';
+      fillBtn.className = 'fb err';
       setTimeout(function(){
         fillBtn.textContent='Ausfüllen';
-        fillBtn.style.background='rgba(45,108,255,0.18)';
-        fillBtn.style.borderColor='rgba(45,108,255,0.40)';
+        fillBtn.className='fb';
       }, 2200);
       return;
     }
@@ -191,6 +194,7 @@ class BvaExportService {
     if(active.ortVon) setVal('AntragsDatenRow.cOrtreisebeginn', CFG.ortVon);
     if(active.ortAn) setVal('AntragsDatenRow.cOrtreiseende', CFG.ortAn);
     if(active.waffentraeger) setChecked(CFG.waffentraeger ? 'waffeja' : 'waffenein');
+    if(active.kommentarWaffentr && CFG.kommentarWaffentr) setVal('kommentarwaffentr', CFG.kommentarWaffentr);
     if(active.ortDG) setVal('AntragsDGRow.cOrt', CFG.ortDG);
     if(active.zweck) setVal('Reisegrund', CFG.zweck);
     if(active.zeitBeginnReise) setVal('AntragsDatenRow.nZeitBeginn', CFG.zeitBeginnReise);
@@ -208,13 +212,13 @@ class BvaExportService {
     setTimeout(function(){ overlay.remove(); }, 900);
   };
 
-  wrap.appendChild(closeBtn.cloneNode(true));
+  wrap.appendChild(styleTag);
+  wrap.appendChild(closeBtn);
   wrap.appendChild(title);
   wrap.appendChild(sub);
   wrap.appendChild(dateBox);
   wrap.appendChild(cardsWrap);
   wrap.appendChild(fillBtn);
-  overlay.appendChild(closeBtn);
   overlay.appendChild(wrap);
 
   document.body.appendChild(overlay);
@@ -239,15 +243,15 @@ class BvaExportService {
     final summary = [
       row('Von', bvaOrtLabel(c.ortVon)),
       row('An', bvaOrtLabel(c.ortAn)),
-      row('Waffenträger', c.waffentraeger ? 'Ja' : 'Nein'),
-      row('Ort des Dienstgeschäftes', c.ortDienstgeschaeft.isEmpty ? '—' : c.ortDienstgeschaeft),
-      row('Zweck des Dienstgeschäftes', c.zweckDienstgeschaeft.isEmpty ? '—' : c.zweckDienstgeschaeft),
       row('Beginn Dienstreise – Uhrzeit', c.zeitBeginnReise),
       row('Beginn Dienstgeschäft – Datum', c.versatzBeginnDG.label),
       row('Beginn Dienstgeschäft – Uhrzeit', c.zeitBeginnDG),
       row('Ende Dienstgeschäft – Datum', c.versatzEndeDG.label),
       row('Ende Dienstgeschäft – Uhrzeit', c.zeitEndeDG),
       row('Ende Dienstreise – Uhrzeit', c.zeitEndeReise),
+      row('Ort des Dienstgeschäftes', c.ortDienstgeschaeft.isEmpty ? '—' : c.ortDienstgeschaeft),
+      row('Zweck des Dienstgeschäftes', c.zweckDienstgeschaeft.isEmpty ? '—' : c.zweckDienstgeschaeft),
+      row('Waffenträger', c.waffentraeger ? 'Ja' : 'Nein'),
     ].join('\n');
 
     return '''<!DOCTYPE html>
@@ -312,8 +316,9 @@ class BvaExportService {
     $summary
   </div>
 
-  <a class="install-btn" href="$bookmarkletUrl">📌 Als Lesezeichen ziehen / Link kopieren</a>
-  <div class="hint">Ziehe den Button in deine Lesezeichenleiste (Firefox Desktop),<br>oder halte ihn gedrückt und wähle "Link zu Lesezeichen hinzufügen".</div>
+  <a class="install-btn" id="bva-install-link" href="$bookmarkletUrl">📌 In Lesezeichenleiste ziehen</a>
+  <div class="hint">Ziehe den Button in deine Lesezeichenleiste.<br>Klappt das Ziehen nicht: Klicke den Button — der Link wird kopiert, dann per Rechtsklick auf die Lesezeichenleiste → „Seite hinzufügen" einfügen. Lesezeichen benennen!</div>
+  <div id="bva-copy-status" style="display:none;margin-top:10px;padding:10px 12px;border-radius:10px;font-size:12.5px;background:rgba(45,108,255,0.12);border:1px solid rgba(45,108,255,0.30);color:#2D6CFF;"></div>
 
   <div class="steps">
     <div class="step"><div class="step-num">1</div><div>Lesezeichen einmalig installieren (Button oben).</div></div>
@@ -331,21 +336,46 @@ class BvaExportService {
 
   <div class="sig-note">Automatisch erstellt von OpTimes · Nur zur persönlichen Nutzung</div>
 </div>
+<script>
+(function(){
+  var link = document.getElementById('bva-install-link');
+  var status = document.getElementById('bva-copy-status');
+  if (!link) return;
+  link.addEventListener('click', function(e){
+    e.preventDefault();
+    var url = link.getAttribute('href');
+    function showStatus(text){ status.textContent = text; status.style.display = 'block'; }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(function(){
+        showStatus('Link kopiert! Rechtsklick auf die Lesezeichenleiste → „Seite hinzufügen" → Link einfügen.');
+      }).catch(function(){
+        showStatus('Kopieren fehlgeschlagen. Bitte den Button stattdessen per Drag & Drop in die Lesezeichenleiste ziehen.');
+      });
+    } else {
+      showStatus('Bitte den Button per Drag & Drop in die Lesezeichenleiste ziehen.');
+    }
+  });
+})();
+</script>
 </body>
 </html>''';
   }
 
   /// Erstellt die HTML-Datei und öffnet den Share-Sheet.
+  /// Nutzt XFile.fromData (Bytes im Speicher) statt path_provider/File,
+  /// da dart:io File auf Flutter Web nicht funktioniert.
   static Future<bool> exportAndShare(BvaConfig config) async {
-    final html = _buildHtml(config);
-    final dir = await getTemporaryDirectory();
-    final fileName = 'BVA_Bookmarklet.html';
-    final file = File('${dir.path}/$fileName');
-    await file.writeAsString(html, flush: true);
-
-    final xfile = XFile(file.path, mimeType: 'text/html', name: fileName);
-
     try {
+      final html = _buildHtml(config);
+      const fileName = 'BVA_Bookmarklet.html';
+      final bytes = Uint8List.fromList(utf8.encode(html));
+
+      final xfile = XFile.fromData(
+        bytes,
+        mimeType: 'text/html',
+        name: fileName,
+      );
+
       await SharePlus.instance.share(
         ShareParams(
           files: [xfile],

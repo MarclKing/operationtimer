@@ -19,6 +19,7 @@ class _BvaScreenState extends State<BvaScreen> {
 
   final _ortDGCtrl = TextEditingController();
   final _zweckCtrl = TextEditingController();
+  final _kommentarWaffentrCtrl = TextEditingController();
 
   @override
   void initState() {
@@ -26,18 +27,21 @@ class _BvaScreenState extends State<BvaScreen> {
     _config = BvaConfig.load();
     _ortDGCtrl.text = _config.ortDienstgeschaeft;
     _zweckCtrl.text = _config.zweckDienstgeschaeft;
+    _kommentarWaffentrCtrl.text = _config.kommentarWaffentraeger;
   }
 
   @override
   void dispose() {
     _ortDGCtrl.dispose();
     _zweckCtrl.dispose();
+    _kommentarWaffentrCtrl.dispose();
     super.dispose();
   }
 
   Future<void> _save() async {
     _config.ortDienstgeschaeft = _ortDGCtrl.text.trim();
     _config.zweckDienstgeschaeft = _zweckCtrl.text.trim();
+    _config.kommentarWaffentraeger = _kommentarWaffentrCtrl.text.trim();
     await _config.save();
   }
 
@@ -348,29 +352,85 @@ class _BvaScreenState extends State<BvaScreen> {
                   ),
                   const SizedBox(height: 10),
 
-                  // ── PUNKT 4: Waffenträger zuletzt ───────────────────────
-                  GlassSurface(
-                    padding: EdgeInsets.zero,
-                    child: GlassListItem(
-                      title: 'Waffenträger',
-                      leading: Container(
-                        width: 32,
-                        height: 32,
-                        decoration: BoxDecoration(
-                          color: skin.primary,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Icon(Icons.security_outlined,
-                            color: Colors.white, size: 18),
-                      ),
-                      isLast: true,
-                      switchValue: _config.waffentraeger,
-                      onSwitchChanged: (v) {
-                        setState(() => _config.waffentraeger = v);
-                        _save();
-                      },
+                  // ── PUNKT 4: Waffenträger + animiertes Kommentarfeld ────
+GlassSurface(
+  padding: EdgeInsets.zero,
+  child: Column(
+    children: [
+      GlassListItem(
+        title: 'Waffenträger',
+        leading: Container(
+          width: 32,
+          height: 32,
+          decoration: BoxDecoration(
+            color: skin.primary,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: const Icon(Icons.security_outlined,
+              color: Colors.white, size: 18),
+        ),
+        isLast: !_config.waffentraeger,
+        switchValue: _config.waffentraeger,
+        onSwitchChanged: (v) {
+          setState(() => _config.waffentraeger = v);
+          if (!v) {
+            _kommentarWaffentrCtrl.clear();
+            _config.kommentarWaffentraeger = '';
+          }
+          _save();
+        },
+      ),
+      AnimatedSize(
+        duration: const Duration(milliseconds: 260),
+        curve: Curves.easeInOut,
+        alignment: Alignment.topCenter,
+        child: _config.waffentraeger
+            ? Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(left: 60.0),
+                    child: Divider(
+                      height: 0.5,
+                      color: skin.isLight
+                          ? Colors.white.withValues(alpha: 0.55)
+                          : Colors.white.withValues(alpha: 0.16),
                     ),
                   ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Kommentar Waffenträger',
+                            style: TextStyle(
+                                fontSize: 12,
+                                color: skin.textMuted,
+                                fontWeight: FontWeight.w600)),
+                        const SizedBox(height: 6),
+                        TextField(
+                          controller: _kommentarWaffentrCtrl,
+                          onChanged: (_) => _save(),
+                          maxLines: 1,
+                          maxLength: 255,
+                          style: TextStyle(
+                              color: skin.textPrimary, fontSize: 15),
+                          decoration: InputDecoration(
+                            hintText: 'Begründung, falls Waffenträger = Ja',
+                            hintStyle: TextStyle(color: skin.textHint),
+                            border: InputBorder.none,
+                            isDense: true,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              )
+            : const SizedBox(width: double.infinity, height: 0),
+      ),
+    ],
+  ),
+),
                   const SizedBox(height: 28),
                   GlassPrimaryButton(
                     skin: skin,

@@ -1,11 +1,12 @@
-import 'dart:io';
+import 'dart:convert';
+import 'dart:typed_data';
 import 'package:intl/intl.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../screens/fahrtenbuch_screen.dart';
 import 'package:flutter/foundation.dart';
+import 'web_downloader_stub.dart' if (dart.library.html) 'web_downloader_web.dart';
 
 class FahrtExportService {
   static int _cardIndex = 0;
@@ -13,48 +14,49 @@ class FahrtExportService {
   static Future<bool> exportFahrten(List<Fahrt> fahrten) async {
     if (fahrten.isEmpty) return false;
 
-    final html = _buildHtml(fahrten);
-
-    fahrten.sort((a, b) => a.datum.compareTo(b.datum));
-    final first = DateFormat('dd.MM.yy').format(fahrten.first.datum);
-    final last = DateFormat('dd.MM.yy').format(fahrten.last.datum);
-    final fileName = fahrten.length == 1
-        ? 'Fahrt_${DateFormat('dd-MM-yy').format(fahrten.first.datum)}.html'
-        : 'Fahrten_${DateFormat('dd-MM-yy').format(fahrten.first.datum)}_${DateFormat('dd-MM-yy').format(fahrten.last.datum)}.html';
-
-    final betreff = fahrten.length == 1
-        ? 'Fahrt ${DateFormat('dd.MM.yyyy').format(fahrten.first.datum)}'
-        : 'Fahrten $first – $last (${fahrten.length} Fahrten)';
-
-    // ── HIER wird die E-Mail-Vorschau gebaut ──────────────────────────────
-    final emailText = _buildEmailText(fahrten);
-
-    final dir = await getTemporaryDirectory();
-    final file = File('${dir.path}/$fileName');
-    await file.writeAsString(html, flush: true);
-
-    final xfile = XFile(file.path, mimeType: 'text/html', name: fileName);
-
     try {
-      await SharePlus.instance.share(
-        ShareParams(
-          files: [xfile],
-          subject: betreff,
-          text: emailText,
-        ),
-      );
-      return true;
+      final html = _buildHtml(fahrten);
+
+      fahrten.sort((a, b) => a.datum.compareTo(b.datum));
+      final first = DateFormat('dd.MM.yy').format(fahrten.first.datum);
+      final last = DateFormat('dd.MM.yy').format(fahrten.last.datum);
+      final fileName = fahrten.length == 1
+          ? 'Fahrt_${DateFormat('dd-MM-yy').format(fahrten.first.datum)}.html'
+          : 'Fahrten_${DateFormat('dd-MM-yy').format(fahrten.first.datum)}_${DateFormat('dd-MM-yy').format(fahrten.last.datum)}.html';
+
+      final betreff = fahrten.length == 1
+          ? 'Fahrt ${DateFormat('dd.MM.yyyy').format(fahrten.first.datum)}'
+          : 'Fahrten $first – $last (${fahrten.length} Fahrten)';
+
+      // ── HIER wird die E-Mail-Vorschau gebaut ──────────────────────────────
+      final emailText = _buildEmailText(fahrten);
+
+      final bytes = Uint8List.fromList(utf8.encode(html));
+
+// 1) Web -> Browser-Download. 2) Desktop -> direkt auf Platte gespeichert.
+// Beides liefert true zurück, dann sind wir fertig.
+final handledDirectly = await downloadFileWeb(bytes, fileName, 'text/html');
+if (handledDirectly) {
+  return true;
+}
+
+final xfile = XFile.fromData(
+  bytes,
+  mimeType: 'text/html',
+  name: fileName,
+);
+
+await SharePlus.instance.share(
+  ShareParams(
+    files: [xfile],
+    subject: betreff,
+    text: emailText,
+  ),
+);
+return true;
     } catch (e) {
       debugPrint('❌ Export Fehler: $e');
-      try {
-        await SharePlus.instance.share(
-          ShareParams(text: 'Fahrten-Export: $betreff\n${file.path}'),
-        );
-        return true;
-      } catch (e2) {
-        debugPrint('❌ Fallback Fehler: $e2');
-        return false;
-      }
+      return false;
     }
   }
 
@@ -121,6 +123,8 @@ OpTimes · Fahrtenbuch & Dienstplanung''';
   .card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;
                 background:linear-gradient(90deg,rgba(45,108,255,0.6),
                 rgba(45,108,255,0.0));}
+  .card.done{opacity:0.35;}
+  .card.done .copy-btn{background:rgba(102,187,106,0.18);border-color:rgba(102,187,106,0.35);color:#66BB6A;}
   .card-top{display:flex;justify-content:space-between;align-items:flex-start;
             margin-bottom:16px;}
   .datum{font-size:14px;font-weight:700;color:#fff;}
@@ -197,17 +201,34 @@ OpTimes · Fahrtenbuch & Dienstplanung''';
 </div>
 
 <script>
+var EXPORT_ID = '${sortedFahrten.isNotEmpty ? DateFormat('yyyyMMdd').format(sortedFahrten.first.datum) : 'x'}_${fahrten.length}';
+
+function markDone(index) {
+  const card = document.getElementById('card-' + index);
+  if (card) card.classList.add('done');
+  try {
+    const key = 'optimes_export_' + EXPORT_ID;
+    const done = JSON.parse(localStorage.getItem(key) || '[]');
+    if (!done.includes(index)) { done.push(index); localStorage.setItem(key, JSON.stringify(done)); }
+  } catch(e) {}
+}
+
+function restoreDoneState() {
+  try {
+    const key = 'optimes_export_' + EXPORT_ID;
+    const done = JSON.parse(localStorage.getItem(key) || '[]');
+    done.forEach(function(i){ const card = document.getElementById('card-' + i); if (card) card.classList.add('done'); });
+  } catch(e) {}
+}
+document.addEventListener('DOMContentLoaded', restoreDoneState);
+
 function copyFahrt(index) {
   const data = ${_jsonArrayJs(rows)};
   const json = JSON.stringify(data[index]);
   navigator.clipboard.writeText(json).then(() => {
+    markDone(index);
     const btn = document.getElementById('btn-' + index);
-    btn.textContent = '✓ Kopiert!';
-    btn.classList.add('copied');
-    setTimeout(() => {
-      btn.textContent = 'Fahrt kopieren';
-      btn.classList.remove('copied');
-    }, 2500);
+    btn.textContent = '✓ Eingetragen';
   });
 }
 </script>
@@ -230,7 +251,7 @@ function copyFahrt(index) {
     final hasZiel = f.fahrtZiel.isNotEmpty;
     final hasTyp = f.fahrtTyp.isNotEmpty;
 
-    return '''<div class="card">
+    return '''<div class="card" id="card-$idx">
   <div class="card-top">
     <div class="datum">$datumStr</div>
     <div class="kz-pill">${f.kennzeichen}</div>
@@ -282,9 +303,9 @@ function copyFahrt(index) {
       'fahrtTyp': f.fahrtTyp,
       'sonderWegerecht': f.sonderWegerecht ? 'ja' : '',
       'autoGewaschen': f.autoGewaschen ? 'ja' : '',
-      'getanktLiter': f.getanktLiter?.toString() ?? '',
-      'stromKwh': f.stromKwh?.toString() ?? '',
-      'adblueKwh': f.adblueKwh?.toString() ?? '',
+      'getanktLiter': f.getanktLiter != null ? f.getanktLiter!.toString().replaceAll('.', ',') : '',
+      'stromKwh': f.stromKwh != null ? f.stromKwh!.toString().replaceAll('.', ',') : '',
+      'adblueKwh': f.adblueKwh != null ? f.adblueKwh!.toString().replaceAll('.', ',') : '',
     };
 
     final parts = map.entries.map((e) => '"${e.key}":"${e.value}"').join(',');

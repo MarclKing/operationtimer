@@ -948,6 +948,31 @@ class _StempeluhrKachelState extends State<_StempeluhrKachel>
   late Animation<double> _pressScale;
   bool _justStamped = false;
 
+  // NEU: manuell verschobene Kommen-Zeit (null = "jetzt")
+  TimeOfDay? _customTime;
+  double _dragStart = 0;
+  double _accumulated = 0;
+  static const double _pxPerStep = 22; // Sensibilität des Wischens
+
+  // NEU: aktuell gültige Rundungs-Regel aus den Einstellungen
+  String get _rundungRule => Hive.box('einstellungen')
+      .get(TimeRounding.hiveKey, defaultValue: TimeRounding.defaultRule) as String;
+
+  // NEU: Kommen-Zeit per Wischen anpassen – Schrittgröße kommt aus den Settings
+  void _adjustTime(int direction) {
+    final base = _customTime ??
+        (() {
+          final rounded = TimeRounding.round(DateTime.now(), _rundungRule);
+          return TimeOfDay(hour: rounded.hour, minute: rounded.minute);
+        })();
+    final total = TimeRounding.steppedTotal(
+        base.hour * 60 + base.minute, _rundungRule, direction);
+    setState(() {
+      _customTime = TimeOfDay(hour: (total ~/ 60) % 24, minute: total % 60);
+    });
+    HapticFeedback.selectionClick();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -966,11 +991,13 @@ class _StempeluhrKachelState extends State<_StempeluhrKachel>
 
   void _stempel() {
     final now = DateTime.now();
-    final rundung = Hive.box('einstellungen')
-        .get(TimeRounding.hiveKey, defaultValue: TimeRounding.defaultRule) as String;
-    final rounded = TimeRounding.round(now, rundung);
+    final TimeOfDay kommen = _customTime ??
+        (() {
+          final rounded = TimeRounding.round(now, _rundungRule);
+          return TimeOfDay(hour: rounded.hour, minute: rounded.minute);
+        })();
     final kommenTime =
-        '${rounded.hour.toString().padLeft(2, '0')}:${rounded.minute.toString().padLeft(2, '0')}';
+        '${kommen.hour.toString().padLeft(2, '0')}:${kommen.minute.toString().padLeft(2, '0')}';
     final dateKey =
         '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
 
@@ -1008,16 +1035,25 @@ class _StempeluhrKachelState extends State<_StempeluhrKachel>
 }
 
     Future.delayed(const Duration(seconds: 3), () {
-      if (mounted) setState(() => _justStamped = false);
+      if (mounted) {
+        setState(() {
+          _justStamped = false;
+          _customTime = null; // NEU: nach dem Stempeln zurück auf "jetzt"
+        });
+      }
     });
   }
 
   @override
   Widget build(BuildContext context) {
     final skin = widget.skin;
-    final now = DateTime.now();
+    final displayTime = _customTime ??
+        (() {
+          final now = DateTime.now();
+          return TimeOfDay(hour: now.hour, minute: now.minute);
+        })();
     final timeStr =
-        '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+        '${displayTime.hour.toString().padLeft(2, '0')}:${displayTime.minute.toString().padLeft(2, '0')}';
     const accentColor = Color(0xFFFFB347);
 
     return GestureDetector(
@@ -1027,6 +1063,22 @@ class _StempeluhrKachelState extends State<_StempeluhrKachel>
         _stempel();
       },
       onTapCancel: () => _pressCtrl.reverse(),
+      onVerticalDragStart: (d) {
+        _dragStart = d.localPosition.dy;
+        _accumulated = 0;
+      },
+      onVerticalDragUpdate: (d) {
+        _accumulated += _dragStart - d.localPosition.dy;
+        _dragStart = d.localPosition.dy;
+        while (_accumulated >= _pxPerStep) {
+          _accumulated -= _pxPerStep;
+          _adjustTime(1);
+        }
+        while (_accumulated <= -_pxPerStep) {
+          _accumulated += _pxPerStep;
+          _adjustTime(-1);
+        }
+      },
       child: AnimatedBuilder(
         animation: _pressScale,
         builder: (context, child) =>

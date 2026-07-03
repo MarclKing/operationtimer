@@ -1478,14 +1478,15 @@ class ScheduleScreenState extends State<ScheduleScreen> {
                               child: ListView.builder(
                                 controller: _listScrollController,
                                 padding: const EdgeInsets.fromLTRB(24, 4, 24, 0),
-                                itemCount: days.length + (isForeignView ? 0 : 1),
+                                itemCount: days.length + 1,
                                 itemBuilder: (context, index) {
-                                  if (!isForeignView && index == days.length) {
+                                  if (index == days.length) {
+                                    final bool isLeaveButton = isForeignView;
                                     return Padding(
                                       padding: EdgeInsets.only(top: 8, bottom: bottomNavHeight + 40),
                                       child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                                         GestureDetector(
-                                          onTap: () => _deleteCurrentMonth(skin),
+                                          onTap: isLeaveButton ? leaveColleagueView : () => _deleteCurrentMonth(skin),
                                           child: ClipRRect(
                                             borderRadius: BorderRadius.circular(12),
                                             child: BackdropFilter(
@@ -1493,15 +1494,27 @@ class ScheduleScreenState extends State<ScheduleScreen> {
                                               child: Container(
                                                 padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 20),
                                                 decoration: BoxDecoration(
-                                                  color: skin.deleteColor.withValues(alpha: 0.07),
+                                                  color: isLeaveButton
+                                                      ? skin.primary.withValues(alpha: 0.07)
+                                                      : skin.deleteColor.withValues(alpha: 0.07),
                                                   borderRadius: BorderRadius.circular(12),
-                                                  border: Border.all(color: skin.deleteColor.withValues(alpha: 0.22)),
+                                                  border: Border.all(
+                                                      color: isLeaveButton
+                                                          ? skin.primary.withValues(alpha: 0.22)
+                                                          : skin.deleteColor.withValues(alpha: 0.22)),
                                                 ),
                                                 child: Row(mainAxisSize: MainAxisSize.min, children: [
-                                                  Icon(Icons.delete_outline, color: skin.deleteColor, size: 16),
-                                                  const SizedBox(width: 7),
-                                                  Text('Aktuellen Monat löschen',
-                                                      style: TextStyle(color: skin.deleteColor, fontSize: 13, fontWeight: FontWeight.w600)),
+                                                  if (isLeaveButton) ...[
+                                                    Text('Ansicht verlassen',
+                                                        style: TextStyle(color: skin.primary, fontSize: 13, fontWeight: FontWeight.w600)),
+                                                    const SizedBox(width: 7),
+                                                    Icon(Icons.close_rounded, color: skin.primary, size: 16),
+                                                  ] else ...[
+                                                    Icon(Icons.delete_outline, color: skin.deleteColor, size: 16),
+                                                    const SizedBox(width: 7),
+                                                    Text('Aktuellen Monat löschen',
+                                                        style: TextStyle(color: skin.deleteColor, fontSize: 13, fontWeight: FontWeight.w600)),
+                                                  ],
                                                 ]),
                                               ),
                                             ),

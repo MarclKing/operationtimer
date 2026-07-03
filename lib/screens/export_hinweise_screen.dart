@@ -4,8 +4,8 @@ import 'package:flutter/services.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../theme/app_theme.dart';
 import '../widgets/glass_kit.dart';
-import 'dart:io';
-import 'package:path_provider/path_provider.dart';
+import 'dart:convert';
+import 'dart:typed_data';
 import 'package:share_plus/share_plus.dart';
 
 class ExportHinweiseScreen extends StatefulWidget {
@@ -127,17 +127,27 @@ class _ExportHinweiseScreenState extends State<ExportHinweiseScreen> {
                         final subject = 'OpTimes – FleetPortal Bookmarklet';
                         final body = '''Hallo,\n\nanbei die Installationsseite für das OpTimes-Bookmarklet, das den Import von Fahrten in FleetPortal automatisiert.\n\nEinmalige Installation (30 Sekunden):\n1. HTML-Anhang im Browser öffnen\n2. Den grünen Button in die Lesezeichenleiste ziehen - diese mit STRG + UMSCHLT + B öffnen\n3. Fertig – ab sofort steht das Bookmarklet in FleetPortal zur Verfügung\n\nPro Fahrt spart es ca. 2 Minuten manuelles Eintippen.\n\nViele Grüße''';
 
-                        final bookmarkletHtml = _buildBookmarkletHtml();
-                        final dir = await getTemporaryDirectory();
-                        final file = File('${dir.path}/OpTimes_Bookmarklet.html');
-                        await file.writeAsString(bookmarkletHtml, flush: true);
-
-                        final xfile = XFile(file.path, mimeType: 'text/html', name: 'OpTimes_Bookmarklet.html');
-                        await SharePlus.instance.share(ShareParams(
-                          files: [xfile],
-                          subject: subject,
-                          text: body,
-                        ));
+                        try {
+                          final bookmarkletHtml = _buildBookmarkletHtml();
+                          final bytes = Uint8List.fromList(utf8.encode(bookmarkletHtml));
+                          final xfile = XFile.fromData(
+                            bytes,
+                            mimeType: 'text/html',
+                            name: 'OpTimes_Bookmarklet.html',
+                          );
+                          await SharePlus.instance.share(ShareParams(
+                            files: [xfile],
+                            subject: subject,
+                            text: body,
+                          ));
+                        } catch (e) {
+                          debugPrint('❌ Bookmarklet Export Fehler: $e');
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Export fehlgeschlagen. Bitte erneut versuchen.')),
+                            );
+                          }
+                        }
                       },
                     ),
 
@@ -165,19 +175,41 @@ class _ExportHinweiseScreenState extends State<ExportHinweiseScreen> {
   String _buildBookmarkletJs() {
     return '''(function(){
   var s=document.createElement("style");
-  s.textContent="#fp-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.6);z-index:999999;display:flex;align-items:center;justify-content:center;font-family:system-ui,sans-serif}#fp-box{background:white;border-radius:14px;padding:28px;width:480px;max-height:80vh;overflow-y:auto;box-shadow:0 8px 40px rgba(0,0,0,.4)}#fp-box h2{margin:0 0 16px;font-size:18px}#fp-box textarea{width:100%;height:160px;font-family:monospace;font-size:12px;padding:10px;border:2px solid #ccc;border-radius:8px;box-sizing:border-box}#fp-box button{padding:10px 20px;border:none;border-radius:8px;cursor:pointer;font-size:14px;font-weight:bold;margin:4px}#fp-btn-fill{background:#0066cc;color:white}#fp-btn-cancel{background:#eee;color:#333}#fp-status{margin-top:12px;padding:10px;border-radius:6px;font-size:13px;display:none}";
+  s.textContent="#fp-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.65);z-index:999999;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:20px;box-sizing:border-box}#fp-box{background:#14161D;border:1px solid rgba(255,255,255,0.08);border-radius:20px;padding:26px;width:460px;max-width:100%;max-height:88vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.5);color:#e8e9f0;box-sizing:border-box}#fp-box h2{margin:0 0 4px;font-size:18px;font-weight:800;color:#fff}#fp-box .fp-sub{font-size:12px;color:#7A8699;margin:0 0 16px}#fp-box textarea{width:100%;height:140px;font-family:monospace;font-size:11px;padding:12px;border:1px solid rgba(255,255,255,0.14);border-radius:12px;box-sizing:border-box;background:#0A0B0F;color:#e8e9f0;resize:none}#fp-btnrow{display:flex;gap:8px;margin-top:14px}#fp-btnrow button{flex:1;padding:13px 8px;border:none;border-radius:12px;cursor:pointer;font-size:12.5px;font-weight:700}#fp-btn-paste{background:rgba(45,108,255,0.16);border:1px solid rgba(45,108,255,0.40) !important;color:#2D6CFF}#fp-btn-fill{background:rgba(45,108,255,0.85);color:#fff}#fp-btn-cancel{background:rgba(255,255,255,0.06);color:#b8bfcc}#fp-status{margin-top:12px;padding:10px 12px;border-radius:10px;font-size:12.5px;display:none;line-height:1.4}";
   document.head.appendChild(s);
+  var old = document.getElementById('fp-overlay');
+  if(old) old.remove();
   var d=document.createElement("div");
   d.id="fp-overlay";
-  d.innerHTML='<div id="fp-box"><h2>FleetPortal Auto-Fill</h2><p style="font-size:13px;color:#555;margin:0 0 10px;">JSON einfügen:</p><textarea id="fp-json"></textarea><div id="fp-status"></div><div style="margin-top:14px"><button id="fp-btn-fill">Felder ausfüllen</button> <button id="fp-btn-cancel">Abbrechen</button></div></div>';
+  d.innerHTML='<div id="fp-box"><h2>FleetPortal Auto-Fill</h2><p class="fp-sub">Fahrtdaten einfügen und übernehmen</p><textarea id="fp-json" placeholder="JSON hier einfügen…"></textarea><div id="fp-status"></div><div id="fp-btnrow"><button id="fp-btn-paste">📋 Fahrtdaten Eintragen</button><button id="fp-btn-fill">Übernehmen</button><button id="fp-btn-cancel">Abbrechen</button></div></div>';
   document.body.appendChild(d);
+  d.onclick=function(e){ if(e.target===d) d.remove(); };
+
   function fill(id,val){var el=document.getElementById(id);if(!el||val===null||val===undefined||val==="")return false;el.value=val;el.dispatchEvent(new Event("input",{bubbles:true}));el.dispatchEvent(new Event("change",{bubbles:true}));return true;}
   function fmtDate(s){if(!s)return"";var dt=new Date(s);return dt.getFullYear()+"-"+String(dt.getMonth()+1).padStart(2,"0")+"-"+String(dt.getDate()).padStart(2,"0");}
+
   document.getElementById("fp-btn-cancel").onclick=function(){document.getElementById("fp-overlay").remove();};
+
+  document.getElementById("fp-btn-paste").onclick=function(){
+    var st=document.getElementById("fp-status");
+    if(navigator.clipboard && navigator.clipboard.readText){
+      navigator.clipboard.readText().then(function(text){
+        document.getElementById("fp-json").value = text.trim();
+        st.style.display="none";
+      }).catch(function(err){
+        st.style.display="block";st.style.background="rgba(239,91,91,0.15)";st.style.color="#EF5B5B";
+        st.textContent="Zwischenablage nicht lesbar. Bitte mit Strg+V manuell einfügen.";
+      });
+    } else {
+      st.style.display="block";st.style.background="rgba(239,91,91,0.15)";st.style.color="#EF5B5B";
+      st.textContent="Zwischenablagen-Zugriff nicht verfügbar. Bitte mit Strg+V manuell einfügen.";
+    }
+  };
+
   document.getElementById("fp-btn-fill").onclick=function(){
     var raw=document.getElementById("fp-json").value.trim();
     var j;
-    try{j=JSON.parse(raw);}catch(e){var st=document.getElementById("fp-status");st.style.display="block";st.style.background="#f8d7da";st.style.color="#721c24";st.textContent="Ungültiges JSON: "+e.message;return;}
+    try{j=JSON.parse(raw);}catch(e){var st=document.getElementById("fp-status");st.style.display="block";st.style.background="rgba(239,91,91,0.15)";st.style.color="#EF5B5B";st.textContent="Ungültiges JSON: "+e.message;return;}
     var filled=0,skipped=0;
     var fields=[
       ["fahrzeugeingabe",j.kennzeichen||""],
@@ -198,8 +230,8 @@ class _ExportHinweiseScreenState extends State<ExportHinweiseScreen> {
     if(j.fahrtTyp){var sel=document.getElementById("fahrttyp");if(sel){sel.value=j.fahrtTyp;sel.dispatchEvent(new Event("change",{bubbles:true}));filled++;}}
     var st=document.getElementById("fp-status");
     st.style.display="block";
-    if(filled>0){st.style.background="#d4edda";st.style.color="#155724";st.textContent="OK: "+filled+" Felder ausgefüllt, "+skipped+" übersprungen.";}
-    else{st.style.background="#f8d7da";st.style.color="#721c24";st.textContent="Keine Felder gefunden - falsche Seite?";}
+    if(filled>0){st.style.background="rgba(102,187,106,0.15)";st.style.color="#66BB6A";st.textContent="OK: "+filled+" Felder ausgefüllt, "+skipped+" übersprungen.";}
+    else{st.style.background="rgba(239,91,91,0.15)";st.style.color="#EF5B5B";st.textContent="Keine Felder gefunden - falsche Seite?";}
     setTimeout(function(){var ov=document.getElementById("fp-overlay");if(ov)ov.remove();},4000);
   };
 })();''';
@@ -359,6 +391,7 @@ class _ExportHinweiseScreenState extends State<ExportHinweiseScreen> {
       🚗 OpTimes → FleetPortal
     </a>
     <div class="drag-hint">⬆ Diesen Button in die Lesezeichenleiste ziehen - (STRG + UMSCHLT + B)</div>
+  <div id="fp-copy-status" style="display:none;margin-top:10px;padding:10px 12px;border-radius:10px;font-size:12px;background:rgba(61,214,200,0.10);border:1px solid rgba(61,214,200,0.30);color:#3DD6C8;"></div>
   </div>
 
   <div class="section-label">So funktioniert es</div>
@@ -393,6 +426,27 @@ class _ExportHinweiseScreenState extends State<ExportHinweiseScreen> {
     <strong>Pro Fahrt: 3 Klicks.</strong> Kein Tippen, kein manuelles Ausfüllen. Das Bookmarklet läuft komplett lokal im Browser — keine Daten verlassen deinen Rechner.
   </div>
 </div>
+<script>
+(function(){
+  var link = document.getElementById('bookmarklet-link');
+  var status = document.getElementById('fp-copy-status');
+  if (!link) return;
+  link.addEventListener('click', function(e){
+    e.preventDefault();
+    var url = link.getAttribute('href');
+    function showStatus(text){ status.textContent = text; status.style.display = 'block'; }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(function(){
+        showStatus('Link kopiert! Rechtsklick auf die Lesezeichenleiste → „Seite hinzufügen" → Link einfügen.');
+      }).catch(function(){
+        showStatus('Kopieren fehlgeschlagen. Bitte per Drag & Drop in die Lesezeichenleiste ziehen.');
+      });
+    } else {
+      showStatus('Bitte per Drag & Drop in die Lesezeichenleiste ziehen.');
+    }
+  });
+})();
+</script>
 </body>
 </html>''';
   }
