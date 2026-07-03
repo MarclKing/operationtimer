@@ -1888,11 +1888,10 @@ class _DictationTaskKachelState extends State<_DictationTaskKachel>
   void initState() {
     super.initState();
 
-    _pulseCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 900))
-      ..repeat(reverse: true);
+   _pulseCtrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 900));
     _pulseAnim = CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut);
-  }
+    }
 
   @override
   void dispose() {
@@ -2021,6 +2020,7 @@ class _DictationTaskKachelState extends State<_DictationTaskKachel>
 
   void _hideOverlay() {
     _removeOverlay();
+    _pulseCtrl.stop();
     if (mounted) setState(() => _isListening = false);
   }
 
@@ -2094,10 +2094,12 @@ class _DictationTaskKachelState extends State<_DictationTaskKachel>
               },
               onListeningStart: () {
                 if (mounted) setState(() => _isListening = true);
+                _pulseCtrl.repeat(reverse: true);
                 _rebuildOverlay();
               },
               onListeningEnd: () {
                 if (mounted) setState(() => _isListening = false);
+                _pulseCtrl.stop();
                 _rebuildOverlay();
               },
             ),

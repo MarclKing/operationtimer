@@ -105,11 +105,9 @@ class DictationFabState extends State<DictationFab>
   void initState() {
     super.initState();
     _fabPulseCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 900))
-      ..repeat(reverse: true);
+        vsync: this, duration: const Duration(milliseconds: 900));
     _idlePulseCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 650))
-      ..repeat(reverse: true);
+        vsync: this, duration: const Duration(milliseconds: 650));
     _bubbleCtrl = AnimationController(
         vsync: this, duration: const Duration(milliseconds: 320));
     _bubbleScale = CurvedAnimation(
@@ -187,6 +185,7 @@ class DictationFabState extends State<DictationFab>
       _speech.stop();
     } catch (_) {}
     if (mounted) {
+      _fabPulseCtrl.stop();
       _cancelAnimCtrl.reset();
       _bubbleCtrl.reset();
       setState(() {
@@ -267,6 +266,7 @@ class DictationFabState extends State<DictationFab>
       if (_aborted || !mounted) return;
       if (_phase == DictationPhase.preparing) {
         setState(() => _phase = DictationPhase.listening);
+        _fabPulseCtrl.repeat(reverse: true);
         widget.onBubbleStateChanged?.call();
       }
     });
@@ -312,6 +312,7 @@ class DictationFabState extends State<DictationFab>
       return;
     }
 
+    _fabPulseCtrl.stop();
     setState(() => _phase = DictationPhase.processing);
     widget.onBubbleStateChanged?.call();
     await Future.delayed(const Duration(milliseconds: 350));
@@ -359,6 +360,7 @@ class DictationFabState extends State<DictationFab>
     await _cancelAnimCtrl.forward();
 
     if (!mounted) return;
+    _fabPulseCtrl.stop();
     _cancelAnimCtrl.reset();
     _bubbleCtrl.reset();
     setState(() {

@@ -1886,11 +1886,9 @@ class _FahrtCardState extends State<_FahrtCard>
                         width: double.infinity,
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(14),
-                          child: BackdropFilter(
-                            filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
-                            child: Container(
+                          child: Container(
                               decoration: BoxDecoration(
-                                color: skin.isLight ? Colors.white.withValues(alpha: skin.glassOpacity) : skin.bgCard.withValues(alpha: skin.glassOpacity),
+                                color: skin.isLight ? Colors.white.withValues(alpha: skin.glassOpacity + 0.15) : skin.bgCard.withValues(alpha: skin.glassOpacity + 0.15),
                                 borderRadius: BorderRadius.circular(14),
                                 border: Border.all(
                                   color: fahrt.uebertragen ? skin.statComplete.withValues(alpha: 0.35) : skin.glassBorder,
@@ -1989,7 +1987,6 @@ class _FahrtCardState extends State<_FahrtCard>
                             ),
                           ),
                         ),
-                      ),
                       // Auswahl-Overlay
                       if (widget.selectionMode)
                         Positioned.fill(
