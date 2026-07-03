@@ -1,5 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'dart:async';
 
 class AuthService {
   static final AuthService instance = AuthService._();
@@ -11,18 +12,28 @@ class AuthService {
     'cQgn2r909jTlLLGzFaQ17ylQfeB3',
     'OTIjqy74oNW4IZoV8m7dXEOobTu2',
     'B9oAkNcqEYNRuJPZBnjWhmX0sew2',
-    'CCaGwCJcq6R2D3Bd3rKmhHtnXwn1',
+    'GWzHmEthObb09qEkTOYrYiru0SP2',
   };
 
   Future<void> init() async {
-    final auth = FirebaseAuth.instance;
-    if (auth.currentUser == null) {
-      await auth.signInAnonymously();
-    }
-    if (kDebugMode) {
-      debugPrint('🔑 Firebase UID: ${auth.currentUser?.uid}');
+  final auth = FirebaseAuth.instance;
+  if (auth.currentUser == null) {
+    try {
+      await auth.signInAnonymously().timeout(
+        const Duration(seconds: 5),
+        onTimeout: () {
+          throw TimeoutException('Anonymous sign-in timeout (offline?)');
+        },
+      );
+    } catch (e) {
+      debugPrint('⚠️ signInAnonymously fehlgeschlagen (offline?): $e');
+      return; // sauber abbrechen, kein Hänger
     }
   }
+  if (kDebugMode) {
+    debugPrint('🔑 Firebase UID: ${auth.currentUser?.uid}');
+  }
+}
 
   String? get currentUid => FirebaseAuth.instance.currentUser?.uid;
 

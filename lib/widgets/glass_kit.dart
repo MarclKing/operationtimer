@@ -427,6 +427,10 @@ class GlassDropdownButton<T> extends StatefulWidget {
   final String Function(T) displayBuilder;
   final bool isLast;
 
+  /// Optional: maximale Höhe des Popups, ab der gescrollt wird.
+  /// null (Standard) = altes Verhalten, keine Begrenzung, kein Scroll.
+  final double? maxPopupHeight;
+
   const GlassDropdownButton({
     super.key,
     required this.value,
@@ -438,6 +442,7 @@ class GlassDropdownButton<T> extends StatefulWidget {
     this.icon,
     this.iconBg,
     this.isLast = false,
+    this.maxPopupHeight,
   });
 
   @override
@@ -494,7 +499,10 @@ class _GlassDropdownButtonState<T> extends State<GlassDropdownButton<T>>
     if (popupLeft < 16) popupLeft = 16;
 
     double popupTop = offset.dy + size.height * 0.5 - 8;
-    final estimatedHeight = widget.items.length * 48.0 + 16;
+    final rawHeight = widget.items.length * 48.0 + 16;
+    final estimatedHeight = widget.maxPopupHeight != null
+        ? (rawHeight < widget.maxPopupHeight! ? rawHeight : widget.maxPopupHeight!)
+        : rawHeight;
     if (popupTop + estimatedHeight > screenHeight - 32) {
       popupTop = screenHeight - estimatedHeight - 32;
     }
@@ -517,6 +525,7 @@ class _GlassDropdownButtonState<T> extends State<GlassDropdownButton<T>>
           widget.onChanged(val);
           _close();
         },
+        maxHeight: widget.maxPopupHeight,
         onDismiss: _close,
       ),
     );
@@ -567,6 +576,8 @@ class _GlassDropdownButtonState<T> extends State<GlassDropdownButton<T>>
                     children: [
                       Text(
                         widget.label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w500,
@@ -577,15 +588,24 @@ class _GlassDropdownButtonState<T> extends State<GlassDropdownButton<T>>
                         const SizedBox(height: 2),
                         Text(
                           widget.subtitle!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           style: TextStyle(fontSize: 12, color: skin.textMuted),
                         ),
                       ],
                     ],
                   ),
                 ),
-                Text(
-                  widget.displayBuilder(widget.value),
-                  style: TextStyle(fontSize: 15, color: skin.textMuted),
+                const SizedBox(width: 12),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 130),
+                  child: Text(
+                    widget.displayBuilder(widget.value),
+                    style: TextStyle(fontSize: 15, color: skin.textMuted),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.right,
+                  ),
                 ),
                 const SizedBox(width: 4),
                 AnimatedRotation(
@@ -624,6 +644,7 @@ class _DropdownOverlay<T> extends StatefulWidget {
   final double top;
   final double maxWidth;
   final double minWidth;
+  final double? maxHeight;
   final ValueChanged<T> onSelect;
   final VoidCallback onDismiss;
 
@@ -635,6 +656,7 @@ class _DropdownOverlay<T> extends StatefulWidget {
     required this.top,
     required this.maxWidth,
     required this.minWidth,
+    this.maxHeight,
     required this.onSelect,
     required this.onDismiss,
   });
@@ -644,6 +666,72 @@ class _DropdownOverlay<T> extends StatefulWidget {
 }
 
 class _DropdownOverlayState<T> extends State<_DropdownOverlay<T>> {
+  Widget _buildItemsColumn(AppSkin skin) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: widget.items.asMap().entries.map((entry) {
+        final i = entry.key;
+        final item = entry.value;
+        final isSelected = item.value == widget.currentValue;
+        final isLast = i == widget.items.length - 1;
+
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            GestureDetector(
+              onTap: () => widget.onSelect(item.value),
+              behavior: HitTestBehavior.opaque,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 13,
+                ),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 22,
+                      child: isSelected
+                          ? Icon(Icons.check_rounded, size: 16, color: skin.primary)
+                          : null,
+                    ),
+                    if (item.icon != null) ...[
+                      Icon(
+                        item.icon,
+                        size: 16,
+                        color: isSelected ? skin.primary : skin.surface(0.45),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    Flexible(
+                      child: Text(
+                        item.label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                          color: isSelected ? skin.primary : skin.textPrimary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            if (!isLast)
+              Container(
+                height: 0.4,
+                margin: const EdgeInsets.only(left: 38),
+                color: skin.isLight
+                    ? Colors.black.withValues(alpha: 0.08)
+                    : Colors.white.withValues(alpha: 0.08),
+              ),
+          ],
+        );
+      }).toList(),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final skin = AppTheme.of(context);
@@ -711,66 +799,14 @@ class _DropdownOverlayState<T> extends State<_DropdownOverlay<T>> {
                           ),
                         ],
                       ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: widget.items.asMap().entries.map((entry) {
-                          final i = entry.key;
-                          final item = entry.value;
-                          final isSelected = item.value == widget.currentValue;
-                          final isLast = i == widget.items.length - 1;
-
-                          return Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              GestureDetector(
-                                onTap: () => widget.onSelect(item.value),
-                                behavior: HitTestBehavior.opaque,
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
-                                    vertical: 13,
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      SizedBox(
-                                        width: 22,
-                                        child: isSelected
-                                            ? Icon(Icons.check_rounded, size: 16, color: skin.primary)
-                                            : null,
-                                      ),
-                                      if (item.icon != null) ...[
-                                        Icon(
-                                          item.icon,
-                                          size: 16,
-                                          color: isSelected ? skin.primary : skin.surface(0.45),
-                                        ),
-                                        const SizedBox(width: 8),
-                                      ],
-                                      Text(
-                                        item.label,
-                                        style: TextStyle(
-                                          fontSize: 15,
-                                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
-                                          color: isSelected ? skin.primary : skin.textPrimary,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
+                      child: widget.maxHeight != null
+                          ? ConstrainedBox(
+                              constraints: BoxConstraints(maxHeight: widget.maxHeight!),
+                              child: SingleChildScrollView(
+                                child: _buildItemsColumn(skin),
                               ),
-                              if (!isLast)
-                                Container(
-                                  height: 0.4,
-                                  margin: const EdgeInsets.only(left: 38),
-                                  color: skin.isLight
-                                      ? Colors.black.withValues(alpha: 0.08)
-                                      : Colors.white.withValues(alpha: 0.08),
-                                ),
-                            ],
-                          );
-                        }).toList(),
-                      ),
+                            )
+                          : _buildItemsColumn(skin),
                     ),
                   ),
                 ),

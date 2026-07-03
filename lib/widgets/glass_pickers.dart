@@ -36,6 +36,12 @@ class IOSTimePicker extends StatefulWidget {
   final String label;
   final bool confirmOnDismiss;
 
+  /// Schrittweite des Minuten-Rads in Minuten (1, 5, 10 oder 15).
+  /// Bei z.B. 5 zeigt das Rad nur noch 00, 05, 10, … 55 — kein
+  /// Vorbeiscrollen an 59 Einzelminuten mehr. Default 1 = unverändertes
+  /// Verhalten (jede einzelne Minute wählbar).
+  final int minuteInterval;
+
   const IOSTimePicker({
     super.key,
     required this.initialTime,
@@ -43,6 +49,7 @@ class IOSTimePicker extends StatefulWidget {
     required this.onTimeSelected,
     this.label = 'Uhrzeit auswählen',
     this.confirmOnDismiss = false,
+    this.minuteInterval = 1,
   });
 
   @override
@@ -58,13 +65,25 @@ class _IOSTimePickerState extends State<IOSTimePicker> {
   /// dass dispose() bei confirmOnDismiss==true ein zweites Mal aufruft.
   bool _confirmedViaButton = false;
 
+  /// Anzahl der Einträge im Minuten-Rad (z.B. 12 bei 5er-Schritten
+  /// statt 60 bei Einzelminuten).
+  int get _minuteCount => 60 ~/ widget.minuteInterval;
+
+  /// Rad-Index → tatsächliche Minute
+  int _minuteForIndex(int index) => (index % _minuteCount) * widget.minuteInterval;
+
+  /// Rundet eine beliebige Minute auf die nächste Rad-Position.
+  int _nearestMinuteIndex(int minute) =>
+      (minute / widget.minuteInterval).round() % _minuteCount;
+
   @override
   void initState() {
     super.initState();
     _selectedHour = widget.initialTime.hour;
-    _selectedMinute = widget.initialTime.minute;
+    _selectedMinute = _minuteForIndex(_nearestMinuteIndex(widget.initialTime.minute));
     _hourController = FixedExtentScrollController(initialItem: _hourLoopOffset * 24 + _selectedHour);
-    _minuteController = FixedExtentScrollController(initialItem: _minuteLoopOffset * 60 + _selectedMinute);
+    _minuteController = FixedExtentScrollController(
+        initialItem: _minuteLoopOffset * _minuteCount + _nearestMinuteIndex(widget.initialTime.minute));
   }
 
   @override
@@ -79,15 +98,20 @@ class _IOSTimePickerState extends State<IOSTimePicker> {
 
   void _setCurrentTime() {
     final now = DateTime.now();
-    final nowHour = now.hour, nowMinute = now.minute;
+    final nowHour = now.hour;
+    final nowMinuteIdx = _nearestMinuteIndex(now.minute);
+    final nowMinute = _minuteForIndex(nowMinuteIdx);
+
     final currentHourIdx = _hourController.selectedItem;
     final currentHourBase = (currentHourIdx ~/ 24) * 24;
     int targetHourIdx = currentHourBase + nowHour;
     if (targetHourIdx < currentHourIdx) targetHourIdx += 24;
+
     final currentMinuteIdx = _minuteController.selectedItem;
-    final currentMinuteBase = (currentMinuteIdx ~/ 60) * 60;
-    int targetMinuteIdx = currentMinuteBase + nowMinute;
-    if (targetMinuteIdx < currentMinuteIdx) targetMinuteIdx += 60;
+    final currentMinuteBase = (currentMinuteIdx ~/ _minuteCount) * _minuteCount;
+    int targetMinuteIdx = currentMinuteBase + nowMinuteIdx;
+    if (targetMinuteIdx < currentMinuteIdx) targetMinuteIdx += _minuteCount;
+
     _hourController.animateToItem(targetHourIdx, duration: const Duration(milliseconds: 350), curve: Curves.easeOutCubic);
     _minuteController.animateToItem(targetMinuteIdx, duration: const Duration(milliseconds: 350), curve: Curves.easeOutCubic);
     setState(() {
@@ -135,15 +159,19 @@ class _IOSTimePickerState extends State<IOSTimePicker> {
                 backgroundColor: Colors.transparent,
                 itemExtent: 40,
                 looping: true,
-                onSelectedItemChanged: (index) => setState(() => _selectedMinute = index % 60),
+                onSelectedItemChanged: (index) =>
+                    setState(() => _selectedMinute = _minuteForIndex(index)),
                 children: List.generate(
-                    60,
-                    (m) => Center(
-                        child: Text(m.toString().padLeft(2, '0'),
-                            style: TextStyle(
-                                fontSize: 24,
-                                fontWeight: FontWeight.w600,
-                                color: _selectedMinute == m ? skin.primary : skin.surface(0.5))))),
+                    _minuteCount,
+                    (i) {
+                      final m = i * widget.minuteInterval;
+                      return Center(
+                          child: Text(m.toString().padLeft(2, '0'),
+                              style: TextStyle(
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.w600,
+                                  color: _selectedMinute == m ? skin.primary : skin.surface(0.5))));
+                    }),
               ),
             ),
           ]),

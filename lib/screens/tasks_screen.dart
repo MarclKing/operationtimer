@@ -111,6 +111,13 @@ class Task {
 class TaskStore {
   static const _key = 'tasks';
 
+  /// Wird bei jeder Änderung (add/update/delete) gepingt, damit ALLE
+  /// aktiven Listener (Homescreen-Kachel, TasksScreen, egal von wo die
+  /// Änderung kam) ihre Ansicht neu laden. Robust unabhängig vom Ort
+  /// des Diktats/Speicherns.
+  static final ValueNotifier<int> changesSignal = ValueNotifier(0);
+  static void _notifyChanged() => changesSignal.value++;
+
   static List<Task> loadAll() {
     final box = Hive.box('einstellungen');
     final raw = box.get(_key);
@@ -130,10 +137,12 @@ class TaskStore {
     box.put(_key, jsonEncode(tasks.map((t) => t.toJson()).toList()));
   }
 
+  // NEU
   static void add(Task task) {
     final all = loadAll();
     all.add(task);
     saveAll(all);
+    _notifyChanged(); // NEU
   }
 
   static void update(Task task) {
@@ -142,6 +151,7 @@ class TaskStore {
     if (idx != -1) {
       all[idx] = task;
       saveAll(all);
+      _notifyChanged(); // NEU
     }
   }
 
@@ -149,6 +159,7 @@ class TaskStore {
     final all = loadAll();
     all.removeWhere((t) => t.id == id);
     saveAll(all);
+    _notifyChanged(); // NEU
   }
 
   static bool hasOpenTaskOnDay(DateTime day) {
@@ -183,10 +194,12 @@ class TasksScreenState extends State<TasksScreen> with TickerProviderStateMixin 
 
   Timer? _periodicReloadTimer;
 
+  // NEU
   @override
   void initState() {
     super.initState();
     _load();
+    TaskStore.changesSignal.addListener(_onTasksChangedExternally); // NEU
     // Damit nach dem stündlichen App-weiten Cleanup auch dieser Screen
     // (falls gerade offen) die aktualisierte Liste zeigt.
     _periodicReloadTimer = Timer.periodic(const Duration(minutes: 5), (_) {
@@ -194,8 +207,14 @@ class TasksScreenState extends State<TasksScreen> with TickerProviderStateMixin 
     });
   }
 
+  // NEU: reagiert auf JEDE TaskStore-Änderung, egal von welchem Screen aus
+  void _onTasksChangedExternally() {
+    if (mounted) _load();
+  }
+
   @override
   void dispose() {
+    TaskStore.changesSignal.removeListener(_onTasksChangedExternally); // NEU
     _periodicReloadTimer?.cancel();
     _scrollController.dispose();
     super.dispose();
@@ -545,15 +564,22 @@ class TasksScreenState extends State<TasksScreen> with TickerProviderStateMixin 
                 children: [
                   const SizedBox(height: 50),
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 24),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Aufgaben',
-                            style: TextStyle(fontSize: 26, fontWeight: FontWeight.w700, color: skin.textPrimary)),
-                      ],
-                    ),
-                  ),
+  padding: const EdgeInsets.symmetric(horizontal: 24),
+  child: Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text('Aufgaben',
+          style: TextStyle(fontSize: 26, fontWeight: FontWeight.w700, color: skin.textPrimary)),
+      if (_tasks.isNotEmpty) ...[
+        const SizedBox(height: 8),
+        Text(
+          'Wischen · Tippen · Doppeltippen',
+          style: TextStyle(fontSize: 11, color: skin.surface(0.3)),
+        ),
+      ],
+    ],
+  ),
+),
                   const SizedBox(height: 12),
                   Expanded(
                     child: !hasAnyOpen && _doneTasks.isEmpty

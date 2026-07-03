@@ -142,7 +142,10 @@ class SyncService {
       final collections = ['arbeitszeiten', 'schedule', 'fahrten', 'notes', 'events', 'colleagues'];
 
       for (final col in collections) {
-        final snap = await base.collection(col).get();
+        final snap = await base.collection(col).get().timeout(
+  const Duration(seconds: 5),
+  onTimeout: () => throw TimeoutException('Pull timeout ($col)'),
+);
         _isSyncing = true;
         for (final doc in snap.docs) {
           await _applyRemoteDoc(col, doc.id, doc.data());
@@ -290,21 +293,22 @@ class SyncService {
   // ── Hive → Firestore pushen ───────────────────────────────────────────────
 
   Future<void> _push(String collection, String docId, dynamic data) async {
-    if (_token == null || data == null) return;
-    try {
-      await _db
-          .collection('syncData')
-          .doc(_token)
-          .collection(collection)
-          .doc(docId)
-          .set({
-        'payload': _serialize(data),
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: false));
-    } catch (e) {
-      debugPrint('$_tag: Push-Fehler ($collection/$docId): $e');
-    }
+  if (_token == null || data == null) return;
+  try {
+    await _db
+        .collection('syncData')
+        .doc(_token)
+        .collection(collection)
+        .doc(docId)
+        .set({
+      'payload': _serialize(data),
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: false))
+        .timeout(const Duration(seconds: 5));
+  } catch (e) {
+    debugPrint('$_tag: Push-Fehler ($collection/$docId): $e');
   }
+}
 
   /// Konvertiert Hive-Daten in Firestore-kompatible Typen.
   dynamic _serialize(dynamic data) {

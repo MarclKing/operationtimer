@@ -18,7 +18,7 @@ import '../main.dart' show MyApp;
 // DICTATION FAB — wiederverwendbarer Diktier-Button mit Live-Bubble
 // ─────────────────────────────────────────────────────────────────────────────
 
-enum DictationPhase { idle, listening, processing, revealing, done }
+enum DictationPhase { idle, preparing, listening, processing, revealing, done }
 
 class DictationFab extends StatefulWidget {
   final AppSkin skin;
@@ -179,7 +179,8 @@ class DictationFabState extends State<DictationFab>
   void startListening() => _startListening();
 
   void stopListening() {
-    if (_phase != DictationPhase.listening) return;
+    if (_phase != DictationPhase.listening &&
+        _phase != DictationPhase.preparing) return;
     if (_aborted) return;
     _aborted = true;
     try {
@@ -205,6 +206,11 @@ class DictationFabState extends State<DictationFab>
   }
 
   void finishListening() {
+  if (_phase == DictationPhase.preparing) {
+    // Zu kurz gehalten, noch keine echte Aufnahme — sauber abbrechen
+    stopListening();
+    return;
+  }
   if (_phase != DictationPhase.listening) return;
   _finishListeningAndReveal();
 }
@@ -245,7 +251,7 @@ class DictationFabState extends State<DictationFab>
     _cancelDragX = 0.0;
     _listenStartedAt = DateTime.now();
     setState(() {
-      _phase = DictationPhase.listening;
+      _phase = DictationPhase.preparing;
       _liveTranscript = '';
       _finalTranscript = '';
       rawLevelNotifier.value = 0.0;
@@ -256,6 +262,14 @@ class DictationFabState extends State<DictationFab>
     widget.onBubbleStateChanged?.call();
     _cancelAnimCtrl.reset();
     _bubbleCtrl.forward();
+
+    Future.delayed(const Duration(milliseconds: 450), () {
+      if (_aborted || !mounted) return;
+      if (_phase == DictationPhase.preparing) {
+        setState(() => _phase = DictationPhase.listening);
+        widget.onBubbleStateChanged?.call();
+      }
+    });
 
     await _speech.listen(
       localeId: 'de_DE',
@@ -330,7 +344,8 @@ class DictationFabState extends State<DictationFab>
 
   Future<void> _cancelListening() async {
     if (_isCancelling) return;
-    if (_phase != DictationPhase.listening) return;
+    if (_phase != DictationPhase.listening &&
+        _phase != DictationPhase.preparing) return;
     _aborted = true;
     _isCancelling = true;
     HapticFeedback.heavyImpact();
@@ -446,6 +461,7 @@ class DictationFabState extends State<DictationFab>
     required AppSkin skin,
     required Offset anchorTopRight,   // obere rechte Ecke der Kachel
     required double kachelWidth,
+    double kachelHeight = 100.0,
   }) {
     final showBubbles =
         (_isActive && !_isCancelling) || _cancelAnimCtrl.value > 0;
@@ -453,7 +469,9 @@ class DictationFabState extends State<DictationFab>
     final widgets = <Widget>[];
 
     // ── Spektrum-Bubble (während Listening) ───────────────────────────────
-    if (showBubbles && _phase == DictationPhase.listening) {
+    if (showBubbles &&
+        (_phase == DictationPhase.listening ||
+            _phase == DictationPhase.preparing)) {
       widgets.add(
         _ExternalSpectrumBubble(
           skin: skin,
@@ -472,6 +490,7 @@ class DictationFabState extends State<DictationFab>
           fabState: this,
           anchorTopRight: anchorTopRight,
           kachelWidth: kachelWidth,
+          kachelHeight: kachelHeight,
         ),
       );
     }
@@ -495,7 +514,9 @@ class DictationFabState extends State<DictationFab>
 
   // ── Drag-Handling für externen Einsatz ────────────────────────────────────
   void onExternalDragUpdate(double dx) {
-    if (_phase != DictationPhase.listening || _isCancelling) return;
+    if ((_phase != DictationPhase.listening &&
+            _phase != DictationPhase.preparing) ||
+        _isCancelling) return;
     final newVal = (dx < 0 ? dx : 0.0);
     setState(() => _cancelDragX = newVal);
     widget.onBubbleStateChanged?.call();
@@ -526,7 +547,9 @@ class DictationFabState extends State<DictationFab>
       clipBehavior: Clip.none,
       alignment: Alignment.bottomCenter,
       children: [
-        if (showBubbles && _phase == DictationPhase.listening)
+        if (showBubbles &&
+            (_phase == DictationPhase.listening ||
+                _phase == DictationPhase.preparing))
           Positioned(
             bottom: 68,
             right: 0,
@@ -606,7 +629,9 @@ class DictationFabState extends State<DictationFab>
         if (!_isCancelling) _finishListeningAndReveal();
       },
       onLongPressMoveUpdate: (details) {
-        if (_phase != DictationPhase.listening || _isCancelling) return;
+        if ((_phase != DictationPhase.listening &&
+                _phase != DictationPhase.preparing) ||
+            _isCancelling) return;
         final dx = details.offsetFromOrigin.dx;
         setState(() => _cancelDragX = dx < 0 ? dx : 0.0);
         if (dx < -80.0) _cancelListening();
@@ -712,11 +737,13 @@ class DictationFabState extends State<DictationFab>
                   offset: const Offset(0, 8)),
             ],
           ),
-          child: SpectrumIndicator(
-            skin: skin,
-            rawLevelNotifier: rawLevelNotifier,
-            listenStartedAt: _listenStartedAt,
-          ),
+          child: _phase == DictationPhase.preparing
+              ? PreparingDots(skin: skin)
+              : SpectrumIndicator(
+                  skin: skin,
+                  rawLevelNotifier: rawLevelNotifier,
+                  listenStartedAt: _listenStartedAt,
+                ),
         ),
       ),
     );
@@ -871,13 +898,13 @@ class _ExternalSpectrumBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const bubbleW = 88.0;
     const bubbleH = 56.0;
-    const gap = 8.0;
+const gap = 8.0;
+final bubbleW = kachelWidth; 
 
     // Rechts an der Kachel ausgerichtet, direkt drüber
     final left = anchorTopRight.dx - bubbleW;
-    final top = anchorTopRight.dy - bubbleH - gap;
+final top = anchorTopRight.dy - bubbleH - gap;
 
     return Positioned(
       left: left,
@@ -913,8 +940,9 @@ class _ExternalSpectrumBubble extends StatelessWidget {
           child: BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
             child: Container(
-              width: bubbleW,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+  width: bubbleW,
+  height: bubbleH,
+  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               decoration: BoxDecoration(
                 color: skin.isLight
                     ? Colors.white.withValues(alpha: 0.85)
@@ -929,10 +957,14 @@ class _ExternalSpectrumBubble extends StatelessWidget {
                       offset: const Offset(0, 8)),
                 ],
               ),
-              child: SpectrumIndicator(
-                skin: skin,
-                rawLevelNotifier: fabState.rawLevelNotifier,
-                listenStartedAt: fabState.listenStartedAt,
+              child: Center( // NEU: Inhalt bleibt zentriert, egal wie breit die Kachel ist
+    child: fabState.phase == DictationPhase.preparing
+        ? PreparingDots(skin: skin)
+        : SpectrumIndicator(
+                      skin: skin,
+                      rawLevelNotifier: fabState.rawLevelNotifier,
+                      listenStartedAt: fabState.listenStartedAt,
+                    ),
               ),
             ),
           ),
@@ -948,26 +980,23 @@ class _ExternalTrashButton extends StatelessWidget {
   final DictationFabState fabState;
   final Offset anchorTopRight;
   final double kachelWidth;
+  final double kachelHeight;
 
   const _ExternalTrashButton({
     required this.skin,
     required this.fabState,
     required this.anchorTopRight,
     required this.kachelWidth,
+    this.kachelHeight = 100.0,
   });
 
   @override
   Widget build(BuildContext context) {
-    const bubbleW = 88.0;
-    const bubbleH = 56.0;
     const trashW = 56.0;
-    const gap = 8.0;
-    const trashGap = 8.0;
+    const trashGap = 10.0;
 
-    final bubbleLeft = anchorTopRight.dx - bubbleW;
-    final bubbleTop = anchorTopRight.dy - bubbleH - gap;
-    final trashLeft = bubbleLeft - trashW - trashGap;
-    final trashTop = bubbleTop;
+    final trashLeft = anchorTopRight.dx - kachelWidth - trashW - trashGap;
+    final trashTop = anchorTopRight.dy;
 
     return Positioned(
       left: trashLeft,
@@ -995,7 +1024,7 @@ class _ExternalTrashButton extends StatelessWidget {
                   filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
                   child: Container(
                     width: trashW,
-                    height: trashW,
+                    height: kachelHeight,
                     decoration: BoxDecoration(
                       color: Color.lerp(
                         skin.isLight
@@ -1205,13 +1234,11 @@ class _SpectrumIndicatorState extends State<SpectrumIndicator>
 
     setState(() {
       for (var i = 0; i < 5; i++) {
-        final idle = warmingUp
-            ? 0.20 + math.sin(_idleTick + _phaseOffset[i]) * 0.12
-            : 0.05 + math.sin(_idleTick * 0.6 + _phaseOffset[i]) * 0.04;
+        final sim = 0.18 +
+    (math.sin(_idleTick * (1.6 + i * 0.35) + _phaseOffset[i]) * 0.5 + 0.5) * 0.35;
 
-        final boosted =
-            (normalized * _sensitivityFactor[i]).clamp(0.0, 1.0);
-        final target = math.max(boosted, idle).clamp(0.04, 1.0);
+final boosted = (normalized * _sensitivityFactor[i]).clamp(0.0, 1.0);
+final target = (sim * 0.55 + boosted * 0.75).clamp(0.04, 1.0);
 
         final smooth = target > _smoothed[i] ? 0.65 : 0.18;
         _smoothed[i] += (target - _smoothed[i]) * smooth;
@@ -1267,6 +1294,75 @@ class ProcessingIndicator extends StatelessWidget {
           child: CircularProgressIndicator(
             strokeWidth: 2.0,
             valueColor: AlwaysStoppedAnimation(skin.primary),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class PreparingDots extends StatefulWidget {
+  final AppSkin skin;
+  const PreparingDots({super.key, required this.skin});
+
+  @override
+  State<PreparingDots> createState() => _PreparingDotsState();
+}
+
+class _PreparingDotsState extends State<PreparingDots>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  late final List<Animation<double>> _dotOpacity;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 900))
+      ..repeat();
+    _dotOpacity = List.generate(3, (i) {
+      final start = i * 0.2;
+      return TweenSequence<double>([
+        TweenSequenceItem(tween: Tween(begin: 0.3, end: 1.0), weight: 30),
+        TweenSequenceItem(tween: Tween(begin: 1.0, end: 0.3), weight: 30),
+        TweenSequenceItem(tween: ConstantTween(0.3), weight: 40),
+      ]).animate(CurvedAnimation(
+        parent: _ctrl,
+        curve: Interval(start, (start + 0.6).clamp(0.0, 1.0),
+            curve: Curves.easeInOut),
+      ));
+    });
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 28,
+      width: 56,
+      child: AnimatedBuilder(
+        animation: _ctrl,
+        builder: (context, _) => Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: List.generate(
+            3,
+            (i) => Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 3),
+              child: Opacity(
+                opacity: _dotOpacity[i].value,
+                child: Container(
+                  width: 6,
+                  height: 6,
+                  decoration: BoxDecoration(
+                      color: widget.skin.primary, shape: BoxShape.circle),
+                ),
+              ),
+            ),
           ),
         ),
       ),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
 import '../theme/app_theme.dart';
+import 'travel_mode_service.dart';
 import '../widgets/glass_dialogs.dart';
 import '../widgets/glass_snackbar.dart';
 
@@ -91,9 +92,17 @@ class NightShiftHelper {
     return false;
   }
 
-  static void _saveNormal(DateTime datum, String kommen, String gehen, String tkf, String notiz, [String? existingId]) {
+  // NEU
+static void _saveNormal(DateTime datum, String kommen, String gehen, String tkf, String notiz,
+      [String? existingId, bool isDutyStart = true, bool isDutyEnd = true]) {
     final existingEntries = getEntriesForDay(datum);
-    
+
+    // Zeitzone auflösen: nur beim Start eines NEUEN Dienstes wird evtl.
+    // eine bestätigte Zeitzone scharf geschaltet, sonst gilt die aktive Zone weiter.
+    final tzInfo = isDutyStart
+        ? TravelModeService.resolveTzForNewEntry()
+        : TravelModeService.activeTz;
+
     final newEntry = {
       'kommen': kommen,
       'gehen': gehen,
@@ -102,7 +111,17 @@ class NightShiftHelper {
       'id': existingId ?? DateTime.now().millisecondsSinceEpoch.toString(),
       'createdAt': DateTime.now().toIso8601String(),
       'datum': DateFormat('yyyy-MM-dd').format(datum),
+      'tz': tzInfo.id,
+      'tzOffsetLabel': tzInfo.offsetLabel,
+      'kommenUtc': TravelModeService.toUtcIso(datum, kommen, tzInfo.id),
+      'gehenUtc': TravelModeService.toUtcIso(datum, gehen, tzInfo.id),
+      'physTzAtSave': TravelModeService.lastKnownDeviceTz,
     };
+
+    // Echtes Dienstende → nächsten Wechsel scharf schalten
+    if (isDutyEnd && gehen.isNotEmpty) {
+      TravelModeService.armSwitchIfNeeded();
+    }
     
     if (existingId != null) {
       final index = existingEntries.indexWhere((e) => e['id'] == existingId);
@@ -118,11 +137,14 @@ class NightShiftHelper {
     _saveEntriesForDay(datum, existingEntries);
   }
 
-  static void _saveSplit(DateTime datum, String kommen, String gehen, String tkf, String notiz, [String? existingId]) {
-    _saveNormal(datum, kommen, '23:59', tkf, notiz, existingId);
-    
+  // NEU
+static void _saveSplit(DateTime datum, String kommen, String gehen, String tkf, String notiz, [String? existingId]) {
+    // Erste Hälfte: Dienstbeginn (Zone ggf. auflösen), aber kein echtes Dienstende
+    _saveNormal(datum, kommen, '23:59', tkf, notiz, existingId, true, false);
+
+    // Zweite Hälfte: Fortsetzung (gleiche Zone), hier ist der echte Feierabend
     final nextDay = datum.add(const Duration(days: 1));
-    _saveNormal(nextDay, '00:00', gehen, tkf, notiz, null);
+    _saveNormal(nextDay, '00:00', gehen, tkf, notiz, null, false, true);
   }
 
   static void deleteEntry(DateTime datum, String entryId) {

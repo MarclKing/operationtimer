@@ -470,6 +470,50 @@ class FahrtDraft {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// LISTEN-ITEM: entweder Monats-Header oder Fahrt
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _FahrtListItem {
+  final String? sectionLabel;
+  final Fahrt? fahrt;
+  _FahrtListItem.header(this.sectionLabel) : fahrt = null;
+  _FahrtListItem.fahrt(this.fahrt) : sectionLabel = null;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MONATS-TRENNER — dünne Linie + kurze Beschriftung
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _MonthSectionHeader extends StatelessWidget {
+  final String label;
+  final AppSkin skin;
+  const _MonthSectionHeader({required this.label, required this.skin});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 18, bottom: 10),
+      child: Row(children: [
+        Expanded(child: Container(height: 0.6, color: skin.surface(0.10))),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          child: Text(
+            label.toUpperCase(),
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              color: skin.surface(0.4),
+              letterSpacing: 1.0,
+            ),
+          ),
+        ),
+        Expanded(child: Container(height: 0.6, color: skin.surface(0.10))),
+      ]),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // FAHRTENBUCH SCREEN
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -482,7 +526,6 @@ class FahrtenbuchScreen extends StatefulWidget {
 }
 
 class FahrtenbuchScreenState extends State<FahrtenbuchScreen> with TickerProviderStateMixin {
-  late DateTime _selectedMonth;
   final FahrtDraft _draft = FahrtDraft();
 
   bool _draftVisible = false;
@@ -502,8 +545,6 @@ class FahrtenbuchScreenState extends State<FahrtenbuchScreen> with TickerProvide
   @override
   void initState() {
     super.initState();
-    final now = DateTime.now();
-    _selectedMonth = DateTime(now.year, now.month);
 
     _draftBannerCtrl = AnimationController(
       vsync: this,
@@ -586,7 +627,7 @@ _selectionBarAnim = CurvedAnimation(
 }
 
   Future<void> _exportSelected() async {
-  final fahrten = _getFahrtenForMonth().where((f) => _selectedIds.contains(f.id)).toList();
+  final fahrten = _getAllFahrten().where((f) => _selectedIds.contains(f.id)).toList();
   if (fahrten.isEmpty) return;
   _exitSelectionMode();
   final success = await FahrtExportService.exportFahrten(fahrten);
@@ -607,7 +648,7 @@ _selectionBarAnim = CurvedAnimation(
 }
 
   Future<void> _exportAll() async {
-  final fahrten = _getFahrtenForMonth();
+  final fahrten = _getAllFahrten();
   if (fahrten.isEmpty) return;
   final success = await FahrtExportService.exportFahrten(fahrten);
   if (success == true) {
@@ -826,16 +867,38 @@ _selectionBarAnim = CurvedAnimation(
     }
   }
 
-  List<Fahrt> _getFahrtenForMonth() {
+  /// Lädt ALLE Fahrten über alle Monate hinweg (neueste zuerst)
+  List<Fahrt> _getAllFahrten() {
     final box = Hive.box('einstellungen');
-    final monthKey = DateFormat('yyyy-MM').format(_selectedMonth);
-    final raw = box.get('fahrten_$monthKey');
-    if (raw == null) return [];
-    if (raw is! List) return [];
-    return raw
-        .map((e) => Fahrt.fromMap(Map<String, dynamic>.from(e as Map)))
-        .toList()
-      ..sort((a, b) => a.datum.compareTo(b.datum));
+    final result = <Fahrt>[];
+    for (final key in box.keys) {
+      final k = key.toString();
+      if (!k.startsWith('fahrten_')) continue;
+      final raw = box.get(k);
+      if (raw is! List) continue;
+      for (final e in raw) {
+        try {
+          result.add(Fahrt.fromMap(Map<String, dynamic>.from(e as Map)));
+        } catch (_) {}
+      }
+    }
+    result.sort((a, b) => b.datum.compareTo(a.datum)); // neueste zuerst
+    return result;
+  }
+
+  /// Baut eine flache Liste aus Monats-Headern + Fahrten für die ListView
+  List<_FahrtListItem> _buildGroupedItems(List<Fahrt> fahrten) {
+    final items = <_FahrtListItem>[];
+    String? lastMonthKey;
+    for (final f in fahrten) {
+      final monthKey = DateFormat('yyyy-MM').format(f.datum);
+      if (monthKey != lastMonthKey) {
+        items.add(_FahrtListItem.header(DateFormat('MMMM yyyy', 'de').format(f.datum)));
+        lastMonthKey = monthKey;
+      }
+      items.add(_FahrtListItem.fahrt(f));
+    }
+    return items;
   }
 
   void _saveFahrt(Fahrt fahrt) {
@@ -861,8 +924,13 @@ _selectionBarAnim = CurvedAnimation(
 
   void _deleteFahrt(String id) {
     final box = Hive.box('einstellungen');
-    final monthKey = DateFormat('yyyy-MM').format(_selectedMonth);
-    final existing = _getFahrtenForMonth();
+    final fahrt = _getAllFahrten().where((f) => f.id == id).firstOrNull;
+    if (fahrt == null) return;
+    final monthKey = DateFormat('yyyy-MM').format(fahrt.datum);
+    final raw = box.get('fahrten_$monthKey');
+    if (raw is! List) return;
+    final existing = raw.map((e) => Fahrt.fromMap(Map<String, dynamic>.from(e as Map))).toList();
+
     // Foto-Dateien löschen bevor Eintrag entfernt wird
     final toDelete = existing.where((f) => f.id == id).firstOrNull;
     if (toDelete != null) {
@@ -876,20 +944,6 @@ _selectionBarAnim = CurvedAnimation(
     existing.removeWhere((f) => f.id == id);
     box.put('fahrten_$monthKey', existing.map((f) => f.toMap()).toList());
     setState(() {});
-  }
-
-  void _setMonth(DateTime month) => setState(() => _selectedMonth = month);
-  void _changeMonth(int delta) => _setMonth(DateTime(_selectedMonth.year, _selectedMonth.month + delta));
-
-  // ── Monatspicker: jetzt über showMonthYearPicker aus glass_pickers.dart ──
-  Future<void> _showMonthPicker() async {
-    final skin = AppTheme.of(context);
-    final result = await showMonthYearPicker(
-      context: context,
-      skin: skin,
-      initialMonth: _selectedMonth,
-    );
-    if (result != null) _setMonth(result);
   }
 
   Future<bool?> _discardDraft() async {
@@ -915,8 +969,8 @@ _selectionBarAnim = CurvedAnimation(
   @override
 Widget build(BuildContext context) {
   final skin = AppTheme.of(context);
-  final fahrten = _getFahrtenForMonth();
-  final monthName = DateFormat('MMMM yyyy', 'de').format(_selectedMonth);
+  final fahrten = _getAllFahrten();
+  final groupedItems = _buildGroupedItems(fahrten);
   final bottomNavHeight = 70.0 + MediaQuery.of(context).padding.bottom;
   final draftBannerHeight = 56.0;
   final extraBottomOffset = _draftVisible ? draftBannerHeight + 8 : 48.0;
@@ -965,30 +1019,6 @@ Widget build(BuildContext context) {
                         ),
                       ]),
                       const SizedBox(height: 16),
-                      GlassNavCard(
-  onPrevious: () => _changeMonth(-1),
-  onNext: () => _changeMonth(1),
-  onTap: _showMonthPicker,
-  onDoubleTap: () {
-    HapticFeedback.selectionClick();
-    final now = DateTime.now();
-    _setMonth(DateTime(now.year, now.month));
-  },
-  onSwipe: (v) {
-    if (v < -300) _changeMonth(1);
-    if (v > 300) _changeMonth(-1);
-  },
-  child: Row(
-    mainAxisAlignment: MainAxisAlignment.center,
-    children: [
-      Text(monthName,
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: skin.textPrimary)),
-      const SizedBox(width: 6),
-      Icon(Icons.expand_more, color: skin.primary, size: 18),
-    ],
-  ),
-),
-                      const SizedBox(height: 12),
                       Row(children: [
                         GlassStatCard(label: 'Fahrten', value: '$totalFahrten', color: skin.primary),
                         const SizedBox(width: 10),
@@ -1026,9 +1056,9 @@ Widget build(BuildContext context) {
                             child: ListView.builder(
                               controller: _fahrtScrollController,
                               padding: const EdgeInsets.fromLTRB(24, 4, 24, 0),
-                              itemCount: fahrten.length + 1,
+                              itemCount: groupedItems.length + 1,
                               itemBuilder: (context, index) {
-                                if (index == fahrten.length) {
+                                if (index == groupedItems.length) {
   return Padding(
     padding: EdgeInsets.fromLTRB(0, 8, 0, bottomNavHeight + extraBottomOffset + 32),
     child: _ExportButtonAnimated(
@@ -1041,7 +1071,11 @@ Widget build(BuildContext context) {
     ),
   );
 }
-                                final fahrt = fahrten[index];
+                                final item = groupedItems[index];
+                                if (item.sectionLabel != null) {
+                                  return _MonthSectionHeader(label: item.sectionLabel!, skin: skin);
+                                }
+                                final fahrt = item.fahrt!;
                                 _fahrtCardKeys.putIfAbsent(fahrt.id, () => GlobalKey<_FahrtCardState>());
                                 return Padding(
                                   padding: const EdgeInsets.only(bottom: 10),

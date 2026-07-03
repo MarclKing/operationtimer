@@ -162,7 +162,53 @@ class _ExportHinweiseScreenState extends State<ExportHinweiseScreen> {
     );
   }
 
+  String _buildBookmarkletJs() {
+    return '''(function(){
+  var s=document.createElement("style");
+  s.textContent="#fp-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.6);z-index:999999;display:flex;align-items:center;justify-content:center;font-family:system-ui,sans-serif}#fp-box{background:white;border-radius:14px;padding:28px;width:480px;max-height:80vh;overflow-y:auto;box-shadow:0 8px 40px rgba(0,0,0,.4)}#fp-box h2{margin:0 0 16px;font-size:18px}#fp-box textarea{width:100%;height:160px;font-family:monospace;font-size:12px;padding:10px;border:2px solid #ccc;border-radius:8px;box-sizing:border-box}#fp-box button{padding:10px 20px;border:none;border-radius:8px;cursor:pointer;font-size:14px;font-weight:bold;margin:4px}#fp-btn-fill{background:#0066cc;color:white}#fp-btn-cancel{background:#eee;color:#333}#fp-status{margin-top:12px;padding:10px;border-radius:6px;font-size:13px;display:none}";
+  document.head.appendChild(s);
+  var d=document.createElement("div");
+  d.id="fp-overlay";
+  d.innerHTML='<div id="fp-box"><h2>FleetPortal Auto-Fill</h2><p style="font-size:13px;color:#555;margin:0 0 10px;">JSON einfügen:</p><textarea id="fp-json"></textarea><div id="fp-status"></div><div style="margin-top:14px"><button id="fp-btn-fill">Felder ausfüllen</button> <button id="fp-btn-cancel">Abbrechen</button></div></div>';
+  document.body.appendChild(d);
+  function fill(id,val){var el=document.getElementById(id);if(!el||val===null||val===undefined||val==="")return false;el.value=val;el.dispatchEvent(new Event("input",{bubbles:true}));el.dispatchEvent(new Event("change",{bubbles:true}));return true;}
+  function fmtDate(s){if(!s)return"";var dt=new Date(s);return dt.getFullYear()+"-"+String(dt.getMonth()+1).padStart(2,"0")+"-"+String(dt.getDate()).padStart(2,"0");}
+  document.getElementById("fp-btn-cancel").onclick=function(){document.getElementById("fp-overlay").remove();};
+  document.getElementById("fp-btn-fill").onclick=function(){
+    var raw=document.getElementById("fp-json").value.trim();
+    var j;
+    try{j=JSON.parse(raw);}catch(e){var st=document.getElementById("fp-status");st.style.display="block";st.style.background="#f8d7da";st.style.color="#721c24";st.textContent="Ungültiges JSON: "+e.message;return;}
+    var filled=0,skipped=0;
+    var fields=[
+      ["fahrzeugeingabe",j.kennzeichen||""],
+      ["abfahrtsdatum",fmtDate(j.datum)],
+      ["abfahrtszeit",j.abfahrtZeit||""],
+      ["ankunftsdatum",fmtDate(j.ankunftDatum)],
+      ["ankunftszeit",j.ankunftZeit||""],
+      ["abfahrtskilometer",j.kmStart?String(j.kmStart):""],
+      ["ankunftskilometer",j.kmEnd?String(j.kmEnd):""],
+      ["sonderwegerecht",j.sonderWegerecht?"1":"0"],
+      ["autowaschen",j.autoGewaschen?"1":"0"],
+      ["kraftstoff",j.getanktLiter?String(j.getanktLiter):""],
+      ["strom",j.stromKwh?String(j.stromKwh):""],
+      ["adblue",j.adblueKwh?String(j.adblueKwh):""],
+      ["fahrtweg",j.fahrtZiel||""]
+    ];
+    fields.forEach(function(f){if(f[1]){if(fill(f[0],f[1]))filled++;else skipped++;}else{skipped++;}});
+    if(j.fahrtTyp){var sel=document.getElementById("fahrttyp");if(sel){sel.value=j.fahrtTyp;sel.dispatchEvent(new Event("change",{bubbles:true}));filled++;}}
+    var st=document.getElementById("fp-status");
+    st.style.display="block";
+    if(filled>0){st.style.background="#d4edda";st.style.color="#155724";st.textContent="OK: "+filled+" Felder ausgefüllt, "+skipped+" übersprungen.";}
+    else{st.style.background="#f8d7da";st.style.color="#721c24";st.textContent="Keine Felder gefunden - falsche Seite?";}
+    setTimeout(function(){var ov=document.getElementById("fp-overlay");if(ov)ov.remove();},4000);
+  };
+})();''';
+  }
+
   String _buildBookmarkletHtml() {
+    final jsCode = _buildBookmarkletJs();
+    final href = 'javascript:' + Uri.encodeComponent(jsCode);
+
     return '''<!DOCTYPE html>
 <html lang="de">
 <head>
@@ -309,7 +355,7 @@ class _ExportHinweiseScreenState extends State<ExportHinweiseScreen> {
 
   <div class="section-label">Schritt 1 — Bookmarklet installieren</div>
   <div class="install-box">
-    <a class="drag-target" id="bookmarklet-link" href="#" onclick="return false;">
+    <a class="drag-target" id="bookmarklet-link" href="$href">
       🚗 OpTimes → FleetPortal
     </a>
     <div class="drag-hint">⬆ Diesen Button in die Lesezeichenleiste ziehen - (STRG + UMSCHLT + B)</div>
@@ -347,219 +393,6 @@ class _ExportHinweiseScreenState extends State<ExportHinweiseScreen> {
     <strong>Pro Fahrt: 3 Klicks.</strong> Kein Tippen, kein manuelles Ausfüllen. Das Bookmarklet läuft komplett lokal im Browser — keine Daten verlassen deinen Rechner.
   </div>
 </div>
-
-<script>
-// ─── Bookmarklet-Code ────────────────────────────────────────────────────────
-// Das ist der vollständige Code des Bookmarklets, URL-encodiert damit
-// Anführungszeichen im Browser keine Probleme machen.
-
-const bookmarkletCode = `(function(){
-  // Bereits offen? Dann schließen.
-  var existing = document.getElementById('optimes-bml-overlay');
-  if(existing){ existing.remove(); return; }
-
-  // Overlay erstellen
-  var overlay = document.createElement('div');
-  overlay.id = 'optimes-bml-overlay';
-  Object.assign(overlay.style, {
-    position:'fixed', top:'0', left:'0', right:'0', bottom:'0',
-    background:'rgba(0,0,0,0.55)', zIndex:'999998',
-    display:'flex', alignItems:'center', justifyContent:'center',
-    fontFamily:'-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif'
-  });
-
-  var box = document.createElement('div');
-  Object.assign(box.style, {
-    background:'#1a1b22', border:'1px solid rgba(255,255,255,0.14)',
-    borderRadius:'20px', padding:'24px', width:'360px', maxWidth:'90vw',
-    boxShadow:'0 20px 60px rgba(0,0,0,0.6)'
-  });
-
-  // Header
-  var header = document.createElement('div');
-  Object.assign(header.style, { display:'flex', alignItems:'center', gap:'12px', marginBottom:'18px' });
-  header.innerHTML = '<div style="width:38px;height:38px;background:rgba(61,214,200,0.12);border:1px solid rgba(61,214,200,0.3);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;">🚗</div>'
-    + '<div><div style="font-size:16px;font-weight:700;color:#fff;">OpTimes Import</div>'
-    + '<div style="font-size:11px;color:#6b7280;">FleetPortal Assistent</div></div>'
-    + '<div id="optimes-close-btn" style="margin-left:auto;cursor:pointer;width:28px;height:28px;background:rgba(255,255,255,0.06);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;color:#9ca3af;">✕</div>';
-  box.appendChild(header);
-
-  // Textarea
-  var label = document.createElement('div');
-  label.textContent = 'JSON-DATEN';
-  Object.assign(label.style, { fontSize:'9px', fontWeight:'700', letterSpacing:'1.2px', color:'#4b5563', marginBottom:'8px' });
-  box.appendChild(label);
-
-  var ta = document.createElement('textarea');
-  ta.id = 'optimes-json-input';
-  ta.placeholder = 'Hier JSON einfügen oder "Fahrt importieren" tippen…';
-  Object.assign(ta.style, {
-    width:'100%', height:'90px', background:'rgba(255,255,255,0.05)',
-    border:'1px solid rgba(255,255,255,0.10)', borderRadius:'12px',
-    color:'#e8e9f0', fontSize:'12px', padding:'12px', resize:'none',
-    fontFamily:'monospace', outline:'none', marginBottom:'10px', display:'block'
-  });
-  box.appendChild(ta);
-
-  // Import-Button (Zwischenablage)
-  var importBtn = document.createElement('button');
-  importBtn.textContent = '📋 Fahrt importieren';
-  Object.assign(importBtn.style, {
-    width:'100%', background:'rgba(61,214,200,0.12)',
-    border:'1px solid rgba(61,214,200,0.35)', color:'#3DD6C8',
-    borderRadius:'12px', padding:'12px', fontSize:'14px', fontWeight:'700',
-    cursor:'pointer', marginBottom:'8px', transition:'background 0.15s'
-  });
-  importBtn.onmouseover = function(){ this.style.background='rgba(61,214,200,0.22)'; };
-  importBtn.onmouseout = function(){ this.style.background='rgba(61,214,200,0.12)'; };
-  importBtn.onclick = function(){
-    navigator.clipboard.readText().then(function(text){
-      ta.value = text.trim();
-      importBtn.textContent = '✓ Eingefügt!';
-      importBtn.style.background = 'rgba(61,214,200,0.25)';
-      importBtn.style.color = '#fff';
-      setTimeout(function(){
-        importBtn.textContent = '📋 Fahrt importieren';
-        importBtn.style.background = 'rgba(61,214,200,0.12)';
-        importBtn.style.color = '#3DD6C8';
-      }, 2000);
-    }).catch(function(){
-      ta.focus();
-      ta.placeholder = 'Clipboard-Zugriff verweigert – bitte manuell einfügen (Strg+V)';
-    });
-  };
-  box.appendChild(importBtn);
-
-  // Ausfüllen-Button
-  var fillBtn = document.createElement('button');
-  fillBtn.textContent = 'Felder ausfüllen';
-  Object.assign(fillBtn.style, {
-    width:'100%', background:'linear-gradient(135deg,#3DD6C8,#7B5EA7)',
-    border:'none', color:'#fff', borderRadius:'12px', padding:'13px',
-    fontSize:'14px', fontWeight:'700', cursor:'pointer', marginBottom:'0'
-  });
-  fillBtn.onclick = function(){
-    var raw = ta.value.trim();
-    if(!raw){ alert('Bitte erst JSON einfügen oder Fahrt importieren.'); return; }
-    var d;
-    try{ d = JSON.parse(raw); }
-    catch(e){ alert('Ungültiges JSON:\\n' + e.message); return; }
-
-    var filled = 0;
-
-    function setVal(el, val){
-      if(!el || val === undefined || val === null || val === '') return;
-      var nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value');
-      if(nativeInputValueSetter) nativeInputValueSetter.set.call(el, val);
-      el.dispatchEvent(new Event('input', {bubbles:true}));
-      el.dispatchEvent(new Event('change', {bubbles:true}));
-      filled++;
-    }
-
-    function findInput(names, type){
-      var selectors = names.map(function(n){
-        return 'input[name="'+n+'"],input[id="'+n+'"],input[placeholder*="'+n+'"],textarea[name="'+n+'"]';
-      }).join(',');
-      return document.querySelector(selectors);
-    }
-
-    function findSelect(names){
-      var selectors = names.map(function(n){
-        return 'select[name="'+n+'"],select[id="'+n+'"]';
-      }).join(',');
-      return document.querySelector(selectors);
-    }
-
-    // Datum (Abfahrt)
-    if(d.datum){
-      var parts = d.datum.split('-');
-      var formatted = parts.length===3 ? parts[2]+'.'+parts[1]+'.'+parts[0] : d.datum;
-      setVal(findInput(['datum','abfahrtDatum','Datum','date','startDate']), formatted);
-      setVal(findInput(['datum','abfahrtDatum','Datum','date','startDate']), d.datum);
-    }
-
-    // Abfahrtzeit
-    if(d.abfahrtZeit){
-      setVal(findInput(['abfahrtZeit','abfahrt_zeit','startTime','abfahrt']), d.abfahrtZeit);
-    }
-
-    // Ankunftdatum
-    if(d.ankunftDatum){
-      var parts2 = d.ankunftDatum.split('-');
-      var formatted2 = parts2.length===3 ? parts2[2]+'.'+parts2[1]+'.'+parts2[0] : d.ankunftDatum;
-      setVal(findInput(['ankunftDatum','ankunft_datum','endDate','returnDate']), formatted2);
-      setVal(findInput(['ankunftDatum','ankunft_datum','endDate','returnDate']), d.ankunftDatum);
-    }
-
-    // Ankunftzeit
-    if(d.ankunftZeit){
-      setVal(findInput(['ankunftZeit','ankunft_zeit','endTime','ankunft']), d.ankunftZeit);
-    }
-
-    // KM
-    if(d.kmStart) setVal(findInput(['kmStart','km_start','kmVon','kmAbfahrt','kilometerStart','startKm']), d.kmStart);
-    if(d.kmEnd)   setVal(findInput(['kmEnd','km_end','kmBis','kmAnkunft','kilometerEnd','endKm']), d.kmEnd);
-
-    // Kennzeichen
-    if(d.kennzeichen) setVal(findInput(['kennzeichen','kfz','fahrzeug','Kennzeichen','license']), d.kennzeichen);
-
-    // Fahrttyp / Verwendungszweck
-    if(d.fahrtTyp){
-      setVal(findInput(['fahrtTyp','fahrt_typ','verwendungszweck','zweck','purpose','type']), d.fahrtTyp);
-      var sel = findSelect(['fahrtTyp','fahrt_typ','verwendungszweck','zweck']);
-      if(sel){
-        for(var i=0;i<sel.options.length;i++){
-          if(sel.options[i].value===d.fahrtTyp || sel.options[i].text.includes(d.fahrtTyp)){
-            sel.selectedIndex=i;
-            sel.dispatchEvent(new Event('change',{bubbles:true}));
-            filled++;
-            break;
-          }
-        }
-      }
-    }
-
-    // Fahrtziel
-    if(d.fahrtZiel) setVal(findInput(['fahrtZiel','ziel','destination','fahrziel']), d.fahrtZiel);
-
-    // Kraftstoff
-    if(d.getanktLiter) setVal(findInput(['getanktLiter','kraftstoff','liter','fuel']), d.getanktLiter);
-
-    // Sonderwegerecht (Checkbox)
-    if(d.sonderWegerecht==='ja'){
-      var cb = document.querySelector('input[type="checkbox"][name*="sonder"],input[type="checkbox"][name*="wege"],input[type="checkbox"][id*="sonder"]');
-      if(cb && !cb.checked){ cb.click(); filled++; }
-    }
-
-    // Ergebnis
-    if(filled > 0){
-      fillBtn.textContent = '✓ ' + filled + ' Felder ausgefüllt!';
-      fillBtn.style.background = 'linear-gradient(135deg,#22c55e,#16a34a)';
-      setTimeout(function(){ overlay.remove(); }, 1800);
-    } else {
-      fillBtn.textContent = '⚠ Keine Felder gefunden';
-      fillBtn.style.background = 'linear-gradient(135deg,#f59e0b,#d97706)';
-      setTimeout(function(){
-        fillBtn.textContent = 'Felder ausfüllen';
-        fillBtn.style.background = 'linear-gradient(135deg,#3DD6C8,#7B5EA7)';
-      }, 2500);
-    }
-  };
-  box.appendChild(fillBtn);
-
-  overlay.appendChild(box);
-  document.body.appendChild(overlay);
-
-  // Schließen
-  document.getElementById('optimes-close-btn').onclick = function(){ overlay.remove(); };
-  overlay.onclick = function(e){ if(e.target===overlay) overlay.remove(); };
-})();`;
-
-// URL-encoden und als href setzen
-const encoded = 'javascript:' + encodeURIComponent(bookmarkletCode);
-document.getElementById('bookmarklet-link').href = encoded;
-document.getElementById('bookmarklet-link').textContent = '🚗 OpTimes → FleetPortal';
-</script>
 </body>
 </html>''';
   }

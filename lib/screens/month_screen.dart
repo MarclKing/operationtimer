@@ -11,9 +11,12 @@ import '../theme/app_theme.dart';
 import '../widgets/glass_kit.dart';
 import '../widgets/glass_pickers.dart';
 import '../widgets/glass_snackbar.dart';
+import '../widgets/glass_dialogs.dart';
 import '../services/night_shift_helper.dart';
 import '../services/pdf_service.dart';
 import '../services/sync_service.dart';
+import '../services/travel_mode_service.dart';
+import '../utils/time_rounding.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MonthScreen
@@ -177,6 +180,13 @@ class MonthScreenState extends State<MonthScreen> with TickerProviderStateMixin 
   String? _lastAlertMessage;
   DateTime? _lastAlertTime;
 
+  /// Aktuelle Rundungsstufe aus den Einstellungen (in Minuten pro Swipe-Schritt).
+  int get _roundStep {
+    final rule = Hive.box('einstellungen')
+        .get(TimeRounding.hiveKey, defaultValue: TimeRounding.defaultRule) as String;
+    return TimeRounding.stepMinutes(rule);
+  }
+
   // ── MonthScreen State ─────────────────────────────────────────────────────
   late DateTime _selectedMonth;
   final Map<String, GlobalKey<GlassSwipeCardState>> _rowKeys = {};
@@ -194,6 +204,8 @@ class MonthScreenState extends State<MonthScreen> with TickerProviderStateMixin 
     super.initState();
     _selectedDate = DateTime.now();
     _selectedMonth = widget.selectedMonth;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkTravelModeTz());
 
     _saveAnimController = AnimationController(
       vsync: this,
@@ -334,12 +346,14 @@ class MonthScreenState extends State<MonthScreen> with TickerProviderStateMixin 
     }
   }
 
-  void _adjustHomeTime(TextEditingController controller, int minutesDelta) {
+   void _adjustHomeTime(TextEditingController controller, int direction) {
     final isKommen = controller == _kommenController;
     final isGehen = controller == _gehenController;
     final current = _parseHomeTime(controller.text) ?? TimeOfDay.now();
-    final total =
-        (current.hour * 60 + current.minute + minutesDelta).clamp(0, 23 * 60 + 59);
+    final rule = Hive.box('einstellungen')
+        .get(TimeRounding.hiveKey, defaultValue: TimeRounding.defaultRule) as String;
+    final total = TimeRounding.steppedTotal(
+        current.hour * 60 + current.minute, rule, direction);
     final newHour = total ~/ 60;
     final newMinute = total % 60;
 
@@ -484,11 +498,37 @@ class MonthScreenState extends State<MonthScreen> with TickerProviderStateMixin 
     if (result != null) _setDate(result);
   }
 
+Future<void> _checkTravelModeTz() async {
+    final detected = await TravelModeService.checkForTimeZoneChange();
+    if (detected == null || !mounted) return;
+    final skin = AppTheme.of(context);
+    final label = TravelModeService.offsetLabelFor(detected);
+    final confirmed = await confirmActionDialog(
+      context: context,
+      skin: skin,
+      icon: Icons.flight_takeoff_rounded,
+      title: '✈️ Neue Zeitzone erkannt',
+      message: 'Dein Gerät meldet: $detected ($label)\n\n'
+          'Ab deinem nächsten Dienstbeginn in dieser Zone weiterschreiben?',
+      confirmLabel: 'Bestätigen',
+      cancelLabel: 'Ignorieren',
+    );
+    if (confirmed == true) {
+      TravelModeService.confirmDetectedTz(detected);
+    } else {
+      TravelModeService.ignoreDetectedTz(detected);
+    }
+    if (mounted) setState(() {});
+  }
+
   Future<void> _selectTimeWithPicker(TextEditingController controller) async {
     _dismissKeyboardAndOverlay();
     await Future.delayed(const Duration(milliseconds: 80));
     if (!mounted) return;
 
+    await _checkTravelModeTz(); // ← prüft vor jeder Zeiteingabe auf Zonenwechsel
+
+    if (!mounted) return;
     final isKommen = controller == _kommenController;
     final isGehen = controller == _gehenController;
     final nightShiftEnabled = NightShiftHelper.isNightShiftEnabled();
@@ -504,13 +544,16 @@ class MonthScreenState extends State<MonthScreen> with TickerProviderStateMixin 
         skin: skin,
         label: isKommen ? 'Uhrzeit Kommen' : 'Uhrzeit Gehen',
         confirmOnDismiss: false,
+        minuteInterval: _roundStep,
         onTimeSelected: (t) => selectedTime = t,
       ),
     );
 
     if (!mounted) return;
     if (selectedTime == null) return;
-    final t = selectedTime!;
+    final rundungRule = Hive.box('einstellungen')
+        .get(TimeRounding.hiveKey, defaultValue: TimeRounding.defaultRule) as String;
+    final t = TimeRounding.roundTimeOfDay(selectedTime!, rundungRule);
     final newMinutes = t.hour * 60 + t.minute;
     if (!nightShiftEnabled && isKommen && _gehenController.text.isNotEmpty) {
       final g = _parseHomeTime(_gehenController.text);
@@ -947,6 +990,9 @@ class MonthScreenState extends State<MonthScreen> with TickerProviderStateMixin 
   // ─────────────────────────────────────────────────────────────────────────
 
   Widget _buildZeiterfassungTab(AppSkin skin) {
+    final showTravelBanner =
+        TravelModeService.isEnabled && TravelModeService.pendingTzId != null;
+
     return SingleChildScrollView(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -954,6 +1000,16 @@ class MonthScreenState extends State<MonthScreen> with TickerProviderStateMixin 
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const SizedBox(height: 8),
+
+            if (showTravelBanner) ...[
+              _TravelModePendingBanner(
+                skin: skin,
+                pendingTzId: TravelModeService.pendingTzId!,
+                activeTzId: TravelModeService.activeTzId,
+                onRefresh: () => setState(() {}),
+              ),
+              const SizedBox(height: 16),
+            ],
 
             // Datumskarte
 GlassNavCard(
@@ -1478,6 +1534,10 @@ class _MonthEntryCard extends StatelessWidget {
                         ],
                       ),
                     ],
+                    if (TravelModeService.isEnabled && entry['tz'] != null) ...[
+                      const SizedBox(height: 6),
+                      _TzBreakdownRow(skin: skin, entry: entry),
+                    ],
                   ],
                 ),
               ),
@@ -1898,7 +1958,13 @@ class _EditSheetState extends State<_EditSheet> {
   TimeOfDay _getDefaultGehenTime(TimeOfDay kommenTime) =>
       _addMinutes(kommenTime, 8 * 60 + 12);
 
-  void _adjustTime(TextEditingController controller, int minutesDelta,
+  int get _roundStep {
+    final rule = Hive.box('einstellungen')
+        .get(TimeRounding.hiveKey, defaultValue: TimeRounding.defaultRule) as String;
+    return TimeRounding.stepMinutes(rule);
+  }
+
+  void _adjustTime(TextEditingController controller, int direction,
       bool isGehenField) {
     TimeOfDay current;
     if (controller.text.isEmpty || controller.text == '--:--') {
@@ -1913,8 +1979,10 @@ class _EditSheetState extends State<_EditSheet> {
     } else {
       current = _parse(controller.text) ?? TimeOfDay.now();
     }
-    final total =
-        (current.hour * 60 + current.minute + minutesDelta).clamp(0, 23 * 60 + 59);
+    final rule = Hive.box('einstellungen')
+        .get(TimeRounding.hiveKey, defaultValue: TimeRounding.defaultRule) as String;
+    final total = TimeRounding.steppedTotal(
+        current.hour * 60 + current.minute, rule, direction);
     setState(() {
       controller.text =
           '${(total ~/ 60).toString().padLeft(2, '0')}:${(total % 60).toString().padLeft(2, '0')}';
@@ -1945,10 +2013,14 @@ class _EditSheetState extends State<_EditSheet> {
         skin: skin,
         label: isGehenField ? 'Uhrzeit Gehen' : 'Uhrzeit Kommen',
         confirmOnDismiss: false,
+        minuteInterval: _roundStep,
         onTimeSelected: (t) {
+          final rule = Hive.box('einstellungen')
+              .get(TimeRounding.hiveKey, defaultValue: TimeRounding.defaultRule) as String;
+          final rounded = TimeRounding.roundTimeOfDay(t, rule);
           setState(() {
             ctrl.text =
-                '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+                '${rounded.hour.toString().padLeft(2, '0')}:${rounded.minute.toString().padLeft(2, '0')}';
           });
         },
       ),
@@ -2017,10 +2089,10 @@ class _EditSheetState extends State<_EditSheet> {
                               () => widget.kommenCtrl.clear());
                           HapticFeedback.selectionClick();
                         },
-                        onSwipeUp: () =>
+                         onSwipeUp: () =>
                             _adjustTime(widget.kommenCtrl, 1, false),
-                        onSwipeDown: () => _adjustTime(
-                            widget.kommenCtrl, -1, false),
+                        onSwipeDown: () =>
+                            _adjustTime(widget.kommenCtrl, -1, false),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -2077,6 +2149,49 @@ class _EditSheetState extends State<_EditSheet> {
           ),
         ),
       ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TzBreakdownRow
+// ─────────────────────────────────────────────────────────────────────────────
+class _TzBreakdownRow extends StatelessWidget {
+  final AppSkin skin;
+  final Map<String, dynamic> entry;
+
+  const _TzBreakdownRow({required this.skin, required this.entry});
+
+  @override
+  Widget build(BuildContext context) {
+    final tz = entry['tz'] as String? ?? '';
+    final offsetLabel = entry['tzOffsetLabel'] as String? ?? '';
+    final physTz = entry['physTzAtSave'] as String?;
+    final travelled = physTz != null && physTz != tz;
+
+    return Row(
+      children: [
+        Icon(Icons.public_rounded, size: 12, color: skin.surface(0.32)),
+        const SizedBox(width: 4),
+        Text(
+          offsetLabel.isEmpty ? tz : '$tz ($offsetLabel)',
+          style: TextStyle(fontSize: 10.5, color: skin.surface(0.4)),
+        ),
+        if (travelled) ...[
+          const SizedBox(width: 6),
+          Icon(Icons.flight_rounded, size: 11, color: skin.primary.withValues(alpha: 0.6)),
+          const SizedBox(width: 3),
+          Flexible(
+            child: Text(
+              'Gerät bereits in $physTz',
+              style: TextStyle(
+                  fontSize: 10, color: skin.primary.withValues(alpha: 0.6)),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ],
     );
   }
 }
@@ -2196,6 +2311,57 @@ class _SwipeEditTimeFieldState extends State<_SwipeEditTimeField> {
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TravelModePendingBanner
+// ─────────────────────────────────────────────────────────────────────────────
+class _TravelModePendingBanner extends StatelessWidget {
+  final AppSkin skin;
+  final String pendingTzId;
+  final String activeTzId;
+  final VoidCallback onRefresh;
+
+  const _TravelModePendingBanner({
+    required this.skin,
+    required this.pendingTzId,
+    required this.activeTzId,
+    required this.onRefresh,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final offsetLabel = TravelModeService.offsetLabelFor(pendingTzId);
+    return GlassSurface(
+      borderRadius: 16,
+      useBlur: false,
+      padding: const EdgeInsets.all(14),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.flight_takeoff_rounded, size: 18, color: skin.primary),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Zeitzone wartet: $pendingTzId ($offsetLabel)',
+                    style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: skin.textPrimary)),
+                const SizedBox(height: 2),
+                Text(
+                  'Wird beim nächsten Dienstbeginn übernommen (aktuell noch: $activeTzId).',
+                  style: TextStyle(fontSize: 11.5, color: skin.textMuted, height: 1.3),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

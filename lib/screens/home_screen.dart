@@ -13,6 +13,7 @@ import '../models/relationship_style.dart';
 import '../services/weather_service.dart';
 import 'tasks_screen.dart' show TaskStore, Task;
 import '../services/spoken_task_parser.dart';
+import '../utils/time_rounding.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HOME SCREEN — News-App-Style Dashboard
@@ -23,6 +24,7 @@ class HomeScreen extends StatefulWidget {
   final VoidCallback? onNavigateToFahrtenbuch;
   final VoidCallback? onNavigateToFahrtenbuchNeueFahrt;
   final VoidCallback? onNavigateToTasks;
+  final VoidCallback? onNavigateToTasksQuickAdd; // NEU
   final DateTime selectedDate;
   final ValueChanged<DateTime> onDateChanged;
   final VoidCallback? onNavigateToScheduleAndImport;
@@ -35,6 +37,7 @@ class HomeScreen extends StatefulWidget {
     this.onNavigateToFahrtenbuch,
     this.onNavigateToFahrtenbuchNeueFahrt,
     this.onNavigateToTasks,
+    this.onNavigateToTasksQuickAdd, // NEU
     this.onNavigateToScheduleAndImport,
   });
 
@@ -57,10 +60,12 @@ bool _isRefreshingWeather = false;   // ← NEU: für Tap-to-Refresh Icon
   // Review-Callback von main.dart
   void Function(ParsedSpokenTask, String)? onReviewFromHomescreen;
 
+  // NEU
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this); 
+    TaskStore.changesSignal.addListener(_onTasksChangedExternally); // NEU
     _selectedDate = widget.selectedDate;
     _now = DateTime.now();
 
@@ -133,12 +138,20 @@ Future<void> _refreshWeatherManual() async {
     });
   }
 
+  // NEU
   @override
 void dispose() {
   WidgetsBinding.instance.removeObserver(this);
-  WeatherService.instance.refreshSignal.removeListener(_onWeatherInvalidated);   // ← NEU
+  WeatherService.instance.refreshSignal.removeListener(_onWeatherInvalidated);
+  TaskStore.changesSignal.removeListener(_onTasksChangedExternally); // NEU
   _greetingCtrl.dispose();
   super.dispose();
+}
+
+// NEU: hört auf Task-Änderungen egal woher (z.B. TasksScreen), damit die
+// Aufgaben-Vorschau-Kachel auf dem Homescreen immer aktuell ist
+void _onTasksChangedExternally() {
+  if (mounted) setState(() {});
 }
 
 @override
@@ -258,7 +271,7 @@ Future<void> _showDuplicateDialog(ParsedSpokenTask parsed, String logRef) async 
 
     switch (style) {
       case RelationshipStyle.bro:
-        return '$base, Bro!';
+        return '$base, $name!';
       case RelationshipStyle.vorname:
         return '$base, $name!';
       case RelationshipStyle.familie:
@@ -399,42 +412,55 @@ Future<void> _showDuplicateDialog(ParsedSpokenTask parsed, String logRef) async 
               ],
 
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _StempeluhrKachel(
-                        skin: skin,
-                        onNavigateToMonth: widget.onNavigateToMonth,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: _QuickAccessKachel(
-                        skin: skin,
-                        icon: '🚗',
-                        label: 'Neue Fahrt',
-                        sublabel: 'KM + Foto →',
-                        accentColor: const Color(0xFF2D6CFF),
-                        onTap: () {
-                          HapticFeedback.mediumImpact();
-                          widget.onNavigateToFahrtenbuchNeueFahrt?.call();
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: _DictationTaskKachel(
-                        skin: skin,
-                        onResult: _createTaskFromSpeech,
-                        onNeedsReview: _reviewTaskFromSpeech,
-                        onNavigateToTasks: widget.onNavigateToTasks,
-                        useDictate: useDictate,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+  padding: const EdgeInsets.symmetric(horizontal: 20),
+  child: LayoutBuilder(
+    builder: (context, constraints) {
+      const gap = 10.0;
+      final kachelW = (constraints.maxWidth - gap * 2) / 3;
+      // Höhe proportional zur Kachel-Breite, mit sinnvollen Grenzen
+      final kachelH = (kachelW * 1.02).clamp(84.0, 128.0);
+
+      return Row(
+        children: [
+          Expanded(
+            child: _StempeluhrKachel(
+              skin: skin,
+              height: kachelH,
+              onNavigateToMonth: widget.onNavigateToMonth,
+            ),
+          ),
+          const SizedBox(width: gap),
+          Expanded(
+            child: _QuickAccessKachel(
+              skin: skin,
+              height: kachelH,
+              icon: '🚗',
+              label: 'Neue Fahrt',
+              sublabel: 'KM + Foto →',
+              accentColor: const Color(0xFF2D6CFF),
+              onTap: () {
+                HapticFeedback.mediumImpact();
+                widget.onNavigateToFahrtenbuchNeueFahrt?.call();
+              },
+            ),
+          ),
+          const SizedBox(width: gap),
+          Expanded(
+            child: _DictationTaskKachel(
+              skin: skin,
+              height: kachelH,
+              onResult: _createTaskFromSpeech,
+              onNeedsReview: _reviewTaskFromSpeech,
+              onNavigateToTasks: widget.onNavigateToTasks,
+              onNavigateToTasksQuickAdd: widget.onNavigateToTasksQuickAdd, // NEU
+              useDictate: useDictate,
+            ),
+          ),
+        ],
+      );
+    },
+  ),
+),
 
               const SizedBox(height: 14),
             ],
@@ -622,16 +648,16 @@ class _DiensteKachel extends StatelessWidget {
   String _shiftLabel(String s) {
     final u = s.trim().toUpperCase();
     final map = {
-      'P': 'Frühdienst',
-      'P1': 'Frühdienst 1',
-      'P2': 'Frühdienst 2',
-      'F': 'Spätdienst',
-      'F1': 'Spätdienst 1',
-      'F2': 'Spätdienst 2',
+      'P': 'PS',
+      'P1': 'PS früh',
+      'P2': 'PS spät',
+      'F': 'Fahrer',
+      'F1': 'Fahrer früh',
+      'F2': 'Fahrer spät',
       'U': 'Urlaub',
-      'DA': 'Dienstfrei',
+      'DA': 'Dienstausgleich',
       'X': 'Frei',
-      'VK': 'Vertretungskraft',
+      'VK': 'Vorkommando',
       'T': 'Tagdienst',
     };
     return map[u] ?? u;
@@ -765,6 +791,7 @@ class _DiensteKachel extends StatelessWidget {
 
 class _QuickAccessKachel extends StatefulWidget {
   final AppSkin skin;
+  final double height;
   final String icon;
   final String label;
   final String sublabel;
@@ -774,6 +801,7 @@ class _QuickAccessKachel extends StatefulWidget {
 
   const _QuickAccessKachel({
     required this.skin,
+    required this.height,
     required this.icon,
     required this.label,
     required this.sublabel,
@@ -828,7 +856,7 @@ class _QuickAccessKachelState extends State<_QuickAccessKachel>
             filter: ImageFilter.blur(
                 sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
             child: Container(
-              height: 100,
+              height: widget.height,
               padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
               decoration: BoxDecoration(
                 color: skin.isLight
@@ -901,10 +929,12 @@ class _QuickAccessKachelState extends State<_QuickAccessKachel>
 
 class _StempeluhrKachel extends StatefulWidget {
   final AppSkin skin;
+  final double height;
   final VoidCallback onNavigateToMonth;
 
   const _StempeluhrKachel({
     required this.skin,
+    required this.height,
     required this.onNavigateToMonth,
   });
 
@@ -936,8 +966,11 @@ class _StempeluhrKachelState extends State<_StempeluhrKachel>
 
   void _stempel() {
     final now = DateTime.now();
+    final rundung = Hive.box('einstellungen')
+        .get(TimeRounding.hiveKey, defaultValue: TimeRounding.defaultRule) as String;
+    final rounded = TimeRounding.round(now, rundung);
     final kommenTime =
-        '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+        '${rounded.hour.toString().padLeft(2, '0')}:${rounded.minute.toString().padLeft(2, '0')}';
     final dateKey =
         '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
 
@@ -1004,7 +1037,7 @@ class _StempeluhrKachelState extends State<_StempeluhrKachel>
             filter: ImageFilter.blur(
                 sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
             child: Container(
-              height: 100,
+              height: widget.height,
               padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
               decoration: BoxDecoration(
                 color: _justStamped
@@ -1766,16 +1799,20 @@ class _DienstplanPlaceholderKachel extends StatelessWidget {
 
 class _DictationTaskKachel extends StatefulWidget {
   final AppSkin skin;
+  final double height;
   final void Function(ParsedSpokenTask, String) onResult;
   final void Function(ParsedSpokenTask, String) onNeedsReview;
   final VoidCallback? onNavigateToTasks;
+  final VoidCallback? onNavigateToTasksQuickAdd; // NEU
   final bool useDictate;
 
   const _DictationTaskKachel({
     required this.skin,
+    required this.height,
     required this.onResult,
     required this.onNeedsReview,
     this.onNavigateToTasks,
+    this.onNavigateToTasksQuickAdd, // NEU
     required this.useDictate,
   });
 
@@ -1791,10 +1828,6 @@ class _DictationTaskKachelState extends State<_DictationTaskKachel>
   bool _isListening = false;
   OverlayEntry? _overlayEntry;
 
-  // Press-Animation
-  late AnimationController _pressCtrl;
-  late Animation<double> _pressScale;
-
   // Pulsier-Animation (nur während Listening)
   late AnimationController _pulseCtrl;
   late Animation<double> _pulseAnim;
@@ -1802,11 +1835,6 @@ class _DictationTaskKachelState extends State<_DictationTaskKachel>
   @override
   void initState() {
     super.initState();
-
-    _pressCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 120));
-    _pressScale = Tween(begin: 1.0, end: 0.93)
-        .animate(CurvedAnimation(parent: _pressCtrl, curve: Curves.easeInOut));
 
     _pulseCtrl = AnimationController(
         vsync: this, duration: const Duration(milliseconds: 900))
@@ -1817,7 +1845,6 @@ class _DictationTaskKachelState extends State<_DictationTaskKachel>
   @override
   void dispose() {
     _removeOverlay();
-    _pressCtrl.dispose();
     _pulseCtrl.dispose();
     super.dispose();
   }
@@ -1848,30 +1875,97 @@ class _DictationTaskKachelState extends State<_DictationTaskKachel>
   }
 
   void _showOverlay() {
-    _removeOverlay();
+  _removeOverlay();
+  const accentColor = Color(0xFF3DD68C);
 
-    _overlayEntry = OverlayEntry(builder: (_) {
-      final fabState = _fabKey.currentState;
-      if (fabState == null) return const SizedBox.shrink();
+  _overlayEntry = OverlayEntry(builder: (_) {
+    final fabState = _fabKey.currentState;
+    if (fabState == null) return const SizedBox.shrink();
 
-      final anchorTopRight = _getAnchorTopRight();
-      final kachelWidth = _getKachelWidth();
+    final anchorTopRight = _getAnchorTopRight();
+    final kachelWidth = _getKachelWidth();
+    final kachelHeight = widget.height;
 
-      final bubbles = fabState.buildExternalBubbles(
-        skin: widget.skin,
-        anchorTopRight: anchorTopRight,
-        kachelWidth: kachelWidth,
-      );
+    final bubbles = fabState.buildExternalBubbles(
+      skin: widget.skin,
+      anchorTopRight: anchorTopRight,
+      kachelWidth: kachelWidth,
+      kachelHeight: kachelHeight,
+    );
 
-      if (bubbles.isEmpty) return const SizedBox.shrink();
+    if (bubbles.isEmpty) return const SizedBox.shrink();
 
-      return Stack(
-        children: bubbles,
-      );
-    });
+    final showScrim = fabState.phase != DictationPhase.idle;
 
-    Overlay.of(context).insert(_overlayEntry!);
-  }
+    return Material(
+      type: MaterialType.transparency,
+      child: Stack(
+        children: [
+        // ── Abdunklung: alles außer der Diktier-Funktion tritt zurück ──
+        if (showScrim)
+          Positioned.fill(
+            child: IgnorePointer(
+              child: AnimatedOpacity(
+                duration: const Duration(milliseconds: 180),
+                opacity: 1.0,
+                child: Container(color: Colors.black.withValues(alpha: 0.55)),
+              ),
+            ),
+          ),
+        // ── Kachel-Klon bleibt hell über der Abdunklung sichtbar ──
+        if (showScrim)
+          Positioned(
+            left: anchorTopRight.dx - kachelWidth,
+            top: anchorTopRight.dy,
+            width: kachelWidth,
+            height: kachelHeight,
+            child: IgnorePointer(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(
+                      sigmaX: widget.skin.glassBlur, sigmaY: widget.skin.glassBlur),
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: accentColor.withValues(alpha: widget.skin.isLight ? 0.14 : 0.20),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: accentColor.withValues(alpha: 0.65), width: 1.6),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: 34,
+                          height: 34,
+                          decoration: BoxDecoration(
+                            color: accentColor.withValues(alpha: 0.28),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(Icons.mic_rounded, size: 18, color: accentColor),
+                        ),
+                        const Spacer(),
+                        Text('Aufgabe',
+                            style: TextStyle(
+                                fontSize: 13, fontWeight: FontWeight.w700, color: widget.skin.textPrimary)),
+                        const SizedBox(height: 1),
+                        const Text('Höre zu…',
+                            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w500, color: accentColor)),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ...bubbles,
+        ],
+      ),
+    );
+  });
+
+  Overlay.of(context).insert(_overlayEntry!);
+}
 
   void _hideOverlay() {
     _removeOverlay();
@@ -1899,7 +1993,12 @@ class _DictationTaskKachelState extends State<_DictationTaskKachel>
 
   void _handleTap() {
     if (_isListening) return;
-    widget.onNavigateToTasks?.call();
+    if (widget.useDictate) {
+      widget.onNavigateToTasks?.call();
+    } else {
+      // Diktieren deaktiviert → Tap soll direkt "Neue Aufgabe" öffnen
+      widget.onNavigateToTasksQuickAdd?.call();
+    }
   }
 
   @override
@@ -1907,7 +2006,9 @@ class _DictationTaskKachelState extends State<_DictationTaskKachel>
     final skin = widget.skin;
     const accentColor = Color(0xFF3DD68C);
 
-    return Stack(
+    return SizedBox(
+      width: double.infinity,
+      child: Stack(
       children: [
         // ── Unsichtbarer DictationFab für Logik ──────────────────────────
         if (widget.useDictate)
@@ -1953,26 +2054,21 @@ class _DictationTaskKachelState extends State<_DictationTaskKachel>
         // ── Sichtbare Kachel ─────────────────────────────────────────────
         GestureDetector(
           key: _kachelKey,
-          onTapDown: (_) => _pressCtrl.forward(),
-          onTapUp: (_) {
-            _pressCtrl.reverse();
-            _handleTap();
-          },
-          onTapCancel: () => _pressCtrl.reverse(),
+          onTap: _handleTap,
           onLongPress: _handleLongPress,
           onLongPressMoveUpdate: _handleLongPressMoveUpdate,
           onLongPressEnd: _handleLongPressEnd,
           child: AnimatedBuilder(
-            animation: Listenable.merge([_pressScale, _pulseAnim]),
-            builder: (context, child) => Transform.scale(
-              scale: _pressScale.value,
-              child: ClipRRect(
+            animation: _pulseAnim,
+            builder: (context, child) {
+              return ClipRRect(
                 borderRadius: BorderRadius.circular(16),
                 child: BackdropFilter(
                   filter: ImageFilter.blur(
                       sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
                   child: Container(
-                    height: 100,
+                    width: double.infinity,
+                    height: widget.height,
                     padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
                     decoration: BoxDecoration(
                       color: _isListening
@@ -2060,11 +2156,12 @@ class _DictationTaskKachelState extends State<_DictationTaskKachel>
                     ),
                   ),
                 ),
-              ),
-            ),
+              );
+            },
           ),
         ),
       ],
+      ),
     );
   }
 }

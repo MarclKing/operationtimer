@@ -6,6 +6,9 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:timezone/data/latest.dart' as tzdata;
+import 'services/travel_mode_service.dart';
+import 'widgets/glass_dialogs.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 import 'dart:async';
 import 'dart:io' as dartio;
@@ -20,6 +23,7 @@ import 'screens/welcome_screen.dart';
 import 'screens/splash_screen.dart';
 import 'services/pdf_service.dart';
 import 'screens/dictation_help_screen.dart';
+import 'screens/bva_screen.dart';
 import 'theme/app_theme.dart';
 import 'widgets/glass_kit.dart';
 import 'widgets/glass_snackbar.dart';
@@ -97,6 +101,7 @@ void main() async {
   await Hive.openBox('arbeitszeiten');
   await Hive.openBox('einstellungen');
   await initializeDateFormatting('de', null);
+  tzdata.initializeTimeZones(); 
 
   try {
     FlutterNativeSplash.remove();
@@ -221,7 +226,7 @@ class MainScreen extends StatefulWidget {
   State<MainScreen> createState() => _MainScreenState();
 }
 
-class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
+class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin, WidgetsBindingObserver {
   int _currentPage = 0;
 
   late AnimationController _slideCtrl;
@@ -245,6 +250,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   final ValueNotifier<bool> _dayCardDragging = ValueNotifier(false);
   final ValueNotifier<bool> _homeOverlayActive = ValueNotifier(false);
   final ValueNotifier<bool> _navCompact = ValueNotifier(false);
+  final ValueNotifier<bool> _scheduleForeignView = ValueNotifier(false);
   static const _navChannel = MethodChannel('de.marcel.optimes/navigation');
 
   bool get _dienstplanEnabled => true;
@@ -255,6 +261,8 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkTravelModeTz());
 
     _slideCtrl = AnimationController(
       vsync: this,
@@ -381,13 +389,44 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkTravelModeTz();
+    }
+  }
+
+  Future<void> _checkTravelModeTz() async {
+    final detected = await TravelModeService.checkForTimeZoneChange();
+    if (detected == null || !mounted) return;
+    final skin = AppTheme.of(context);
+    final label = TravelModeService.offsetLabelFor(detected);
+    final confirmed = await confirmActionDialog(
+      context: context,
+      skin: skin,
+      icon: Icons.flight_takeoff_rounded,
+      title: '✈️ Neue Zeitzone erkannt',
+      message: 'Dein Gerät meldet: $detected ($label)\n\n'
+          'Ab deinem nächsten Dienstbeginn in dieser Zone weiterschreiben?',
+      confirmLabel: 'Bestätigen',
+      cancelLabel: 'Ignorieren',
+    );
+    if (confirmed == true) {
+      TravelModeService.confirmDetectedTz(detected);
+    } else {
+      TravelModeService.ignoreDetectedTz(detected);
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _cleanupTimer?.cancel();
     _intentSub?.cancel();
     _slideCtrl.dispose();
     _menuAnimController.dispose();
     _dayCardDragging.dispose();
     _navCompact.dispose();
+    _scheduleForeignView.dispose();
     super.dispose();
   }
 
@@ -802,6 +841,7 @@ _slideCtrl.animateTo(
           onNavigateToMonth: () => _goToPage(1),
           onMonthChanged: (m) => setState(() => _scheduleViewMonth = m),
           dayCardDragging: _dayCardDragging,
+          onForeignViewChanged: (v) => _scheduleForeignView.value = v,
         )),
       _wrapWithScrollListener(FahrtenbuchScreen(
         key: _fahrtenbuchKey,
@@ -1005,6 +1045,18 @@ _slideCtrl.animateTo(
                                       },
                                     ),
                                     _Divider(),
+                                    _DropdownItem(
+                                      icon: Icons.description_outlined,
+                                      label: 'BVA-Dienstreise',
+                                      onTap: () {
+                                        _closeMenu();
+                                        Navigator.push(
+                                          context,
+                                          CupertinoPageRoute(builder: (_) => const BvaScreen()),
+                                        );
+                                      },
+                                    ),
+                                    _Divider(),
                                   ],
 
                                   if (_currentPage == (_dienstplanEnabled ? 4 : 3)) ...[
@@ -1080,6 +1132,37 @@ _slideCtrl.animateTo(
                                 Icons.add,
                                 color: skin.textPrimary,
                                 size: 22,
+                              ),
+                            ),
+                          ),
+                        ),
+                      if (_isOnSchedulePage)
+                        ValueListenableBuilder<bool>(
+                          valueListenable: _scheduleForeignView,
+                          builder: (context, isForeign, _) => GestureDetector(
+                            onTap: isForeign
+                                ? null
+                                : () => _scheduleKey.currentState?.openColleagueSearch(),
+                            child: SizedBox(
+                              width: 40,
+                              height: 40,
+                              child: Center(
+                                child: AnimatedSwitcher(
+                                  duration: const Duration(milliseconds: 200),
+                                  child: isForeign
+                                      ? Icon(
+                                          Icons.person_rounded,
+                                          key: const ValueKey('foreign'),
+                                          color: skin.primary,
+                                          size: 22,
+                                        )
+                                      : Icon(
+                                          Icons.search_rounded,
+                                          key: const ValueKey('search'),
+                                          color: skin.textPrimary,
+                                          size: 22,
+                                        ),
+                                ),
                               ),
                             ),
                           ),

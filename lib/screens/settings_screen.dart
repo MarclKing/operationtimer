@@ -15,7 +15,15 @@ import '../services/auth_service.dart';
 import 'package:share_plus/share_plus.dart';
 import '../services/sync_token_service.dart';
 import '../services/weather_service.dart';
+import '../services/travel_mode_service.dart';
 import '../widgets/glass_kit.dart';
+import '../widgets/glass_snackbar.dart';
+import '../widgets/glass_dialogs.dart';
+import '../utils/time_rounding.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:intl/intl.dart';
+import '../services/backup_service.dart';
+import 'tasks_screen.dart' show TaskStore;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // EINSTIEGSPUNKT — Apple-artige Kachel-Übersicht
@@ -1429,15 +1437,24 @@ class _WorkTimeSettingsScreenState
     extends State<_WorkTimeSettingsScreen> {
   bool _nachtschichtModus = false;
   bool _reisemodus = false;
+  String _rundung = TimeRounding.defaultRule;
+
+  // ── Debug-Testzonen für Reisemodus ──────────────────────────────────
+  static const _debugZones = {
+    'Berlin (Home)': 'Europe/Berlin',
+    'New York': 'America/New_York',
+    'Los Angeles': 'America/Los_Angeles',
+    'Tokio': 'Asia/Tokyo',
+  };
 
   @override
-  void initState() {
+void initState() {
     super.initState();
     final box = Hive.box('einstellungen');
     _nachtschichtModus =
         box.get('nachtschicht_modus', defaultValue: false) as bool;
-    _reisemodus =
-        box.get('reisemodus', defaultValue: false) as bool;
+    _reisemodus = TravelModeService.isEnabled;
+    _rundung = box.get(TimeRounding.hiveKey, defaultValue: TimeRounding.defaultRule) as String;
   }
 
   void _setNachtschichtModus(bool value) {
@@ -1445,9 +1462,207 @@ class _WorkTimeSettingsScreenState
     Hive.box('einstellungen').put('nachtschicht_modus', value);
   }
 
-  void _setReisemodus(bool value) {
-    setState(() => _reisemodus = value);
-    Hive.box('einstellungen').put('reisemodus', value);
+  void _setReisemodus(bool value) async {
+    try {
+      if (value) {
+        await TravelModeService.enableAndSeed();
+      } else {
+        await TravelModeService.disable();
+      }
+      if (mounted) setState(() => _reisemodus = value);
+    } catch (e) {
+      if (mounted) {
+        showGlassSnackBar(context, 'Reisemodus-Fehler: $e', type: GlassSnackBarType.warning);
+      }
+    }
+  }
+
+  // NEU — neue Methode in _WorkTimeSettingsScreenState
+  void _showTimeZonePickerSheet(BuildContext context, AppSkin skin) {
+    final ctrl = TextEditingController();
+
+    bool isVerifying = false;
+    ({String tzId, String displayLabel})? verified;
+    String? errorMsg;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+        child: GlassSheet(
+          skin: skin,
+          child: StatefulBuilder(
+            builder: (context, setSheetState) {
+              Future<void> doVerify() async {
+                final input = ctrl.text.trim();
+                if (input.isEmpty) return;
+                setSheetState(() {
+                  isVerifying = true;
+                  errorMsg = null;
+                  verified = null;
+                });
+                final result = await TravelModeService.verifyLocationTimeZone(input);
+                setSheetState(() {
+                  isVerifying = false;
+                  if (result != null) {
+                    verified = result;
+                  } else {
+                    errorMsg = 'Ort nicht gefunden. Bitte prüfe die Schreibweise.';
+                  }
+                });
+              }
+
+              void saveAndClose() {
+                if (verified == null) return;
+                TravelModeService.setPendingTzManually(verified!.tzId);
+                Navigator.pop(context);
+                setState(() {}); // Banner/Subtitle im Screen aktualisieren
+              }
+
+              return Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(child: SheetHandle(skin: skin)),
+                    const SizedBox(height: 16),
+                    Text('Zeitzone wählen',
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700,
+                            color: skin.textPrimary)),
+                    const SizedBox(height: 4),
+                    Text('Wird beim nächsten Dienstbeginn übernommen, genau wie eine automatisch erkannte Zone.',
+                        style: TextStyle(fontSize: 13, color: skin.textMuted)),
+                    const SizedBox(height: 16),
+                    _TiTextField(
+                      skin: skin,
+                      controller: ctrl,
+                      hint: 'z.B. Washington, Tokio, New York',
+                      onChanged: (_) => setSheetState(() {
+                        verified = null;
+                        errorMsg = null;
+                      }),
+                      onSubmitted: (_) => doVerify(),
+                    ),
+
+                    if (isVerifying) ...[
+                      const SizedBox(height: 14),
+                      Row(
+                        children: [
+                          SizedBox(
+                            width: 16, height: 16,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: skin.primary),
+                          ),
+                          const SizedBox(width: 10),
+                          Text('Prüfe Ort…',
+                              style: TextStyle(fontSize: 13, color: skin.textMuted)),
+                        ],
+                      ),
+                    ],
+                    if (verified != null) ...[
+                      const SizedBox(height: 14),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF3DD68C).withValues(alpha: 0.10),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFF3DD68C).withValues(alpha: 0.25)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.check_circle_outline_rounded,
+                                size: 16, color: Color(0xFF3DD68C)),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Gefunden: ${verified!.displayLabel} · ${verified!.tzId} '
+                                '(${TravelModeService.offsetLabelFor(verified!.tzId)})',
+                                style: const TextStyle(
+                                    fontSize: 12.5,
+                                    color: Color(0xFF3DD68C),
+                                    fontWeight: FontWeight.w600),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                    if (errorMsg != null) ...[
+                      const SizedBox(height: 14),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: skin.deleteColor.withValues(alpha: 0.10),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: skin.deleteColor.withValues(alpha: 0.25)),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(Icons.error_outline_rounded, size: 16, color: skin.deleteColor),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(errorMsg!,
+                                  style: TextStyle(
+                                      fontSize: 12.5, color: skin.deleteColor, height: 1.4)),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+
+                    const SizedBox(height: 16),
+
+                    if (verified == null)
+                      GestureDetector(
+                        onTap: isVerifying ? null : doVerify,
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          decoration: BoxDecoration(
+                            color: skin.primary.withValues(alpha: skin.isLight ? 0.12 : 0.20),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                                color: skin.primary.withValues(alpha: skin.isLight ? 0.30 : 0.45)),
+                          ),
+                          child: Center(
+                            child: Text('Prüfen',
+                                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700,
+                                    color: skin.primary)),
+                          ),
+                        ),
+                      )
+                    else
+                      GestureDetector(
+                        onTap: saveAndClose,
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF3DD68C).withValues(alpha: 0.18),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: const Color(0xFF3DD68C).withValues(alpha: 0.45)),
+                          ),
+                          child: const Center(
+                            child: Text('Übernehmen',
+                                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700,
+                                    color: Color(0xFF3DD68C))),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -1495,16 +1710,69 @@ class _WorkTimeSettingsScreenState
                             child: const Icon(Icons.flight_takeoff_rounded, color: Colors.white, size: 18),
                           ),
                           title: 'Reisemodus',
-                          subtitle: 'Zeitzonen-Anpassung · In Entwicklung',
-                          isLast: true,
+                          subtitle: _reisemodus
+                              ? 'Aktiv · ${TravelModeService.activeTzId}'
+                              : 'Zeitzonen-Anpassung',
+                          isLast: !_reisemodus,
                           switchValue: _reisemodus,
                           onSwitchChanged: _setReisemodus,
                         ),
+                        if (_reisemodus)
+                          GlassListItem(
+                            leading: Container(
+                              width: 32, height: 32,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF5B9EF5),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Icon(Icons.edit_location_alt_outlined, color: Colors.white, size: 18),
+                            ),
+                            title: 'Zeitzone manuell wählen',
+                            subtitle: TravelModeService.pendingTzId != null
+                                ? 'Wartet: ${TravelModeService.pendingTzId}'
+                                : 'z.B. vor dem Abflug schon vormerken',
+                            isLast: true,
+                            trailing: Icon(Icons.chevron_right_rounded, size: 18, color: skin.surface(0.28)),
+                            onTap: () => _showTimeZonePickerSheet(context, skin),
+                          ),
                       ]),
                     ),
                     const _SectionFootnote(
                       text: 'Nachtschicht: Kommen bis 23:59 (selber Tag) + 00:00 bis Gehen (nächster Tag). '
-                            'Reisemodus hat aktuell noch keine Auswirkung.',
+                            'Reisemodus: die Schreib-Zeitzone wechselt erst beim nächsten Dienstbeginn nach einem Feierabend.',
+                    ),
+
+                    if (_reisemodus && AuthService.instance.isAdmin) ...[
+                      const SizedBox(height: 20),
+                      const _SectionHeader(label: 'Debug · Reisemodus testen'),
+                      _ReisemodusDebugCard(onChanged: () => setState(() {})),
+                    ],
+
+                    const SizedBox(height: 14),
+                    GlassSurface(
+                      borderRadius: 18,
+                      padding: EdgeInsets.zero,
+                      child: Column(children: [
+                        GlassDropdownButton<String>(
+                          value: _rundung,
+                          label: 'Rundung',
+                          subtitle: 'Kommen-Zeit auf runden',
+                          icon: Icons.timer_outlined,
+                          iconBg: const Color(0xFF2D6CFF),
+                          isLast: true,
+                          displayBuilder: TimeRounding.label,
+                          items: const [
+                            GlassDropdownItem(value: 'exact', label: 'Genau (keine Rundung)'),
+                            GlassDropdownItem(value: '5',     label: '5 Minuten'),
+                            GlassDropdownItem(value: '10',    label: '10 Minuten'),
+                            GlassDropdownItem(value: '15',    label: '15 Minuten'),
+                          ],
+                          onChanged: (v) {
+                            setState(() => _rundung = v);
+                            Hive.box('einstellungen').put(TimeRounding.hiveKey, v);
+                          },
+                        ),
+                      ]),
                     ),
                   ],
                 ),
@@ -1648,6 +1916,64 @@ class _DataManagementSettingsScreenState extends State<_DataManagementSettingsSc
     }
   }
 
+  Future<void> _exportBackup() async {
+    try {
+      await BackupService.exportBackup();
+    } catch (e) {
+      if (mounted) {
+        showGlassSnackBar(context, 'Export fehlgeschlagen: $e', type: GlassSnackBarType.warning);
+      }
+    }
+  }
+
+  Future<void> _pickAndImportBackup() async {
+    final skin = AppTheme.of(context);
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['json'],
+    );
+    final path = result?.files.single.path;
+    if (path == null) return;
+
+    final preview = await BackupService.readBackupFile(path);
+    if (preview == null) {
+      if (mounted) {
+        showGlassSnackBar(context, 'Ungültige oder beschädigte Backup-Datei.',
+            type: GlassSnackBarType.warning);
+      }
+      return;
+    }
+
+    if (!mounted) return;
+    final exportedLabel = preview.exportedAt != null
+        ? DateFormat('dd.MM.yyyy HH:mm').format(preview.exportedAt!)
+        : 'unbekannt';
+
+    final confirmed = await confirmActionDialog(
+      context: context,
+      skin: skin,
+      icon: Icons.upload_file_outlined,
+      title: 'Backup importieren?',
+      message: 'Backup vom $exportedLabel mit ${preview.settingsCount} Einstellungs- '
+          'und ${preview.zeitenCount} Zeiterfassungs-Einträgen. Alle aktuellen Daten '
+          'auf diesem Gerät werden dabei ÜBERSCHRIEBEN.',
+      cancelLabel: 'Abbrechen',
+      confirmLabel: 'Überschreiben',
+    );
+    if (confirmed != true) return;
+
+    await BackupService.applyBackup(preview);
+    TaskStore.changesSignal.value++;
+
+    if (!mounted) return;
+    showGlassSnackBar(
+      context,
+      '✓ Backup importiert — App bitte neu starten',
+      type: GlassSnackBarType.success,
+      duration: const Duration(seconds: 4),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final skin = AppTheme.of(context);
@@ -1724,7 +2050,7 @@ class _DataManagementSettingsScreenState extends State<_DataManagementSettingsSc
                         GlassDropdownButton<int>(
                           value: _fahrtenbuchDeleteMonths,
                           label: 'Fahrtenbuch',
-                          subtitle: 'Eingetragene Fahrten löschen nach',
+                          subtitle: 'Eingetr. Fahrten löschen nach',
                           icon: Icons.directions_car_outlined,
                           iconBg: const Color(0xFF8B8B9E),
                           isLast: true,
@@ -1774,6 +2100,48 @@ class _DataManagementSettingsScreenState extends State<_DataManagementSettingsSc
                       text:
                           'Jeder Bereich hat eine eigene Aufbewahrungsfrist. '
                           'Erledigte Aufgaben werden standardmäßig nach 1 Tag gelöscht.',
+                    ),
+
+                    const SizedBox(height: 24),
+                    const _SectionHeader(label: 'Backup'),
+                    GlassSurface(
+                      borderRadius: 18,
+                      padding: EdgeInsets.zero,
+                      child: Column(children: [
+                        GlassListItem(
+                          leading: Container(
+                            width: 32, height: 32,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF3DD68C),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(Icons.ios_share_rounded, color: Colors.white, size: 18),
+                          ),
+                          title: 'Backup exportieren',
+                          subtitle: 'Als JSON-Datei teilen/speichern',
+                          trailing: Icon(Icons.chevron_right_rounded, size: 18, color: skin.surface(0.28)),
+                          onTap: _exportBackup,
+                        ),
+                        GlassListItem(
+                          leading: Container(
+                            width: 32, height: 32,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF2D6CFF),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(Icons.upload_file_outlined, color: Colors.white, size: 18),
+                          ),
+                          title: 'Backup importieren',
+                          subtitle: 'Überschreibt aktuelle Daten',
+                          isLast: true,
+                          trailing: Icon(Icons.chevron_right_rounded, size: 18, color: skin.surface(0.28)),
+                          onTap: _pickAndImportBackup,
+                        ),
+                      ]),
+                    ),
+                    const _SectionFootnote(
+                      text: 'Ein Import überschreibt alle Einstellungen, Zeiten, Aufgaben und '
+                            'den Dienstplan auf diesem Gerät vollständig.',
                     ),
                   ],
                 ),
@@ -2392,6 +2760,169 @@ class _HomescreenSettingsScreenState extends State<_HomescreenSettingsScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DEBUG-KARTE: REISEMODUS SIMULIEREN
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _ReisemodusDebugCard extends StatefulWidget {
+  final VoidCallback onChanged;
+  const _ReisemodusDebugCard({required this.onChanged});
+
+  @override
+  State<_ReisemodusDebugCard> createState() => _ReisemodusDebugCardState();
+}
+
+class _ReisemodusDebugCardState extends State<_ReisemodusDebugCard> {
+  static const _zones = {
+    'Berlin (Home)': 'Europe/Berlin',
+    'New York': 'America/New_York',
+    'Los Angeles': 'America/Los_Angeles',
+    'Tokio': 'Asia/Tokyo',
+  };
+
+  bool _checking = false;
+
+  Future<void> _setOverride(String? tzId) async {
+    TravelModeService.setDebugOverrideTz(tzId);
+    setState(() {});
+    widget.onChanged();
+  }
+
+  Future<void> _triggerCheck() async {
+    setState(() => _checking = true);
+    final detected = await TravelModeService.checkForTimeZoneChange();
+    if (!mounted) return;
+    setState(() => _checking = false);
+    final skin = AppTheme.of(context);
+
+    if (detected == null) {
+      showGlassSnackBar(context, 'Keine neue Zeitzone erkannt (identisch mit aktiver/ignorierter Zone).',
+          type: GlassSnackBarType.warning);
+      return;
+    }
+    final label = TravelModeService.offsetLabelFor(detected);
+    final confirmed = await confirmActionDialog(
+      context: context,
+      skin: skin,
+      icon: Icons.flight_takeoff_rounded,
+      title: '✈️ Neue Zeitzone erkannt',
+      message: 'Simuliert: $detected ($label)\n\n'
+          'Ab dem nächsten Dienstbeginn in dieser Zone weiterschreiben?',
+      confirmLabel: 'Bestätigen',
+      cancelLabel: 'Ignorieren',
+    );
+    if (confirmed == true) {
+      TravelModeService.confirmDetectedTz(detected);
+    } else {
+      TravelModeService.ignoreDetectedTz(detected);
+    }
+    setState(() {});
+    widget.onChanged();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final skin = AppTheme.of(context);
+    final override = TravelModeService.debugOverrideTz;
+
+    return _TiCard(
+      skin: skin,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _TiCardHeader(skin: skin, icon: Icons.bug_report_outlined, label: 'Zeitzone simulieren'),
+          const SizedBox(height: 10),
+          Text(
+            'Überschreibt die erkannte Geräte-Zeitzone zum Testen, unabhängig vom echten Standort.',
+            style: TextStyle(fontSize: 12.5, color: skin.textMuted, height: 1.4),
+          ),
+          const SizedBox(height: 12),
+
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: _zones.entries.map((e) {
+              final isActive = override == e.value;
+              return GestureDetector(
+                onTap: () => _setOverride(e.value),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: isActive
+                        ? skin.primary.withValues(alpha: 0.20)
+                        : skin.surface(0.05),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                        color: isActive ? skin.primary : skin.borderSubtle),
+                  ),
+                  child: Text(e.key,
+                      style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
+                          color: isActive ? skin.primary : skin.textPrimary)),
+                ),
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 8),
+          GestureDetector(
+            onTap: () => _setOverride(null),
+            child: Text('Override zurücksetzen (echtes Gerät nutzen)',
+                style: TextStyle(
+                    fontSize: 12.5,
+                    color: skin.textMuted,
+                    decoration: TextDecoration.underline)),
+          ),
+
+          const SizedBox(height: 16),
+          GlassPrimaryButton(
+            skin: skin,
+            label: _checking ? 'Prüfe…' : 'Jetzt Zeitzonen-Check auslösen',
+            icon: Icons.refresh_rounded,
+            onTap: _checking ? () {} : _triggerCheck,
+          ),
+
+          const SizedBox(height: 16),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: skin.surface(0.04),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: skin.borderSubtle),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: TravelModeService.debugSnapshot.entries.map((e) {
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: 150,
+                        child: Text(e.key,
+                            style: TextStyle(fontSize: 11.5, color: skin.textMuted)),
+                      ),
+                      Expanded(
+                        child: Text(e.value,
+                            style: TextStyle(
+                                fontSize: 11.5,
+                                fontFamily: 'monospace',
+                                color: skin.textPrimary,
+                                fontWeight: FontWeight.w600)),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+        ],
       ),
     );
   }

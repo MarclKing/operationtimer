@@ -284,7 +284,6 @@ class DienstplanParser {
       final detectedMonth = _detectMonthFromText(rows, fileName);
       if (detectedMonth == null) { if (devMode) log.writeln('[KOLLEGEN] Monat konnte nicht erkannt werden.'); return {}; }
       final dateRow = _findDateRow(rows);
-      final ownTerms = _searchTerms(ownUserName);
       double? dateRowY;
       {
         final dateRe = RegExp(r'^\d{1,2}\.\d{2}\.$');
@@ -336,11 +335,6 @@ class DienstplanParser {
         if (bestNameIdx == -1 || bestDist > 50.0) continue;
         usedNameIndices.add(bestNameIdx);
         final lastName = nameTokens[bestNameIdx].$2;
-        bool isOwn = false;
-        for (final t in ownTerms) {
-          if (lastName.toLowerCase().contains(t.toLowerCase()) || t.toLowerCase().contains(lastName.toLowerCase())) { isOwn = true; break; }
-        }
-        if (isOwn) continue;
         if (dateRow != null) {
           final usedDateIndices = <int>{};
           for (final (sx, shift) in shiftTokens) {
@@ -693,6 +687,291 @@ class _NoteData {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// KOLLEGEN-SUCHE: Datenhilfen + zuletzt Ausgewählter
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Liefert alle im Dienstplan-PDF erkannten Kollegen-Nachnamen für einen Monat.
+List<String> colleagueNamesForMonth(String monthKey) {
+  final box = Hive.box('einstellungen');
+  final raw = box.get('colleagues_$monthKey');
+  if (raw is! String || raw.isEmpty) return [];
+  try {
+    final decoded = jsonDecode(raw) as Map<String, dynamic>;
+    final names = <String>{};
+    for (final dayEntry in decoded.values) {
+      if (dayEntry is Map) {
+        names.addAll(dayEntry.keys.map((k) => k.toString()));
+      }
+    }
+    return names.toList()..sort();
+  } catch (_) {
+    return [];
+  }
+}
+
+/// Liefert den kompletten Dienstplan (dateKey → Schicht) eines Kollegen für einen Monat.
+Map<String, String> foreignScheduleFor(String name, String monthKey) {
+  final box = Hive.box('einstellungen');
+  final raw = box.get('colleagues_$monthKey');
+  if (raw is! String || raw.isEmpty) return {};
+  try {
+    final decoded = jsonDecode(raw) as Map<String, dynamic>;
+    final result = <String, String>{};
+    for (final entry in decoded.entries) {
+      final dayData = entry.value;
+      if (dayData is Map && dayData.containsKey(name)) {
+        result[entry.key] = dayData[name].toString();
+      }
+    }
+    return result;
+  } catch (_) {
+    return {};
+  }
+}
+
+/// Zwischenspeicher für den zuletzt gesuchten Kollegen (übersteht Neustart).
+class LastColleagueSearch {
+  static const _key = 'last_colleague_search';
+  static String? load() => Hive.box('einstellungen').get(_key) as String?;
+  static void save(String name) => Hive.box('einstellungen').put(_key, name);
+  static void clear() => Hive.box('einstellungen').delete(_key);
+}
+
+// NEU (einfügen nach der LastColleagueSearch-Klasse)
+String _ownDisplayName() {
+  final box = Hive.box('einstellungen');
+  final scheduleName = (box.get('dienstplan_name') as String?) ?? '';
+  final mainName = (box.get('name') as String?) ?? '';
+  final fullName = scheduleName.isNotEmpty ? scheduleName : mainName;
+  if (fullName.contains(',')) return fullName.split(',').first.trim();
+  final parts = fullName.trim().split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
+  return parts.isNotEmpty ? parts.last : '';
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// KOLLEGEN-SUCHE SHEET
+// ─────────────────────────────────────────────────────────────────────────────
+
+class ColleagueSearchSheet extends StatefulWidget {
+  final AppSkin skin;
+  final DateTime initialMonth;
+  final void Function(String name, DateTime month) onConfirm;
+
+  const ColleagueSearchSheet({
+    super.key, required this.skin, required this.initialMonth, required this.onConfirm,
+  });
+
+  @override
+  State<ColleagueSearchSheet> createState() => _ColleagueSearchSheetState();
+}
+
+class _ColleagueSearchSheetState extends State<ColleagueSearchSheet> {
+  late DateTime _month;
+  List<String> _names = [];
+  String? _selected;
+
+  AppSkin get skin => widget.skin;
+
+  @override
+  void initState() {
+    super.initState();
+    _month = widget.initialMonth;
+    _loadNames();
+  }
+
+  void _loadNames() {
+    final monthKey = DateFormat('yyyy-MM').format(_month);
+    List<String> names = [];
+    try {
+      names = colleagueNamesForMonth(monthKey);
+      names.removeWhere((n) => n.toLowerCase() == _ownDisplayName().toLowerCase());
+    } catch (_) {
+      names = [];
+    }
+    final last = LastColleagueSearch.load();
+    if (last != null && names.contains(last)) {
+      names.remove(last);
+      names.insert(0, last);
+    }
+    setState(() {
+      _names = names;
+      _selected = names.isNotEmpty ? names.first : null;
+    });
+  }
+
+  bool get _isDevMode => Hive.box('einstellungen').get('dienstplan_dev_placeholder', defaultValue: false) as bool;
+
+  String _debugInfo(String monthKey) {
+    final box = Hive.box('einstellungen');
+    final raw = box.get('colleagues_$monthKey');
+    if (raw == null) return '[DEV] colleagues_$monthKey: nicht vorhanden';
+    if (raw is! String) return '[DEV] colleagues_$monthKey: falscher Typ (${raw.runtimeType})';
+    if (raw.isEmpty) return '[DEV] colleagues_$monthKey: leerer String';
+    try {
+      final decoded = jsonDecode(raw) as Map<String, dynamic>;
+      return '[DEV] colleagues_$monthKey: ${decoded.length} Tage gespeichert';
+    } catch (e) {
+      return '[DEV] colleagues_$monthKey: JSON-Fehler: $e';
+    }
+  }
+
+  void _changeMonth(int delta) {
+    setState(() => _month = DateTime(_month.year, _month.month + delta));
+    _loadNames();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GlassSheet(
+      skin: skin,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(20, 0, 20, 20 + MediaQuery.of(context).padding.bottom),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(child: SheetHandle(skin: skin)),
+            const SizedBox(height: 16),
+            Row(children: [
+              Icon(Icons.people_outline, color: skin.primary, size: 20),
+              const SizedBox(width: 10),
+              Text('Kollege suchen',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: skin.textPrimary)),
+            ]),
+            const SizedBox(height: 18),
+
+            // ── Monat (wiederverwendet: GlassNavCard aus glass_kit.dart) ──
+            GlassNavCard(
+              onPrevious: () => _changeMonth(-1),
+              onNext: () => _changeMonth(1),
+              child: Text(DateFormat('MMMM yyyy', 'de').format(_month),
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: skin.textPrimary)),
+            ),
+            const SizedBox(height: 16),
+
+            if (_names.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 24),
+                child: Center(
+                  child: Column(children: [
+                    Icon(Icons.people_outline, size: 28, color: skin.textMuted.withValues(alpha: 0.4)),
+                    const SizedBox(height: 8),
+                    Text('Keine Kollegen-Daten für diesen Monat.',
+                        style: TextStyle(color: skin.textMuted, fontSize: 13), textAlign: TextAlign.center),
+                    if (_isDevMode) ...[
+                      const SizedBox(height: 6),
+                      Text(_debugInfo(DateFormat('yyyy-MM').format(_month)),
+                          style: TextStyle(color: skin.textMuted.withValues(alpha: 0.6), fontSize: 10),
+                          textAlign: TextAlign.center),
+                    ],
+                  ]),
+                ),
+              )
+            else ...[
+              Text('Kollegen (zuletzt Ausgewählter zuerst)',
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: skin.primary, letterSpacing: 0.6)),
+              const SizedBox(height: 8),
+
+              // ── Kachel-Slider ──
+              SizedBox(
+                height: 82,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: _names.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 8),
+                  itemBuilder: (context, i) {
+                    final name = _names[i];
+                    final isSelected = name == _selected;
+                    final initial = name.isNotEmpty ? name[0].toUpperCase() : '?';
+                    return GestureDetector(
+                      onTap: () {
+                        HapticFeedback.selectionClick();
+                        setState(() => _selected = name);
+                      },
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 150),
+                        width: 72,
+                        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+                        decoration: BoxDecoration(
+                          color: isSelected ? skin.primary.withValues(alpha: 0.14) : skin.surface(0.05),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: isSelected ? skin.primary.withValues(alpha: 0.5) : skin.glassBorder,
+                            width: isSelected ? 1.5 : 1.0,
+                          ),
+                        ),
+                        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                          Container(
+                            width: 32, height: 32,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: isSelected ? skin.primary : skin.surface(0.10),
+                            ),
+                            child: Center(
+                              child: Text(initial,
+                                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700,
+                                      color: isSelected ? Colors.white : skin.textMuted)),
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(name,
+                              maxLines: 1, overflow: TextOverflow.ellipsis,
+                              style: TextStyle(fontSize: 11,
+                                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                                  color: isSelected ? skin.primary : skin.textPrimary)),
+                        ]),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 14),
+
+              // ── Dropdown als Alternative (wiederverwendet: GlassDropdownButton aus glass_kit.dart) ──
+              GlassSurface(
+                padding: EdgeInsets.zero,
+                child: GlassDropdownButton<String>(
+                  value: _selected ?? _names.first,
+                  items: _names.map((n) => GlassDropdownItem(value: n, label: n)).toList(),
+                  onChanged: (v) => setState(() => _selected = v),
+                  label: 'Oder auswählen',
+                  displayBuilder: (v) => v,
+                  icon: Icons.list_alt_outlined,
+                  isLast: true,
+                ),
+              ),
+              const SizedBox(height: 20),
+            ],
+
+            Row(children: [
+              Expanded(
+                child: GlassSecondaryButton(
+                  skin: skin, label: 'Abbrechen', onTap: () => Navigator.pop(context),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: GlassPrimaryButton(
+                  skin: skin,
+                  label: 'Anzeigen',
+                  onTap: _selected == null
+                      ? () {}
+                      : () {
+                          LastColleagueSearch.save(_selected!);
+                          Navigator.pop(context);
+                          widget.onConfirm(_selected!, _month);
+                        },
+                ),
+              ),
+            ]),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // ScheduleScreen
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -701,10 +980,11 @@ class ScheduleScreen extends StatefulWidget {
   final VoidCallback onNavigateToMonth;
   final void Function(DateTime)? onMonthChanged;
   final ValueNotifier<bool>? dayCardDragging;
+  final void Function(bool)? onForeignViewChanged;
 
   const ScheduleScreen({
     super.key, required this.onNavigateToHome, required this.onNavigateToMonth,
-    this.onMonthChanged, this.dayCardDragging,
+    this.onMonthChanged, this.dayCardDragging, this.onForeignViewChanged,
   });
 
   @override
@@ -719,7 +999,13 @@ class ScheduleScreenState extends State<ScheduleScreen> {
   bool _noteOverlayVisible = false;
   String? _activeColleaguesKey;
   bool _colleaguesOverlayVisible = false;
+  String? _colleaguesViewerName;
   String? _openSwipedCardKey;
+
+  // ── NEU: Kollegen-Fremdansicht ──
+  String? _viewingColleague;
+  DateTime? _viewingColleagueMonth;
+  bool get isForeignView => _viewingColleague != null;
 
   final ScrollController _listScrollController = ScrollController();
   final Map<String, double> _scrollPositions = {};
@@ -846,16 +1132,26 @@ class ScheduleScreenState extends State<ScheduleScreen> {
 
   void _changeMonth(int delta) => _setMonth(DateTime(_selectedMonth.year, _selectedMonth.month + delta));
 
-  bool get _hasSchedule => _scheduleData.isNotEmpty;
-  int get _workDays => _scheduleData.values.where((v) { final cat = ScheduleEntry(v).category; return cat == ShiftCategory.work || cat == ShiftCategory.mixed; }).length;
-  int get _freeDays => _scheduleData.values.where((v) => ScheduleEntry(v).category == ShiftCategory.free).length;
-  int get _sonderDays => _scheduleData.values.where((v) {
+  // ── NEU: Anzeige-Daten (eigener Plan ODER Kollegen-Fremdansicht) ──
+  Map<String, String> get _displayScheduleData {
+    if (isForeignView) {
+      final monthKey = DateFormat('yyyy-MM').format(_viewingColleagueMonth ?? _selectedMonth);
+      return foreignScheduleFor(_viewingColleague!, monthKey);
+    }
+    return _scheduleData;
+  }
+
+  bool get _hasSchedule => _displayScheduleData.isNotEmpty;
+  int get _workDays => _displayScheduleData.values.where((v) { final cat = ScheduleEntry(v).category; return cat == ShiftCategory.work || cat == ShiftCategory.mixed; }).length;
+  int get _freeDays => _displayScheduleData.values.where((v) => ScheduleEntry(v).category == ShiftCategory.free).length;
+  int get _sonderDays => _displayScheduleData.values.where((v) {
   final parts = v.trim().toUpperCase().split('/').map((p) => p.trim());
   return parts.contains('VK') || parts.contains('IS');
 }).length;
 
   List<DateTime> get _daysInMonth {
-    final year = _selectedMonth.year; final month = _selectedMonth.month;
+    final base = isForeignView ? (_viewingColleagueMonth ?? _selectedMonth) : _selectedMonth;
+    final year = base.year; final month = base.month;
     final count = DateUtils.getDaysInMonth(year, month);
     return List.generate(count, (i) => DateTime(year, month, i + 1));
   }
@@ -868,6 +1164,36 @@ class ScheduleScreenState extends State<ScheduleScreen> {
     if (result != null) _setMonth(result);
   }
 
+  // ── NEU: Kollegen-Suche öffnen / verlassen ──
+  Future<void> openColleagueSearch() async {
+    final skin = AppTheme.of(context);
+    closeOverlays();
+    await showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => ColleagueSearchSheet(
+        skin: skin,
+        initialMonth: isForeignView ? (_viewingColleagueMonth ?? _selectedMonth) : _selectedMonth,
+        onConfirm: (name, month) {
+          setState(() {
+            _viewingColleague = name;
+            _viewingColleagueMonth = month;
+          });
+          widget.onForeignViewChanged?.call(true);
+        },
+      ),
+    );
+  }
+
+  void leaveColleagueView() {
+    setState(() {
+      _viewingColleague = null;
+      _viewingColleagueMonth = null;
+    });
+    widget.onForeignViewChanged?.call(false);
+  }
+
   void openNoteOverlay(String dateKey) {
     HapticFeedback.lightImpact();
     setState(() { _activeNoteKey = dateKey; _noteOverlayVisible = true; });
@@ -875,12 +1201,20 @@ class ScheduleScreenState extends State<ScheduleScreen> {
 
   void _closeNoteOverlay() => setState(() { _noteOverlayVisible = false; _activeNoteKey = null; });
 
-  void openColleaguesOverlay(String dateKey) {
+  void openColleaguesOverlay(String dateKey, {String? viewerName}) {
     HapticFeedback.lightImpact();
-    setState(() { _activeColleaguesKey = dateKey; _colleaguesOverlayVisible = true; });
+    setState(() {
+      _activeColleaguesKey = dateKey;
+      _colleaguesOverlayVisible = true;
+      _colleaguesViewerName = viewerName;
+    });
   }
 
-  void _closeColleaguesOverlay() => setState(() { _colleaguesOverlayVisible = false; _activeColleaguesKey = null; });
+  void _closeColleaguesOverlay() => setState(() {
+    _colleaguesOverlayVisible = false;
+    _activeColleaguesKey = null;
+    _colleaguesViewerName = null;
+  });
 
   void closeOverlays() {
     if (_noteOverlayVisible) _closeNoteOverlay();
@@ -936,15 +1270,64 @@ class ScheduleScreenState extends State<ScheduleScreen> {
 
   void _onCardSwiped(String? dateKey) => setState(() => _openSwipedCardKey = dateKey);
 
+  // ── NEU: Banner für die Kollegen-Fremdansicht ──
+  Widget _buildForeignBanner(AppSkin skin) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+          decoration: BoxDecoration(
+            color: skin.primary.withValues(alpha: 0.10),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: skin.primary.withValues(alpha: 0.32)),
+          ),
+          child: Row(children: [
+            Icon(Icons.visibility_outlined, color: skin.primary, size: 18),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text.rich(
+                TextSpan(children: [
+                  TextSpan(text: 'Ansicht: ', style: TextStyle(fontSize: 14, color: skin.primary.withValues(alpha: 0.8), fontWeight: FontWeight.w500)),
+                  TextSpan(text: _viewingColleague, style: TextStyle(fontSize: 15, color: skin.primary, fontWeight: FontWeight.w700)),
+                ]),
+                maxLines: 1, overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            GestureDetector(
+              onTap: leaveColleagueView,
+              behavior: HitTestBehavior.opaque,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: skin.primary.withValues(alpha: 0.16),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Text('Verlassen',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: skin.primary)),
+                  const SizedBox(width: 4),
+                  Icon(Icons.close_rounded, color: skin.primary, size: 14),
+                ]),
+              ),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final skin = AppTheme.of(context);
     final isChrome = skin.key == 'chrome';
-    final monthName = DateFormat('MMMM yyyy', 'de').format(_selectedMonth);
+    final displayMonth = isForeignView ? (_viewingColleagueMonth ?? _selectedMonth) : _selectedMonth;
+    final monthName = DateFormat('MMMM yyyy', 'de').format(displayMonth);
     final days = _daysInMonth;
     final bottomNavHeight = 70.0 + MediaQuery.of(context).padding.bottom;
     final monthKey = DateFormat('yyyy-MM').format(_selectedMonth);
-    final changedDays = _ChangedDays.load(monthKey);
+    final changedDays = isForeignView ? <String>{} : _ChangedDays.load(monthKey);
 
     return Scaffold(
       backgroundColor: skin.bgBase,
@@ -966,7 +1349,10 @@ class ScheduleScreenState extends State<ScheduleScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Row(children: [
+                          if (isForeignView)
+                            _buildForeignBanner(skin)
+                          else
+                            Row(children: [
                             Text('Dienstplan',
                                 style: TextStyle(fontSize: 26, fontWeight: FontWeight.w700, color: skin.textPrimary)),
                             const SizedBox(width: 10),
@@ -1009,8 +1395,8 @@ class ScheduleScreenState extends State<ScheduleScreen> {
                           GlassNavCard(
   onPrevious: () => _changeMonth(-1),
   onNext: () => _changeMonth(1),
-  onTap: _showMonthPicker,
-  onDoubleTap: () {
+  onTap: isForeignView ? null : _showMonthPicker,
+  onDoubleTap: isForeignView ? null : () {
   HapticFeedback.selectionClick();
   final now = DateTime.now();
   final isAlreadyCurrentMonth =
@@ -1021,7 +1407,7 @@ class ScheduleScreenState extends State<ScheduleScreen> {
     scrollToCurrentMonth();
   }
 },
-  onSwipe: (v) {
+  onSwipe: isForeignView ? null : (v) {
     if (v < -300) _changeMonth(1);
     if (v > 300) _changeMonth(-1);
   },
@@ -1030,8 +1416,10 @@ class ScheduleScreenState extends State<ScheduleScreen> {
     children: [
       Text(monthName,
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: skin.textPrimary)),
-      const SizedBox(width: 6),
-      Icon(Icons.expand_more, color: skin.primary, size: 18),
+      if (!isForeignView) ...[
+        const SizedBox(width: 6),
+        Icon(Icons.expand_more, color: skin.primary, size: 18),
+      ],
     ],
   ),
 ),
@@ -1053,7 +1441,10 @@ class ScheduleScreenState extends State<ScheduleScreen> {
                             const SizedBox(height: 8),
                             Row(children: [
                               const SizedBox(width: 5),
-                              Text('Wischen  ·  Gedrückt Halten · Doppeltippen',
+                              Text(
+                                  isForeignView
+                                      ? 'Doppeltippen · Kollegen aus dieser Sicht ansehen'
+                                      : 'Wischen  ·  Gedrückt Halten · Doppeltippen',
                                   style: TextStyle(fontSize: 11, color: skin.surface(0.28))),
                             ]),
                           ],
@@ -1068,9 +1459,16 @@ class ScheduleScreenState extends State<ScheduleScreen> {
                               child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
                                 const Text('📋', style: TextStyle(fontSize: 48)),
                                 const SizedBox(height: 12),
-                                Text('Kein Dienstplan hinterlegt', style: TextStyle(color: skin.surface(0.3), fontSize: 15)),
+                                Text(
+                                    isForeignView
+                                        ? 'Kein Dienstplan für $_viewingColleague in diesem Monat'
+                                        : 'Kein Dienstplan hinterlegt',
+                                    style: TextStyle(color: skin.surface(0.3), fontSize: 15)),
                                 const SizedBox(height: 8),
-                                Text('Tippe oben auf ☰ → Dienstplan importieren',
+                                Text(
+                                    isForeignView
+                                        ? 'Tippe oben auf das Banner, um zurückzukehren'
+                                        : 'Tippe oben auf ☰ → Dienstplan importieren',
                                     style: TextStyle(color: skin.surface(0.2), fontSize: 12), textAlign: TextAlign.center),
                               ]),
                             )
@@ -1080,9 +1478,9 @@ class ScheduleScreenState extends State<ScheduleScreen> {
                               child: ListView.builder(
                                 controller: _listScrollController,
                                 padding: const EdgeInsets.fromLTRB(24, 4, 24, 0),
-                                itemCount: days.length + 1,
+                                itemCount: days.length + (isForeignView ? 0 : 1),
                                 itemBuilder: (context, index) {
-                                  if (index == days.length) {
+                                  if (!isForeignView && index == days.length) {
                                     return Padding(
                                       padding: EdgeInsets.only(top: 8, bottom: bottomNavHeight + 40),
                                       child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
@@ -1114,7 +1512,7 @@ class ScheduleScreenState extends State<ScheduleScreen> {
                                   }
                                   final day = days[index];
                                   final key = DateFormat('yyyy-MM-dd').format(day);
-                                  final shift = _scheduleData[key] ?? '';
+                                  final shift = _displayScheduleData[key] ?? '';
                                   final entry = shift.isEmpty ? null : ScheduleEntry(shift);
                                                                     return Padding(
                                     padding: const EdgeInsets.only(bottom: 8),
@@ -1125,10 +1523,14 @@ class ScheduleScreenState extends State<ScheduleScreen> {
                                       onCardSwiped: _onCardSwiped,
                                       onOpenNote: () => openNoteOverlay(key),
                                       onNoteChanged: () => setState(() {}),
-                                      onOpenColleagues: () => openColleaguesOverlay(key),
+                                      onOpenColleagues: () => openColleaguesOverlay(
+                                        key,
+                                        viewerName: isForeignView ? _viewingColleague : null,
+                                      ),
                                       dayCardDragging: widget.dayCardDragging,
                                       eventText: _eventsData[key],
-                                      hasTask: entry != null && TaskStore.hasOpenTaskOnDay(day), // NEU
+                                      hasTask: !isForeignView && entry != null && TaskStore.hasOpenTaskOnDay(day), // NEU
+                                      foreignMode: isForeignView, // NEU
                                     ),
                                   );
                                 },
@@ -1144,7 +1546,10 @@ class ScheduleScreenState extends State<ScheduleScreen> {
               _NoteOverlay(dateKey: _activeNoteKey!, skin: skin, onClose: _closeNoteOverlay),
 
             if (_colleaguesOverlayVisible && _activeColleaguesKey != null)
-              _ColleaguesOverlay(dateKey: _activeColleaguesKey!, skin: skin, onClose: _closeColleaguesOverlay),
+              _ColleaguesOverlay(
+                dateKey: _activeColleaguesKey!, skin: skin, onClose: _closeColleaguesOverlay,
+                viewerName: _colleaguesViewerName,
+              ),
           ],
         ),
       ),
@@ -1461,7 +1866,12 @@ class _ColleaguesOverlay extends StatefulWidget {
   final String dateKey;
   final AppSkin skin;
   final VoidCallback onClose;
-  const _ColleaguesOverlay({required this.dateKey, required this.skin, required this.onClose});
+  /// NEU: Wenn gesetzt, wird dieser Name als "isSelf" markiert statt des
+  /// echten App-Nutzers – für die Fremdansicht aus Sicht eines Kollegen.
+  final String? viewerName;
+  const _ColleaguesOverlay({
+    required this.dateKey, required this.skin, required this.onClose, this.viewerName,
+  });
 
   @override
   State<_ColleaguesOverlay> createState() => _ColleaguesOverlayState();
@@ -1476,8 +1886,8 @@ class _ColleaguesOverlayState extends State<_ColleaguesOverlay> with TickerProvi
   late Animation<double> _expandAnim;
   Map<String, String> _colleagues = {};
   String? _eventText;
-  List<String> _ownShiftParts = []; // NEU: eigener Dienst des Tages, gesplittet an "/"
-  String _ownName = '';             // NEU: eigener Anzeigename
+  List<String> _ownShiftParts = []; // eigener (oder Fremd-)Dienst des Tages, gesplittet an "/"
+  String _ownName = '';             // eigener (oder Fremd-)Anzeigename
   String? _debugLog;
   bool _debugLogCopied = false;
   double _dragStartGlobalY = 0.0;
@@ -1502,48 +1912,60 @@ class _ColleaguesOverlayState extends State<_ColleaguesOverlay> with TickerProvi
     final box = Hive.box('einstellungen');
     final monthKey = widget.dateKey.substring(0, 7);
 
-    // NEU: eigenen Dienst + Namen laden, um sich selbst mit anzuzeigen
-    final scheduleRaw = box.get('schedule_$monthKey');
-    String ownShift = '';
-    if (scheduleRaw is Map) { ownShift = (scheduleRaw[widget.dateKey] ?? '').toString(); }
-    final scheduleName = box.get('dienstplan_name', defaultValue: '') as String;
-    final mainName = box.get('name', defaultValue: '') as String;
-    final ownFullName = scheduleName.isNotEmpty ? scheduleName : mainName;
-    // NEU: nur Nachname extrahieren, analog zu den Kollegen (Format "Nachname, Vorname")
-    String ownDisplayName;
-    if (ownFullName.contains(',')) {
-      ownDisplayName = ownFullName.split(',').first.trim();
-    } else {
-      final nameParts = ownFullName.trim().split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
-      ownDisplayName = nameParts.isNotEmpty ? nameParts.last : '';
-    }
-    _ownShiftParts = ownShift.trim().toUpperCase().split('/').map((s) => s.trim()).toList();
-    _ownName = ownDisplayName;
-
+    // ── Kollegen zuerst laden (wird für beide Fälle gebraucht) ──
+    Map<String, String> colleagues = {};
     final raw = box.get('colleagues_$monthKey');
     if (raw is String) {
       try {
         final decoded = jsonDecode(raw) as Map<String, dynamic>;
         final dayData = decoded[widget.dateKey];
         if (dayData is Map) {
-          setState(() { _colleagues = Map<String, String>.from(dayData.map((k, v) => MapEntry(k.toString(), v.toString()))); });
+          colleagues = Map<String, String>.from(dayData.map((k, v) => MapEntry(k.toString(), v.toString())));
         }
       } catch (_) {}
     }
+
+    String ownShift;
+    String ownDisplayName;
+
+    if (widget.viewerName != null) {
+      // ── Fremdansicht: "ich" bin der gesuchte Kollege ──
+      ownDisplayName = widget.viewerName!;
+      ownShift = colleagues[widget.viewerName] ?? '';
+      colleagues.remove(widget.viewerName); // nicht doppelt in der generischen Liste anzeigen
+    } else {
+      // ── Normalfall: echter App-Nutzer ──
+      final scheduleRaw = box.get('schedule_$monthKey');
+      ownShift = '';
+      if (scheduleRaw is Map) { ownShift = (scheduleRaw[widget.dateKey] ?? '').toString(); }
+      ownDisplayName = _ownDisplayName();
+      colleagues.removeWhere((k, v) => k.toLowerCase() == ownDisplayName.toLowerCase());
+    }
+
     final evRaw = box.get('events_$monthKey');
+    String? eventText;
     if (evRaw is String) {
       try {
         final decoded = jsonDecode(evRaw) as Map<String, dynamic>;
         final dayEvent = decoded[widget.dateKey];
-        if (dayEvent is String && dayEvent.isNotEmpty) setState(() => _eventText = dayEvent);
+        if (dayEvent is String && dayEvent.isNotEmpty) eventText = dayEvent;
       } catch (_) {}
     }
-    final box2 = Hive.box('einstellungen');
-    final isDevMode = box2.get('dienstplan_dev_placeholder', defaultValue: false) as bool;
+
+    final isDevMode = box.get('dienstplan_dev_placeholder', defaultValue: false) as bool;
+    String? debugLog;
     if (isDevMode) {
       final debugRaw = box.get('colleagues_debug_$monthKey');
-      if (debugRaw is String && debugRaw.isNotEmpty) setState(() => _debugLog = debugRaw);
+      if (debugRaw is String && debugRaw.isNotEmpty) debugLog = debugRaw;
     }
+
+    setState(() {
+      _colleagues = colleagues;
+      _ownShiftParts = ownShift.trim().toUpperCase().split('/').map((s) => s.trim()).toList();
+      _ownName = ownDisplayName;
+      _eventText = eventText;
+      _debugLog = debugLog;
+    });
   }
 
   void _close() => _ctrl.reverse().then((_) => widget.onClose());
@@ -1576,7 +1998,7 @@ class _ColleaguesOverlayState extends State<_ColleaguesOverlay> with TickerProvi
         result.add((name: name, isSelf: false));
       }
     }
-    // NEU: eigenen Dienst nahtlos mit einsortieren
+    // eigenen (oder Fremd-)Dienst nahtlos mit einsortieren
     if (_ownName.isNotEmpty) {
       for (final code in upperCodes) {
         if (_ownShiftParts.contains(code)) { result.add((name: _ownName, isSelf: true)); break; }
@@ -1669,7 +2091,7 @@ class _ColleaguesOverlayState extends State<_ColleaguesOverlay> with TickerProvi
         }
       }
     }
-    // NEU: eigene "sonstige" Dienste ebenfalls einmischen
+    // eigene (oder Fremd-)"sonstige" Dienste ebenfalls einmischen
     if (_ownName.isNotEmpty) {
       for (final p in _ownShiftParts) {
         if (!knownShifts.contains(p) && p.isNotEmpty && p != 'LÜ' && p != 'LUE') {
@@ -1960,14 +2382,18 @@ class _DayCard extends StatefulWidget {
   final VoidCallback onOpenColleagues;
   final ValueNotifier<bool>? dayCardDragging;
   final String? eventText;
-  final bool hasTask; // NEU: true, wenn an diesem Tag eine offene Aufgabe mit Deadline existiert
+  final bool hasTask; // true, wenn an diesem Tag eine offene Aufgabe mit Deadline existiert
+  /// NEU: true in der Kollegen-Fremdansicht. Deaktiviert Swipe (Notiz/Löschen)
+  /// und Long-Press (Notiz) – nur Doppeltipp (Kollegen-Overlay) bleibt aktiv.
+  final bool foreignMode;
 
   const _DayCard({
     required this.day, required this.entry, required this.skin, required this.isChrome,
     required this.dateKey, required this.isChanged, required this.externallyOpenKey,
     required this.onCardSwiped, required this.onOpenNote, required this.onNoteChanged,
     required this.onOpenColleagues, this.dayCardDragging, this.eventText,
-    this.hasTask = false, // NEU
+    this.hasTask = false,
+    this.foreignMode = false, // NEU
   });
 
   @override
@@ -2013,7 +2439,7 @@ class _DayCardState extends State<_DayCard> with TickerProviderStateMixin, Swipe
 
   Color _color(String part) => _shiftColor(part, isChrome: widget.isChrome);
   bool get _isBirthdayDay => widget.entry?.hasBirthday ?? false;
-  bool get _hasNote => !_NoteData.load(widget.dateKey).isEmpty;
+  bool get _hasNote => !widget.foreignMode && !_NoteData.load(widget.dateKey).isEmpty;
 
   void _onPanStart(DragStartDetails d) { _dragging = false; _dragStartX = d.globalPosition.dx; _dragStartY = d.globalPosition.dy; }
 
@@ -2172,20 +2598,27 @@ if (widget.entry != null && widget.entry!.shift.isNotEmpty) ...[
               child: cardInner)),
         ),
       );
-    } else {
+     } else {
       cardWidget = ClipRRect(borderRadius: BorderRadius.circular(14),
         child: BackdropFilter(filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
-          child: Container(padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-            decoration: BoxDecoration(
-              color: skin.isLight ? Colors.white.withValues(alpha: skin.glassOpacity) : skin.bgCard.withValues(alpha: skin.glassOpacity),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: skin.glassBorder, width: 1.0),
-              boxShadow: [
-                BoxShadow(color: skin.glassShadow, blurRadius: 24, spreadRadius: 0, offset: const Offset(0, 6)),
-                BoxShadow(color: skin.glassHighlight, blurRadius: 0, spreadRadius: -1, offset: const Offset(0, 1)),
-              ],
-            ),
-            child: cardInner),
+          child: Stack(children: [
+            Container(padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+              decoration: BoxDecoration(
+                color: skin.isLight ? Colors.white.withValues(alpha: skin.glassOpacity) : skin.bgCard.withValues(alpha: skin.glassOpacity),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: skin.glassBorder, width: 1.0),
+                boxShadow: [
+                  BoxShadow(color: skin.glassShadow, blurRadius: 24, spreadRadius: 0, offset: const Offset(0, 6)),
+                  BoxShadow(color: skin.glassHighlight, blurRadius: 0, spreadRadius: -1, offset: const Offset(0, 1)),
+                ],
+              ),
+              child: cardInner),
+            if (widget.foreignMode)
+              Positioned(
+                left: 0, top: 0, bottom: 0, width: 3.0,
+                child: Container(color: skin.primary.withValues(alpha: 0.9)),
+              ),
+          ]),
         ),
       );
     }
@@ -2214,13 +2647,13 @@ if (widget.entry != null && widget.entry!.shift.isNotEmpty) ...[
     );
 
     return GestureDetector(
-      onHorizontalDragStart: _onPanStart,
-      onHorizontalDragUpdate: _onPanUpdate,
-      onHorizontalDragEnd: _onPanEnd,
-      onLongPressStart: _onLongPressStart,
-      onLongPress: _onLongPress,
-      onLongPressEnd: _onLongPressEnd,
-      onLongPressCancel: _onLongPressCancel,
+      onHorizontalDragStart: widget.foreignMode ? null : _onPanStart,
+      onHorizontalDragUpdate: widget.foreignMode ? null : _onPanUpdate,
+      onHorizontalDragEnd: widget.foreignMode ? null : _onPanEnd,
+      onLongPressStart: widget.foreignMode ? null : _onLongPressStart,
+      onLongPress: widget.foreignMode ? null : _onLongPress,
+      onLongPressEnd: widget.foreignMode ? null : _onLongPressEnd,
+      onLongPressCancel: widget.foreignMode ? null : _onLongPressCancel,
       onTap: _isOpen ? _close : null,
       onDoubleTap: () {
         HapticFeedback.lightImpact();
@@ -2231,6 +2664,7 @@ if (widget.entry != null && widget.entry!.shift.isNotEmpty) ...[
         builder: (context, constraints) => SizedBox(
           child: ClipRect(
             child: Stack(clipBehavior: Clip.hardEdge, children: [
+              if (!widget.foreignMode)
               Positioned(
                 right: 0, top: 4, bottom: 4, width: _revealWidth,
                 child: Row(children: [
@@ -2268,7 +2702,7 @@ if (widget.entry != null && widget.entry!.shift.isNotEmpty) ...[
                   )),
                 ]),
               ),
-Transform.translate(offset: Offset(swipeOffset, 0), child: animatedCard),
+Transform.translate(offset: Offset(widget.foreignMode ? 0 : swipeOffset, 0), child: animatedCard),
             ]),
           ),
         ),
