@@ -195,44 +195,46 @@ class RelationshipTexts {
   }) {
     final name = firstNameFrom(fullName);
 
-    final title = phrases.applyName(pick(phrases.greeting(style)), name);
-    final subtitleText = pick(phrases.subtitle(style));
+    // 1) HEADER — simpler Dienst-Hinweis, keine Stil-Varianten.
+    var title = phrases.simpleShiftHeader(
+      hasShift: hasShift,
+      isFree: isFree,
+      shiftCode: shiftCode,
+    );
+    if (hasNote) title += ' 📝';
 
     final lines = <String>[];
 
-    // 1) Dienst + Notiz-Icon
-var shiftLine = pick(phrases.shiftLine(style, hasShift: hasShift, isFree: isFree));
-if (hasShift && !isFree && shiftCode != null) {
-  shiftLine = phrases.applyShift(shiftLine, shiftCode);
-}
-shiftLine = phrases.applyName(shiftLine, name);
-if (hasNote) shiftLine += ' 📝'; // Notiz-Icon direkt an Dienst-Zeile hängen — spart eine Zeile!
-lines.add(shiftLine);
+    // 2) WETTER
+    if (weatherCategory != null && weatherTempC != null) {
+      final tempStr = '${weatherTempC.round()}°';
+      var weatherLine = pick(phrases.weatherLine(style, weatherCategory));
+      weatherLine = phrases.applyTemp(weatherLine, tempStr);
+      lines.add(weatherLine);
+    }
 
-// 2) Aufgaben (ZUERST — wichtiger als Wetter)
-final taskOptions = phrases.taskLine(
-  style,
-  dueTodayCount: dueTodayCount,
-  otherOpenCount: otherOpenCount,
-);
-if (taskOptions != null) {
-  var taskLineText = pick(taskOptions);
-  if (dueTodayCount == 1 && dueTodayTaskTitle != null) {
-    taskLineText = phrases.applyTask(taskLineText, dueTodayTaskTitle);
-  }
-  if (dueTodayCount > 1) {
-    taskLineText = phrases.applyCount(taskLineText, dueTodayCount);
-  }
-  lines.add(taskLineText);
-}
+    // 3) LUSTIGER SPRUCH (bisherige "subtitle"-Phrasen)
+    final joke = phrases.applyName(pick(phrases.subtitle(style)), name);
+    lines.add(joke);
 
-// 3) Wetter (ZULETZT — kann abgeschnitten werden, Kern steht oben)
-if (weatherCategory != null && weatherTempC != null) {
-  final tempStr = '${weatherTempC.round()}°';
-  var weatherLine = pick(phrases.weatherLine(style, weatherCategory));
-  weatherLine = phrases.applyTemp(weatherLine, tempStr);
-  lines.add(weatherLine);
-}
-return NotificationCopy(title, lines.join('\n'), subtitle: subtitleText);
+    // 4) AUFGABE
+    final taskOptions = phrases.taskLine(
+      style,
+      dueTodayCount: dueTodayCount,
+      dueTodayTaskTitle: dueTodayTaskTitle,
+      otherOpenCount: otherOpenCount,
+    );
+    if (taskOptions != null) {
+      var taskLineText = pick(taskOptions);
+      if (dueTodayCount == 1 && dueTodayTaskTitle != null) {
+        taskLineText = phrases.applyTask(taskLineText, dueTodayTaskTitle);
+      }
+      if (dueTodayCount > 1) {
+        taskLineText = phrases.applyCount(taskLineText, dueTodayCount);
+      }
+      lines.add(taskLineText);
+    }
+
+    return NotificationCopy(title, lines.join('\n'));
   }
 }

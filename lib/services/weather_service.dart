@@ -383,8 +383,12 @@ Future<String?> verifyCityName(String cityName) async {
     final useGps = box.get('weather_use_gps', defaultValue: true) as bool;
     final city = box.get('weather_city', defaultValue: '') as String;
 
-    // Cache leeren → fetchIfNeeded erzwingt einen echten API-Call
-    invalidateCache();
+    // Vorhandenen Cache bevorzugen (auch wenn leicht stale) — GPS/Netz
+    // kann in Hintergrund-Kontexten unzuverlässig oder langsam sein.
+    // Nur wenn WIRKLICH nichts vorliegt, einen echten Fetch versuchen.
+    final existing = cached;
+    if (existing != null) return existing;
+
     return fetchIfNeeded(city, useGps: useGps);
   }
 

@@ -237,6 +237,18 @@ List<String> shiftLine(RelationshipStyle style, {required bool hasShift, require
   }
 }
 
+/// Simpler, stilunabhängiger Dienst-Header für die Tagesvorschau.
+/// Wird als Notification-TITEL genutzt — bewusst ohne Stil-Varianten.
+String simpleShiftHeader({
+  required bool hasShift,
+  required bool isFree,
+  String? shiftCode,
+}) {
+  if (!hasShift) return 'Für heute ist kein Dienst hinterlegt.';
+  if (isFree) return 'Du hast heute frei.';
+  return 'Du hast heute ${shiftCode ?? "Dienst"}.';
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // BAUSTEIN: WETTER-ZEILE
 // ─────────────────────────────────────────────────────────────────────────────
