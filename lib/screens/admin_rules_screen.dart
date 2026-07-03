@@ -8,7 +8,6 @@ import '../widgets/glass_snackbar.dart';
 import '../services/auth_service.dart';
 import '../services/speech_log.dart';
 import 'dart:convert';
-import 'package:hive_flutter/hive_flutter.dart';
 
 class AdminRulesScreen extends StatefulWidget {
   const AdminRulesScreen({super.key});

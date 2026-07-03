@@ -1952,7 +1952,7 @@ class _ReminderQuickChips extends StatelessWidget {
         scrollDirection: Axis.horizontal,
         physics: const BouncingScrollPhysics(),
         itemCount: options.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 6),
+        separatorBuilder: (_, _) => const SizedBox(width: 6),
         itemBuilder: (context, i) {
           final opt = options[i];
           final selected = selectedIds.contains(opt.id);

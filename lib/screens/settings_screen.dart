@@ -244,7 +244,7 @@ class _SettingsHeader extends StatelessWidget {
   final Widget? trailing;
 
   const _SettingsHeader(
-      {required this.title, required this.onBack, this.trailing});
+      {required this.title, required this.onBack}) : trailing = null;
 
   @override
   Widget build(BuildContext context) {
@@ -272,7 +272,7 @@ class _SettingsHeader extends StatelessWidget {
                     color: skin.textPrimary,
                     letterSpacing: -0.5)),
           ),
-          if (trailing != null) trailing!,
+          ?trailing,
         ],
       ),
     );

@@ -1371,7 +1371,7 @@ class _ExportButtonAnimated extends StatelessWidget {
   final AppSkin skin;
   final Animation<double> animation;
   final int selectedCount;
-  final bool? uebertragenState; // true = alle eingetragen, false = alle offen, null = gemischt
+  final bool? uebertragenState;
   final VoidCallback onExportAll;
   final VoidCallback onExportSelected;
   final VoidCallback onExitSelection;
@@ -1388,238 +1388,164 @@ class _ExportButtonAnimated extends StatelessWidget {
     required this.onToggleUebertragen,
   });
 
+  Widget _iconChip({
+    required IconData icon,
+    required Color color,
+    required VoidCallback onTap,
+    required double scale,
+    bool filled = false,
+    Gradient? gradient,
+  }) {
+    return Transform.scale(
+      scale: scale,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: gradient,
+            color: gradient == null
+                ? (filled ? color.withValues(alpha: 0.18) : color.withValues(alpha: 0.10))
+                : null,
+            border: gradient == null
+                ? Border.all(color: color.withValues(alpha: filled ? 0.5 : 0.28))
+                : null,
+            boxShadow: gradient != null
+                ? [BoxShadow(color: color.withValues(alpha: 0.30), blurRadius: 8, offset: const Offset(0, 3))]
+                : null,
+          ),
+          child: Icon(icon, size: 17, color: gradient != null ? skin.onGradient : color),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: animation,
       builder: (context, _) {
         final p = animation.value; // 0 = normal, 1 = selection
-
         const double buttonHeight = 50.0;
 
-        final closeScale = Curves.easeOutBack.transform(
-          ((p - 0.1) / 0.6).clamp(0.0, 1.0),
-        );
-        final countScale = Curves.easeOutBack.transform(
-          ((p - 0.2) / 0.6).clamp(0.0, 1.0),
-        );
-        final exportChipScale = Curves.easeOutBack.transform(
-          ((p - 0.3) / 0.6).clamp(0.0, 1.0),
-        );
+        final closeScale = Curves.easeOutBack.transform(((p - 0.1) / 0.6).clamp(0.0, 1.0));
+        final countScale = Curves.easeOutBack.transform(((p - 0.2) / 0.6).clamp(0.0, 1.0));
+        final chipScale = Curves.easeOutBack.transform(((p - 0.3) / 0.6).clamp(0.0, 1.0));
         final normalOpacity = (1 - p * 2.5).clamp(0.0, 1.0);
         final selectionOpacity = ((p - 0.4) / 0.6).clamp(0.0, 1.0);
 
-        return Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            ConstrainedBox(
-              constraints: BoxConstraints(
-                maxWidth: double.infinity,
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(14),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-                  child: AnimatedContainer(
-                    duration: Duration.zero,
-                    height: buttonHeight,
-                    padding: EdgeInsets.symmetric(
-                      horizontal: 20 + p * 4,
-                      vertical: 0,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Color.lerp(
-                        skin.primary.withValues(alpha: 0.07),
-                        skin.isLight
-                            ? Colors.white.withValues(alpha: 0.88)
-                            : Colors.black.withValues(alpha: 0.70),
-                        p,
-                      ),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: Color.lerp(
-                          skin.primary.withValues(alpha: 0.22),
-                          skin.glassBorder,
-                          p,
-                        )!,
-                        width: 1.0 + p * 0.5,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.08 + p * 0.10),
-                          blurRadius: 12 + p * 8,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        // ── Normal Label ──
-                        Opacity(
-                          opacity: normalOpacity,
-                          child: IgnorePointer(
-                            ignoring: p >= 0.1,
-                            child: GestureDetector(
-                              onTap: p < 0.1 ? onExportAll : null,
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(Icons.upload_outlined,
-                                      color: skin.primary, size: 16),
-                                  const SizedBox(width: 7),
-                                  Text(
-                                    'Alle Fahrten exportieren',
-                                    style: TextStyle(
-                                      color: skin.primary,
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
+        Widget buildNormalContent() {
+          return GestureDetector(
+            onTap: onExportAll,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.upload_outlined, color: skin.primary, size: 16),
+                const SizedBox(width: 7),
+                Text('Alle Fahrten exportieren',
+                    style: TextStyle(color: skin.primary, fontSize: 13, fontWeight: FontWeight.w600)),
+              ],
+            ),
+          );
+        }
 
-                        // ── Selection Chips ──
-                        Opacity(
-                          opacity: selectionOpacity,
-                          child: IgnorePointer(
-                            ignoring: p < 0.35,
-                            child: SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
-                              physics: const NeverScrollableScrollPhysics(),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  // X Button
-                                  Transform.scale(
-                                    scale: closeScale,
-                                    child: GestureDetector(
-                                      onTap: onExitSelection,
-                                      child: Container(
-                                        padding: const EdgeInsets.all(7),
-                                        decoration: BoxDecoration(
-                                          color: skin.surface(0.08),
-                                          borderRadius: BorderRadius.circular(9),
-                                        ),
-                                        child: Icon(Icons.close_rounded,
-                                            size: 16, color: skin.textMuted),
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  // Count
-                                  Transform.scale(
-                                    scale: countScale,
-                                    child: Text(
-                                      '$selectedCount ausgewählt',
-                                      style: TextStyle(
-                                        color: skin.textPrimary,
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  // Grüner Eingetragen-Toggle
-                                  Transform.scale(
-                                    scale: exportChipScale,
-                                    child: GestureDetector(
-                                      onTap: onToggleUebertragen,
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 12, vertical: 9),
-                                        decoration: BoxDecoration(
-                                          color: skin.statComplete.withValues(
-                                              alpha: uebertragenState == true ? 0.22 : 0.10),
-                                          borderRadius: BorderRadius.circular(11),
-                                          border: Border.all(
-                                            color: skin.statComplete.withValues(
-                                                alpha: uebertragenState == true ? 0.5 : 0.28),
-                                          ),
-                                        ),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Icon(
-                                              uebertragenState == true
-                                                  ? Icons.check_circle_rounded
-                                                  : (uebertragenState == null
-                                                      ? Icons.remove_circle_outline
-                                                      : Icons.check_circle_outline),
-                                              size: 14,
-                                              color: skin.statComplete,
-                                            ),
-                                            const SizedBox(width: 5),
-                                            Text(
-                                              uebertragenState == true
-                                                  ? 'Eingetragen'
-                                                  : (uebertragenState == null
-                                                      ? 'Zurücksetzen'
-                                                      : 'Eintragen'),
-                                              style: TextStyle(
-                                                color: skin.statComplete,
-                                                fontSize: 12,
-                                                fontWeight: FontWeight.w700,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  // Export Chip
-                                  Transform.scale(
-                                    scale: exportChipScale,
-                                    child: GestureDetector(
-                                      onTap: onExportSelected,
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 14, vertical: 9),
-                                        decoration: BoxDecoration(
-                                          gradient: skin.gradient,
-                                          borderRadius: BorderRadius.circular(11),
-                                          boxShadow: [
-                                            BoxShadow(
-                                              color: skin.primaryWithAlpha(0.30),
-                                              blurRadius: 8,
-                                              offset: const Offset(0, 3),
-                                            )
-                                          ],
-                                        ),
-                                        child: Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              Icon(Icons.upload_outlined,
-                                                  size: 14,
-                                                  color: skin.onGradient),
-                                              const SizedBox(width: 5),
-                                              Text('Exportieren',
-                                                  style: TextStyle(
-                                                    color: skin.onGradient,
-                                                    fontSize: 12,
-                                                    fontWeight: FontWeight.w700,
-                                                  )),
-                                            ]),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+        Widget buildSelectionContent() {
+          // Volle Breite, feste Icon-Buttons + flexibler Text -> passt immer.
+          return Row(
+            children: [
+              Transform.scale(
+                scale: closeScale,
+                child: GestureDetector(
+                  onTap: onExitSelection,
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(color: skin.surface(0.08), borderRadius: BorderRadius.circular(10)),
+                    child: Icon(Icons.close_rounded, size: 16, color: skin.textMuted),
                   ),
                 ),
               ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Transform.scale(
+                  alignment: Alignment.centerLeft,
+                  scale: countScale,
+                  child: Text(
+                    '$selectedCount ausgewählt',
+                    style: TextStyle(color: skin.textPrimary, fontSize: 13, fontWeight: FontWeight.w600),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              _iconChip(
+                icon: uebertragenState == true
+                    ? Icons.check_circle_rounded
+                    : (uebertragenState == null ? Icons.remove_circle_outline : Icons.check_circle_outline),
+                color: skin.statComplete,
+                filled: uebertragenState == true,
+                onTap: onToggleUebertragen,
+                scale: chipScale,
+              ),
+              const SizedBox(width: 8),
+              _iconChip(
+                icon: Icons.upload_outlined,
+                color: skin.primary,
+                gradient: skin.gradient,
+                onTap: onExportSelected,
+                scale: chipScale,
+              ),
+            ],
+          );
+        }
+
+        final Widget innerContent;
+        if (p <= 0.0) {
+          innerContent = buildNormalContent();
+        } else if (p >= 1.0) {
+          innerContent = buildSelectionContent();
+        } else {
+          innerContent = Stack(
+            alignment: Alignment.center,
+            children: [
+              Opacity(opacity: normalOpacity, child: IgnorePointer(child: buildNormalContent())),
+              Opacity(opacity: selectionOpacity, child: IgnorePointer(child: buildSelectionContent())),
+            ],
+          );
+        }
+
+        return SizedBox(
+          width: double.infinity,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(14),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+              child: AnimatedContainer(
+                duration: Duration.zero,
+                height: buttonHeight,
+                padding: EdgeInsets.symmetric(horizontal: 16 + p * 4, vertical: 0),
+                alignment: p > 0.5 ? Alignment.centerLeft : Alignment.center,
+                decoration: BoxDecoration(
+                  color: Color.lerp(
+                    skin.primary.withValues(alpha: 0.07),
+                    skin.isLight ? Colors.white.withValues(alpha: 0.88) : Colors.black.withValues(alpha: 0.70),
+                    p,
+                  ),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: Color.lerp(skin.primary.withValues(alpha: 0.22), skin.glassBorder, p)!,
+                    width: 1.0 + p * 0.5,
+                  ),
+                  boxShadow: [
+                    BoxShadow(color: Colors.black.withValues(alpha: 0.08 + p * 0.10), blurRadius: 12 + p * 8, offset: const Offset(0, 4)),
+                  ],
+                ),
+                child: innerContent,
+              ),
             ),
-          ],
+          ),
         );
       },
     );

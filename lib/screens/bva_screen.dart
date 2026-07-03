@@ -316,6 +316,7 @@ class _BvaScreenState extends State<BvaScreen> {
                         const SizedBox(height: 6),
                         TextField(
                           controller: _ortDGCtrl,
+                          textCapitalization: TextCapitalization.sentences,
                           onChanged: (_) => _save(),
                           style: TextStyle(color: skin.textPrimary, fontSize: 15),
                           decoration: InputDecoration(
@@ -336,6 +337,7 @@ class _BvaScreenState extends State<BvaScreen> {
                         const SizedBox(height: 6),
                         TextField(
                           controller: _zweckCtrl,
+                          textCapitalization: TextCapitalization.sentences,
                           onChanged: (_) => _save(),
                           maxLength: 60,
                           style: TextStyle(color: skin.textPrimary, fontSize: 15),
@@ -409,6 +411,7 @@ GlassSurface(
                         const SizedBox(height: 6),
                         TextField(
                           controller: _kommentarWaffentrCtrl,
+                          textCapitalization: TextCapitalization.sentences,
                           onChanged: (_) => _save(),
                           maxLines: 1,
                           maxLength: 255,
