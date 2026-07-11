@@ -26,6 +26,7 @@ class TravelModeService {
   static const _kLastPhys = 'reisemodus_last_device_tz';
   static const _kDebugTz  = 'reisemodus_debug_override_tz';
   static const _kRecentZones = 'reisemodus_recent_zones';
+  static const _kLastNotifiedTz = 'reisemodus_last_notified_tz';
 
   /// Liest die Geräte-Zeitzone sicher aus. Nutzt einen Debug-Override,
   /// falls gesetzt. Fängt Plattformen ohne flutter_timezone-Support ab.
@@ -106,8 +107,26 @@ class TravelModeService {
     if (!isEnabled) return null;
     final deviceTz = await _detectDeviceTz();
     await _box.put(_kLastPhys, deviceTz);
-    if (deviceTz == activeTzId) return null;
+    if (deviceTz == activeTzId) {
+      // Zurück in der aktiven Zone — Merker löschen, damit eine erneute
+      // Abweichung (auch in dieselbe Zone wie zuvor) wieder gemeldet wird.
+      await _box.delete(_kLastNotifiedTz);
+      return null;
+    }
     return deviceTz;
+  }
+
+  /// Ob [tzId] dem Nutzer schon als "neue Zeitzone erkannt" gezeigt wurde,
+  /// seit die aktive Zone zuletzt mit der Geräte-Zone übereinstimmte.
+  /// Verhindert das nervige wiederholte Anzeigen bei jedem App-Start,
+  /// solange sich an der Situation nichts geändert hat.
+  static bool shouldNotifyZoneChange(String tzId) {
+    final last = _box.get(_kLastNotifiedTz) as String?;
+    return last != tzId;
+  }
+
+  static Future<void> markZoneChangeNotified(String tzId) async {
+    await _box.put(_kLastNotifiedTz, tzId);
   }
 
   /// Setzt die aktive Zone direkt — wird immer aufgerufen, wenn der

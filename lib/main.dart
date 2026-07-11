@@ -412,6 +412,11 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin, 
     final detectedTz = await TravelModeService.checkForTimeZoneChange();
     if (detectedTz == null || !mounted) return;
 
+    // Nur zeigen, wenn diese Zone nicht schon beim letzten Mal gemeldet wurde.
+    if (!TravelModeService.shouldNotifyZoneChange(detectedTz)) return;
+    await TravelModeService.markZoneChangeNotified(detectedTz);
+    if (!mounted) return;
+
     final label = TravelModeService.offsetLabelFor(detectedTz);
     showGlassSnackBar(
       context,

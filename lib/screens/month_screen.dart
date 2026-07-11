@@ -2752,6 +2752,18 @@ String _shortTzName(String tzId) {
   return parts.last.replaceAll('_', ' ');
 }
 
+class _ZoneFirstLetterUppercaseFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+      TextEditingValue oldValue, TextEditingValue newValue) {
+    if (newValue.text.isEmpty) return newValue;
+    final text = newValue.text;
+    final capitalized = text[0].toUpperCase() + text.substring(1);
+    if (capitalized == text) return newValue;
+    return newValue.copyWith(text: capitalized, selection: newValue.selection);
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // ZONE PICKER SHEET
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2821,14 +2833,11 @@ Future<String?> _showZonePickerSheet({
                   }),
               const SizedBox(height: 4),
               GestureDetector(
-                onTap: () async {
-                  final query = await _promptFreetextZone(sheetContext, skin);
-                  if (query == null || query.trim().isEmpty) return;
-                  final found = await TravelModeService.verifyLocationTimeZone(query.trim());
-                  if (found != null) {
-                    Navigator.pop(sheetContext, found.tzId);
-                  }
-                },
+  onTap: () async {
+    final tzId = await _promptFreetextZone(sheetContext, skin);
+    if (tzId == null) return;
+    Navigator.pop(sheetContext, tzId);
+  },
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 10),
                   child: Row(
@@ -2853,6 +2862,10 @@ Future<String?> _showZonePickerSheet({
 
 Future<String?> _promptFreetextZone(BuildContext context, AppSkin skin) async {
   final ctrl = TextEditingController();
+  bool isVerifying = false;
+  ({String tzId, String displayLabel})? verified;
+  String? errorMsg;
+
   return showModalBottomSheet<String>(
     context: context,
     backgroundColor: Colors.transparent,
@@ -2860,68 +2873,175 @@ Future<String?> _promptFreetextZone(BuildContext context, AppSkin skin) async {
     builder: (sheetContext) => Padding(
       padding: EdgeInsets.only(
           bottom: MediaQuery.of(sheetContext).viewInsets.bottom),
-      child: ClipRRect(
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
-          child: Container(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
-            decoration: BoxDecoration(
-              color: skin.isLight
-                  ? Colors.white.withValues(alpha: 0.92)
-                  : skin.bgSheet.withValues(alpha: 0.94),
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-              border: Border.all(color: skin.glassBorder),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
+      child: GlassSheet(
+        skin: skin,
+        child: StatefulBuilder(
+          builder: (context, setSheetState) {
+            Future<void> doVerify() async {
+              final input = ctrl.text.trim();
+              if (input.isEmpty) return;
+              setSheetState(() {
+                isVerifying = true;
+                errorMsg = null;
+                verified = null;
+              });
+              final result = await TravelModeService.verifyLocationTimeZone(input);
+              setSheetState(() {
+                isVerifying = false;
+                if (result != null) {
+                  verified = result;
+                } else {
+                  errorMsg = 'Ort nicht gefunden. Bitte prüfe die Schreibweise.';
+                }
+              });
+            }
+
+            void saveAndClose() {
+              if (verified == null) return;
+              Navigator.pop(sheetContext, verified!.tzId);
+            }
+
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(child: SheetHandle(skin: skin)),
+                  const SizedBox(height: 16),
+                  Text('Ort eingeben',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700,
+                          color: skin.textPrimary)),
+                  const SizedBox(height: 4),
+                  Text('Wird als Zeitzone übernommen.',
+                      style: TextStyle(fontSize: 13, color: skin.textMuted)),
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
                     decoration: BoxDecoration(
-                      color: skin.surface(0.2),
-                      borderRadius: BorderRadius.circular(2),
+                      color: skin.surface(0.05),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: skin.glassBorder),
+                    ),
+                    child: TextField(
+                      controller: ctrl,
+                      autofocus: true,
+                      textCapitalization: TextCapitalization.sentences,
+                      inputFormatters: [_ZoneFirstLetterUppercaseFormatter()],
+                      style: TextStyle(color: skin.textPrimary, fontSize: 15),
+                      decoration: InputDecoration(
+                        hintText: 'z.B. Tokyo, New York',
+                        hintStyle: TextStyle(color: skin.surface(0.3)),
+                        border: InputBorder.none,
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                      ),
+                      onChanged: (_) => setSheetState(() {
+                        verified = null;
+                        errorMsg = null;
+                      }),
+                      onSubmitted: (_) => doVerify(),
                     ),
                   ),
-                ),
-                const SizedBox(height: 18),
-                Text('Ort eingeben',
-                    style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: skin.textPrimary)),
-                const SizedBox(height: 14),
-                _GlassTextFieldInput(
-                  label: 'ORT / STADT',
-                  ctrl: ctrl,
-                ),
-                const SizedBox(height: 18),
-                Row(
-                  children: [
-                    Expanded(
-                      child: GlassSecondaryButton(
-                        skin: skin,
-                        label: 'Abbrechen',
-                        onTap: () => Navigator.pop(sheetContext),
+
+                  if (isVerifying) ...[
+                    const SizedBox(height: 14),
+                    Row(children: [
+                      SizedBox(width: 16, height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: skin.primary)),
+                      const SizedBox(width: 10),
+                      Text('Prüfe Ort…', style: TextStyle(fontSize: 13, color: skin.textMuted)),
+                    ]),
+                  ],
+                  if (verified != null) ...[
+                    const SizedBox(height: 14),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF3DD68C).withValues(alpha: 0.10),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFF3DD68C).withValues(alpha: 0.25)),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: GlassPrimaryButton(
-                        skin: skin,
-                        label: 'Suchen',
-                        icon: Icons.search_rounded,
-                        onTap: () => Navigator.pop(sheetContext, ctrl.text),
-                      ),
+                      child: Row(children: [
+                        const Icon(Icons.check_circle_outline_rounded,
+                            size: 16, color: Color(0xFF3DD68C)),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Gefunden: ${verified!.displayLabel} · ${verified!.tzId} '
+                            '(${TravelModeService.offsetLabelFor(verified!.tzId)})',
+                            style: const TextStyle(
+                                fontSize: 12.5, color: Color(0xFF3DD68C), fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ]),
                     ),
                   ],
-                ),
-              ],
-            ),
-          ),
+                  if (errorMsg != null) ...[
+                    const SizedBox(height: 14),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: skin.deleteColor.withValues(alpha: 0.10),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: skin.deleteColor.withValues(alpha: 0.25)),
+                      ),
+                      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Icon(Icons.error_outline_rounded, size: 16, color: skin.deleteColor),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(errorMsg!,
+                              style: TextStyle(fontSize: 12.5, color: skin.deleteColor, height: 1.4)),
+                        ),
+                      ]),
+                    ),
+                  ],
+
+                  const SizedBox(height: 16),
+
+                  if (verified == null)
+                    GestureDetector(
+                      onTap: isVerifying ? null : doVerify,
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        decoration: BoxDecoration(
+                          color: skin.primary.withValues(alpha: skin.isLight ? 0.12 : 0.20),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                              color: skin.primary.withValues(alpha: skin.isLight ? 0.30 : 0.45)),
+                        ),
+                        child: Center(
+                          child: Text('Prüfen',
+                              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700,
+                                  color: skin.primary)),
+                        ),
+                      ),
+                    )
+                  else
+                    GestureDetector(
+                      onTap: saveAndClose,
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF3DD68C).withValues(alpha: 0.18),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: const Color(0xFF3DD68C).withValues(alpha: 0.45)),
+                        ),
+                        child: const Center(
+                          child: Text('Übernehmen',
+                              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700,
+                                  color: Color(0xFF3DD68C))),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            );
+          },
         ),
       ),
     ),

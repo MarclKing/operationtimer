@@ -83,6 +83,7 @@ void showGlassSnackBar(
               remove();
               onAction();
             },
+      onDismissRequested: remove,
     ),
   );
 
@@ -115,6 +116,7 @@ class _GlassSnackOverlay extends StatefulWidget {
   final bool isLoading;
   final String? actionLabel;
   final VoidCallback? onAction;
+  final VoidCallback? onDismissRequested;
 
   const _GlassSnackOverlay({
     required this.message,
@@ -125,6 +127,7 @@ class _GlassSnackOverlay extends StatefulWidget {
     required this.isLoading,
     this.actionLabel,
     this.onAction,
+    this.onDismissRequested,
   });
 
   @override
@@ -132,8 +135,10 @@ class _GlassSnackOverlay extends StatefulWidget {
 }
 
 class _GlassSnackOverlayState extends State<_GlassSnackOverlay>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late AnimationController _ctrl;
+  double _dragOffset = 0;
+  bool _dismissing = false;
 
   @override
   void initState() {
@@ -148,6 +153,36 @@ class _GlassSnackOverlayState extends State<_GlassSnackOverlay>
     super.dispose();
   }
 
+  void _onDragUpdate(DragUpdateDetails d) {
+    if (_dismissing) return;
+    // Nur nach unten wischen zulassen (nicht nach oben aus dem Bild raus).
+    if (d.delta.dy < 0 && _dragOffset <= 0) return;
+    setState(() => _dragOffset = (_dragOffset + d.delta.dy).clamp(0.0, 200.0));
+  }
+
+  Future<void> _onDragEnd(DragEndDetails d) async {
+    if (_dismissing) return;
+    final velocity = d.primaryVelocity ?? 0;
+    if (_dragOffset > 36 || velocity > 500) {
+      await _dismiss();
+    } else {
+      setState(() => _dragOffset = 0);
+    }
+  }
+
+  Future<void> _dismiss() async {
+    if (_dismissing) return;
+    _dismissing = true;
+    final exitCtrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 200));
+    final offsetAnim = Tween<double>(begin: _dragOffset, end: 120.0)
+        .animate(CurvedAnimation(parent: exitCtrl, curve: Curves.easeIn));
+    exitCtrl.addListener(() => setState(() => _dragOffset = offsetAnim.value));
+    await Future.wait([exitCtrl.forward(), _ctrl.reverse()]);
+    exitCtrl.dispose();
+    widget.onDismissRequested?.call();
+  }
+
   @override
   Widget build(BuildContext context) {
     final bottomPad = MediaQuery.of(context).padding.bottom;
@@ -157,16 +192,23 @@ class _GlassSnackOverlayState extends State<_GlassSnackOverlay>
       bottom: bottomPad + 100,
       child: SafeArea(
         top: false,
-        child: AnimatedBuilder(
-          animation: _ctrl,
-          builder: (context, child) => Opacity(
-            opacity: _ctrl.value,
-            child: Transform.translate(
-              offset: Offset(0, 12 * (1 - _ctrl.value)),
-              child: child,
-            ),
-          ),
-          child: Material(
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onVerticalDragUpdate: _onDragUpdate,
+          onVerticalDragEnd: _onDragEnd,
+          child: AnimatedBuilder(
+            animation: _ctrl,
+            builder: (context, child) {
+              final dragFade = (1 - (_dragOffset / 140.0)).clamp(0.0, 1.0);
+              return Opacity(
+                opacity: _ctrl.value * dragFade,
+                child: Transform.translate(
+                  offset: Offset(0, 12 * (1 - _ctrl.value) + _dragOffset),
+                  child: child,
+                ),
+              );
+            },
+            child: Material(
             color: Colors.transparent,
             child: ClipRRect(
   borderRadius: _kSnackRadius,
@@ -240,6 +282,7 @@ class _GlassSnackOverlayState extends State<_GlassSnackOverlay>
           ),
         ),
       ),
-    );
+    ),
+  );
   }
 }
