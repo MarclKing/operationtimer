@@ -1611,8 +1611,8 @@ class _MonthEntryCard extends StatelessWidget {
                       ],
                     ),
                     if (tkf.isNotEmpty || hasNotiz || hasZoneInfo) ...[
-                      SizedBox(height: hasZoneInfo ? 14 : 6),
-                      Row(
+  const SizedBox(height: 6),
+  Row(
                         children: [
                           if (tkf.isNotEmpty) ...[
                             Icon(Icons.person_outline,
@@ -2853,21 +2853,77 @@ Future<String?> _showZonePickerSheet({
 
 Future<String?> _promptFreetextZone(BuildContext context, AppSkin skin) async {
   final ctrl = TextEditingController();
-  return showDialog<String>(
+  return showModalBottomSheet<String>(
     context: context,
-    builder: (dialogContext) => AlertDialog(
-      backgroundColor: skin.bgSheet,
-      title: Text('Ort eingeben', style: TextStyle(color: skin.textPrimary)),
-      content: TextField(
-        controller: ctrl,
-        autofocus: true,
-        style: TextStyle(color: skin.textPrimary),
-        decoration: const InputDecoration(hintText: 'z.B. Tokyo, New York'),
+    backgroundColor: Colors.transparent,
+    isScrollControlled: true,
+    builder: (sheetContext) => Padding(
+      padding: EdgeInsets.only(
+          bottom: MediaQuery.of(sheetContext).viewInsets.bottom),
+      child: ClipRRect(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+            decoration: BoxDecoration(
+              color: skin.isLight
+                  ? Colors.white.withValues(alpha: 0.92)
+                  : skin.bgSheet.withValues(alpha: 0.94),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+              border: Border.all(color: skin.glassBorder),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: skin.surface(0.2),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Text('Ort eingeben',
+                    style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: skin.textPrimary)),
+                const SizedBox(height: 14),
+                _GlassTextFieldInput(
+                  label: 'ORT / STADT',
+                  ctrl: ctrl,
+                ),
+                const SizedBox(height: 18),
+                Row(
+                  children: [
+                    Expanded(
+                      child: GlassSecondaryButton(
+                        skin: skin,
+                        label: 'Abbrechen',
+                        onTap: () => Navigator.pop(sheetContext),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: GlassPrimaryButton(
+                        skin: skin,
+                        label: 'Suchen',
+                        icon: Icons.search_rounded,
+                        onTap: () => Navigator.pop(sheetContext, ctrl.text),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Abbrechen')),
-        TextButton(onPressed: () => Navigator.pop(dialogContext, ctrl.text), child: const Text('Suchen')),
-      ],
     ),
   );
 }
@@ -2963,6 +3019,9 @@ class _DeletableZoneTileState extends State<_DeletableZoneTile>
     initSwipeAnimation(vsync: this);
   }
 
+  double get _revealProgress =>
+    (swipeOffset.abs() / _revealWidth).clamp(0.0, 1.0);
+
   @override
   void dispose() {
     disposeSwipeAnimation();
@@ -2990,21 +3049,28 @@ class _DeletableZoneTileState extends State<_DeletableZoneTile>
       child: Stack(
         children: [
           Positioned(
-            right: 0,
-            top: 0,
-            bottom: 8,
-            width: _revealWidth,
-            child: GestureDetector(
-              onTap: () { HapticFeedback.mediumImpact(); widget.onDelete(); },
-              child: Container(
-                decoration: BoxDecoration(
-                  color: skin.deleteColor.withValues(alpha: 0.85),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(Icons.delete_outline, color: Colors.white, size: 20),
-              ),
-            ),
+  right: 0,
+  top: 0,
+  bottom: 8,
+  width: _revealWidth,
+  child: Opacity(
+    opacity: _revealProgress,
+    child: Transform.scale(
+      scale: _revealProgress,
+      alignment: Alignment.centerLeft,
+      child: GestureDetector(
+        onTap: () { HapticFeedback.mediumImpact(); widget.onDelete(); },
+        child: Container(
+          decoration: BoxDecoration(
+            color: skin.deleteColor.withValues(alpha: 0.85),
+            borderRadius: BorderRadius.circular(12),
           ),
+          child: const Icon(Icons.delete_outline, color: Colors.white, size: 20),
+        ),
+      ),
+    ),
+  ),
+),
           Transform.translate(
             offset: Offset(swipeOffset, 0),
             child: _buildTile(skin),
