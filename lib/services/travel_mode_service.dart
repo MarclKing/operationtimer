@@ -10,29 +10,31 @@ class TzInfo {
   const TzInfo(this.id, this.offsetLabel);
 }
 
+/// Reisemodus — EINFACHES Modell:
+/// Es gibt genau EINE "aktive Zone" (activeTzId). Sie ändert sich sofort,
+/// sobald irgendwo eine Zone ausgewählt wird (Kommen-Chip, Gehen-Chip,
+/// Settings). Kein Pending/Armed/Ignored mehr — jeder Eintrag bekommt
+/// seine Kommen-Zone direkt aus der aktiven Zone (oder einem expliziten
+/// Override), und nur bei Kommen-Zone ≠ Gehen-Zone wird umgerechnet.
 class TravelModeService {
   TravelModeService._();
   static final _box = Hive.box('einstellungen');
 
-  static const _kEnabled   = 'reisemodus_enabled';
-  static const _kActiveTz  = 'reisemodus_active_tz';
-  static const _kHomeTz    = 'reisemodus_home_tz';
-  static const _kPendingTz = 'reisemodus_pending_tz';
-  static const _kIgnoredTz = 'reisemodus_ignored_tz';
-  static const _kArmed     = 'reisemodus_switch_armed';
-  static const _kLastPhys  = 'reisemodus_last_device_tz';
-  static const _kDebugTz   = 'reisemodus_debug_override_tz'; // ← NEU
+  static const _kEnabled  = 'reisemodus_enabled';
+  static const _kActiveTz = 'reisemodus_active_tz';
+  static const _kHomeTz   = 'reisemodus_home_tz';
+  static const _kLastPhys = 'reisemodus_last_device_tz';
+  static const _kDebugTz  = 'reisemodus_debug_override_tz';
+  static const _kRecentZones = 'reisemodus_recent_zones';
 
   /// Liest die Geräte-Zeitzone sicher aus. Nutzt einen Debug-Override,
-  /// falls gesetzt (zum manuellen Testen). Fängt Plattformen ohne
-  /// flutter_timezone-Support ab (z.B. Flutter Web) statt zu crashen.
+  /// falls gesetzt. Fängt Plattformen ohne flutter_timezone-Support ab.
   static Future<String> _detectDeviceTz() async {
     final override = _box.get(_kDebugTz) as String?;
     if (override != null) return override;
     try {
       return await FlutterTimezone.getLocalTimezone();
     } catch (_) {
-      // Web/nicht unterstützte Plattform → grober Fallback per UTC-Offset
       final offsetH = DateTime.now().timeZoneOffset.inHours;
       const map = {
         -8: 'America/Los_Angeles', -7: 'America/Denver', -6: 'America/Chicago',
@@ -51,9 +53,7 @@ class TravelModeService {
   static Map<String, String> get debugSnapshot => {
         'Aktiviert': isEnabled.toString(),
         'Aktive Zone': activeTzId,
-        'Pending': pendingTzId ?? '—',
-        'Ignoriert': (_box.get(_kIgnoredTz) as String?) ?? '—',
-        'Scharf (armed)': (_box.get(_kArmed, defaultValue: false) as bool).toString(),
+        'Home-Zone': (_box.get(_kHomeTz) as String?) ?? '—',
         'Debug-Override': debugOverrideTz ?? 'aus (echtes Gerät)',
         'Letzte erkannte Geräte-Zone': lastKnownDeviceTz ?? '—',
       };
@@ -62,10 +62,10 @@ class TravelModeService {
 
   static String get _fallbackTz => 'Europe/Berlin';
 
+  /// Die aktuell gültige Zone. Wird für neue Einträge als Kommen-Zone
+  /// verwendet, sofern kein expliziter Override übergeben wird.
   static String get activeTzId =>
       _box.get(_kActiveTz, defaultValue: _fallbackTz) as String;
-
-  static String? get pendingTzId => _box.get(_kPendingTz) as String?;
 
   static String? get lastKnownDeviceTz => _box.get(_kLastPhys) as String?;
 
@@ -87,75 +87,68 @@ class TravelModeService {
   static TzInfo get activeTz => TzInfo(activeTzId, offsetLabelFor(activeTzId));
 
   // ── Aktivierung ──────────────────────────────────────────────────────
-  /// Wird beim Umschalten des Toggles in den Settings aufgerufen.
   /// Setzt die aktuelle Geräte-Zone als Start-/Home-Zone.
   static Future<void> enableAndSeed() async {
-    final deviceTz = await _detectDeviceTz(); // ← wirft jetzt nie mehr
+    final deviceTz = await _detectDeviceTz();
     await _box.put(_kEnabled, true);
     await _box.put(_kActiveTz, deviceTz);
     await _box.put(_kHomeTz, deviceTz);
-    await _box.put(_kPendingTz, null);
-    await _box.put(_kIgnoredTz, null);
-    await _box.put(_kArmed, false);
   }
 
   static Future<void> disable() async => _box.put(_kEnabled, false);
 
-  // ── Erkennung + Dedupe ───────────────────────────────────────────────
-  /// Zentrale Prüf-Methode. Von allen Triggern (App-Resume, Screen-Open,
-  /// Zeitpicker-Open) aufgerufen. Gibt die erkannte Zone zurück, NUR wenn
-  /// ein Bestätigungs-Dialog gezeigt werden soll.
+  // ── Erkennung ────────────────────────────────────────────────────────
+  /// Vergleicht die Geräte-Zone mit der aktiven Zone. Gibt die erkannte
+  /// Zone zurück, NUR wenn sie von der aktiven Zone abweicht — dient
+  /// ausschließlich dazu, sie im Zonen-Picker oben vorzuschlagen
+  /// (kein Dialog, keine Bestätigung nötig).
   static Future<String?> checkForTimeZoneChange() async {
     if (!isEnabled) return null;
-
     final deviceTz = await _detectDeviceTz();
     await _box.put(_kLastPhys, deviceTz);
-
-    if (deviceTz == activeTzId) return null;   // schon korrekt
-    if (deviceTz == pendingTzId) return null;  // schon bestätigt, wartet
-    if (deviceTz == (_box.get(_kIgnoredTz) as String?)) return null; // schon abgelehnt
-
+    if (deviceTz == activeTzId) return null;
     return deviceTz;
   }
 
-  static void confirmDetectedTz(String tzId) {
-    _box.put(_kPendingTz, tzId);
-    _box.put(_kIgnoredTz, null);
+  /// Setzt die aktive Zone direkt — wird immer aufgerufen, wenn der
+  /// Nutzer irgendwo (Kommen-Chip, Gehen-Chip, Settings) eine Zone
+  /// auswählt. Das ist die einzige Stelle, an der sich die aktive Zone
+  /// ändert.
+  static Future<void> setActiveTz(String tzId) async {
+    await _box.put(_kActiveTz, tzId);
+    await registerZoneUsage(tzId);
   }
 
-  static void ignoreDetectedTz(String tzId) {
-    _box.put(_kIgnoredTz, tzId);
+  // ── Zonen-Historie für Picker-Vorschläge ────────────────────────────
+  static List<String> get recentZoneIds {
+    final raw = _box.get(_kRecentZones);
+    if (raw is List) return raw.cast<String>();
+    return [];
   }
 
-  /// Manuelle Auswahl überschreibt direkt die pending-Zone (gleicher
-  /// Mechanismus wie eine bestätigte Auto-Erkennung).
-  static void setPendingTzManually(String tzId) {
-    _box.put(_kPendingTz, tzId);
-    _box.put(_kIgnoredTz, null);
+  static Future<void> registerZoneUsage(String tzId) async {
+    final list = List<String>.from(recentZoneIds);
+    list.remove(tzId);
+    list.insert(0, tzId);
+    if (list.length > 8) list.removeRange(8, list.length);
+    await _box.put(_kRecentZones, list);
   }
 
-  // ── Arm/Resolve-Mechanik (siehe Beispiel-Regel) ─────────────────────
-  /// Wird aufgerufen, wenn ein Eintrag mit echtem Dienstende ('gehen'
-  /// nicht leer) gespeichert wird.
-  static void armSwitchIfNeeded() {
-    if (isEnabled && pendingTzId != null) {
-      _box.put(_kArmed, true);
+  /// Vorgeschlagene Zonen für Kommen-/Gehen-Picker: erkannte Geräte-Zone
+  /// zuerst (falls abweichend), dann aktive Zone, Home-Zone, Historie.
+  static List<String> suggestedZoneIds() {
+    final result = <String>[];
+    void add(String? id) {
+      if (id != null && id.isNotEmpty && !result.contains(id)) result.add(id);
     }
-  }
-
-  /// Wird aufgerufen, BEVOR ein neuer Dienst (neues 'kommen') gespeichert
-  /// wird. Wendet ggf. den gemerkten Wechsel an und gibt die für DIESEN
-  /// Eintrag zu verwendende Zone zurück.
-  static TzInfo resolveTzForNewEntry() {
-    final armed = _box.get(_kArmed, defaultValue: false) as bool;
-    final pending = pendingTzId;
-    if (isEnabled && armed && pending != null) {
-      _box.put(_kActiveTz, pending);
-      _box.put(_kPendingTz, null);
-      _box.put(_kArmed, false);
-      return TzInfo(pending, offsetLabelFor(pending));
+    final detected = lastKnownDeviceTz;
+    if (detected != null && detected != activeTzId) add(detected);
+    add(activeTzId);
+    add(_box.get(_kHomeTz) as String?);
+    for (final id in recentZoneIds) {
+      add(id);
     }
-    return activeTz;
+    return result;
   }
 
   // ── UTC-Umrechnung für korrekte Dauer-Berechnung ────────────────────
@@ -172,7 +165,101 @@ class TravelModeService {
     }
   }
 
-  // ── Manuelle Zonen-Suche (Freitext, wie WeatherService.verifyCityName) ─
+  // ── Zonen-Umrechnung für Reisemodus (Kommen-Zone ≠ Gehen-Zone) ──────
+
+  static ({String time, int dayShift})? convertTimeAcrossZones({
+    required DateTime datum,
+    required String hhmm,
+    required String fromTzId,
+    required String toTzId,
+  }) {
+    if (hhmm.isEmpty || hhmm == '--:--') return null;
+    try {
+      final parts = hhmm.split(':');
+      final fromLoc = tz.getLocation(fromTzId);
+      final fromDt = tz.TZDateTime(fromLoc, datum.year, datum.month, datum.day,
+          int.parse(parts[0]), int.parse(parts[1]));
+
+      final toLoc = tz.getLocation(toTzId);
+      final toDt = tz.TZDateTime.from(fromDt, toLoc);
+
+      final fromDateOnly = DateTime(datum.year, datum.month, datum.day);
+      final toDateOnly = DateTime(toDt.year, toDt.month, toDt.day);
+      final dayShift = toDateOnly.difference(fromDateOnly).inDays;
+
+      final time =
+          '${toDt.hour.toString().padLeft(2, '0')}:${toDt.minute.toString().padLeft(2, '0')}';
+      return (time: time, dayShift: dayShift);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Tatsächliche Dienstdauer bei Kommen/Gehen in unterschiedlichen Zonen.
+  static Duration? actualDuration({
+    required DateTime datum,
+    required String kommenHhmm,
+    required String kommenTzId,
+    required String gehenHhmm,
+    required String gehenTzId,
+  }) {
+    if (kommenHhmm.isEmpty || gehenHhmm.isEmpty) return null;
+    try {
+      final kParts = kommenHhmm.split(':');
+      final kLoc = tz.getLocation(kommenTzId);
+      final kDt = tz.TZDateTime(kLoc, datum.year, datum.month, datum.day,
+          int.parse(kParts[0]), int.parse(kParts[1]));
+
+      final gParts = gehenHhmm.split(':');
+      final gLoc = tz.getLocation(gehenTzId);
+      var gDt = tz.TZDateTime(gLoc, datum.year, datum.month, datum.day,
+          int.parse(gParts[0]), int.parse(gParts[1]));
+
+      if (gDt.toUtc().isBefore(kDt.toUtc())) {
+        gDt = tz.TZDateTime(gLoc, datum.year, datum.month, datum.day + 1,
+            int.parse(gParts[0]), int.parse(gParts[1]));
+      }
+
+      return gDt.toUtc().difference(kDt.toUtc());
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Rechnet die roh eingetragene Gehen-Zeit (in gehenTzId) auf die
+  /// Kommen-Zone (kommenTzId) um.
+  static String? convertGehenToKommenTz({
+    required DateTime datum,
+    required String kommenHhmm,
+    required String kommenTzId,
+    required String gehenHhmm,
+    required String gehenTzId,
+  }) {
+    if (kommenHhmm.isEmpty || gehenHhmm.isEmpty) return null;
+    try {
+      final kParts = kommenHhmm.split(':');
+      final kLoc = tz.getLocation(kommenTzId);
+      final kDt = tz.TZDateTime(kLoc, datum.year, datum.month, datum.day,
+          int.parse(kParts[0]), int.parse(kParts[1]));
+
+      final gParts = gehenHhmm.split(':');
+      final gLoc = tz.getLocation(gehenTzId);
+      var gDt = tz.TZDateTime(gLoc, datum.year, datum.month, datum.day,
+          int.parse(gParts[0]), int.parse(gParts[1]));
+
+      if (gDt.toUtc().isBefore(kDt.toUtc())) {
+        gDt = tz.TZDateTime(gLoc, datum.year, datum.month, datum.day + 1,
+            int.parse(gParts[0]), int.parse(gParts[1]));
+      }
+
+      final converted = tz.TZDateTime.from(gDt, kLoc);
+      return '${converted.hour.toString().padLeft(2, '0')}:${converted.minute.toString().padLeft(2, '0')}';
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // ── Manuelle Zonen-Suche (Freitext) ─────────────────────────────────
   static Future<({String tzId, String displayLabel})?> verifyLocationTimeZone(
       String query) async {
     try {

@@ -166,6 +166,10 @@ class MonthScreenState extends State<MonthScreen> with TickerProviderStateMixin 
   final _notizController = TextEditingController();
   late AnimationController _saveAnimController;
 
+  // ── Reisemodus: gewählte Zonen für Kommen/Gehen im Zeiterfassungs-Tab ──
+  String? _kommenTzSelected;
+  String? _gehenTzSelected;
+
   _OverlayField _activeOverlay = _OverlayField.none;
   final FocusNode _tkfFocusNode = FocusNode();
   final FocusNode _notizFocusNode = FocusNode();
@@ -299,11 +303,15 @@ class MonthScreenState extends State<MonthScreen> with TickerProviderStateMixin 
     _gehenController.clear();
     _teamchefController.clear();
     _notizController.clear();
+    _kommenTzSelected = TravelModeService.isEnabled ? TravelModeService.activeTzId : null;
+    _gehenTzSelected = _kommenTzSelected;
   }
 
   void _resetTimeFieldsOnly() {
     _kommenController.text = _getCurrentTimeFormatted();
     _gehenController.clear();
+    _kommenTzSelected = TravelModeService.isEnabled ? TravelModeService.activeTzId : null;
+    _gehenTzSelected = _kommenTzSelected;
   }
 
   void _loadHomeEntry() => setState(() => _resetTimeFieldsOnly());
@@ -311,6 +319,26 @@ class MonthScreenState extends State<MonthScreen> with TickerProviderStateMixin 
   void _setDate(DateTime date) {
     setState(() => _selectedDate = date);
     _loadHomeEntry();
+  }
+
+  Future<void> _pickZoneForField({required bool isKommen}) async {
+    _dismissKeyboardAndOverlay();
+    final skin = AppTheme.of(context);
+    final current = isKommen ? _kommenTzSelected : _gehenTzSelected;
+    final result = await _showZonePickerSheet(
+      context: context,
+      skin: skin,
+      currentTzId: current,
+    );
+    if (result == null || !mounted) return;
+    setState(() {
+      if (isKommen) {
+        _kommenTzSelected = result;
+      } else {
+        _gehenTzSelected = result;
+      }
+    });
+    await TravelModeService.setActiveTz(result);
   }
 
   void _dismissKeyboardAndOverlay() {
@@ -442,6 +470,8 @@ class MonthScreenState extends State<MonthScreen> with TickerProviderStateMixin 
       gehen: gehen,
       tkf: tkf,
       notiz: notiz,
+      kommenTz: _kommenTzSelected,
+      gehenTz: _gehenTzSelected,
     );
 
     if (result == SaveResult.saved || result == SaveResult.splitSaved) {
@@ -499,35 +529,16 @@ class MonthScreenState extends State<MonthScreen> with TickerProviderStateMixin 
   }
 
 Future<void> _checkTravelModeTz() async {
-    final detected = await TravelModeService.checkForTimeZoneChange();
-    if (detected == null || !mounted) return;
-    final skin = AppTheme.of(context);
-    final label = TravelModeService.offsetLabelFor(detected);
-    final confirmed = await confirmActionDialog(
-      context: context,
-      skin: skin,
-      icon: Icons.flight_takeoff_rounded,
-      title: '✈️ Neue Zeitzone erkannt',
-      message: 'Dein Gerät meldet: $detected ($label)\n\n'
-          'Ab deinem nächsten Dienstbeginn in dieser Zone weiterschreiben?',
-      confirmLabel: 'Bestätigen',
-      cancelLabel: 'Ignorieren',
-    );
-    if (confirmed == true) {
-      TravelModeService.confirmDetectedTz(detected);
-    } else {
-      TravelModeService.ignoreDetectedTz(detected);
-    }
+    // Aktualisiert nur die erkannte Geräte-Zone (für die Vorschläge im
+    // Zonen-Picker) — kein Dialog, keine Bestätigung nötig. Die
+    // erkannte Zone taucht im Picker einfach oben in der Liste auf.
+    await TravelModeService.checkForTimeZoneChange();
     if (mounted) setState(() {});
   }
 
   Future<void> _selectTimeWithPicker(TextEditingController controller) async {
     _dismissKeyboardAndOverlay();
     await Future.delayed(const Duration(milliseconds: 80));
-    if (!mounted) return;
-
-    await _checkTravelModeTz(); // ← prüft vor jeder Zeiteingabe auf Zonenwechsel
-
     if (!mounted) return;
     final isKommen = controller == _kommenController;
     final isGehen = controller == _gehenController;
@@ -666,53 +677,56 @@ Future<void> _checkTravelModeTz() async {
   void _deleteEntry(String datum, String entryId) {
     HapticFeedback.mediumImpact();
     final key = _rowKeys[entryId];
-    key?.currentState?.animateOutAndDelete(() {
-      final date = DateTime.parse(datum);
-      NightShiftHelper.deleteEntry(date, entryId);
-      setState(() => _rowKeys.remove(entryId));
-      final skin = AppTheme.of(context);
-      _showSnackbar('Eintrag gelöscht', skin.deleteColor);
-    });
+    key?.currentState?.animateOutAndDelete(() {});  // nur Animation, kein Delete mehr hier
   }
 
-  void _editEntry(Map<String, dynamic> entry) {
-    closeAllRows();
-    final datum = DateTime.parse(entry['datum']);
-    final kommenCtrl = TextEditingController(text: entry['kommen'] ?? '');
-    final gehenCtrl = TextEditingController(text: entry['gehen'] ?? '');
-    final tkfCtrl = TextEditingController(text: entry['TKF'] ?? '');
-    final notizCtrl = TextEditingController(text: entry['bemerkung'] ?? '');
-    final entryId = entry['id'] as String;
+void _editEntry(Map<String, dynamic> entry) {
+  closeAllRows();
+  final datum = DateTime.parse(entry['datum']);
+  final kommenCtrl = TextEditingController(text: entry['kommen'] ?? '');
 
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => _EditSheet(
-        datum: datum,
-        entryId: entryId,
-        kommenCtrl: kommenCtrl,
-        gehenCtrl: gehenCtrl,
-        tkfCtrl: tkfCtrl,
-        notizCtrl: notizCtrl,
-        onSave: () async {
-          await NightShiftHelper.save(
-            context: context,
-            datum: datum,
-            kommen: kommenCtrl.text,
-            gehen: gehenCtrl.text,
-            tkf: tkfCtrl.text,
-            notiz: notizCtrl.text,
-            existingId: entryId,
-          );
-          setState(() {});
-          Navigator.pop(context);
-          final skin = AppTheme.of(context);
-          _showSnackbar('Aktualisiert ✓', skin.primary);
-        },
-      ),
-    );
-  }
+  // Bei Zonen-Überquerung die ROHE Gehen-Zeit anzeigen (passend zur
+  // Gehen-Zone), sonst die normal gespeicherte Zeit.
+  final gehenRaw = entry['gehenRaw'] as String?;
+  final gehenCtrl = TextEditingController(text: gehenRaw ?? entry['gehen'] ?? '');
+
+  final tkfCtrl = TextEditingController(text: entry['TKF'] ?? '');
+  final notizCtrl = TextEditingController(text: entry['Bemerkung'] ?? entry['notiz'] ?? '');
+  final entryId = entry['id'] as String;
+
+  showModalBottomSheet(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (_) => _EditSheet(
+      datum: datum,
+      entryId: entryId,
+      entry: entry,
+      kommenCtrl: kommenCtrl,
+      gehenCtrl: gehenCtrl,
+      tkfCtrl: tkfCtrl,
+      notizCtrl: notizCtrl,
+      onSave: (kommenTz, gehenTz) async {
+        await NightShiftHelper.save(
+          context: context,
+          datum: datum,
+          kommen: kommenCtrl.text,
+          gehen: gehenCtrl.text,
+          tkf: tkfCtrl.text,
+          notiz: notizCtrl.text,
+          existingId: entryId,
+          kommenTz: kommenTz,
+          gehenTz: gehenTz,
+        );
+        if (!mounted) return;
+        setState(() {});
+        Navigator.pop(context);
+        final skin = AppTheme.of(context);
+        _showSnackbar('Aktualisiert ✓', skin.primary);
+      },
+    ),
+  );
+}
 
   Future<void> _shareEntry(Map<String, dynamic> entry) async {
     closeAllRows();
@@ -726,7 +740,7 @@ Future<void> _checkTravelModeTz() async {
         (entry['kommen'] ?? '').isEmpty ? '--:--' : entry['kommen'];
     final gehen = (entry['gehen'] ?? '').isEmpty ? '--:--' : entry['gehen'];
     final tkf = entry['TKF'] ?? '';
-    final notiz = entry['Bemerkung'] ?? '';
+    final notiz = entry['Bemerkung'] ?? entry['notiz'] ?? '';
 
     final pdf = pw.Document();
     final font = await PdfGoogleFonts.notoSansRegular();
@@ -904,11 +918,19 @@ Future<void> _checkTravelModeTz() async {
                         const SizedBox(height: 50),
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 24),
-                          child: Text('Arbeitszeit',
-                              style: TextStyle(
-                                  fontSize: 26,
-                                  fontWeight: FontWeight.w700,
-                                  color: skin.textPrimary)),
+                          child: Row(
+                            children: [
+                              Text('Arbeitszeit',
+                                  style: TextStyle(
+                                      fontSize: 26,
+                                      fontWeight: FontWeight.w700,
+                                      color: skin.textPrimary)),
+                              if (TravelModeService.isEnabled) ...[
+                                const SizedBox(width: 8),
+                                Icon(Icons.public_rounded, size: 20, color: skin.primary),
+                              ],
+                            ],
+                          ),
                         ),
                         const SizedBox(height: 16),
                         Padding(
@@ -990,9 +1012,6 @@ Future<void> _checkTravelModeTz() async {
   // ─────────────────────────────────────────────────────────────────────────
 
   Widget _buildZeiterfassungTab(AppSkin skin) {
-    final showTravelBanner =
-        TravelModeService.isEnabled && TravelModeService.pendingTzId != null;
-
     return SingleChildScrollView(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -1000,16 +1019,6 @@ Future<void> _checkTravelModeTz() async {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const SizedBox(height: 8),
-
-            if (showTravelBanner) ...[
-              _TravelModePendingBanner(
-                skin: skin,
-                pendingTzId: TravelModeService.pendingTzId!,
-                activeTzId: TravelModeService.activeTzId,
-                onRefresh: () => setState(() {}),
-              ),
-              const SizedBox(height: 16),
-            ],
 
             // Datumskarte
 GlassNavCard(
@@ -1086,6 +1095,29 @@ GlassNavCard(
             ),
             const SizedBox(height: 16),
 
+            if (TravelModeService.isEnabled) ...[
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: _ZoneChip(
+                      skin: skin,
+                      tzId: _kommenTzSelected,
+                      onTap: () => _pickZoneForField(isKommen: true),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _ZoneChip(
+                      skin: skin,
+                      tzId: _gehenTzSelected,
+                      onTap: () => _pickZoneForField(isKommen: false),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+
             GestureDetector(
               onTap: () => _openOverlay(_OverlayField.tkf),
               onDoubleTap: () {
@@ -1149,11 +1181,14 @@ GlassNavCard(
     int offeneEntries,
     double bottomNavHeight,
   ) {
-    return FadingListView(
-      fadeFromBottom: bottomNavHeight + 20,
-      child: CustomScrollView(
-        controller: _scrollController,
-        slivers: [
+    return ClipRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
+        child: FadingListView(
+          fadeFromBottom: bottomNavHeight + 20,
+          child: CustomScrollView(
+            controller: _scrollController,
+            slivers: [
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -1329,20 +1364,22 @@ GlassNavCard(
                             ],
                             onDelete: () => _deleteEntry(datum, entryId),
                             animateDelete: true,
-                            onDeleteAnimationDone: () {
+                            onDeleteAnimationDone: () async {
                               final date = DateTime.parse(datum);
-                              NightShiftHelper.deleteEntry(date, entryId);
+                              await NightShiftHelper.deleteEntry(date, entryId);
+                              if (!mounted) return;
                               setState(() => _rowKeys.remove(entryId));
                               final skin = AppTheme.of(context);
                               _showSnackbar('Eintrag gelöscht', skin.deleteColor);
                             },
                             onDoubleTap: () => _editEntry(entry),
                             child: _MonthEntryCard(
-                              entry: entry,
-                              duration: _calcDuration(
-                                  entry['kommen'] ?? '', entry['gehen'] ?? ''),
-                              isComplete: _isEntryComplete(entry),
-                            ),
+  entry: entry,
+  duration: entry['dauerMinuten'] != null
+      ? '${(entry['dauerMinuten'] as int) ~/ 60}h ${((entry['dauerMinuten'] as int) % 60).toString().padLeft(2, '0')}m'
+      : _calcDuration(entry['kommen'] ?? '', entry['gehen'] ?? ''),
+  isComplete: _isEntryComplete(entry),
+),
                           ),
                         );
                       },
@@ -1352,7 +1389,9 @@ GlassNavCard(
                 ),
         ],
       ),
-    );
+    ),
+  ),
+      );
   }
 }
 
@@ -1391,7 +1430,7 @@ class _MonthEntryCard extends StatelessWidget {
     final kommen = entry['kommen'] ?? '';
     final gehen = entry['gehen'] ?? '';
     final tkf = entry['TKF'] ?? '';
-    final hasNotiz = (entry['Bemerkung'] ?? '').isNotEmpty;
+    final hasNotiz = ((entry['Bemerkung'] ?? entry['notiz']) ?? '').isNotEmpty;
 
     final entriesForDay = NightShiftHelper.getEntriesForDay(datum);
     final showNumber = entriesForDay.length > 1;
@@ -1399,10 +1438,7 @@ class _MonthEntryCard extends StatelessWidget {
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(14),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(
-            sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
-        child: Container(
+      child: Container(
           decoration: BoxDecoration(
             color: skin.isLight
                 ? Colors.white.withValues(alpha: skin.glassOpacity)
@@ -1566,7 +1602,6 @@ class _MonthEntryCard extends StatelessWidget {
             ],
           ),
         ),
-      ),
     );
   }
 }
@@ -1912,21 +1947,23 @@ class _FlyingCardOverlay extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// EDIT SHEET  (unverändert aus original month_screen.dart)
+// EDIT SHEET
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _EditSheet extends StatefulWidget {
   final DateTime datum;
   final String entryId;
+  final Map<String, dynamic> entry; // NEU – für Zonen-Vorbefüllung
   final TextEditingController kommenCtrl;
   final TextEditingController gehenCtrl;
   final TextEditingController tkfCtrl;
   final TextEditingController notizCtrl;
-  final VoidCallback onSave;
+  final Future<void> Function(String? kommenTz, String? gehenTz) onSave; // NEU: Zonen werden übergeben
 
   const _EditSheet({
     required this.datum,
     required this.entryId,
+    required this.entry,
     required this.kommenCtrl,
     required this.gehenCtrl,
     required this.tkfCtrl,
@@ -1939,6 +1976,10 @@ class _EditSheet extends StatefulWidget {
 }
 
 class _EditSheetState extends State<_EditSheet> {
+  // ── Zeitzonen für Bearbeitung ──
+  String? _editKommenTz;
+  String? _editGehenTz;
+
   TimeOfDay? _parse(String t) {
     if (t.isEmpty || t == '--:--') return null;
     try {
@@ -2026,6 +2067,93 @@ class _EditSheetState extends State<_EditSheet> {
       ),
     );
   }
+
+  Future<void> _pickZoneForField({required bool isKommen}) async {
+    final skin = AppTheme.of(context);
+    final current = isKommen ? _editKommenTz : _editGehenTz;
+    final result = await _showZonePickerSheet(
+      context: context,
+      skin: skin,
+      currentTzId: current,
+    );
+    if (result == null || !mounted) return;
+    setState(() {
+      if (isKommen) {
+        _editKommenTz = result;
+      } else {
+        _editGehenTz = result;
+      }
+    });
+    await TravelModeService.setActiveTz(result);
+  }
+
+@override
+void initState() {
+  super.initState();
+  // Zonen aus dem Eintrag laden (nicht die aktuell aktive Zone!)
+  _editKommenTz = widget.entry['tz'] as String? ??
+      (TravelModeService.isEnabled ? TravelModeService.activeTzId : null);
+  _editGehenTz = widget.entry['gehenTz'] as String? ?? _editKommenTz;
+}
+
+Widget? _buildZoneCrossingInfo(AppSkin skin) {
+  if (!TravelModeService.isEnabled) return null;
+  if (_editKommenTz == null || _editGehenTz == null) return null;
+  if (_editKommenTz == _editGehenTz) return null;
+  if (widget.kommenCtrl.text.isEmpty || widget.gehenCtrl.text.isEmpty) return null;
+
+  final converted = TravelModeService.convertGehenToKommenTz(
+    datum: widget.datum,
+    kommenHhmm: widget.kommenCtrl.text,
+    kommenTzId: _editKommenTz!,
+    gehenHhmm: widget.gehenCtrl.text,
+    gehenTzId: _editGehenTz!,
+  );
+  if (converted == null) return null;
+
+  final dur = TravelModeService.actualDuration(
+    datum: widget.datum,
+    kommenHhmm: widget.kommenCtrl.text,
+    kommenTzId: _editKommenTz!,
+    gehenHhmm: widget.gehenCtrl.text,
+    gehenTzId: _editGehenTz!,
+  );
+  final durText = dur != null
+      ? '${dur.inHours}h ${(dur.inMinutes % 60).toString().padLeft(2, '0')}m'
+      : '--';
+
+  return Container(
+    margin: const EdgeInsets.only(top: 12),
+    padding: const EdgeInsets.all(12),
+    decoration: BoxDecoration(
+      color: skin.primary.withValues(alpha: 0.06),
+      borderRadius: BorderRadius.circular(14),
+      border: Border.all(color: skin.primary.withValues(alpha: 0.2)),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.public_rounded, size: 14, color: skin.primary),
+            const SizedBox(width: 6),
+            Text('Zonen-Umrechnung',
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: skin.primary)),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text('Gehen roh: ${widget.gehenCtrl.text}  ($_editGehenTz, ${TravelModeService.offsetLabelFor(_editGehenTz!)})',
+            style: TextStyle(fontSize: 12, color: skin.textPrimary)),
+        const SizedBox(height: 2),
+        Text('→ umgerechnet: $converted  ($_editKommenTz, ${TravelModeService.offsetLabelFor(_editKommenTz!)})',
+            style: TextStyle(fontSize: 12, color: skin.textPrimary, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 6),
+        Text('Tatsächliche Dauer: $durText',
+            style: TextStyle(fontSize: 12, color: skin.surface(0.5))),
+      ],
+    ),
+  );
+}
 
   @override
   Widget build(BuildContext context) {
@@ -2115,6 +2243,29 @@ class _EditSheetState extends State<_EditSheet> {
                       ),
                     ),
                   ]),
+                  if (TravelModeService.isEnabled) ...[
+                    const SizedBox(height: 12),
+  Row(
+    children: [
+      Expanded(
+        child: _ZoneChip(
+          skin: skin,
+          tzId: _editKommenTz,
+          onTap: () => _pickZoneForField(isKommen: true),
+        ),
+      ),
+      const SizedBox(width: 12),
+      Expanded(
+        child: _ZoneChip(
+          skin: skin,
+          tzId: _editGehenTz,
+          onTap: () => _pickZoneForField(isKommen: false),
+        ),
+      ),
+    ],
+  ),
+  if (_buildZoneCrossingInfo(skin) != null) _buildZoneCrossingInfo(skin)!,
+],
                   const SizedBox(height: 12),
                   GestureDetector(
                     onDoubleTap: () {
@@ -2140,9 +2291,11 @@ class _EditSheetState extends State<_EditSheet> {
                   ),
                   const SizedBox(height: 20),
                   GlassPrimaryButton(
-                      skin: skin,
-                      label: 'Speichern',
-                      onTap: widget.onSave),
+    skin: skin,
+    label: 'Speichern',
+    onTap: () {
+      widget.onSave(_editKommenTz, _editGehenTz);
+    }),
                 ],
               ),
             ),
@@ -2169,26 +2322,59 @@ class _TzBreakdownRow extends StatelessWidget {
     final physTz = entry['physTzAtSave'] as String?;
     final travelled = physTz != null && physTz != tz;
 
-    return Row(
+    final gehenRaw = entry['gehenRaw'] as String?;
+    final gehenRawTz = entry['gehenRawTz'] as String?;
+    final zoneCrossing = gehenRaw != null && gehenRawTz != null;
+    final dauerMinuten = entry['dauerMinuten'] as int?;
+    final gehenDayShift = entry['gehenDayShift'] as int?;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(Icons.public_rounded, size: 12, color: skin.surface(0.32)),
-        const SizedBox(width: 4),
-        Text(
-          offsetLabel.isEmpty ? tz : '$tz ($offsetLabel)',
-          style: TextStyle(fontSize: 10.5, color: skin.surface(0.4)),
-        ),
-        if (travelled) ...[
-          const SizedBox(width: 6),
-          Icon(Icons.flight_rounded, size: 11, color: skin.primary.withValues(alpha: 0.6)),
-          const SizedBox(width: 3),
-          Flexible(
-            child: Text(
-              'Gerät bereits in $physTz',
-              style: TextStyle(
-                  fontSize: 10, color: skin.primary.withValues(alpha: 0.6)),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+        Row(
+          children: [
+            Icon(Icons.public_rounded, size: 12, color: skin.surface(0.32)),
+            const SizedBox(width: 4),
+            Text(
+              offsetLabel.isEmpty ? tz : '$tz ($offsetLabel)',
+              style: TextStyle(fontSize: 10.5, color: skin.surface(0.4)),
             ),
+            // "Gerät bereits woanders"-Hinweis nur zeigen, wenn es sich
+            // NICHT um eine bewusste Zonen-Kreuzung innerhalb des Eintrags
+            // handelt (sonst doppelt sich die Info mit der Zeile unten).
+            if (travelled && !zoneCrossing) ...[
+              const SizedBox(width: 6),
+              Icon(Icons.flight_rounded, size: 11, color: skin.primary.withValues(alpha: 0.6)),
+              const SizedBox(width: 3),
+              Flexible(
+                child: Text(
+                  'Gerät bereits in $physTz',
+                  style: TextStyle(
+                      fontSize: 10, color: skin.primary.withValues(alpha: 0.6)),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ],
+        ),
+        if (zoneCrossing) ...[
+          const SizedBox(height: 3),
+          Row(
+            children: [
+              Icon(Icons.flight_takeoff_rounded, size: 11, color: skin.primary.withValues(alpha: 0.65)),
+              const SizedBox(width: 4),
+              Flexible(
+                child: Text(
+                  'Gehen roh: $gehenRaw ($gehenRawTz)'
+                  '${gehenDayShift != null && gehenDayShift != 0 ? (gehenDayShift > 0 ? ' · +1 Tag' : ' · -1 Tag') : ''}'
+                  '${dauerMinuten != null ? ' · Dauer ${dauerMinuten ~/ 60}h ${(dauerMinuten % 60).toString().padLeft(2, '0')}m' : ''}',
+                  style: TextStyle(fontSize: 10, color: skin.primary.withValues(alpha: 0.65)),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
           ),
         ],
       ],
@@ -2317,57 +2503,6 @@ class _SwipeEditTimeFieldState extends State<_SwipeEditTimeField> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TravelModePendingBanner
-// ─────────────────────────────────────────────────────────────────────────────
-class _TravelModePendingBanner extends StatelessWidget {
-  final AppSkin skin;
-  final String pendingTzId;
-  final String activeTzId;
-  final VoidCallback onRefresh;
-
-  const _TravelModePendingBanner({
-    required this.skin,
-    required this.pendingTzId,
-    required this.activeTzId,
-    required this.onRefresh,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final offsetLabel = TravelModeService.offsetLabelFor(pendingTzId);
-    return GlassSurface(
-      borderRadius: 16,
-      useBlur: false,
-      padding: const EdgeInsets.all(14),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(Icons.flight_takeoff_rounded, size: 18, color: skin.primary),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Zeitzone wartet: $pendingTzId ($offsetLabel)',
-                    style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: skin.textPrimary)),
-                const SizedBox(height: 2),
-                Text(
-                  'Wird beim nächsten Dienstbeginn übernommen (aktuell noch: $activeTzId).',
-                  style: TextStyle(fontSize: 11.5, color: skin.textMuted, height: 1.3),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // GLASS TEXT FIELD INPUT
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -2426,6 +2561,184 @@ class _GlassTextFieldInput extends StatelessWidget {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ZONE PICKER SHEET
+// ─────────────────────────────────────────────────────────────────────────────
+
+Future<String?> _showZonePickerSheet({
+  required BuildContext context,
+  required AppSkin skin,
+  required String? currentTzId,
+}) async {
+  final suggestions = TravelModeService.suggestedZoneIds();
+  return showModalBottomSheet<String>(
+    context: context,
+    backgroundColor: Colors.transparent,
+    isScrollControlled: true,
+    builder: (sheetContext) => ClipRRect(
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+          decoration: BoxDecoration(
+            color: skin.isLight
+                ? Colors.white.withValues(alpha: 0.92)
+                : skin.bgSheet.withValues(alpha: 0.94),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            border: Border.all(color: skin.glassBorder),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40, height: 4,
+                  decoration: BoxDecoration(
+                    color: skin.surface(0.2),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
+              Text('Zeitzone wählen',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: skin.textPrimary)),
+              const SizedBox(height: 14),
+              ...suggestions.map((tzId) {
+                final label = TravelModeService.offsetLabelFor(tzId);
+                final isActive = tzId == currentTzId;
+                return GestureDetector(
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    Navigator.pop(sheetContext, tzId);
+                  },
+                  child: Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: isActive ? skin.primary.withValues(alpha: 0.14) : skin.surface(0.04),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: isActive ? skin.primary.withValues(alpha: 0.4) : skin.glassBorder,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.public_rounded, size: 16,
+                            color: isActive ? skin.primary : skin.surface(0.4)),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(tzId,
+                              style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
+                                  color: skin.textPrimary)),
+                        ),
+                        Text(label, style: TextStyle(fontSize: 12, color: skin.surface(0.4))),
+                      ],
+                    ),
+                  ),
+                );
+              }),
+              const SizedBox(height: 4),
+              GestureDetector(
+                onTap: () async {
+                  final query = await _promptFreetextZone(sheetContext, skin);
+                  if (query == null || query.trim().isEmpty) return;
+                  final found = await TravelModeService.verifyLocationTimeZone(query.trim());
+                  if (found != null) {
+                    Navigator.pop(sheetContext, found.tzId);
+                  }
+                },
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  child: Row(
+                    children: [
+                      Icon(Icons.search_rounded, size: 16, color: skin.primary),
+                      const SizedBox(width: 10),
+                      Text('Ort/Stadt suchen…',
+                          style: TextStyle(fontSize: 13.5, color: skin.primary, fontWeight: FontWeight.w600)),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+Future<String?> _promptFreetextZone(BuildContext context, AppSkin skin) async {
+  final ctrl = TextEditingController();
+  return showDialog<String>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      backgroundColor: skin.bgSheet,
+      title: Text('Ort eingeben', style: TextStyle(color: skin.textPrimary)),
+      content: TextField(
+        controller: ctrl,
+        autofocus: true,
+        style: TextStyle(color: skin.textPrimary),
+        decoration: const InputDecoration(hintText: 'z.B. Tokyo, New York'),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Abbrechen')),
+        TextButton(onPressed: () => Navigator.pop(dialogContext, ctrl.text), child: const Text('Suchen')),
+      ],
+    ),
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ZONE CHIP
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _ZoneChip extends StatelessWidget {
+  final AppSkin skin;
+  final String? tzId;
+  final VoidCallback onTap;
+
+  const _ZoneChip({required this.skin, required this.tzId, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final label = tzId != null ? TravelModeService.offsetLabelFor(tzId!) : '';
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: skin.primary.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: skin.primary.withValues(alpha: 0.25)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.public_rounded, size: 13, color: skin.primary),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                tzId ?? 'Zone wählen',
+                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: skin.primary),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            if (label.isNotEmpty) ...[
+              const SizedBox(width: 4),
+              Text(label, style: TextStyle(fontSize: 10.5, color: skin.primary.withValues(alpha: 0.6))),
+            ],
+          ],
         ),
       ),
     );

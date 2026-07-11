@@ -15,6 +15,14 @@ import 'glass_snackbar.dart';
 import '../main.dart' show MyApp;
 
 // ─────────────────────────────────────────────────────────────────────────────
+// TOP-LEVEL KONSTANTEN — für alle Klassen im File
+// ─────────────────────────────────────────────────────────────────────────────
+
+const _kRadius20 = BorderRadius.all(Radius.circular(20));
+final _kBlur20 = ImageFilter.blur(sigmaX: 20, sigmaY: 20);
+final _kBlur22 = ImageFilter.blur(sigmaX: 22, sigmaY: 22);
+
+// ─────────────────────────────────────────────────────────────────────────────
 // DICTATION FAB — wiederverwendbarer Diktier-Button mit Live-Bubble
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -58,6 +66,7 @@ class DictationFabState extends State<DictationFab>
   bool get _speechAvailable => SpeechService.instance.isAvailable;
 
   DictationPhase _phase = DictationPhase.idle;
+  bool _isFinishing = false; // Guard gegen doppelten Aufruf von _finishListeningAndReveal
   String _liveTranscript = '';
   String _finalTranscript = '';
   List<String> _revealedWords = [];
@@ -141,7 +150,6 @@ class DictationFabState extends State<DictationFab>
 
     _cancelAnimCtrl.addListener(() {
       if (mounted) {
-        setState(() {});
         widget.onBubbleStateChanged?.call();
       }
     });
@@ -198,6 +206,7 @@ class DictationFabState extends State<DictationFab>
         _cancelDragX = 0.0;
         _isCancelling = false;
         _aborted = false;
+        _isFinishing = false; // NEU
       });
       widget.onListeningEnd?.call();
       widget.onBubbleStateChanged?.call();
@@ -205,14 +214,14 @@ class DictationFabState extends State<DictationFab>
   }
 
   void finishListening() {
-  if (_phase == DictationPhase.preparing) {
-    // Zu kurz gehalten, noch keine echte Aufnahme — sauber abbrechen
-    stopListening();
-    return;
+    if (_phase == DictationPhase.preparing) {
+      // Zu kurz gehalten, noch keine echte Aufnahme — sauber abbrechen
+      stopListening();
+      return;
+    }
+    if (_phase != DictationPhase.listening) return;
+    _finishListeningAndReveal();
   }
-  if (_phase != DictationPhase.listening) return;
-  _finishListeningAndReveal();
-}
 
   @override
   void dispose() {
@@ -247,6 +256,7 @@ class DictationFabState extends State<DictationFab>
     HapticFeedback.mediumImpact();
     _aborted = false;
     _isCancelling = false;
+    _isFinishing = false; // NEU
     _cancelDragX = 0.0;
     _listenStartedAt = DateTime.now();
     setState(() {
@@ -294,10 +304,14 @@ class DictationFabState extends State<DictationFab>
   }
 
   Future<void> _finishListeningAndReveal() async {
-    if (_aborted) return;
+    if (_aborted || _isFinishing) return;
     if (_phase != DictationPhase.listening) return;
+    _isFinishing = true;
     await _speech.stop();
-    if (_aborted) return;
+    if (_aborted) {
+      _isFinishing = false;
+      return;
+    }
     setState(() => _cancelDragX = 0.0);
     widget.onBubbleStateChanged?.call();
 
@@ -373,6 +387,7 @@ class DictationFabState extends State<DictationFab>
       _cancelDragX = 0.0;
       _isCancelling = false;
       _aborted = false;
+      _isFinishing = false; // NEU
     });
     widget.onListeningEnd?.call();
     widget.onBubbleStateChanged?.call();
@@ -420,7 +435,7 @@ class DictationFabState extends State<DictationFab>
     final titleTooShort = parsed.title.trim().length < 3;
 
     final needsReview = titleTooShort ||
-    (normalizerMissed && wordCount > 4);
+        (normalizerMissed && wordCount > 4);
 
     final logRef = SpeechLog.record(
       raw: text,
@@ -654,62 +669,66 @@ class DictationFabState extends State<DictationFab>
                   ? Colors.white.withValues(alpha: 0.72)
                   : Colors.black.withValues(alpha: 0.55));
 
+          final fabContent = Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              color: fabColor,
+              borderRadius: _kRadius20,
+              border: Border.all(
+                color: _isActive
+                    ? Colors.white.withValues(alpha: 0.35)
+                    : (skin.isLight
+                        ? Colors.white.withValues(alpha: 0.55)
+                        : Colors.white.withValues(alpha: 0.12)),
+                width: _isActive ? 1.2 : 0.8,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: _isActive
+                      ? Color.lerp(
+                          skin.primaryWithAlpha(0.45 + pulse * 0.2),
+                          const Color(0xFFEF5B5B)
+                              .withValues(alpha: 0.5),
+                          cp,
+                        )!
+                      : Colors.black.withValues(
+                          alpha: skin.isLight ? 0.08 : 0.35),
+                  blurRadius: _isActive ? 20 + pulse * 10 : 24,
+                  spreadRadius: _isActive ? pulse * 2 : 0,
+                  offset: const Offset(0, 6),
+                ),
+              ],
+            ),
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 180),
+              child: Icon(
+                cp > 0.35
+                    ? Icons.close_rounded
+                    : (_isActive
+                        ? Icons.mic_rounded
+                        : Icons.mic_none_rounded),
+                key: ValueKey(cp > 0.35
+                    ? 'cancel'
+                    : (_isActive ? 'active' : 'idle')),
+                color: cp > 0.35
+                    ? Colors.white
+                    : (_isActive ? skin.onGradient : skin.textPrimary),
+                size: 24,
+              ),
+            ),
+          );
+
           return Opacity(
             opacity: _exitFade.value,
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(20),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                child: Container(
-                  width: 56,
-                  height: 56,
-                  decoration: BoxDecoration(
-                    color: fabColor,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: _isActive
-                          ? Colors.white.withValues(alpha: 0.35)
-                          : (skin.isLight
-                              ? Colors.white.withValues(alpha: 0.55)
-                              : Colors.white.withValues(alpha: 0.12)),
-                      width: _isActive ? 1.2 : 0.8,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: _isActive
-                            ? Color.lerp(
-                                skin.primaryWithAlpha(0.45 + pulse * 0.2),
-                                const Color(0xFFEF5B5B)
-                                    .withValues(alpha: 0.5),
-                                cp,
-                              )!
-                            : Colors.black.withValues(
-                                alpha: skin.isLight ? 0.08 : 0.35),
-                        blurRadius: _isActive ? 20 + pulse * 10 : 24,
-                        spreadRadius: _isActive ? pulse * 2 : 0,
-                        offset: const Offset(0, 6),
-                      ),
-                    ],
-                  ),
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 180),
-                    child: Icon(
-                      cp > 0.35
-                          ? Icons.close_rounded
-                          : (_isActive
-                              ? Icons.mic_rounded
-                              : Icons.mic_none_rounded),
-                      key: ValueKey(cp > 0.35
-                          ? 'cancel'
-                          : (_isActive ? 'active' : 'idle')),
-                      color: cp > 0.35
-                          ? Colors.white
-                          : (_isActive ? skin.onGradient : skin.textPrimary),
-                      size: 24,
-                    ),
-                  ),
-                ),
-              ),
+              borderRadius: _kRadius20,
+              child: _isActive
+                  ? BackdropFilter(
+                      filter: _kBlur20,
+                      child: fabContent,
+                    )
+                  : fabContent,
             ),
           );
         },
@@ -719,9 +738,9 @@ class DictationFabState extends State<DictationFab>
 
   Widget _buildSpectrumBubble(AppSkin skin) {
     return ClipRRect(
-      borderRadius: BorderRadius.circular(20),
+      borderRadius: _kRadius20,
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+        filter: _kBlur22,
         child: Container(
           width: 88,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -729,7 +748,7 @@ class DictationFabState extends State<DictationFab>
             color: skin.isLight
                 ? Colors.white.withValues(alpha: 0.85)
                 : skin.bgCard.withValues(alpha: 0.85),
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: _kRadius20,
             border: Border.all(
                 color: skin.primary.withValues(alpha: 0.30), width: 1.0),
             boxShadow: [
@@ -770,9 +789,9 @@ class DictationFabState extends State<DictationFab>
             scale: trashScale,
             alignment: Alignment.center,
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: _kRadius20,
               child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                filter: _kBlur20,
                 child: Container(
                   width: 56,
                   height: 56,
@@ -784,7 +803,7 @@ class DictationFabState extends State<DictationFab>
                       const Color(0xFFEF5B5B).withValues(alpha: 0.20),
                       dragProgress,
                     ),
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius: _kRadius20,
                     border: Border.all(
                       color: Color.lerp(
                         skin.isLight
@@ -839,15 +858,15 @@ class DictationFabState extends State<DictationFab>
           const BoxConstraints(minWidth: minWidth, maxWidth: maxWidth),
       width: targetWidth.clamp(minWidth, maxWidth),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: _kRadius20,
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+          filter: _kBlur22,
           child: Container(
             decoration: BoxDecoration(
               color: skin.isLight
                   ? Colors.white.withValues(alpha: 0.85)
                   : skin.bgCard.withValues(alpha: 0.85),
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: _kRadius20,
               border: Border.all(
                   color: skin.primary.withValues(alpha: 0.30), width: 1.0),
               boxShadow: [
@@ -901,12 +920,12 @@ class _ExternalSpectrumBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const bubbleH = 56.0;
-const gap = 8.0;
-final bubbleW = kachelWidth; 
+    const gap = 8.0;
+    final bubbleW = kachelWidth;
 
     // Rechts an der Kachel ausgerichtet, direkt drüber
     final left = anchorTopRight.dx - bubbleW;
-final top = anchorTopRight.dy - bubbleH - gap;
+    final top = anchorTopRight.dy - bubbleH - gap;
 
     return Positioned(
       left: left,
@@ -938,18 +957,18 @@ final top = anchorTopRight.dy - bubbleH - gap;
           );
         },
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: _kRadius20,
           child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+            filter: _kBlur22,
             child: Container(
-  width: bubbleW,
-  height: bubbleH,
-  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              width: bubbleW,
+              height: bubbleH,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               decoration: BoxDecoration(
                 color: skin.isLight
                     ? Colors.white.withValues(alpha: 0.85)
                     : skin.bgCard.withValues(alpha: 0.85),
-                borderRadius: BorderRadius.circular(20),
+                borderRadius: _kRadius20,
                 border: Border.all(
                     color: skin.primary.withValues(alpha: 0.30), width: 1.0),
                 boxShadow: [
@@ -959,14 +978,14 @@ final top = anchorTopRight.dy - bubbleH - gap;
                       offset: const Offset(0, 8)),
                 ],
               ),
-              child: Center( // NEU: Inhalt bleibt zentriert, egal wie breit die Kachel ist
-    child: fabState.phase == DictationPhase.preparing
-        ? PreparingDots(skin: skin)
-        : SpectrumIndicator(
-                      skin: skin,
-                      rawLevelNotifier: fabState.rawLevelNotifier,
-                      listenStartedAt: fabState.listenStartedAt,
-                    ),
+              child: Center(
+                child: fabState.phase == DictationPhase.preparing
+                    ? PreparingDots(skin: skin)
+                    : SpectrumIndicator(
+                        skin: skin,
+                        rawLevelNotifier: fabState.rawLevelNotifier,
+                        listenStartedAt: fabState.listenStartedAt,
+                      ),
               ),
             ),
           ),
@@ -1021,9 +1040,9 @@ class _ExternalTrashButton extends StatelessWidget {
               scale: trashScale,
               alignment: Alignment.center,
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(20),
+                borderRadius: _kRadius20,
                 child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                  filter: _kBlur20,
                   child: Container(
                     width: trashW,
                     height: kachelHeight,
@@ -1035,7 +1054,7 @@ class _ExternalTrashButton extends StatelessWidget {
                         const Color(0xFFEF5B5B).withValues(alpha: 0.20),
                         dragProgress,
                       ),
-                      borderRadius: BorderRadius.circular(20),
+                      borderRadius: _kRadius20,
                       border: Border.all(
                         color: Color.lerp(
                           skin.isLight
@@ -1133,15 +1152,15 @@ class _ExternalRevealBubble extends StatelessWidget {
               const BoxConstraints(minWidth: minWidth, maxWidth: maxWidth),
           width: clampedW,
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: _kRadius20,
             child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+              filter: _kBlur22,
               child: Container(
                 decoration: BoxDecoration(
                   color: skin.isLight
                       ? Colors.white.withValues(alpha: 0.85)
                       : skin.bgCard.withValues(alpha: 0.85),
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: _kRadius20,
                   border: Border.all(
                       color: skin.primary.withValues(alpha: 0.30), width: 1.0),
                   boxShadow: [
@@ -1237,10 +1256,10 @@ class _SpectrumIndicatorState extends State<SpectrumIndicator>
     setState(() {
       for (var i = 0; i < 5; i++) {
         final sim = 0.18 +
-    (math.sin(_idleTick * (1.6 + i * 0.35) + _phaseOffset[i]) * 0.5 + 0.5) * 0.35;
+            (math.sin(_idleTick * (1.6 + i * 0.35) + _phaseOffset[i]) * 0.5 + 0.5) * 0.35;
 
-final boosted = (normalized * _sensitivityFactor[i]).clamp(0.0, 1.0);
-final target = (sim * 0.55 + boosted * 0.75).clamp(0.04, 1.0);
+        final boosted = (normalized * _sensitivityFactor[i]).clamp(0.0, 1.0);
+        final target = (sim * 0.55 + boosted * 0.75).clamp(0.04, 1.0);
 
         final smooth = target > _smoothed[i] ? 0.65 : 0.18;
         _smoothed[i] += (target - _smoothed[i]) * smooth;

@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'dart:async';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // RULE ENGINE
@@ -76,6 +77,7 @@ class RuleEngine {
 
   List<LearnedRule> _rules = [];
   bool _initialized = false;
+  StreamSubscription<QuerySnapshot>? _rulesSub;
 
   // ── Init: Firestore-Listener + Hive-Fallback ─────────────────────────────
 
@@ -90,7 +92,7 @@ class RuleEngine {
     _loadFromHive();
 
     // Realtime-Listener: aktualisiert _rules + Hive bei jeder Änderung
-    FirebaseFirestore.instance
+    _rulesSub = FirebaseFirestore.instance
         .collection('learned_rules')
         .where('status', isEqualTo: 'active')
         .snapshots()
@@ -107,6 +109,13 @@ class RuleEngine {
         debugLog('RuleEngine: Firestore-Fehler, nutze Cache. $e');
       },
     );
+  }
+
+  /// Beendet den Firestore-Listener. Für Logout oder Re-Init nützlich.
+  Future<void> dispose() async {
+    await _rulesSub?.cancel();
+    _rulesSub = null;
+    _initialized = false;
   }
 
   // ── Hive-Cache ────────────────────────────────────────────────────────────

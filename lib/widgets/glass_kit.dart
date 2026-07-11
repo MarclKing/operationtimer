@@ -1223,46 +1223,48 @@ class GlassSwipeCardState extends State<GlassSwipeCard>
                               scale: _leftRevealProgress,
                               alignment: Alignment.centerRight,
                               child: GestureDetector(
-                                onTap: () {
-                                  _closeAnimated();
-                                  widget.onCardSwiped?.call(null);
-                                  action.onTap();
-                                },
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(14),
-                                  child: BackdropFilter(
-                                    filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                                    child: Container(
-                                      margin: EdgeInsets.only(
-                                        left: i == 0 ? 5 : 5,
-                                        right: isLast ? 5 : 5,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: action.color.withValues(alpha: 0.10),
-                                        borderRadius: BorderRadius.circular(14),
-                                        border: Border.all(
-                                          color: action.color.withValues(alpha: 0.22),
-                                        ),
-                                      ),
-                                      child: Column(
-                                        mainAxisAlignment: MainAxisAlignment.center,
-                                        children: [
-                                          Icon(action.icon, color: action.color, size: 22),
-                                          const SizedBox(height: 4),
-                                          Text(
-                                            action.label,
-                                            style: TextStyle(
-                                              color: action.color,
-                                              fontSize: 11,
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
+  onTap: () {
+    _closeAnimated();
+    widget.onCardSwiped?.call(null);
+    action.onTap();
+  },
+  child: Builder(builder: (context) {
+    final content = Container(
+      margin: EdgeInsets.only(
+        left: i == 0 ? 5 : 5,
+        right: isLast ? 5 : 5,
+      ),
+      decoration: BoxDecoration(
+        color: action.color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: action.color.withValues(alpha: 0.22),
+        ),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(action.icon, color: action.color, size: 22),
+          const SizedBox(height: 4),
+          Text(
+            action.label,
+            style: TextStyle(
+              color: action.color,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(14),
+      child: _leftRevealProgress > 0
+          ? BackdropFilter(filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10), child: content)
+          : content,
+    );
+  }),
+),
                             ),
                           ),
                         );
@@ -1272,53 +1274,43 @@ class GlassSwipeCardState extends State<GlassSwipeCard>
 
                 // ── Rechter Reveal-Bereich (Löschen, erscheint beim Links-Wischen) ──
                 if (widget.onDelete != null && swipeOffset <= 0)
-                  Positioned(
-                    right: 0,
-                    top: 4,
-                    bottom: 4,
-                    width: widget.rightRevealWidth,
-                    child: Opacity(
-                      opacity: _rightRevealProgress,
-                      child: Transform.scale(
-                        scale: _rightRevealProgress,
-                        alignment: Alignment.centerLeft,
-                        child: GestureDetector(
-                          onTap: _handleDelete,
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(14),
-                            child: BackdropFilter(
-                              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                              child: Container(
-                                margin: const EdgeInsets.only(left: 5),
-                                decoration: BoxDecoration(
-                                  color: skin.deleteColor.withValues(alpha: 0.10),
-                                  borderRadius: BorderRadius.circular(14),
-                                  border: Border.all(
-                                    color: skin.deleteColor.withValues(alpha: 0.22),
-                                  ),
-                                ),
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(Icons.delete_outline, color: skin.deleteColor, size: 22),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      'Löschen',
-                                      style: TextStyle(
-                                        color: skin.deleteColor,
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
+  Positioned(
+    right: 0, top: 4, bottom: 4, width: widget.rightRevealWidth,
+    child: Opacity(
+      opacity: _rightRevealProgress,
+      child: Transform.scale(
+        scale: _rightRevealProgress,
+        alignment: Alignment.centerLeft,
+        child: GestureDetector(
+          onTap: _handleDelete,
+          child: Builder(builder: (context) {
+            final content = Container(
+              margin: const EdgeInsets.only(left: 5),
+              decoration: BoxDecoration(
+                color: skin.deleteColor.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: skin.deleteColor.withValues(alpha: 0.22)),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.delete_outline, color: skin.deleteColor, size: 22),
+                  const SizedBox(height: 4),
+                  Text('Löschen', style: TextStyle(color: skin.deleteColor, fontSize: 11, fontWeight: FontWeight.w600)),
+                ],
+              ),
+            );
+            return ClipRRect(
+              borderRadius: BorderRadius.circular(14),
+              child: _rightRevealProgress > 0
+                  ? BackdropFilter(filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10), child: content)
+                  : content,
+            );
+          }),
+        ),
+      ),
+    ),
+  ),
 
                 // ── Hauptkarte (verschoben mit Swipe-Offset) ──
                 Transform.translate(

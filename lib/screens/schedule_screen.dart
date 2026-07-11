@@ -1473,10 +1473,13 @@ class ScheduleScreenState extends State<ScheduleScreen> {
                               ]),
                             )
                           // ── FadingListView aus glass_kit.dart ──
-                          : FadingListView(
-                              fadeFromBottom: bottomNavHeight + 20,
-                              child: ListView.builder(
-                                controller: _listScrollController,
+                          : ClipRect(
+                              child: BackdropFilter(
+                                filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
+                                child: FadingListView(
+                                  fadeFromBottom: bottomNavHeight + 20,
+                                  child: ListView.builder(
+                                    controller: _listScrollController,
                                 padding: const EdgeInsets.fromLTRB(24, 4, 24, 0),
                                 itemCount: days.length + 1,
                                 itemBuilder: (context, index) {
@@ -1549,6 +1552,8 @@ class ScheduleScreenState extends State<ScheduleScreen> {
                                 },
                               ),
                             ),
+                              ),
+                          ),
                     ),
                   ],
                 ),
@@ -1619,7 +1624,9 @@ class _NoteOverlayState extends State<_NoteOverlay> with TickerProviderStateMixi
 
   Future<void> _saveAndClose() async {
     await _NoteData.save(widget.dateKey, _phoneCtrl.text.trim(), _textCtrl.text.trim());
-    await ScheduleScreenState.pushScheduleToWidget();
+    // Sync + Widget-Push laufen im Hintergrund, blockieren aber nicht das Schließen
+    SyncService.instance.pushNote(widget.dateKey);
+    ScheduleScreenState.pushScheduleToWidget();
     if (!mounted) return;
     await _ctrl.reverse();
     widget.onClose();
@@ -2613,8 +2620,7 @@ if (widget.entry != null && widget.entry!.shift.isNotEmpty) ...[
       );
      } else {
       cardWidget = ClipRRect(borderRadius: BorderRadius.circular(14),
-        child: BackdropFilter(filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
-          child: Stack(children: [
+        child: Stack(children: [
             Container(padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
               decoration: BoxDecoration(
                 color: skin.isLight ? Colors.white.withValues(alpha: skin.glassOpacity) : skin.bgCard.withValues(alpha: skin.glassOpacity),
@@ -2632,7 +2638,6 @@ if (widget.entry != null && widget.entry!.shift.isNotEmpty) ...[
                 child: Container(color: skin.primary.withValues(alpha: 0.9)),
               ),
           ]),
-        ),
       );
     }
 
@@ -2683,36 +2688,45 @@ if (widget.entry != null && widget.entry!.shift.isNotEmpty) ...[
                 child: Row(children: [
                   const SizedBox(width: 6),
                   Expanded(child: Transform.scale(scale: _revealProgress, alignment: Alignment.center,
-                    child: GestureDetector(onTap: () { _close(); widget.onOpenColleagues(); },
-                      child: ClipRRect(borderRadius: BorderRadius.circular(14),
-                        child: BackdropFilter(filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                          child: Container(margin: const EdgeInsets.only(right: 5),
-                            decoration: BoxDecoration(color: const Color(0xFF3DD6C8).withValues(alpha: 0.10), borderRadius: BorderRadius.circular(14), border: Border.all(color: const Color(0xFF3DD6C8).withValues(alpha: 0.25))),
-                            child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                              Icon(Icons.people_outline, color: const Color(0xFF3DD6C8), size: 22),
-                              const SizedBox(height: 4),
-                              Text('Kollegen', style: TextStyle(color: const Color(0xFF3DD6C8), fontSize: 11, fontWeight: FontWeight.w600)),
-                            ]),
-                          ),
-                        ),
-                      ),
-                    ),
-                  )),
+  child: GestureDetector(onTap: () { _close(); widget.onOpenColleagues(); },
+    child: Builder(builder: (context) {
+      final content = Container(margin: const EdgeInsets.only(right: 5),
+        decoration: BoxDecoration(color: const Color(0xFF3DD6C8).withValues(alpha: 0.10), borderRadius: BorderRadius.circular(14), border: Border.all(color: const Color(0xFF3DD6C8).withValues(alpha: 0.25))),
+        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Icon(Icons.people_outline, color: const Color(0xFF3DD6C8), size: 22),
+          const SizedBox(height: 4),
+          Text('Kollegen', style: TextStyle(color: const Color(0xFF3DD6C8), fontSize: 11, fontWeight: FontWeight.w600)),
+        ]),
+      );
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: _revealProgress > 0
+            ? BackdropFilter(filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10), child: content)
+            : content,
+      );
+    }),
+  ),
+)),
                   Expanded(child: Transform.scale(scale: _revealProgress, alignment: Alignment.center,
-                    child: GestureDetector(onTap: () { _close(); widget.onOpenNote(); },
-                      child: ClipRRect(borderRadius: BorderRadius.circular(14),
-                        child: BackdropFilter(filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                          child: Container(decoration: BoxDecoration(color: noteColor.withValues(alpha: 0.10), borderRadius: BorderRadius.circular(14), border: Border.all(color: noteColor.withValues(alpha: 0.25))),
-                            child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                              Icon(Icons.sticky_note_2_outlined, color: noteColor, size: 22),
-                              const SizedBox(height: 4),
-                              Text('Notiz', style: TextStyle(color: noteColor, fontSize: 11, fontWeight: FontWeight.w600)),
-                            ]),
-                          ),
-                        ),
-                      ),
-                    ),
-                  )),
+  child: GestureDetector(onTap: () { _close(); widget.onOpenNote(); },
+    child: Builder(builder: (context) {
+      final content = Container(
+        decoration: BoxDecoration(color: noteColor.withValues(alpha: 0.10), borderRadius: BorderRadius.circular(14), border: Border.all(color: noteColor.withValues(alpha: 0.25))),
+        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Icon(Icons.sticky_note_2_outlined, color: noteColor, size: 22),
+          const SizedBox(height: 4),
+          Text('Notiz', style: TextStyle(color: noteColor, fontSize: 11, fontWeight: FontWeight.w600)),
+        ]),
+      );
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: _revealProgress > 0
+            ? BackdropFilter(filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10), child: content)
+            : content,
+      );
+    }),
+  ),
+)),
                 ]),
               ),
 Transform.translate(offset: Offset(widget.foreignMode ? 0 : swipeOffset, 0), child: animatedCard),

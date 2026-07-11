@@ -392,29 +392,26 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin, 
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _checkTravelModeTz();
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.detached) {
+      _flushHiveBoxes();
+    }
+  }
+
+  void _flushHiveBoxes() {
+    if (Hive.isBoxOpen('arbeitszeiten')) {
+      Hive.box('arbeitszeiten').flush();
+    }
+    if (Hive.isBoxOpen('einstellungen')) {
+      Hive.box('einstellungen').flush();
     }
   }
 
   Future<void> _checkTravelModeTz() async {
-    final detected = await TravelModeService.checkForTimeZoneChange();
-    if (detected == null || !mounted) return;
-    final skin = AppTheme.of(context);
-    final label = TravelModeService.offsetLabelFor(detected);
-    final confirmed = await confirmActionDialog(
-      context: context,
-      skin: skin,
-      icon: Icons.flight_takeoff_rounded,
-      title: '✈️ Neue Zeitzone erkannt',
-      message: 'Dein Gerät meldet: $detected ($label)\n\n'
-          'Ab deinem nächsten Dienstbeginn in dieser Zone weiterschreiben?',
-      confirmLabel: 'Bestätigen',
-      cancelLabel: 'Ignorieren',
-    );
-    if (confirmed == true) {
-      TravelModeService.confirmDetectedTz(detected);
-    } else {
-      TravelModeService.ignoreDetectedTz(detected);
-    }
+    // Kein Dialog mehr — nur die Geräte-Zone aktualisieren, damit sie
+    // im Zonen-Picker (Kommen/Gehen) oben vorgeschlagen wird.
+    await TravelModeService.checkForTimeZoneChange();
   }
 
   @override

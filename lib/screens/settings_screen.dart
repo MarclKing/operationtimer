@@ -1516,9 +1516,9 @@ void initState() {
 
               void saveAndClose() {
                 if (verified == null) return;
-                TravelModeService.setPendingTzManually(verified!.tzId);
+                TravelModeService.setActiveTz(verified!.tzId);
                 Navigator.pop(context);
-                setState(() {}); // Banner/Subtitle im Screen aktualisieren
+                setState(() {}); // Subtitle im Screen aktualisieren
               }
 
               return Padding(
@@ -1533,7 +1533,7 @@ void initState() {
                         style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700,
                             color: skin.textPrimary)),
                     const SizedBox(height: 4),
-                    Text('Wird beim nächsten Dienstbeginn übernommen, genau wie eine automatisch erkannte Zone.',
+                    Text('Wird sofort als aktuelle Zone übernommen.',
                         style: TextStyle(fontSize: 13, color: skin.textMuted)),
                     const SizedBox(height: 16),
                     _TiTextField(
@@ -1728,9 +1728,7 @@ void initState() {
                               child: const Icon(Icons.edit_location_alt_outlined, color: Colors.white, size: 18),
                             ),
                             title: 'Zeitzone manuell wählen',
-                            subtitle: TravelModeService.pendingTzId != null
-                                ? 'Wartet: ${TravelModeService.pendingTzId}'
-                                : 'z.B. vor dem Abflug schon vormerken',
+                            subtitle: 'Aktuell: ${TravelModeService.activeTzId}',
                             isLast: true,
                             trailing: Icon(Icons.chevron_right_rounded, size: 18, color: skin.surface(0.28)),
                             onTap: () => _showTimeZonePickerSheet(context, skin),
@@ -2801,7 +2799,7 @@ class _ReisemodusDebugCardState extends State<_ReisemodusDebugCard> {
     final skin = AppTheme.of(context);
 
     if (detected == null) {
-      showGlassSnackBar(context, 'Keine neue Zeitzone erkannt (identisch mit aktiver/ignorierter Zone).',
+      showGlassSnackBar(context, 'Keine neue Zeitzone erkannt (identisch mit aktiver Zone).',
           type: GlassSnackBarType.warning);
       return;
     }
@@ -2812,14 +2810,12 @@ class _ReisemodusDebugCardState extends State<_ReisemodusDebugCard> {
       icon: Icons.flight_takeoff_rounded,
       title: '✈️ Neue Zeitzone erkannt',
       message: 'Simuliert: $detected ($label)\n\n'
-          'Ab dem nächsten Dienstbeginn in dieser Zone weiterschreiben?',
-      confirmLabel: 'Bestätigen',
-      cancelLabel: 'Ignorieren',
+          'Jetzt als aktive Zone übernehmen?',
+      confirmLabel: 'Übernehmen',
+      cancelLabel: 'Verwerfen',
     );
     if (confirmed == true) {
-      TravelModeService.confirmDetectedTz(detected);
-    } else {
-      TravelModeService.ignoreDetectedTz(detected);
+      await TravelModeService.setActiveTz(detected);
     }
     setState(() {});
     widget.onChanged();

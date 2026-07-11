@@ -373,13 +373,11 @@ Future<void> _showDuplicateDialog(ParsedSpokenTask parsed, String logRef) async 
     child: Column(
       children: [
         FadingListView(
-          fadeFromBottom: 0,
-          child: ListView(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            padding: EdgeInsets.zero,
-            children: [
-              const SizedBox(height: 36),
+  fadeFromBottom: 0,
+  child: Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      const SizedBox(height: 36),
 
               FadeTransition(
                 opacity: _greetingFade,

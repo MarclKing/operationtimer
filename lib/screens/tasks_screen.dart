@@ -24,6 +24,10 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/scheduler.dart';
 import '../services/rule_engine.dart';
 
+const _kCardRadius = BorderRadius.all(Radius.circular(14));
+final _kBlur10 = ImageFilter.blur(sigmaX: 10, sigmaY: 10);
+const _kFabRadius = BorderRadius.all(Radius.circular(20));
+final _kBlur20 = ImageFilter.blur(sigmaX: 20, sigmaY: 20);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TASK MODEL
@@ -522,6 +526,68 @@ class TasksScreenState extends State<TasksScreen> with TickerProviderStateMixin 
       ),
     );
   }
+
+  List<Widget> _buildListItems() {
+  final items = <Widget>[];
+
+  void addTaskCard(Task t, {bool isUrgent = false}) {
+    _taskCardKeys.putIfAbsent(t.id, () => GlobalKey<_TaskCardState>());
+    items.add(Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: _TaskCard(
+        key: _taskCardKeys[t.id],
+        task: t,
+        skin: AppTheme.of(context),
+        externallyOpenKey: _openSwipedId,
+        onCardSwiped: _onCardSwiped,
+        onToggleDone: () => _toggleDone(t),
+        isInlineEditing: _inlineEditId == t.id,
+        onStartInlineEdit: () => _startInlineEdit(t.id),
+        onCommitInlineEdit: (v) => _commitInlineEdit(t, v),
+        onFullEdit: () => _editTaskFull(t),
+        onDelete: () => _deleteTaskWithAnimation(t),
+        isUrgent: isUrgent,
+      ),
+    ));
+  }
+
+  final skin = AppTheme.of(context);
+
+  if (_urgentTasks.isNotEmpty) {
+    items.add(_UrgentSectionHeader(skin: skin));
+    items.add(const SizedBox(height: 10));
+    for (final t in _urgentTasks) {
+      addTaskCard(t, isUrgent: true);
+    }
+    items.add(const SizedBox(height: 18));
+  }
+  if (_deadlineTasks.isNotEmpty) {
+    items.add(_SectionHeader(icon: Icons.event_outlined, label: 'MIT FRIST', skin: skin));
+    items.add(const SizedBox(height: 10));
+    for (final t in _deadlineTasks) {
+      addTaskCard(t);
+    }
+    items.add(const SizedBox(height: 18));
+  }
+  if (_generalTasks.isNotEmpty) {
+    items.add(_SectionHeader(icon: Icons.notes_outlined, label: 'ALLGEMEIN', skin: skin));
+    items.add(const SizedBox(height: 10));
+    for (final t in _generalTasks) {
+      addTaskCard(t);
+    }
+    items.add(const SizedBox(height: 18));
+  }
+  if (_doneTasks.isNotEmpty) {
+    items.add(_SectionHeader(icon: Icons.check_circle_outline, label: 'ERLEDIGT', skin: skin, muted: true));
+    items.add(const SizedBox(height: 10));
+    for (final t in _doneTasks) {
+      addTaskCard(t);
+    }
+  }
+
+  return items;
+}
+
   @override
   Widget build(BuildContext context) {
     final skin = AppTheme.of(context);
@@ -593,112 +659,30 @@ class TasksScreenState extends State<TasksScreen> with TickerProviderStateMixin 
                                   style: TextStyle(color: skin.surface(0.2), fontSize: 12), textAlign: TextAlign.center),
                             ]),
                           )
-                        : FadingListView(
-                            fadeFromBottom: bottomNavHeight + 20,
-                            child: ListView(
-                              controller: _scrollController,
-                              padding: const EdgeInsets.fromLTRB(24, 4, 24, 0),
-                              children: [
-                                if (_urgentTasks.isNotEmpty) ...[
-                                  _UrgentSectionHeader(skin: skin),
-                                  const SizedBox(height: 10),
-                                  ..._urgentTasks.map((t) {
-                                    _taskCardKeys.putIfAbsent(t.id, () => GlobalKey<_TaskCardState>());
-                                    return Padding(
-                                      padding: const EdgeInsets.only(bottom: 8),
-                                      child: _TaskCard(
-                                        key: _taskCardKeys[t.id],
-                                        task: t,
-                                        skin: skin,
-                                        externallyOpenKey: _openSwipedId,
-                                        onCardSwiped: _onCardSwiped,
-                                        onToggleDone: () => _toggleDone(t),
-                                        isInlineEditing: _inlineEditId == t.id,
-                                        onStartInlineEdit: () => _startInlineEdit(t.id),
-                                        onCommitInlineEdit: (v) => _commitInlineEdit(t, v),
-                                        onFullEdit: () => _editTaskFull(t),
-                                        onDelete: () => _deleteTaskWithAnimation(t),
-                                        isUrgent: true,
-                                      ),
-                                    );
-                                  }),
-                                  const SizedBox(height: 18),
-                                ],
-                                if (_deadlineTasks.isNotEmpty) ...[
-                                  _SectionHeader(icon: Icons.event_outlined, label: 'MIT FRIST', skin: skin),
-                                  const SizedBox(height: 10),
-                                  ..._deadlineTasks.map((t) {
-                                    _taskCardKeys.putIfAbsent(t.id, () => GlobalKey<_TaskCardState>());
-                                    return Padding(
-                                      padding: const EdgeInsets.only(bottom: 8),
-                                      child: _TaskCard(
-                                        key: _taskCardKeys[t.id],
-                                        task: t,
-                                        skin: skin,
-                                        externallyOpenKey: _openSwipedId,
-                                        onCardSwiped: _onCardSwiped,
-                                        onToggleDone: () => _toggleDone(t),
-                                        isInlineEditing: _inlineEditId == t.id,
-                                        onStartInlineEdit: () => _startInlineEdit(t.id),
-                                        onCommitInlineEdit: (v) => _commitInlineEdit(t, v),
-                                        onFullEdit: () => _editTaskFull(t),
-                                        onDelete: () => _deleteTaskWithAnimation(t),
-                                      ),
-                                    );
-                                  }),
-                                  const SizedBox(height: 18),
-                                ],
-                                if (_generalTasks.isNotEmpty) ...[
-                                  _SectionHeader(icon: Icons.notes_outlined, label: 'ALLGEMEIN', skin: skin),
-                                  const SizedBox(height: 10),
-                                  ..._generalTasks.map((t) {
-                                    _taskCardKeys.putIfAbsent(t.id, () => GlobalKey<_TaskCardState>());
-                                    return Padding(
-                                      padding: const EdgeInsets.only(bottom: 8),
-                                      child: _TaskCard(
-                                        key: _taskCardKeys[t.id],
-                                        task: t,
-                                        skin: skin,
-                                        externallyOpenKey: _openSwipedId,
-                                        onCardSwiped: _onCardSwiped,
-                                        onToggleDone: () => _toggleDone(t),
-                                        isInlineEditing: _inlineEditId == t.id,
-                                        onStartInlineEdit: () => _startInlineEdit(t.id),
-                                        onCommitInlineEdit: (v) => _commitInlineEdit(t, v),
-                                        onFullEdit: () => _editTaskFull(t),
-                                        onDelete: () => _deleteTaskWithAnimation(t),
-                                      ),
-                                    );
-                                  }),
-                                  const SizedBox(height: 18),
-                                ],
-                                if (_doneTasks.isNotEmpty) ...[
-                                  _SectionHeader(icon: Icons.check_circle_outline, label: 'ERLEDIGT', skin: skin, muted: true),
-                                  const SizedBox(height: 10),
-                                  ..._doneTasks.map((t) {
-                                    _taskCardKeys.putIfAbsent(t.id, () => GlobalKey<_TaskCardState>());
-                                    return Padding(
-                                      padding: const EdgeInsets.only(bottom: 8),
-                                      child: _TaskCard(
-                                        key: _taskCardKeys[t.id],
-                                        task: t,
-                                        skin: skin,
-                                        externallyOpenKey: _openSwipedId,
-                                        onCardSwiped: _onCardSwiped,
-                                        onToggleDone: () => _toggleDone(t),
-                                        isInlineEditing: _inlineEditId == t.id,
-                                        onStartInlineEdit: () => _startInlineEdit(t.id),
-                                        onCommitInlineEdit: (v) => _commitInlineEdit(t, v),
-                                        onFullEdit: () => _editTaskFull(t),
-                                        onDelete: () => _deleteTaskWithAnimation(t),
-                                      ),
-                                    );
-                                  }),
-                                ],
-                                SizedBox(height: bottomNavHeight + 100),
-                              ],
+                        : ClipRect(
+                            child: BackdropFilter(
+                              filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
+                              child: FadingListView(
+  fadeFromBottom: bottomNavHeight + 20,
+  child: Builder(
+    builder: (context) {
+      final listItems = _buildListItems();
+      return ListView.builder(
+        controller: _scrollController,
+        padding: const EdgeInsets.fromLTRB(24, 4, 24, 0),
+        itemCount: listItems.length + 1, // +1 für den Bottom-Spacer
+        itemBuilder: (context, index) {
+          if (index == listItems.length) {
+            return SizedBox(height: bottomNavHeight + 100);
+          }
+          return listItems[index];
+        },
+      );
+    },
+  ),
+),
                             ),
-                          ),
+                        ),
                   ),
                 ],
               ),
@@ -805,15 +789,15 @@ class _TasksFab extends StatelessWidget {
       },
       behavior: HitTestBehavior.opaque,
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-          child: Container(
-            width: 56,
-            height: 56,
-            decoration: BoxDecoration(
-              color: skin.isLight ? Colors.white.withValues(alpha: 0.72) : Colors.black.withValues(alpha: 0.55),
-              borderRadius: BorderRadius.circular(20),
+  borderRadius: _kFabRadius,
+  child: BackdropFilter(
+    filter: _kBlur20,
+    child: Container(
+      width: 56,
+      height: 56,
+      decoration: BoxDecoration(
+        color: skin.isLight ? Colors.white.withValues(alpha: 0.72) : Colors.black.withValues(alpha: 0.55),
+        borderRadius: _kFabRadius,
               border: Border.all(
                 color: skin.isLight ? Colors.white.withValues(alpha: 0.55) : Colors.white.withValues(alpha: 0.12),
                 width: 0.8,
@@ -1130,16 +1114,14 @@ class _TaskCardState extends State<_TaskCard> with TickerProviderStateMixin, Swi
     );
 
     Widget cardWidget = ClipRRect(
-      borderRadius: BorderRadius.circular(14),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-          decoration: BoxDecoration(
-            color: widget.isUrgent
-                ? const Color(0xFFEF5B5B).withValues(alpha: skin.isLight ? 0.04 : 0.07)
-                : (skin.isLight ? Colors.white.withValues(alpha: skin.glassOpacity) : skin.bgCard.withValues(alpha: skin.glassOpacity)),
-            borderRadius: BorderRadius.circular(14),
+  borderRadius: _kCardRadius,
+  child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+      decoration: BoxDecoration(
+        color: widget.isUrgent
+            ? const Color(0xFFEF5B5B).withValues(alpha: skin.isLight ? 0.04 : 0.07)
+            : (skin.isLight ? Colors.white.withValues(alpha: skin.glassOpacity) : skin.bgCard.withValues(alpha: skin.glassOpacity)),
+        borderRadius: _kCardRadius,
             border: Border.all(
               color: widget.isUrgent
                   ? const Color(0xFFEF5B5B).withValues(alpha: 0.45)
@@ -1153,7 +1135,6 @@ class _TaskCardState extends State<_TaskCard> with TickerProviderStateMixin, Swi
           ),
           child: cardInner,
         ),
-      ),
     );
 
     return AnimatedBuilder(
@@ -1192,14 +1173,14 @@ class _TaskCardState extends State<_TaskCard> with TickerProviderStateMixin, Swi
                 child: Opacity(
                   opacity: (swipeOffset.abs() / _revealWidth).clamp(0.0, 1.0),
                   child: ClipRRect(
-                    borderRadius: BorderRadius.circular(14),
-                    child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                      child: Container(
-                        margin: const EdgeInsets.only(left: 6),
-                        decoration: BoxDecoration(
-                          color: skin.deleteColor.withValues(alpha: 0.10),
-                          borderRadius: BorderRadius.circular(14),
+  borderRadius: _kCardRadius,
+  child: BackdropFilter(
+    filter: _kBlur10,
+    child: Container(
+      margin: const EdgeInsets.only(left: 6),
+      decoration: BoxDecoration(
+        color: skin.deleteColor.withValues(alpha: 0.10),
+        borderRadius: _kCardRadius,
                           border: Border.all(color: skin.deleteColor.withValues(alpha: 0.25)),
                         ),
                         child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
@@ -1274,9 +1255,9 @@ class _TaskDateTileState extends State<_TaskDateTile> {
             }
           : null,
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(14),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+  borderRadius: _kCardRadius,
+  child: BackdropFilter(
+    filter: _kBlur10,
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
             decoration: BoxDecoration(
@@ -1369,14 +1350,14 @@ class _TaskTimeTileState extends State<_TaskTimeTile> {
               }
             : null,
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(14),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-              decoration: BoxDecoration(
-                color: hasTime ? skin.primary.withValues(alpha: skin.isLight ? 0.08 : 0.14) : (skin.isLight ? Colors.white.withValues(alpha: skin.glassOpacity) : skin.bgCard.withValues(alpha: skin.glassOpacity)),
-                borderRadius: BorderRadius.circular(14),
+  borderRadius: _kCardRadius,
+  child: BackdropFilter(
+    filter: _kBlur10,
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+      decoration: BoxDecoration(
+        color: hasTime ? skin.primary.withValues(alpha: skin.isLight ? 0.08 : 0.14) : (skin.isLight ? Colors.white.withValues(alpha: skin.glassOpacity) : skin.bgCard.withValues(alpha: skin.glassOpacity)),
+        borderRadius: _kCardRadius,
                 border: Border.all(
                   color: hasTime ? skin.primary.withValues(alpha: 0.32) : skin.glassBorder,
                   width: hasTime ? 1.3 : 1.0,

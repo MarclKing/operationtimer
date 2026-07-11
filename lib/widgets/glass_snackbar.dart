@@ -17,6 +17,9 @@ import '../main.dart' show MyApp;
 
 enum GlassSnackBarType { success, error, warning, info, loading }
 
+const _kSnackRadius = BorderRadius.all(Radius.circular(14));
+final _kSnackBlur = ImageFilter.blur(sigmaX: 20, sigmaY: 20);
+
 OverlayEntry? _activeSnackEntry;
 Timer? _activeSnackTimer;
 
@@ -53,10 +56,17 @@ void showGlassSnackBar(
   final borderColor = color.withValues(alpha: skin.isLight ? 0.35 : 0.30);
 
   void remove() {
-    _activeSnackTimer?.cancel();
-    _activeSnackEntry?.remove();
-    _activeSnackEntry = null;
+  _activeSnackTimer?.cancel();
+  _activeSnackTimer = null;
+  final entry = _activeSnackEntry;
+  _activeSnackEntry = null;
+  if (entry == null) return;
+  try {
+    if (entry.mounted) entry.remove();
+  } catch (_) {
+    // Overlay/Entry bereits disposed (z.B. App-Shutdown) — ignorieren
   }
+}
 
   final entry = OverlayEntry(
     builder: (ctx) => _GlassSnackOverlay(
@@ -87,8 +97,13 @@ void showGlassSnackBar(
 // Shortcut zum Ausblenden – z.B. nach PDF-Erstellung
 void hideGlassSnackBar(BuildContext context) {
   _activeSnackTimer?.cancel();
-  _activeSnackEntry?.remove();
+  _activeSnackTimer = null;
+  final entry = _activeSnackEntry;
   _activeSnackEntry = null;
+  if (entry == null) return;
+  try {
+    if (entry.mounted) entry.remove();
+  } catch (_) {}
 }
 
 class _GlassSnackOverlay extends StatefulWidget {
@@ -154,14 +169,14 @@ class _GlassSnackOverlayState extends State<_GlassSnackOverlay>
           child: Material(
             color: Colors.transparent,
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(14),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                  decoration: BoxDecoration(
-                    color: widget.bgColor,
-                    borderRadius: BorderRadius.circular(14),
+  borderRadius: _kSnackRadius,
+  child: BackdropFilter(
+    filter: _kSnackBlur,
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: widget.bgColor,
+        borderRadius: _kSnackRadius,
                     border: Border.all(color: widget.borderColor, width: 1.0),
                     boxShadow: [
                       BoxShadow(

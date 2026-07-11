@@ -1097,9 +1097,12 @@ Widget build(BuildContext context) {
                             ),
                           ]),
                         )
-                      : FadingListView(
-                          fadeFromBottom: bottomNavHeight + extraBottomOffset + 20,
-                          child: GestureDetector(
+                      : ClipRect(
+                          child: BackdropFilter(
+                            filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
+                            child: FadingListView(
+                              fadeFromBottom: bottomNavHeight + extraBottomOffset + 20,
+                              child: GestureDetector(
                             behavior: HitTestBehavior.translucent,
                             onTap: () => setState(() => _openSwipedFahrtId = null),
                             child: ListView.builder(
@@ -1161,6 +1164,8 @@ Widget build(BuildContext context) {
                             ),
                           ),
                         ),
+                          ),
+                      ),
                 ),
               ],
             ),
@@ -1755,15 +1760,6 @@ class _FahrtCardState extends State<_FahrtCard>
   }
 
   @override
-  void didUpdateWidget(_FahrtCard oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.externallyOpenKey != widget.fahrt.id && (_isOpenRight || _isOpenLeft)) {
-      animateSwipeTo(0);
-      setState(() { _isOpenRight = false; _isOpenLeft = false; });
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
     final skin = widget.skin;
     final fahrt = widget.fahrt;
@@ -1801,80 +1797,92 @@ class _FahrtCardState extends State<_FahrtCard>
               clipBehavior: Clip.hardEdge,
               children: [
                 if (swipeOffset <= 0)
-                  Positioned(
-                    right: 0, top: 4, bottom: 4, width: _rightRevealWidth,
-                    child: Opacity(opacity: rightProgress, child: Transform.scale(
-                      scale: rightProgress, alignment: Alignment.centerLeft,
-                      child: GestureDetector(
-                        onTap: () { _close(); widget.onDelete(); },
-                        child: ClipRRect(borderRadius: BorderRadius.circular(14),
-                          child: BackdropFilter(filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                            child: Container(
-                              margin: const EdgeInsets.only(left: 5),
-                              decoration: BoxDecoration(
-                                color: skin.deleteColor.withValues(alpha: 0.10), borderRadius: BorderRadius.circular(14),
-                                border: Border.all(color: skin.deleteColor.withValues(alpha: 0.22)),
-                              ),
-                              child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                                Icon(Icons.delete_outline, color: skin.deleteColor, size: 22),
-                                const SizedBox(height: 4),
-                                Text('Löschen', style: TextStyle(color: skin.deleteColor, fontSize: 11, fontWeight: FontWeight.w600)),
-                              ]),
-                            ),
-                          ),
-                        ),
-                      ),
-                    )),
-                  ),
+  Positioned(
+    right: 0, top: 4, bottom: 4, width: _rightRevealWidth,
+    child: Opacity(opacity: rightProgress, child: Transform.scale(
+      scale: rightProgress, alignment: Alignment.centerLeft,
+      child: GestureDetector(
+        onTap: () { _close(); widget.onDelete(); },
+        child: Builder(builder: (context) {
+          final content = Container(
+            margin: const EdgeInsets.only(left: 5),
+            decoration: BoxDecoration(
+              color: skin.deleteColor.withValues(alpha: 0.10), borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: skin.deleteColor.withValues(alpha: 0.22)),
+            ),
+            child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+              Icon(Icons.delete_outline, color: skin.deleteColor, size: 22),
+              const SizedBox(height: 4),
+              Text('Löschen', style: TextStyle(color: skin.deleteColor, fontSize: 11, fontWeight: FontWeight.w600)),
+            ]),
+          );
+          return ClipRRect(
+            borderRadius: BorderRadius.circular(14),
+            child: rightProgress > 0
+                ? BackdropFilter(filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10), child: content)
+                : content,
+          );
+        }),
+      ),
+    )),
+  ),
 
                 if (swipeOffset >= 0)
                   Positioned(
                     left: 0, top: 4, bottom: 4, width: _leftRevealWidth,
                     child: Row(children: [
                       Expanded(child: Opacity(opacity: leftProgress, child: Transform.scale(
-                        scale: leftProgress, alignment: Alignment.centerRight,
-                        child: GestureDetector(
-                          onTap: () { _close(); widget.onEdit(); },
-                          child: ClipRRect(borderRadius: BorderRadius.circular(14),
-                            child: BackdropFilter(filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                              child: Container(
-                                margin: const EdgeInsets.only(left: 5, right: 5),
-                                decoration: BoxDecoration(
-                                  color: skin.primary.withValues(alpha: 0.10), borderRadius: BorderRadius.circular(14),
-                                  border: Border.all(color: skin.primary.withValues(alpha: 0.22)),
-                                ),
-                                child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                                  Icon(Icons.edit_outlined, color: skin.primary, size: 22),
-                                  const SizedBox(height: 4),
-                                  Text('Bearb.', style: TextStyle(color: skin.primary, fontSize: 11, fontWeight: FontWeight.w600)),
-                                ]),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ))),
-                      Expanded(child: Opacity(opacity: leftProgress, child: Transform.scale(
-                        scale: leftProgress, alignment: Alignment.centerRight,
-                        child: GestureDetector(
-                          onTap: () { _close(); _showShareAlert(context, skin, fahrt); },
-                          child: ClipRRect(borderRadius: BorderRadius.circular(14),
-                            child: BackdropFilter(filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                              child: Container(
-                                margin: const EdgeInsets.only(right: 5),
-                                decoration: BoxDecoration(
-                                  color: skin.statComplete.withValues(alpha: 0.10), borderRadius: BorderRadius.circular(14),
-                                  border: Border.all(color: skin.statComplete.withValues(alpha: 0.22)),
-                                ),
-                                child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                                  Icon(Icons.ios_share_outlined, color: skin.statComplete, size: 22),
-                                  const SizedBox(height: 4),
-                                  Text('Teilen', style: TextStyle(color: skin.statComplete, fontSize: 11, fontWeight: FontWeight.w600)),
-                                ]),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ))),
+  scale: leftProgress, alignment: Alignment.centerRight,
+  child: GestureDetector(
+    onTap: () { _close(); widget.onEdit(); },
+    child: Builder(builder: (context) {
+      final content = Container(
+        margin: const EdgeInsets.only(left: 5, right: 5),
+        decoration: BoxDecoration(
+          color: skin.primary.withValues(alpha: 0.10), borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: skin.primary.withValues(alpha: 0.22)),
+        ),
+        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Icon(Icons.edit_outlined, color: skin.primary, size: 22),
+          const SizedBox(height: 4),
+          Text('Bearb.', style: TextStyle(color: skin.primary, fontSize: 11, fontWeight: FontWeight.w600)),
+        ]),
+      );
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: leftProgress > 0
+            ? BackdropFilter(filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10), child: content)
+            : content,
+      );
+    }),
+  ),
+))),
+                     Expanded(child: Opacity(opacity: leftProgress, child: Transform.scale(
+  scale: leftProgress, alignment: Alignment.centerRight,
+  child: GestureDetector(
+    onTap: () { _close(); _showShareAlert(context, skin, fahrt); },
+    child: Builder(builder: (context) {
+      final content = Container(
+        margin: const EdgeInsets.only(right: 5),
+        decoration: BoxDecoration(
+          color: skin.statComplete.withValues(alpha: 0.10), borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: skin.statComplete.withValues(alpha: 0.22)),
+        ),
+        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Icon(Icons.ios_share_outlined, color: skin.statComplete, size: 22),
+          const SizedBox(height: 4),
+          Text('Teilen', style: TextStyle(color: skin.statComplete, fontSize: 11, fontWeight: FontWeight.w600)),
+        ]),
+      );
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: leftProgress > 0
+            ? BackdropFilter(filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10), child: content)
+            : content,
+      );
+    }),
+  ),
+))),
                     ]),
                   ),
 
@@ -1888,7 +1896,7 @@ class _FahrtCardState extends State<_FahrtCard>
                           borderRadius: BorderRadius.circular(14),
                           child: Container(
                               decoration: BoxDecoration(
-                                color: skin.isLight ? Colors.white.withValues(alpha: skin.glassOpacity + 0.15) : skin.bgCard.withValues(alpha: skin.glassOpacity + 0.15),
+                                color: skin.isLight ? Colors.white.withValues(alpha: skin.glassOpacity) : skin.bgCard.withValues(alpha: skin.glassOpacity),
                                 borderRadius: BorderRadius.circular(14),
                                 border: Border.all(
                                   color: fahrt.uebertragen ? skin.statComplete.withValues(alpha: 0.35) : skin.glassBorder,
@@ -2185,9 +2193,23 @@ class _ToggleKachelState extends State<_ToggleKachel> with SingleTickerProviderS
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 900))..repeat(reverse: true);
+    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 900));
+    if (widget.active && widget.policeLights) _ctrl.repeat(reverse: true);
     _sirenColor = ColorTween(begin: const Color(0xFF2962FF), end: const Color(0xFFD32F2F))
         .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOutSine));
+  }
+
+  @override
+  void didUpdateWidget(_ToggleKachel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final shouldPulse = widget.active && widget.policeLights;
+    final wasPulsing = oldWidget.active && oldWidget.policeLights;
+    if (shouldPulse && !wasPulsing) {
+      _ctrl.repeat(reverse: true);
+    } else if (!shouldPulse && wasPulsing) {
+      _ctrl.stop();
+      _ctrl.value = 0;
+    }
   }
 
   @override

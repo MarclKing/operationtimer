@@ -65,42 +65,46 @@ class SyncService {
   /// Pusht einen einzelnen geänderten Eintrag sofort nach Firestore.
   /// Wird aus den jeweiligen Screens aufgerufen nach jedem Speichern.
   Future<void> pushArbeitszeit(String dateKey) async {
-    if (_token == null || _isSyncing) return;
+    if (_token == null) return;   // ← _isSyncing entfernt
     final box = Hive.box('arbeitszeiten');
     final data = box.get(dateKey);
-    await _push('arbeitszeiten', dateKey, data);
+    if (data == null) {
+      await _delete('arbeitszeiten', dateKey);
+    } else {
+      await _push('arbeitszeiten', dateKey, data);
+    }
   }
 
   Future<void> pushScheduleMonth(String monthKey) async {
-    if (_token == null || _isSyncing) return;
+    if (_token == null) return;   // ← _isSyncing entfernt
     final box = Hive.box('einstellungen');
     final data = box.get('schedule_$monthKey');
     await _push('schedule', monthKey, data);
   }
 
   Future<void> pushFahrtenMonth(String monthKey) async {
-    if (_token == null || _isSyncing) return;
+    if (_token == null) return;   // ← _isSyncing entfernt
     final box = Hive.box('einstellungen');
     final data = box.get('fahrten_$monthKey');
     await _push('fahrten', monthKey, data);
   }
 
   Future<void> pushNote(String dateKey) async {
-    if (_token == null || _isSyncing) return;
+    if (_token == null) return;   // ← _isSyncing entfernt
     final box = Hive.box('einstellungen');
     final data = box.get('schedule_note_$dateKey');
     await _push('notes', dateKey, data);
   }
 
   Future<void> pushColleagues(String monthKey) async {
-    if (_token == null || _isSyncing) return;
+    if (_token == null) return;
     final box = Hive.box('einstellungen');
     final data = box.get('colleagues_$monthKey');
     await _push('colleagues', monthKey, data);
   }
 
   Future<void> pushEvents(String monthKey) async {
-    if (_token == null || _isSyncing) return;
+    if (_token == null) return;
     final box = Hive.box('einstellungen');
     final data = box.get('events_$monthKey');
     await _push('events', monthKey, data);
@@ -113,11 +117,14 @@ class SyncService {
     _initialized = true;
     debugPrint('$_tag: Starte Sync mit Token ${token.substring(0, 6)}…');
 
-    // 1) Initiales Pull (Firestore → Hive) für alle Collections
-    await _initialPull(token);
-
-    // 2) Initiales Push (Hive → Firestore) — nur was lokal vorhanden ist
+    // 1) Initiales Push (Hive → Firestore) — sichert lokale Änderungen ab,
+    //    die beim letzten App-Schließen evtl. nicht mehr fertig gepusht wurden,
+    //    BEVOR wir irgendwas von Firestore pullen und lokal überschreiben.
     await _initialPush(token);
+
+    // 2) Initiales Pull (Firestore → Hive) — jetzt sicher, da Firestore
+    //    bereits den aktuellen lokalen Stand hat.
+    await _initialPull(token);
 
     // 3) Realtime-Listener starten
     _startListeners(token);
@@ -213,11 +220,19 @@ class SyncService {
           if (!_initialized) return;
           _isSyncing = true;
           for (final change in snap.docChanges) {
-            if (change.type == DocumentChangeType.added ||
-                change.type == DocumentChangeType.modified) {
-              await _applyRemoteDoc(col, change.doc.id, change.doc.data() ?? {});
-            }
-          }
+  final pushKey = '$col/${change.doc.id}';
+  final lastPush = _lastLocalPushAt[pushKey];
+  // Ignoriere eingehende Events für Dokumente, die wir selbst
+  // gerade (innerhalb der letzten 8s) gepusht haben - vermeidet,
+  // dass ein verspäteter/eigener Echo-Snapshot uns überschreibt.
+  if (lastPush != null && DateTime.now().difference(lastPush) < const Duration(seconds: 8)) {
+    continue;
+  }
+  if (change.type == DocumentChangeType.added ||
+      change.type == DocumentChangeType.modified) {
+    await _applyRemoteDoc(col, change.doc.id, change.doc.data() ?? {});
+  }
+}
           _isSyncing = false;
         },
         onError: (e) {
@@ -233,9 +248,19 @@ class SyncService {
   // ── Remote → Hive anwenden ────────────────────────────────────────────────
 
   Future<void> _applyRemoteDoc(String collection, String docId, Map<String, dynamic> data) async {
-    // updatedAt aus Remote holen (für LWW-Vergleich, Zukunft)
     final payload = data['payload'];
     if (payload == null) return;
+
+    // LWW-Schutz: wenn wir lokal eine gleich neue oder neuere Version haben
+    // als das, was von Firestore reinkommt, NICHT überschreiben.
+    // Das schützt sowohl gegen den Initial-Pull-Race beim Start als auch
+    // gegen verspätete Listener-Echos zur Laufzeit.
+    final remoteClientTs = data['clientUpdatedAt'] as int?;
+    final localTs = Hive.box('einstellungen').get('_syncver_$collection/$docId') as int?;
+    if (remoteClientTs != null && localTs != null && localTs >= remoteClientTs) {
+      debugPrint('$_tag: Remote-Update ignoriert ($collection/$docId) — lokal ist aktueller.');
+      return;
+    }
 
     try {
       switch (collection) {
@@ -292,8 +317,23 @@ class SyncService {
 
   // ── Hive → Firestore pushen ───────────────────────────────────────────────
 
-  Future<void> _push(String collection, String docId, dynamic data) async {
+  final Map<String, DateTime> _lastLocalPushAt = {};
+
+Future<void> _push(String collection, String docId, dynamic data) async {
   if (_token == null || data == null) return;
+  final pushKey = '$collection/$docId';
+  _lastLocalPushAt[pushKey] = DateTime.now();
+
+  // Lokale Versionsmarke SOFORT persistieren — noch bevor das Netzwerk
+  // überhaupt angefragt wird. Das ist der Zeitstempel, gegen den beim
+  // nächsten Pull/Listener-Event verglichen wird. Dieser Schreibvorgang
+  // dauert Millisekunden statt Sekunden (wie der Netzwerk-Push) und
+  // schließt damit das Race-Fenster fast vollständig.
+  final localTs = DateTime.now().millisecondsSinceEpoch;
+  final metaBox = Hive.box('einstellungen');
+  await metaBox.put('_syncver_$pushKey', localTs);
+  await metaBox.flush();
+
   try {
     await _db
         .collection('syncData')
@@ -303,12 +343,33 @@ class SyncService {
         .set({
       'payload': _serialize(data),
       'updatedAt': FieldValue.serverTimestamp(),
+      'clientUpdatedAt': localTs,
     }, SetOptions(merge: false))
         .timeout(const Duration(seconds: 5));
   } catch (e) {
     debugPrint('$_tag: Push-Fehler ($collection/$docId): $e');
   }
 }
+
+Future<void> _delete(String collection, String docId) async {
+    if (_token == null) return;
+    final pushKey = '$collection/$docId';
+    final localTs = DateTime.now().millisecondsSinceEpoch;
+    final metaBox = Hive.box('einstellungen');
+    await metaBox.put('_syncver_$pushKey', localTs);
+    await metaBox.flush();
+    try {
+      await _db
+          .collection('syncData')
+          .doc(_token)
+          .collection(collection)
+          .doc(docId)
+          .delete()
+          .timeout(const Duration(seconds: 5));
+    } catch (e) {
+      debugPrint('$_tag: Delete-Fehler ($collection/$docId): $e');
+    }
+  }
 
   /// Konvertiert Hive-Daten in Firestore-kompatible Typen.
   dynamic _serialize(dynamic data) {
