@@ -1620,8 +1620,17 @@ void didUpdateWidget(covariant _FahrtCard oldWidget) {
   super.didUpdateWidget(oldWidget);
   if (widget.externallyOpenKey != widget.fahrt.id &&
       (_isOpenRight || _isOpenLeft)) {
-    _close();
+    _closeSilently();
   }
+}
+
+/// Programmatisches Schließen, ausgelöst weil eine ANDERE Karte
+/// geöffnet wurde. Ruft bewusst NICHT onCardSwiped(null) auf, sonst
+/// würde das den gerade gesetzten "offen"-Key der anderen Karte
+/// wieder überschreiben.
+void _closeSilently() {
+  animateSwipeTo(0);
+  if (mounted) setState(() { _isOpenRight = false; _isOpenLeft = false; });
 }
 
   @override

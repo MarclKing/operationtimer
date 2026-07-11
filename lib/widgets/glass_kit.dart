@@ -1052,20 +1052,14 @@ class GlassSwipeCardState extends State<GlassSwipeCard>
     super.didUpdateWidget(oldWidget);
     // Extern geschlossen werden wenn eine andere Card geöffnet wird
     if (widget.externallyOpen != widget.cardKey && (_isOpenLeft || _isOpenRight)) {
-      _closeAnimated();
+      close();
     }
   }
 
   // ── Public API ──────────────────────────────────────────────────────────────
 
-  /// Schließt die Card ohne Animation (sofort).
-  void close() {
-    setSwipeOffsetImmediate(0);
-    if (mounted) setState(() { _isOpenLeft = false; _isOpenRight = false; });
-  }
-
-  /// Schließt die Card mit Animation.
-  Future<void> _closeAnimated() async {
+  /// Schließt die Card animiert (ersetzt die alte sofortige Variante).
+  Future<void> close() async {
     await animateSwipeTo(0);
     if (mounted) setState(() { _isOpenLeft = false; _isOpenRight = false; });
   }
@@ -1137,18 +1131,18 @@ class GlassSwipeCardState extends State<GlassSwipeCard>
   // ── Delete-Handler ──────────────────────────────────────────────────────────
 
   void _handleDelete() {
-    if (widget.animateDelete && widget.onDeleteAnimationDone != null) {
-      // Parent hat explizit eine Animation-Done-Callback übergeben →
-      // erst schließen, dann Lösch-Animation abspielen
-      animateSwipeTo(0).then((_) {
-        animateOutAndDelete(widget.onDeleteAnimationDone!);
-      });
-    } else {
-      // Direkt löschen (Parent kümmert sich selbst um Animation)
-      _closeAnimated();
-      widget.onDelete?.call();
-    }
+  if (widget.animateDelete && widget.onDeleteAnimationDone != null) {
+    // Parent hat explizit eine Animation-Done-Callback übergeben →
+    // erst schließen, dann Lösch-Animation abspielen
+    animateSwipeTo(0).then((_) {
+      animateOutAndDelete(widget.onDeleteAnimationDone!);
+    });
+  } else {
+    // Direkt löschen (Parent kümmert sich selbst um Animation)
+    close();
+    widget.onDelete?.call();
   }
+}
 
   // ── Reveal-Progress ─────────────────────────────────────────────────────────
 
@@ -1190,7 +1184,7 @@ class GlassSwipeCardState extends State<GlassSwipeCard>
         onHorizontalDragEnd: widget.disableSwipe ? null : _onPanEnd,
         onTap: (_isOpenLeft || _isOpenRight)
             ? () {
-                _closeAnimated();
+                close();
                 widget.onCardSwiped?.call(null);
               }
             : widget.onTap,
@@ -1224,10 +1218,10 @@ class GlassSwipeCardState extends State<GlassSwipeCard>
                               alignment: Alignment.centerRight,
                               child: GestureDetector(
   onTap: () {
-    _closeAnimated();
-    widget.onCardSwiped?.call(null);
-    action.onTap();
-  },
+  close();
+  widget.onCardSwiped?.call(null);
+  action.onTap();
+},
   child: Builder(builder: (context) {
     final content = Container(
       margin: EdgeInsets.only(

@@ -27,6 +27,11 @@ class PdfService {
     }
   }
 
+  static String _shortTz(String tzId) {
+    final parts = tzId.split('/');
+    return parts.last.replaceAll('_', ' ');
+  }
+
   static Future<void> exportMonth(
       BuildContext context, DateTime month) async {
     final box = Hive.box('arbeitszeiten');
@@ -109,6 +114,8 @@ class PdfService {
     final fontBold = _fontBold!;
 
     final blocks = _computeBlocks(entries);
+    final hasAnyZoneEntry = entries.any(
+        (e) => e['gehenRaw'] != null && e['gehenRawTz'] != null);
 
     pdf.addPage(
       pw.MultiPage(
@@ -150,7 +157,7 @@ class PdfService {
                             fontSize: 13,
                             color: PdfColors.white)),
                     pw.SizedBox(height: 3),
-                    pw.Row(children: [
+                     pw.Row(children: [
                       pw.Text('${entries.length} Einträge',
                           style: pw.TextStyle(
                               font: font,
@@ -170,6 +177,16 @@ class PdfService {
                               font: font,
                               fontSize: 10,
                               color: const PdfColor.fromInt(0xFF888888))),
+                      if (hasAnyZoneEntry) ...[
+                        pw.Text('  ·  ', style: pw.TextStyle(font: font, fontSize: 10,
+                            color: const PdfColor.fromInt(0xFF555555))),
+                        pw.Text(
+                            '${entries.where((e) => e['gehenRaw'] != null && e['gehenRawTz'] != null).length} Zonen-Wechsel',
+                            style: pw.TextStyle(
+                                font: font,
+                                fontSize: 10,
+                                color: const PdfColor.fromInt(0xFF5B8DEF))),
+                      ],
                     ]),
                   ],
                 ),
@@ -251,14 +268,21 @@ class PdfService {
               final notiz = entry['Bemerkung'] ?? '';
               final duration = _calcDuration(kommen, gehen);
 
+              // ── Reisemodus: Zeitzonen-Wechsel innerhalb dieses Eintrags ──
+              final gehenRaw = entry['gehenRaw'] as String?;
+              final gehenRawTz = entry['gehenRawTz'] as String?;
+              final hasZoneCrossing = gehenRaw != null && gehenRawTz != null;
+
               int blockStart = i;
               while (blockStart > 0 && blocks[blockStart - 1] == blocks[i]) {
                 blockStart--;
               }
               final rowInBlock = i - blockStart;
-              final bgColor = rowInBlock.isEven
-                  ? const PdfColor.fromInt(0xFFF2F4FF)
-                  : PdfColors.white;
+              final bgColor = hasZoneCrossing
+                  ? const PdfColor.fromInt(0xFFEAF1FF)
+                  : (rowInBlock.isEven
+                      ? const PdfColor.fromInt(0xFFF2F4FF)
+                      : PdfColors.white);
 
               widgets.add(
                 pw.Container(
@@ -277,10 +301,25 @@ class PdfService {
                               kommen.isEmpty ? '--:--' : kommen,
                               style:
                                   pw.TextStyle(font: font, fontSize: 10))),
-                      pw.Expanded(
-                          child: pw.Text(gehen.isEmpty ? '--:--' : gehen,
-                              style:
-                                  pw.TextStyle(font: font, fontSize: 10))),
+                       pw.Expanded(
+                          child: hasZoneCrossing
+                              ? pw.Column(
+                                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                                  children: [
+                                    pw.Text(gehen.isEmpty ? '--:--' : gehen,
+                                        style: pw.TextStyle(font: font, fontSize: 10)),
+                                    pw.SizedBox(height: 1),
+                                    pw.Text(
+                                        '$gehenRaw ${_shortTz(gehenRawTz!)}',
+                                        style: pw.TextStyle(
+                                            font: font,
+                                            fontSize: 7.5,
+                                            color: const PdfColor.fromInt(0xFF5B8DEF))),
+                                  ],
+                                )
+                              : pw.Text(gehen.isEmpty ? '--:--' : gehen,
+                                  style:
+                                      pw.TextStyle(font: font, fontSize: 10))),
                       pw.Expanded(
                           child: pw.Text(duration,
                               style: pw.TextStyle(

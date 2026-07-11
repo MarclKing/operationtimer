@@ -1462,9 +1462,10 @@ class _MonthEntryCard extends StatelessWidget {
     final hasNotiz = ((entry['Bemerkung'] ?? entry['notiz']) ?? '').isNotEmpty;
     final gehenRaw = entry['gehenRaw'] as String?;
     final gehenRawTz = entry['gehenRawTz'] as String?;
-    final hasZoneInfo = TravelModeService.isEnabled &&
-    gehenRaw != null &&
-    gehenRawTz != null;
+    // Zonen-Info ist "geschützt": bleibt sichtbar, auch wenn der Reisemodus
+    // zwischenzeitlich global deaktiviert wurde — der Eintrag trägt seine
+    // historischen Zonen-Daten unabhängig vom aktuellen Schalter.
+    final hasZoneInfo = gehenRaw != null && gehenRawTz != null;
 
     final entriesForDay = NightShiftHelper.getEntriesForDay(datum);
     final showNumber = entriesForDay.length > 1;
@@ -1567,35 +1568,50 @@ class _MonthEntryCard extends StatelessWidget {
                           child: Icon(Icons.arrow_forward,
                               size: 16, color: skin.surface(0.2)),
                         ),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              gehen.isEmpty ? '--:--' : gehen,
-                              style: TextStyle(
-                                  fontSize: 26,
-                                  fontWeight: FontWeight.w700,
-                                  height: 1.0,
-                                  color: gehen.isEmpty
-                                      ? skin.surface(0.2)
-                                      : skin.gehenColor),
-                            ),
-                            if (hasZoneInfo)
-                              Text(
-                                '$gehenRaw · ${_shortTzName(gehenRawTz!)}',
-                                style: TextStyle(
-                                    fontSize: 9,
-                                    height: 1.0,
-                                    fontWeight: FontWeight.w600,
-                                    color: skin.primary.withValues(alpha: 0.5)),
+                         SizedBox(
+                          // Feste Höhe = nur die große Zeit. Die kleine
+                          // Referenzzeit schwebt per Overflow darunter,
+                          // ohne die Zentrierung der Spalte zu beeinflussen —
+                          // die große Kommen/Gehen-Zeile bleibt so IMMER an
+                          // exakt derselben Stelle.
+                          height: 27,
+                          child: Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              Positioned(
+                                left: 0,
+                                top: 0,
+                                child: Text(
+                                  gehen.isEmpty ? '--:--' : gehen,
+                                  style: TextStyle(
+                                      fontSize: 26,
+                                      fontWeight: FontWeight.w700,
+                                      height: 1.0,
+                                      color: gehen.isEmpty
+                                          ? skin.surface(0.2)
+                                          : skin.gehenColor),
+                                ),
                               ),
-                          ],
+                              if (hasZoneInfo)
+                                Positioned(
+                                  left: 0,
+                                  top: 27,
+                                  child: Text(
+                                    '$gehenRaw · ${_shortTzName(gehenRawTz!)}',
+                                    style: TextStyle(
+                                        fontSize: 9,
+                                        height: 1.0,
+                                        fontWeight: FontWeight.w600,
+                                        color: skin.primary.withValues(alpha: 0.5)),
+                                  ),
+                                ),
+                            ],
+                          ),
                         ),
                       ],
                     ),
-                    if (tkf.isNotEmpty || hasNotiz) ...[
-                      SizedBox(height: hasZoneInfo ? 2 : 6),
+                    if (tkf.isNotEmpty || hasNotiz || hasZoneInfo) ...[
+                      SizedBox(height: hasZoneInfo ? 14 : 6),
                       Row(
                         children: [
                           if (tkf.isNotEmpty) ...[
@@ -1611,8 +1627,14 @@ class _MonthEntryCard extends StatelessWidget {
                                   overflow: TextOverflow.ellipsis),
                             ),
                           ],
-                          if (hasNotiz) ...[
+                          if (hasZoneInfo) ...[
                             if (tkf.isNotEmpty) const SizedBox(width: 8),
+                            Icon(Icons.public_rounded,
+                                size: 14,
+                                color: skin.primary.withValues(alpha: 0.55)),
+                          ],
+                          if (hasNotiz) ...[
+                            if (tkf.isNotEmpty || hasZoneInfo) const SizedBox(width: 8),
                             Icon(Icons.note_outlined,
                                 size: 14,
                                 color: skin.primary.withValues(alpha: 0.45)),
@@ -2027,6 +2049,19 @@ class _EditSheetState extends State<_EditSheet> {
   String? _editGehenTz;
   double _dragAccum = 0; 
 
+  // NEU:
+  /// Ob DIESER Eintrag Zonen-Daten trägt — unabhängig vom aktuellen
+  /// globalen Reisemodus-Schalter.
+  bool get _entryHasZoneData {
+    final tz = widget.entry['tz'] as String?;
+    final gehenTz = widget.entry['gehenTz'] as String?;
+    final gehenRaw = widget.entry['gehenRaw'] as String?;
+    final gehenRawTz = widget.entry['gehenRawTz'] as String?;
+    if (gehenRaw != null && gehenRawTz != null) return true;
+    if (tz != null && gehenTz != null && tz != gehenTz) return true;
+    return false;
+  }
+
   TimeOfDay? _parse(String t) {
     if (t.isEmpty || t == '--:--') return null;
     try {
@@ -2163,7 +2198,7 @@ Widget _zoneInfoRow(AppSkin skin, String label, String value, {bool bold = false
 }
 
 String? _liveConvertedGehenTime() {
-  if (!TravelModeService.isEnabled) return null;
+  if (!TravelModeService.isEnabled && !_entryHasZoneData) return null;
   if (_editKommenTz == null || _editGehenTz == null) return null;
   if (_editKommenTz == _editGehenTz) return null;
   final gehenText = widget.gehenCtrl.text;
@@ -2192,7 +2227,7 @@ Widget? _gehenFooter(AppSkin skin) {
 }
 
 Widget? _kommenFooter(AppSkin skin) {
-  if (!TravelModeService.isEnabled) return null;
+  if (!TravelModeService.isEnabled && !_entryHasZoneData) return null;
   if (_editKommenTz == null || _editGehenTz == null || _editKommenTz == _editGehenTz) return null;
   return Row(
     mainAxisSize: MainAxisSize.min,
@@ -2206,7 +2241,7 @@ Widget? _kommenFooter(AppSkin skin) {
 }
 
 Widget? _buildZoneCrossingInfo(AppSkin skin) {
-  if (!TravelModeService.isEnabled) return null;
+  if (!TravelModeService.isEnabled && !_entryHasZoneData) return null;
   if (_editKommenTz == null || _editGehenTz == null) return null;
   if (_editKommenTz == _editGehenTz) return null;
   if (widget.kommenCtrl.text.isEmpty || widget.gehenCtrl.text.isEmpty) return null;
@@ -2374,15 +2409,18 @@ Widget? _buildZoneCrossingInfo(AppSkin skin) {
                       ),
                     ),
                   ]),
-                  if (TravelModeService.isEnabled) ...[
-                    const SizedBox(height: 12),
+                  if (TravelModeService.isEnabled || _entryHasZoneData) ...[
+  const SizedBox(height: 12),
   Row(
     children: [
       Expanded(
         child: _ZoneChip(
           skin: skin,
           tzId: _editKommenTz,
-          onTap: () => _pickZoneForField(isKommen: true),
+          locked: !TravelModeService.isEnabled,
+          onTap: TravelModeService.isEnabled
+              ? () => _pickZoneForField(isKommen: true)
+              : () {},
         ),
       ),
       const SizedBox(width: 12),
@@ -2390,7 +2428,10 @@ Widget? _buildZoneCrossingInfo(AppSkin skin) {
         child: _ZoneChip(
           skin: skin,
           tzId: _editGehenTz,
-          onTap: () => _pickZoneForField(isKommen: false),
+          locked: !TravelModeService.isEnabled,
+          onTap: TravelModeService.isEnabled
+              ? () => _pickZoneForField(isKommen: false)
+              : () {},
         ),
       ),
     ],
@@ -2839,37 +2880,48 @@ class _ZoneChip extends StatelessWidget {
   final AppSkin skin;
   final String? tzId;
   final VoidCallback onTap;
+  /// true = Reisemodus global aus, Eintrag zeigt Daten nur noch passiv an.
+  final bool locked;
 
-  const _ZoneChip({required this.skin, required this.tzId, required this.onTap});
+  const _ZoneChip({
+    required this.skin,
+    required this.tzId,
+    required this.onTap,
+    this.locked = false,
+  });
 
   @override
   Widget build(BuildContext context) {
     final label = tzId != null ? TravelModeService.offsetLabelFor(tzId!) : '';
     return GestureDetector(
-      onTap: onTap,
+      onTap: locked ? null : onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: skin.primary.withValues(alpha: 0.08),
+          color: skin.primary.withValues(alpha: locked ? 0.04 : 0.08),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: skin.primary.withValues(alpha: 0.25)),
+          border: Border.all(color: skin.primary.withValues(alpha: locked ? 0.15 : 0.25)),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.public_rounded, size: 13, color: skin.primary),
+            Icon(locked ? Icons.lock_outline_rounded : Icons.public_rounded,
+                size: 13, color: skin.primary.withValues(alpha: locked ? 0.5 : 1.0)),
             const SizedBox(width: 6),
             Flexible(
               child: Text(
                 tzId ?? 'Zone wählen',
-                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: skin.primary),
+                style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                    color: skin.primary.withValues(alpha: locked ? 0.6 : 1.0)),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
             ),
             if (label.isNotEmpty) ...[
               const SizedBox(width: 4),
-              Text(label, style: TextStyle(fontSize: 10.5, color: skin.primary.withValues(alpha: 0.6))),
+              Text(label, style: TextStyle(fontSize: 10.5, color: skin.primary.withValues(alpha: locked ? 0.35 : 0.6))),
             ],
           ],
         ),
@@ -2904,7 +2956,6 @@ class _DeletableZoneTile extends StatefulWidget {
 class _DeletableZoneTileState extends State<_DeletableZoneTile>
     with SingleTickerProviderStateMixin, SwipeAnimationMixin {
   static const double _revealWidth = 72.0;
-  double _dragStart = 0;
 
   @override
   void initState() {
@@ -2923,13 +2974,14 @@ class _DeletableZoneTileState extends State<_DeletableZoneTile>
     final skin = widget.skin;
     if (!widget.deletable) return _buildTile(skin);
 
-    return GestureDetector(
-      onHorizontalDragStart: (_) => _dragStart = swipeOffset,
+   return GestureDetector(
       onHorizontalDragUpdate: (d) {
-        setSwipeOffsetImmediate((_dragStart + d.delta.dx).clamp(-_revealWidth, 0.0));
+        final newOffset = (swipeOffset + d.delta.dx).clamp(-_revealWidth, 0.0);
+        setSwipeOffsetImmediate(newOffset);
       },
-      onHorizontalDragEnd: (_) {
-        if (swipeOffset < -_revealWidth / 2) {
+      onHorizontalDragEnd: (d) {
+        final v = d.primaryVelocity ?? 0;
+        if (swipeOffset < -_revealWidth / 2 || v < -400) {
           animateSwipeTo(-_revealWidth);
         } else {
           animateSwipeTo(0);
@@ -2937,20 +2989,19 @@ class _DeletableZoneTileState extends State<_DeletableZoneTile>
       },
       child: Stack(
         children: [
-          Positioned.fill(
-            child: Align(
-              alignment: Alignment.centerRight,
-              child: GestureDetector(
-                onTap: () { HapticFeedback.mediumImpact(); widget.onDelete(); },
-                child: Container(
-                  width: _revealWidth,
-                  margin: const EdgeInsets.only(bottom: 8),
-                  decoration: BoxDecoration(
-                    color: skin.deleteColor.withValues(alpha: 0.85),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(Icons.delete_outline, color: Colors.white, size: 20),
+          Positioned(
+            right: 0,
+            top: 0,
+            bottom: 8,
+            width: _revealWidth,
+            child: GestureDetector(
+              onTap: () { HapticFeedback.mediumImpact(); widget.onDelete(); },
+              child: Container(
+                decoration: BoxDecoration(
+                  color: skin.deleteColor.withValues(alpha: 0.85),
+                  borderRadius: BorderRadius.circular(12),
                 ),
+                child: const Icon(Icons.delete_outline, color: Colors.white, size: 20),
               ),
             ),
           ),
