@@ -409,9 +409,21 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin, 
   }
 
   Future<void> _checkTravelModeTz() async {
-    // Kein Dialog mehr — nur die Geräte-Zone aktualisieren, damit sie
-    // im Zonen-Picker (Kommen/Gehen) oben vorgeschlagen wird.
-    await TravelModeService.checkForTimeZoneChange();
+    final detectedTz = await TravelModeService.checkForTimeZoneChange();
+    if (detectedTz == null || !mounted) return;
+
+    final label = TravelModeService.offsetLabelFor(detectedTz);
+    showGlassSnackBar(
+      context,
+      'Neue Zeitzone erkannt: $detectedTz${label.isNotEmpty ? ' ($label)' : ''}',
+      type: GlassSnackBarType.info,
+      duration: const Duration(seconds: 6),
+      actionLabel: 'Übernehmen',
+      onAction: () async {
+        await TravelModeService.setActiveTz(detectedTz);
+        _monthKey.currentState?.syncActiveTravelZone();
+      },
+    );
   }
 
   @override

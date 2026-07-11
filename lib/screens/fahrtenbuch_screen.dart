@@ -1102,10 +1102,7 @@ Widget build(BuildContext context) {
                             filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
                             child: FadingListView(
                               fadeFromBottom: bottomNavHeight + extraBottomOffset + 20,
-                              child: GestureDetector(
-                            behavior: HitTestBehavior.translucent,
-                            onTap: () => setState(() => _openSwipedFahrtId = null),
-                            child: ListView.builder(
+                              child: ListView.builder(
                               controller: _fahrtScrollController,
                               padding: const EdgeInsets.fromLTRB(24, 4, 24, 0),
                               itemCount: groupedItems.length + 1,
@@ -1164,7 +1161,6 @@ Widget build(BuildContext context) {
                             ),
                           ),
                         ),
-                          ),
                       ),
                 ),
               ],

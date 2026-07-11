@@ -287,6 +287,19 @@ class MonthScreenState extends State<MonthScreen> with TickerProviderStateMixin 
 
   bool get isOverlayOpen => _activeOverlay != _OverlayField.none;
 
+  /// Wird nach Bestätigung im "Neue Zeitzone erkannt"-Snackbar aufgerufen.
+  /// Aktualisiert den Zonen-Vorschlag in der Zeiterfassung — nur für HEUTE,
+  /// damit manuell gesetzte Zonen an anderen Tagen nicht überschrieben werden.
+  void syncActiveTravelZone() {
+    if (!TravelModeService.isEnabled) return;
+    final isToday = _dateKey == DateFormat('yyyy-MM-dd').format(DateTime.now());
+    if (!isToday) return;
+    setState(() {
+      _kommenTzSelected = TravelModeService.activeTzId;
+      _gehenTzSelected = TravelModeService.activeTzId;
+    });
+  }
+
   // ─────────────────────────────────────────────────────────────────────────
   // HomeScreen Logik
   // ─────────────────────────────────────────────────────────────────────────
@@ -719,7 +732,8 @@ void _editEntry(Map<String, dynamic> entry) {
           gehenTz: gehenTz,
         );
         if (!mounted) return;
-        setState(() {});
+        await SyncService.instance.pushArbeitszeit(DateFormat('yyyy-MM-dd').format(datum));
+  setState(() {});
         Navigator.pop(context);
         final skin = AppTheme.of(context);
         _showSnackbar('Aktualisiert ✓', skin.primary);
@@ -905,9 +919,17 @@ void _editEntry(Map<String, dynamic> entry) {
         child: Stack(
           children: [
             GestureDetector(
-              onTap: overlayOpen ? _closeOverlay : null,
-              behavior: HitTestBehavior.translucent,
-              child: Column(
+  onTap: (overlayOpen || _openSwipedEntryId != null)
+      ? () {
+          if (overlayOpen) _closeOverlay();
+          if (_openSwipedEntryId != null) {
+            closeAllRows();
+            setState(() => _openSwipedEntryId = null);
+          }
+        }
+      : null,
+  behavior: HitTestBehavior.translucent,
+  child: Column(
                 children: [
                   // ── Titel + Segment-Switcher (fix, scrollt nicht) ──
                   SafeArea(
@@ -1116,6 +1138,7 @@ GlassNavCard(
                   ),
                 ],
               ),
+              const SizedBox(height: 16),
             ],
 
             GestureDetector(
@@ -1365,9 +1388,10 @@ GlassNavCard(
                             onDelete: () => _deleteEntry(datum, entryId),
                             animateDelete: true,
                             onDeleteAnimationDone: () async {
-                              final date = DateTime.parse(datum);
-                              await NightShiftHelper.deleteEntry(date, entryId);
-                              if (!mounted) return;
+  final date = DateTime.parse(datum);
+  await NightShiftHelper.deleteEntry(date, entryId);
+  await SyncService.instance.pushArbeitszeit(datum); // datum ist schon der yyyy-MM-dd-Key
+  if (!mounted) return;
                               setState(() => _rowKeys.remove(entryId));
                               final skin = AppTheme.of(context);
                               _showSnackbar('Eintrag gelöscht', skin.deleteColor);
@@ -1431,6 +1455,7 @@ class _MonthEntryCard extends StatelessWidget {
     final gehen = entry['gehen'] ?? '';
     final tkf = entry['TKF'] ?? '';
     final hasNotiz = ((entry['Bemerkung'] ?? entry['notiz']) ?? '').isNotEmpty;
+    final hasZoneInfo = TravelModeService.isEnabled && entry['tz'] != null;
 
     final entriesForDay = NightShiftHelper.getEntriesForDay(datum);
     final showNumber = entriesForDay.length > 1;
@@ -1544,7 +1569,7 @@ class _MonthEntryCard extends StatelessWidget {
                         ),
                       ],
                     ),
-                    if (tkf.isNotEmpty || hasNotiz) ...[
+                    if (tkf.isNotEmpty || hasNotiz || hasZoneInfo) ...[
                       const SizedBox(height: 6),
                       Row(
                         children: [
@@ -1561,18 +1586,21 @@ class _MonthEntryCard extends StatelessWidget {
                                   overflow: TextOverflow.ellipsis),
                             ),
                           ],
-                          if (hasNotiz) ...[
+                          if (hasZoneInfo) ...[
                             if (tkf.isNotEmpty) const SizedBox(width: 8),
+                            Icon(Icons.public_rounded,
+                                size: 14,
+                                color: skin.primary.withValues(alpha: 0.45)),
+                          ],
+                          if (hasNotiz) ...[
+                            if (tkf.isNotEmpty || hasZoneInfo)
+                              const SizedBox(width: 8),
                             Icon(Icons.note_outlined,
                                 size: 14,
                                 color: skin.primary.withValues(alpha: 0.45)),
                           ],
                         ],
                       ),
-                    ],
-                    if (TravelModeService.isEnabled && entry['tz'] != null) ...[
-                      const SizedBox(height: 6),
-                      _TzBreakdownRow(skin: skin, entry: entry),
                     ],
                   ],
                 ),
@@ -2096,6 +2124,25 @@ void initState() {
   _editGehenTz = widget.entry['gehenTz'] as String? ?? _editKommenTz;
 }
 
+Widget _zoneInfoRow(AppSkin skin, String label, String value, {bool bold = false}) {
+  return Row(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      SizedBox(
+        width: 76,
+        child: Text(label, style: TextStyle(fontSize: 11, color: skin.surface(0.4))),
+      ),
+      Expanded(
+        child: Text(value,
+            style: TextStyle(
+                fontSize: 12,
+                color: skin.textPrimary,
+                fontWeight: bold ? FontWeight.w700 : FontWeight.w500)),
+      ),
+    ],
+  );
+}
+
 Widget? _buildZoneCrossingInfo(AppSkin skin) {
   if (!TravelModeService.isEnabled) return null;
   if (_editKommenTz == null || _editGehenTz == null) return null;
@@ -2137,19 +2184,31 @@ Widget? _buildZoneCrossingInfo(AppSkin skin) {
           children: [
             Icon(Icons.public_rounded, size: 14, color: skin.primary),
             const SizedBox(width: 6),
-            Text('Zonen-Umrechnung',
+            Text('Zeitzonen-Wechsel während der Schicht',
                 style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: skin.primary)),
           ],
         ),
         const SizedBox(height: 8),
-        Text('Gehen roh: ${widget.gehenCtrl.text}  ($_editGehenTz, ${TravelModeService.offsetLabelFor(_editGehenTz!)})',
-            style: TextStyle(fontSize: 12, color: skin.textPrimary)),
-        const SizedBox(height: 2),
-        Text('→ umgerechnet: $converted  ($_editKommenTz, ${TravelModeService.offsetLabelFor(_editKommenTz!)})',
-            style: TextStyle(fontSize: 12, color: skin.textPrimary, fontWeight: FontWeight.w600)),
-        const SizedBox(height: 6),
-        Text('Tatsächliche Dauer: $durText',
-            style: TextStyle(fontSize: 12, color: skin.surface(0.5))),
+        Text(
+          'Kommen war in $_editKommenTz, Gehen in $_editGehenTz. Für die Dauer wird die Gehen-Zeit umgerechnet:',
+          style: TextStyle(fontSize: 11.5, color: skin.surface(0.55)),
+        ),
+        const SizedBox(height: 8),
+        _zoneInfoRow(skin, 'Eingetragen',
+            '${widget.gehenCtrl.text} · $_editGehenTz (${TravelModeService.offsetLabelFor(_editGehenTz!)})'),
+        const SizedBox(height: 3),
+        _zoneInfoRow(skin, 'Umgerechnet',
+            '$converted · $_editKommenTz (${TravelModeService.offsetLabelFor(_editKommenTz!)})',
+            bold: true),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Icon(Icons.timelapse_rounded, size: 13, color: skin.primary.withValues(alpha: 0.7)),
+            const SizedBox(width: 5),
+            Text('Tatsächliche Arbeitsdauer: $durText',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: skin.textPrimary)),
+          ],
+        ),
       ],
     ),
   );
