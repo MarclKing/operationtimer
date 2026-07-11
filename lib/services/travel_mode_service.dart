@@ -119,6 +119,12 @@ class TravelModeService {
     await registerZoneUsage(tzId);
   }
 
+static Future<void> removeRecentZone(String tzId) async {
+  final list = List<String>.from(recentZoneIds);
+  list.remove(tzId);
+  await _box.put(_kRecentZones, list);
+}
+
   // ── Zonen-Historie für Picker-Vorschläge ────────────────────────────
   static List<String> get recentZoneIds {
     final raw = _box.get(_kRecentZones);

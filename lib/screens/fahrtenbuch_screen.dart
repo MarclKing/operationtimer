@@ -781,6 +781,7 @@ _selectionBarAnim = CurvedAnimation(
 
   void showAddFahrtOverlay({bool autoScanKmStart = false}) {
     if (_sheetOpen) return;
+    if (_openSwipedFahrtId != null) setState(() => _openSwipedFahrtId = null);
     final skin = AppTheme.of(context);
     setState(() { _sheetOpen = true; _draftVisible = false; });
     widget.onDraftChanged?.call();
@@ -848,6 +849,7 @@ _selectionBarAnim = CurvedAnimation(
 
   void _editFahrt(Fahrt fahrt) {
     if (_sheetOpen) return;
+    if (_openSwipedFahrtId != null) setState(() => _openSwipedFahrtId = null);
 
     final editDraft = FahrtDraft();
     editDraft.kennzeichen = fahrt.kennzeichen;
@@ -1612,6 +1614,15 @@ class _FahrtCardState extends State<_FahrtCard>
         CurvedAnimation(parent: _deleteAnimController, curve: const Interval(0.6, 1.0, curve: Curves.easeInOut)));
     _deleteAnimController.addListener(() { if (mounted) setState(() {}); });
   }
+
+@override
+void didUpdateWidget(covariant _FahrtCard oldWidget) {
+  super.didUpdateWidget(oldWidget);
+  if (widget.externallyOpenKey != widget.fahrt.id &&
+      (_isOpenRight || _isOpenLeft)) {
+    _close();
+  }
+}
 
   @override
   void dispose() {

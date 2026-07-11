@@ -364,6 +364,7 @@ class _TiTextField extends StatelessWidget {
   final String hint;
   final ValueChanged<String>? onChanged;
   final ValueChanged<String>? onSubmitted;
+  final bool autoCapitalizeFirst;
 
   const _TiTextField({
     required this.skin,
@@ -371,6 +372,7 @@ class _TiTextField extends StatelessWidget {
     required this.hint,
     this.onChanged,
     this.onSubmitted,
+    this.autoCapitalizeFirst = false,
   });
 
   @override
@@ -386,6 +388,12 @@ class _TiTextField extends StatelessWidget {
         controller: controller,
         onChanged: onChanged,
         onSubmitted: onSubmitted,
+        textCapitalization: autoCapitalizeFirst
+            ? TextCapitalization.sentences
+            : TextCapitalization.none,
+        inputFormatters: autoCapitalizeFirst
+            ? [_FirstLetterUppercaseFormatter()]
+            : null,
         style: TextStyle(
             color: skin.textPrimary, fontSize: 15),
         decoration: InputDecoration(
@@ -397,6 +405,20 @@ class _TiTextField extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// Erzwingt Großbuchstaben am Anfang — greift auch bei Autokorrektur/
+/// Diktat, wo textCapitalization allein (nur Tastatur-Hinweis) nicht reicht.
+class _FirstLetterUppercaseFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+      TextEditingValue oldValue, TextEditingValue newValue) {
+    if (newValue.text.isEmpty) return newValue;
+    final text = newValue.text;
+    final capitalized = text[0].toUpperCase() + text.substring(1);
+    if (capitalized == text) return newValue;
+    return newValue.copyWith(text: capitalized, selection: newValue.selection);
   }
 }
 
@@ -2481,16 +2503,18 @@ class _HomescreenSettingsScreenState extends State<_HomescreenSettingsScreen> {
                   Text('Das Wetter wird für diese Stadt geladen.',
                       style: TextStyle(fontSize: 13, color: skin.textMuted)),
                   const SizedBox(height: 16),
-                  _TiTextField(
-                    skin: skin,
-                    controller: ctrl,
-                    hint: 'z.B. Berlin, München, Hamburg',
-                    onChanged: (_) => setSheetState(() {
-                      verifiedLabel = null;
-                      errorMsg = null;
-                    }),
-                    onSubmitted: (_) => doVerify(),
-                  ),
+                  // NEU:
+_TiTextField(
+  skin: skin,
+  controller: ctrl,
+  hint: 'z.B. Berlin, München, Hamburg',
+  autoCapitalizeFirst: true,
+  onChanged: (_) => setSheetState(() {
+    verifiedLabel = null;
+    errorMsg = null;
+  }),
+  onSubmitted: (_) => doVerify(),
+),
 
                   // ── Bestätigung / Fehler ──────────────────────────────
                   if (isVerifying) ...[

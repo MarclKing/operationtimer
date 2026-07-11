@@ -12,6 +12,7 @@ import '../widgets/glass_kit.dart';
 import '../widgets/glass_pickers.dart';
 import '../widgets/glass_snackbar.dart';
 import '../widgets/glass_dialogs.dart';
+import '../widgets/swipe_animation_mixin.dart';
 import '../services/night_shift_helper.dart';
 import '../services/pdf_service.dart';
 import '../services/sync_service.dart';
@@ -962,7 +963,11 @@ void _editEntry(Map<String, dynamic> entry) {
                             active: _activeTab,
                             onChanged: (tab) {
                               FocusScope.of(context).unfocus();
-                              setState(() => _activeTab = tab);
+                              closeAllRows();
+                              setState(() {
+                                _activeTab = tab;
+                                _openSwipedEntryId = null;
+                              });
                             },
                           ),
                         ),
@@ -1455,7 +1460,11 @@ class _MonthEntryCard extends StatelessWidget {
     final gehen = entry['gehen'] ?? '';
     final tkf = entry['TKF'] ?? '';
     final hasNotiz = ((entry['Bemerkung'] ?? entry['notiz']) ?? '').isNotEmpty;
-    final hasZoneInfo = TravelModeService.isEnabled && entry['tz'] != null;
+    final gehenRaw = entry['gehenRaw'] as String?;
+    final gehenRawTz = entry['gehenRawTz'] as String?;
+    final hasZoneInfo = TravelModeService.isEnabled &&
+    gehenRaw != null &&
+    gehenRawTz != null;
 
     final entriesForDay = NightShiftHelper.getEntriesForDay(datum);
     final showNumber = entriesForDay.length > 1;
@@ -1535,7 +1544,7 @@ class _MonthEntryCard extends StatelessWidget {
                   margin: const EdgeInsets.symmetric(horizontal: 12),
                   color: skin.surface(0.07)),
 
-              // ── Zeiten + TKF ──
+               // ── Zeiten + TKF ──
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1558,19 +1567,35 @@ class _MonthEntryCard extends StatelessWidget {
                           child: Icon(Icons.arrow_forward,
                               size: 16, color: skin.surface(0.2)),
                         ),
-                        Text(
-                          gehen.isEmpty ? '--:--' : gehen,
-                          style: TextStyle(
-                              fontSize: 26,
-                              fontWeight: FontWeight.w700,
-                              color: gehen.isEmpty
-                                  ? skin.surface(0.2)
-                                  : skin.gehenColor),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              gehen.isEmpty ? '--:--' : gehen,
+                              style: TextStyle(
+                                  fontSize: 26,
+                                  fontWeight: FontWeight.w700,
+                                  height: 1.0,
+                                  color: gehen.isEmpty
+                                      ? skin.surface(0.2)
+                                      : skin.gehenColor),
+                            ),
+                            if (hasZoneInfo)
+                              Text(
+                                '$gehenRaw · ${_shortTzName(gehenRawTz!)}',
+                                style: TextStyle(
+                                    fontSize: 9,
+                                    height: 1.0,
+                                    fontWeight: FontWeight.w600,
+                                    color: skin.primary.withValues(alpha: 0.5)),
+                              ),
+                          ],
                         ),
                       ],
                     ),
-                    if (tkf.isNotEmpty || hasNotiz || hasZoneInfo) ...[
-                      const SizedBox(height: 6),
+                    if (tkf.isNotEmpty || hasNotiz) ...[
+                      SizedBox(height: hasZoneInfo ? 2 : 6),
                       Row(
                         children: [
                           if (tkf.isNotEmpty) ...[
@@ -1586,15 +1611,8 @@ class _MonthEntryCard extends StatelessWidget {
                                   overflow: TextOverflow.ellipsis),
                             ),
                           ],
-                          if (hasZoneInfo) ...[
-                            if (tkf.isNotEmpty) const SizedBox(width: 8),
-                            Icon(Icons.public_rounded,
-                                size: 14,
-                                color: skin.primary.withValues(alpha: 0.45)),
-                          ],
                           if (hasNotiz) ...[
-                            if (tkf.isNotEmpty || hasZoneInfo)
-                              const SizedBox(width: 8),
+                            if (tkf.isNotEmpty) const SizedBox(width: 8),
                             Icon(Icons.note_outlined,
                                 size: 14,
                                 color: skin.primary.withValues(alpha: 0.45)),
@@ -2007,6 +2025,7 @@ class _EditSheetState extends State<_EditSheet> {
   // ── Zeitzonen für Bearbeitung ──
   String? _editKommenTz;
   String? _editGehenTz;
+  double _dragAccum = 0; 
 
   TimeOfDay? _parse(String t) {
     if (t.isEmpty || t == '--:--') return null;
@@ -2143,6 +2162,49 @@ Widget _zoneInfoRow(AppSkin skin, String label, String value, {bool bold = false
   );
 }
 
+String? _liveConvertedGehenTime() {
+  if (!TravelModeService.isEnabled) return null;
+  if (_editKommenTz == null || _editGehenTz == null) return null;
+  if (_editKommenTz == _editGehenTz) return null;
+  final gehenText = widget.gehenCtrl.text;
+  if (gehenText.isEmpty || gehenText == '--:--') return null;
+  return TravelModeService.convertGehenToKommenTz(
+    datum: widget.datum,
+    kommenHhmm: widget.kommenCtrl.text.isEmpty ? '00:00' : widget.kommenCtrl.text,
+    kommenTzId: _editKommenTz!,
+    gehenHhmm: gehenText,
+    gehenTzId: _editGehenTz!,
+  );
+}
+
+Widget? _gehenFooter(AppSkin skin) {
+  final converted = _liveConvertedGehenTime();
+  if (converted == null) return null;
+  return Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Icon(Icons.sync_alt_rounded, size: 9, color: skin.textMuted),
+      const SizedBox(width: 3),
+      Text('$converted · ${_shortTzName(_editKommenTz!)}',
+          style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w600, color: skin.textMuted)),
+    ],
+  );
+}
+
+Widget? _kommenFooter(AppSkin skin) {
+  if (!TravelModeService.isEnabled) return null;
+  if (_editKommenTz == null || _editGehenTz == null || _editKommenTz == _editGehenTz) return null;
+  return Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Icon(Icons.anchor_rounded, size: 9, color: skin.textMuted.withValues(alpha: 0.5)),
+      const SizedBox(width: 3),
+      Text('Referenzzeit',
+          style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w600, color: skin.textMuted.withValues(alpha: 0.5))),
+    ],
+  );
+}
+
 Widget? _buildZoneCrossingInfo(AppSkin skin) {
   if (!TravelModeService.isEnabled) return null;
   if (_editKommenTz == null || _editGehenTz == null) return null;
@@ -2221,6 +2283,14 @@ Widget? _buildZoneCrossingInfo(AppSkin skin) {
     return GestureDetector(
       onVerticalDragUpdate: (d) {
         if (d.delta.dy > 8) FocusScope.of(context).unfocus();
+        _dragAccum += d.delta.dy;
+      },
+      onVerticalDragEnd: (d) {
+        final velocity = d.primaryVelocity ?? 0;
+        if (_dragAccum > 60 || velocity > 600) {
+          Navigator.pop(context);
+        }
+        _dragAccum = 0;
       },
       child: Padding(
         padding: EdgeInsets.only(
@@ -2263,12 +2333,13 @@ Widget? _buildZoneCrossingInfo(AppSkin skin) {
                         fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: 20),
-                  Row(children: [
+                   Row(children: [
                     Expanded(
                       child: _SwipeEditTimeField(
                         label: 'KOMMEN',
                         ctrl: widget.kommenCtrl,
                         color: skin.kommenColor,
+                        footer: _kommenFooter(skin),
                         onTap: () =>
                             _pickTime(widget.kommenCtrl, false),
                         onDoubleTap: () {
@@ -2288,6 +2359,7 @@ Widget? _buildZoneCrossingInfo(AppSkin skin) {
                         label: 'GEHEN',
                         ctrl: widget.gehenCtrl,
                         color: skin.gehenColor,
+                        footer: _gehenFooter(skin),
                         onTap: () =>
                             _pickTime(widget.gehenCtrl, true),
                         onDoubleTap: () {
@@ -2453,6 +2525,7 @@ class _SwipeEditTimeField extends StatefulWidget {
   final VoidCallback? onDoubleTap;
   final VoidCallback onSwipeUp;
   final VoidCallback onSwipeDown;
+  final Widget? footer;
 
   const _SwipeEditTimeField({
     required this.label,
@@ -2462,6 +2535,7 @@ class _SwipeEditTimeField extends StatefulWidget {
     this.onDoubleTap,
     required this.onSwipeUp,
     required this.onSwipeDown,
+    this.footer,
   });
 
   @override
@@ -2550,6 +2624,12 @@ class _SwipeEditTimeFieldState extends State<_SwipeEditTimeField> {
                       ),
                     ),
                     const SizedBox(height: 2),
+                    if (widget.footer != null) ...[
+                      const SizedBox(height: 4),
+                      Container(height: 0.6, color: widget.color.withValues(alpha: 0.2)),
+                      const SizedBox(height: 3),
+                      widget.footer!,
+                    ],
                   ],
                 ),
               ),
@@ -2626,6 +2706,11 @@ class _GlassTextFieldInput extends StatelessWidget {
   }
 }
 
+String _shortTzName(String tzId) {
+  final parts = tzId.split('/');
+  return parts.last.replaceAll('_', ' ');
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // ZONE PICKER SHEET
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2640,72 +2725,59 @@ Future<String?> _showZonePickerSheet({
     context: context,
     backgroundColor: Colors.transparent,
     isScrollControlled: true,
-    builder: (sheetContext) => ClipRRect(
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
-          decoration: BoxDecoration(
-            color: skin.isLight
-                ? Colors.white.withValues(alpha: 0.92)
-                : skin.bgSheet.withValues(alpha: 0.94),
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-            border: Border.all(color: skin.glassBorder),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 40, height: 4,
-                  decoration: BoxDecoration(
-                    color: skin.surface(0.2),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
+    builder: (sheetContext) => StatefulBuilder(
+      builder: (context, setSheetState) {
+        final suggestions = TravelModeService.suggestedZoneIds();
+        return ClipRRect(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+              decoration: BoxDecoration(
+                color: skin.isLight
+                    ? Colors.white.withValues(alpha: 0.92)
+                    : skin.bgSheet.withValues(alpha: 0.94),
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                border: Border.all(color: skin.glassBorder),
               ),
-              const SizedBox(height: 18),
-              Text('Zeitzone wählen',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: skin.textPrimary)),
-              const SizedBox(height: 14),
-              ...suggestions.map((tzId) {
-                final label = TravelModeService.offsetLabelFor(tzId);
-                final isActive = tzId == currentTzId;
-                return GestureDetector(
-                  onTap: () {
-                    HapticFeedback.selectionClick();
-                    Navigator.pop(sheetContext, tzId);
-                  },
-                  child: Container(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                    decoration: BoxDecoration(
-                      color: isActive ? skin.primary.withValues(alpha: 0.14) : skin.surface(0.04),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: isActive ? skin.primary.withValues(alpha: 0.4) : skin.glassBorder,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40, height: 4,
+                      decoration: BoxDecoration(
+                        color: skin.surface(0.2),
+                        borderRadius: BorderRadius.circular(2),
                       ),
                     ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.public_rounded, size: 16,
-                            color: isActive ? skin.primary : skin.surface(0.4)),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(tzId,
-                              style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
-                                  color: skin.textPrimary)),
-                        ),
-                        Text(label, style: TextStyle(fontSize: 12, color: skin.surface(0.4))),
-                      ],
-                    ),
                   ),
-                );
-              }),
+                  const SizedBox(height: 18),
+                  Text('Zeitzone wählen',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: skin.textPrimary)),
+                  const SizedBox(height: 14),
+                  ...suggestions.map((tzId) {
+                    final label = TravelModeService.offsetLabelFor(tzId);
+                    final isActive = tzId == currentTzId;
+                    final deletable = TravelModeService.recentZoneIds.contains(tzId) &&
+                        tzId != TravelModeService.activeTzId &&
+                        tzId != currentTzId &&
+                        tzId != TravelModeService.lastKnownDeviceTz;
+                    return _DeletableZoneTile(
+                      skin: skin,
+                      tzId: tzId,
+                      label: label,
+                      isActive: isActive,
+                      deletable: deletable,
+                      onTap: () => Navigator.pop(sheetContext, tzId),
+                      onDelete: () async {
+                        await TravelModeService.removeRecentZone(tzId);
+                        setSheetState(() {});
+                      },
+                    );
+                  }),
               const SizedBox(height: 4),
               GestureDetector(
                 onTap: () async {
@@ -2726,12 +2798,14 @@ Future<String?> _showZonePickerSheet({
                           style: TextStyle(fontSize: 13.5, color: skin.primary, fontWeight: FontWeight.w600)),
                     ],
                   ),
-                ),
+                 ),
               ),
             ],
           ),
         ),
       ),
+    );
+      },
     ),
   );
 }
@@ -2797,6 +2871,128 @@ class _ZoneChip extends StatelessWidget {
               const SizedBox(width: 4),
               Text(label, style: TextStyle(fontSize: 10.5, color: skin.primary.withValues(alpha: 0.6))),
             ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DeletableZoneTile extends StatefulWidget {
+  final AppSkin skin;
+  final String tzId;
+  final String label;
+  final bool isActive;
+  final bool deletable;
+  final VoidCallback onTap;
+  final VoidCallback onDelete;
+
+  const _DeletableZoneTile({
+    required this.skin,
+    required this.tzId,
+    required this.label,
+    required this.isActive,
+    required this.deletable,
+    required this.onTap,
+    required this.onDelete,
+  });
+
+  @override
+  State<_DeletableZoneTile> createState() => _DeletableZoneTileState();
+}
+
+class _DeletableZoneTileState extends State<_DeletableZoneTile>
+    with SingleTickerProviderStateMixin, SwipeAnimationMixin {
+  static const double _revealWidth = 72.0;
+  double _dragStart = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    initSwipeAnimation(vsync: this);
+  }
+
+  @override
+  void dispose() {
+    disposeSwipeAnimation();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final skin = widget.skin;
+    if (!widget.deletable) return _buildTile(skin);
+
+    return GestureDetector(
+      onHorizontalDragStart: (_) => _dragStart = swipeOffset,
+      onHorizontalDragUpdate: (d) {
+        setSwipeOffsetImmediate((_dragStart + d.delta.dx).clamp(-_revealWidth, 0.0));
+      },
+      onHorizontalDragEnd: (_) {
+        if (swipeOffset < -_revealWidth / 2) {
+          animateSwipeTo(-_revealWidth);
+        } else {
+          animateSwipeTo(0);
+        }
+      },
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: GestureDetector(
+                onTap: () { HapticFeedback.mediumImpact(); widget.onDelete(); },
+                child: Container(
+                  width: _revealWidth,
+                  margin: const EdgeInsets.only(bottom: 8),
+                  decoration: BoxDecoration(
+                    color: skin.deleteColor.withValues(alpha: 0.85),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.delete_outline, color: Colors.white, size: 20),
+                ),
+              ),
+            ),
+          ),
+          Transform.translate(
+            offset: Offset(swipeOffset, 0),
+            child: _buildTile(skin),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTile(AppSkin skin) {
+    return GestureDetector(
+      onTap: () {
+        if (swipeOffset < 0) { animateSwipeTo(0); return; }
+        HapticFeedback.selectionClick();
+        widget.onTap();
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: widget.isActive ? skin.primary.withValues(alpha: 0.14) : skin.surface(0.04),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: widget.isActive ? skin.primary.withValues(alpha: 0.4) : skin.glassBorder,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.public_rounded, size: 16,
+                color: widget.isActive ? skin.primary : skin.surface(0.4)),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(widget.tzId,
+                  style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: widget.isActive ? FontWeight.w700 : FontWeight.w500,
+                      color: skin.textPrimary)),
+            ),
+            Text(widget.label, style: TextStyle(fontSize: 12, color: skin.surface(0.4))),
           ],
         ),
       ),
