@@ -6,7 +6,7 @@ import SwiftUI
 // Spiegelt AppSkin "shield" aus app_theme.dart
 // ─────────────────────────────────────────────────────────────────────────────
 
-private enum Shield {
+enum Shield {
     // Hintergründe
     static let bgBase    = Color(hex: "#0A0B0F")
     static let bgCard    = Color(hex: "#14161D")
@@ -32,7 +32,7 @@ private enum Shield {
 }
 
 // Hex-Initializer für Color
-private extension Color {
+extension Color {
     init(hex: String) {
         let h = hex.trimmingCharacters(in: .init(charactersIn: "#"))
         var rgb: UInt64 = 0
@@ -220,7 +220,6 @@ struct SmallWidgetView: View {
             let activeAngle: Double = startAngle + sweep * progress
 
             let startRad  = startAngle  * .pi / 180
-            let endRad    = endAngle    * .pi / 180
             let activeRad = activeAngle * .pi / 180
 
             let dotCount    = 21
@@ -315,7 +314,6 @@ struct SmallWidgetView: View {
             // ── Ticks alle 10° ──────────────────────────────────────────
             for degInt in stride(from: 150, through: 390, by: 10) {
                 let deg    = Double(degInt)
-                let rad    = (Double(degInt % 360)) * .pi / 180
                 let isMajor     = degInt % 30 == 0
                 let normRatio   = (deg - 150) / 240.0
                 let isActive    = normRatio <= progress
@@ -650,7 +648,11 @@ struct DienstplanWidgetView: View {
         Group {
             switch family {
             case .systemSmall:
-                SmallWidgetView()
+                if isReadOnlyModeActive() {
+                    ReadOnlyDisabledSmallView()
+                } else {
+                    SmallWidgetView()
+                }
 
             case .systemMedium:
                 MediumWidgetView(entry: entry, todayStr: todayStr)

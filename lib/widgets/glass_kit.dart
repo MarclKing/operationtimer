@@ -194,6 +194,61 @@ class GlassPrimaryButton extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// GLASS DANGER BUTTON (NEU)
+// ─────────────────────────────────────────────────────────────────────────────
+
+class GlassDangerButton extends StatelessWidget {
+  final AppSkin skin;
+  final String label;
+  final IconData? icon;
+  final VoidCallback onTap;
+  final bool large;
+  final bool fullWidth;
+
+  const GlassDangerButton({
+    super.key,
+    required this.skin,
+    required this.label,
+    required this.onTap,
+    this.icon,
+    this.large = false,
+    this.fullWidth = true,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final bgColor = skin.deleteColor.withValues(alpha: skin.isLight ? 0.09 : 0.14);
+    final borderColor = skin.deleteColor.withValues(alpha: skin.isLight ? 0.28 : 0.40);
+
+    final content = Container(
+      width: fullWidth ? double.infinity : null,
+      padding: EdgeInsets.symmetric(vertical: large ? 17 : 13, horizontal: 20),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(large ? 20 : 14),
+        border: Border.all(color: borderColor, width: 1.5),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, color: skin.deleteColor, size: large ? 20 : 16),
+            const SizedBox(width: 8),
+          ],
+          Text(label, style: TextStyle(fontSize: large ? 16 : 14, fontWeight: FontWeight.w700, color: skin.deleteColor)),
+        ],
+      ),
+    );
+
+    return GestureDetector(
+      onTap: onTap,
+      child: fullWidth ? content : Center(child: content),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // GLASS SECONDARY BUTTON
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -339,12 +394,14 @@ class GlassSegmentedControl<T> extends StatelessWidget {
   final T value;
   final List<GlassSegmentItem<T>> items;
   final ValueChanged<T> onChanged;
+  final bool compact;
 
   const GlassSegmentedControl({
     super.key,
     required this.value,
     required this.items,
     required this.onChanged,
+    this.compact = false,
   });
 
   @override
@@ -355,12 +412,12 @@ class GlassSegmentedControl<T> extends StatelessWidget {
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
         child: Container(
-          padding: const EdgeInsets.all(4),
+          padding: EdgeInsets.all(compact ? 3 : 4),
           decoration: BoxDecoration(
             color: skin.isLight
                 ? Colors.white.withValues(alpha: 0.45)
                 : Colors.white.withValues(alpha: 0.06),
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(compact ? 12 : 14),
             border: Border.all(color: skin.glassBorder),
           ),
           child: Row(
@@ -374,21 +431,21 @@ class GlassSegmentedControl<T> extends StatelessWidget {
                   },
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 200),
-                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    padding: EdgeInsets.symmetric(vertical: compact ? 6 : 10),
                     decoration: BoxDecoration(
                       color: isSelected
                           ? (skin.isLight
                               ? Colors.white.withValues(alpha: 0.80)
                               : Colors.white.withValues(alpha: 0.14))
                           : Colors.transparent,
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(compact ? 8 : 10),
                       border: isSelected ? Border.all(color: skin.glassBorder) : null,
                     ),
                     child: Center(
                       child: Text(
                         item.label,
                         style: TextStyle(
-                          fontSize: 12,
+                          fontSize: compact ? 11 : 12,
                           fontWeight: isSelected ? FontWeight.w700 : FontWeight.w400,
                           color: isSelected ? skin.primary : skin.surface(0.45),
                         ),
@@ -431,6 +488,9 @@ class GlassDropdownButton<T> extends StatefulWidget {
   /// null (Standard) = altes Verhalten, keine Begrenzung, kein Scroll.
   final double? maxPopupHeight;
 
+  /// NEU: Farbe des Punkt-Indikators neben dem Wert.
+  final Color Function(T)? dotColorBuilder;
+
   const GlassDropdownButton({
     super.key,
     required this.value,
@@ -443,6 +503,7 @@ class GlassDropdownButton<T> extends StatefulWidget {
     this.iconBg,
     this.isLast = false,
     this.maxPopupHeight,
+    this.dotColorBuilder,
   });
 
   @override
@@ -599,12 +660,30 @@ class _GlassDropdownButtonState<T> extends State<GlassDropdownButton<T>>
                 const SizedBox(width: 12),
                 ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 130),
-                  child: Text(
-                    widget.displayBuilder(widget.value),
-                    style: TextStyle(fontSize: 15, color: skin.textMuted),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.right,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (widget.dotColorBuilder != null) ...[
+                        Container(
+                          width: 7,
+                          height: 7,
+                          margin: const EdgeInsets.only(right: 6),
+                          decoration: BoxDecoration(
+                            color: widget.dotColorBuilder!(widget.value),
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      ],
+                      Flexible(
+                        child: Text(
+                          widget.displayBuilder(widget.value),
+                          style: TextStyle(fontSize: 15, color: skin.textMuted),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.right,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(width: 4),
@@ -820,6 +899,366 @@ class _DropdownOverlayState<T> extends State<_DropdownOverlay<T>> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// GLASS MULTI DROPDOWN (NEU)
+// ─────────────────────────────────────────────────────────────────────────────
+
+class GlassMultiDropdownButton<T> extends StatefulWidget {
+  final List<T> values;
+  final List<GlassDropdownItem<T>> items;
+  final ValueChanged<List<T>> onChanged;
+  final String label;
+  final int maxSelectable;
+  final String Function(List<T>) displaySummary;
+  final bool isLast;
+  final double? maxPopupHeight;
+  /// NEU: Werte, die zwar selektiert bleiben, aber nicht abwählbar sind
+  /// (z.B. eine Sync-Gruppe, die vom anderen Gerät stammt).
+  final Set<T> lockedValues;
+
+  const GlassMultiDropdownButton({
+    super.key,
+    required this.values,
+    required this.items,
+    required this.onChanged,
+    required this.label,
+    required this.maxSelectable,
+    required this.displaySummary,
+    this.isLast = false,
+    this.maxPopupHeight,
+    this.lockedValues = const {},
+  });
+
+  @override
+  State<GlassMultiDropdownButton<T>> createState() => _GlassMultiDropdownButtonState<T>();
+}
+
+class _GlassMultiDropdownButtonState<T> extends State<GlassMultiDropdownButton<T>>
+    with SingleTickerProviderStateMixin {
+  OverlayEntry? _overlayEntry;
+  final _triggerKey = GlobalKey();
+  bool _open = false;
+  late AnimationController _animCtrl;
+  late List<T> _working;
+
+  @override
+  void initState() {
+    super.initState();
+    _animCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 200));
+    _working = List<T>.from(widget.values);
+  }
+
+  @override
+  void didUpdateWidget(covariant GlassMultiDropdownButton<T> oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_open) _working = List<T>.from(widget.values);
+  }
+
+  @override
+  void dispose() {
+    _removeOverlay();
+    _animCtrl.dispose();
+    super.dispose();
+  }
+
+  void _removeOverlay() {
+    _overlayEntry?.remove();
+    _overlayEntry = null;
+  }
+
+  Future<void> _close() async {
+    await _animCtrl.reverse();
+    _removeOverlay();
+    if (mounted) setState(() => _open = false);
+  }
+
+  void _openOverlay() {
+    final box = _triggerKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null) return;
+    final overlay = Overlay.of(context);
+    final size = box.size;
+    final offset = box.localToGlobal(Offset.zero);
+    final screenHeight = MediaQuery.of(context).size.height;
+
+    const popupMaxWidth = 260.0;
+    const popupMinWidth = 200.0;
+
+    final rightEdge = offset.dx + size.width;
+    double popupLeft = rightEdge - popupMaxWidth - 16;
+    if (popupLeft < 16) popupLeft = 16;
+
+    double popupTop = offset.dy + size.height * 0.5 - 8;
+    final rawHeight = (widget.items.length + 1) * 48.0 + 16;
+    final estimatedHeight = widget.maxPopupHeight != null
+        ? (rawHeight < widget.maxPopupHeight! ? rawHeight : widget.maxPopupHeight!)
+        : rawHeight;
+    if (popupTop + estimatedHeight > screenHeight - 32) {
+      popupTop = screenHeight - estimatedHeight - 32;
+    }
+    if (popupTop < 60) popupTop = 60;
+
+    _working = List<T>.from(widget.values);
+    _animCtrl.value = 0;
+    setState(() => _open = true);
+
+    _overlayEntry = OverlayEntry(
+      builder: (_) => _MultiDropdownOverlay<T>(
+        animCtrl: _animCtrl,
+        items: widget.items,
+        working: _working,
+        lockedValues: widget.lockedValues,
+        left: popupLeft,
+        top: popupTop,
+        maxWidth: popupMaxWidth,
+        minWidth: popupMinWidth,
+        maxHeight: widget.maxPopupHeight,
+        onToggle: (val) {
+          if (widget.lockedValues.contains(val)) {
+            HapticFeedback.heavyImpact();
+            return;
+          }
+          if (_working.contains(val)) {
+            HapticFeedback.selectionClick();
+            setState(() => _working.remove(val));
+          } else if (_working.length < widget.maxSelectable) {
+            HapticFeedback.selectionClick();
+            setState(() => _working.add(val));
+          } else {
+            HapticFeedback.heavyImpact();
+            return;
+          }
+          widget.onChanged(List<T>.from(_working));
+          _overlayEntry?.markNeedsBuild();
+        },
+        onClear: () {
+          HapticFeedback.selectionClick();
+          setState(() => _working.clear());
+          widget.onChanged([]);
+          _overlayEntry?.markNeedsBuild();
+        },
+        onDismiss: _close,
+      ),
+    );
+
+    overlay.insert(_overlayEntry!);
+    _animCtrl.forward();
+  }
+
+  void _toggle() => _open ? _close() : _openOverlay();
+
+  @override
+  Widget build(BuildContext context) {
+    final skin = AppTheme.of(context);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        GestureDetector(
+          key: _triggerKey,
+          onTap: _toggle,
+          behavior: HitTestBehavior.opaque,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    widget.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: skin.textPrimary),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 130),
+                  child: Text(
+                    widget.displaySummary(widget.values),
+                    style: TextStyle(fontSize: 15, color: skin.textMuted),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.right,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                AnimatedRotation(
+                  turns: _open ? 0.25 : 0.0,
+                  duration: const Duration(milliseconds: 200),
+                  child: Icon(Icons.chevron_right_rounded, size: 18, color: skin.surface(0.28)),
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (!widget.isLast)
+          Padding(
+            padding: const EdgeInsets.only(left: 14.0),
+            child: Divider(
+              height: 0.5,
+              color: skin.isLight ? Colors.white.withValues(alpha: 0.55) : Colors.white.withValues(alpha: 0.16),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _MultiDropdownOverlay<T> extends StatelessWidget {
+  final AnimationController animCtrl;
+  final List<GlassDropdownItem<T>> items;
+  final List<T> working;
+  final Set<T> lockedValues;
+  final double left, top, maxWidth, minWidth;
+  final double? maxHeight;
+  final ValueChanged<T> onToggle;
+  final VoidCallback onClear;
+  final VoidCallback onDismiss;
+
+  const _MultiDropdownOverlay({
+    required this.animCtrl,
+    required this.items,
+    required this.working,
+    this.lockedValues = const {},
+    required this.left,
+    required this.top,
+    required this.maxWidth,
+    required this.minWidth,
+    this.maxHeight,
+    required this.onToggle,
+    required this.onClear,
+    required this.onDismiss,
+  });
+
+  Widget _buildItemsColumn(BuildContext context, AppSkin skin) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        GestureDetector(
+          onTap: onClear,
+          behavior: HitTestBehavior.opaque,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+            child: Row(children: [
+              SizedBox(
+                width: 22,
+                child: working.isEmpty ? Icon(Icons.check_rounded, size: 16, color: skin.primary) : null,
+              ),
+              Text('Ohne',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: working.isEmpty ? FontWeight.w600 : FontWeight.w400,
+                    color: working.isEmpty ? skin.primary : skin.textPrimary,
+                  )),
+            ]),
+          ),
+        ),
+        Container(
+          height: 0.4,
+          margin: const EdgeInsets.only(left: 38),
+          color: skin.isLight ? Colors.black.withValues(alpha: 0.08) : Colors.white.withValues(alpha: 0.08),
+        ),
+        ...items.asMap().entries.map((entry) {
+          final i = entry.key;
+          final item = entry.value;
+          final isSelected = working.contains(item.value);
+          final isLocked = lockedValues.contains(item.value);
+          final isLast = i == items.length - 1;
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              GestureDetector(
+                onTap: () => onToggle(item.value),
+                behavior: HitTestBehavior.opaque,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+                  child: Row(children: [
+                    SizedBox(
+                      width: 22,
+                      child: isLocked
+                          ? Icon(Icons.lock_outline_rounded, size: 15, color: skin.surface(0.35))
+                          : (isSelected ? Icon(Icons.check_rounded, size: 16, color: skin.primary) : null),
+                    ),
+                    Flexible(
+                      child: Text(item.label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                            color: isLocked ? skin.surface(0.38) : (isSelected ? skin.primary : skin.textPrimary),
+                          )),
+                    ),
+                  ]),
+                ),
+              ),
+              if (!isLast)
+                Container(
+                  height: 0.4,
+                  margin: const EdgeInsets.only(left: 38),
+                  color: skin.isLight ? Colors.black.withValues(alpha: 0.08) : Colors.white.withValues(alpha: 0.08),
+                ),
+            ],
+          );
+        }),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final skin = AppTheme.of(context);
+    final scaleAnim = CurvedAnimation(parent: animCtrl, curve: Curves.easeOutBack, reverseCurve: Curves.easeInCubic);
+    final fadeAnim = CurvedAnimation(parent: animCtrl, curve: Curves.easeOut, reverseCurve: Curves.easeIn);
+
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: GestureDetector(onTap: onDismiss, behavior: HitTestBehavior.translucent, child: const SizedBox.expand()),
+        ),
+        Positioned(
+          left: left,
+          top: top,
+          child: AnimatedBuilder(
+            animation: animCtrl,
+            builder: (_, child) => Transform.scale(
+              scale: 0.88 + scaleAnim.value * 0.12,
+              alignment: Alignment.topRight,
+              child: Opacity(opacity: fadeAnim.value.clamp(0.0, 1.0), child: child),
+            ),
+            child: Material(
+              color: Colors.transparent,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minWidth: minWidth, maxWidth: maxWidth),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(14),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 28, sigmaY: 28),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: skin.isLight ? Colors.white.withValues(alpha: 0.94) : const Color(0xFF2A2A2E).withValues(alpha: 0.97),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: skin.isLight ? Colors.white.withValues(alpha: 0.55) : Colors.white.withValues(alpha: 0.12),
+                        ),
+                        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.28), blurRadius: 32, offset: const Offset(0, 8))],
+                      ),
+                      child: maxHeight != null
+                          ? ConstrainedBox(
+                              constraints: BoxConstraints(maxHeight: maxHeight!),
+                              child: SingleChildScrollView(child: _buildItemsColumn(context, skin)),
+                            )
+                          : _buildItemsColumn(context, skin),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // GLASS SWIPE ACTION
 //
 // Beschreibt einen einzelnen Aktions-Button der beim Swipe seitlich erscheint.
@@ -965,6 +1404,21 @@ class GlassSwipeCard extends StatefulWidget {
   /// Nützlich für Selektion-Modus (z. B. _FahrtCard).
   final bool disableSwipe;
 
+  /// NEU: Beschriftung des rechten Reveal-Buttons. Standard: "Löschen".
+  final String deleteLabel;
+  /// NEU: Icon des rechten Reveal-Buttons. Standard: Papierkorb.
+  final IconData deleteIcon;
+  /// NEU: Farb-Override. null = skin.deleteColor.
+  final Color? deleteColorOverride;
+
+  /// NEU (Punkt 4): Wenn true, wird die rechte Aktion NICHT erst nach
+  /// Loslassen+Bestätigen ausgelöst, sondern SOFORT während des Ziehens,
+  /// sobald die Karte den vollen Reveal-Weg überschreitet — inkl.
+  /// Vibration. Danach läuft direkt die Lösch-/Archivier-Animation, ohne
+  /// zurückzuschnappen (echte One-Handed-Geste). Standard false =
+  /// unverändertes Verhalten für alle bestehenden Verwendungsstellen.
+  final bool triggerDeleteOnDragThrough;
+
   const GlassSwipeCard({
     super.key,
     required this.child,
@@ -984,6 +1438,10 @@ class GlassSwipeCard extends StatefulWidget {
     this.snapThreshold = 50.0,
     this.foregroundLayer,
     this.disableSwipe = false,
+    this.deleteLabel = 'Löschen',
+    this.deleteIcon = Icons.delete_outline,
+    this.deleteColorOverride,
+    this.triggerDeleteOnDragThrough = false,
   });
 
   @override
@@ -1131,18 +1589,18 @@ class GlassSwipeCardState extends State<GlassSwipeCard>
   // ── Delete-Handler ──────────────────────────────────────────────────────────
 
   void _handleDelete() {
-  if (widget.animateDelete && widget.onDeleteAnimationDone != null) {
-    // Parent hat explizit eine Animation-Done-Callback übergeben →
-    // erst schließen, dann Lösch-Animation abspielen
-    animateSwipeTo(0).then((_) {
-      animateOutAndDelete(widget.onDeleteAnimationDone!);
-    });
-  } else {
-    // Direkt löschen (Parent kümmert sich selbst um Animation)
-    close();
-    widget.onDelete?.call();
+    if (widget.animateDelete && widget.onDeleteAnimationDone != null) {
+      // Parent hat explizit eine Animation-Done-Callback übergeben →
+      // erst schließen, dann Lösch-Animation abspielen
+      animateSwipeTo(0).then((_) {
+        animateOutAndDelete(widget.onDeleteAnimationDone!);
+      });
+    } else {
+      // Direkt löschen (Parent kümmert sich selbst um Animation)
+      close();
+      widget.onDelete?.call();
+    }
   }
-}
 
   // ── Reveal-Progress ─────────────────────────────────────────────────────────
 
@@ -1217,48 +1675,48 @@ class GlassSwipeCardState extends State<GlassSwipeCard>
                               scale: _leftRevealProgress,
                               alignment: Alignment.centerRight,
                               child: GestureDetector(
-  onTap: () {
-  close();
-  widget.onCardSwiped?.call(null);
-  action.onTap();
-},
-  child: Builder(builder: (context) {
-    final content = Container(
-      margin: EdgeInsets.only(
-        left: i == 0 ? 5 : 5,
-        right: isLast ? 5 : 5,
-      ),
-      decoration: BoxDecoration(
-        color: action.color.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: action.color.withValues(alpha: 0.22),
-        ),
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(action.icon, color: action.color, size: 22),
-          const SizedBox(height: 4),
-          Text(
-            action.label,
-            style: TextStyle(
-              color: action.color,
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    );
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(14),
-      child: _leftRevealProgress > 0
-          ? BackdropFilter(filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10), child: content)
-          : content,
-    );
-  }),
-),
+                                onTap: () {
+                                  close();
+                                  widget.onCardSwiped?.call(null);
+                                  action.onTap();
+                                },
+                                child: Builder(builder: (context) {
+                                  final content = Container(
+                                    margin: EdgeInsets.only(
+                                      left: i == 0 ? 5 : 5,
+                                      right: isLast ? 5 : 5,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: action.color.withValues(alpha: 0.10),
+                                      borderRadius: BorderRadius.circular(14),
+                                      border: Border.all(
+                                        color: action.color.withValues(alpha: 0.22),
+                                      ),
+                                    ),
+                                    child: Column(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(action.icon, color: action.color, size: 22),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          action.label,
+                                          style: TextStyle(
+                                            color: action.color,
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                  return ClipRRect(
+                                    borderRadius: BorderRadius.circular(14),
+                                    child: _leftRevealProgress > 0
+                                        ? BackdropFilter(filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10), child: content)
+                                        : content,
+                                  );
+                                }),
+                              ),
                             ),
                           ),
                         );
@@ -1268,43 +1726,44 @@ class GlassSwipeCardState extends State<GlassSwipeCard>
 
                 // ── Rechter Reveal-Bereich (Löschen, erscheint beim Links-Wischen) ──
                 if (widget.onDelete != null && swipeOffset <= 0)
-  Positioned(
-    right: 0, top: 4, bottom: 4, width: widget.rightRevealWidth,
-    child: Opacity(
-      opacity: _rightRevealProgress,
-      child: Transform.scale(
-        scale: _rightRevealProgress,
-        alignment: Alignment.centerLeft,
-        child: GestureDetector(
-          onTap: _handleDelete,
-          child: Builder(builder: (context) {
-            final content = Container(
-              margin: const EdgeInsets.only(left: 5),
-              decoration: BoxDecoration(
-                color: skin.deleteColor.withValues(alpha: 0.10),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: skin.deleteColor.withValues(alpha: 0.22)),
-              ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.delete_outline, color: skin.deleteColor, size: 22),
-                  const SizedBox(height: 4),
-                  Text('Löschen', style: TextStyle(color: skin.deleteColor, fontSize: 11, fontWeight: FontWeight.w600)),
-                ],
-              ),
-            );
-            return ClipRRect(
-              borderRadius: BorderRadius.circular(14),
-              child: _rightRevealProgress > 0
-                  ? BackdropFilter(filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10), child: content)
-                  : content,
-            );
-          }),
-        ),
-      ),
-    ),
-  ),
+                  Positioned(
+                    right: 0, top: 4, bottom: 4, width: widget.rightRevealWidth,
+                    child: Opacity(
+                      opacity: _rightRevealProgress,
+                      child: Transform.scale(
+                        scale: _rightRevealProgress,
+                        alignment: Alignment.centerLeft,
+                        child: GestureDetector(
+                          onTap: _handleDelete,
+                          child: Builder(builder: (context) {
+                            final deleteColor = widget.deleteColorOverride ?? skin.deleteColor;
+                            final content = Container(
+                              margin: const EdgeInsets.only(left: 5),
+                              decoration: BoxDecoration(
+                                color: deleteColor.withValues(alpha: 0.10),
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(color: deleteColor.withValues(alpha: 0.22)),
+                              ),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(widget.deleteIcon, color: deleteColor, size: 22),
+                                  const SizedBox(height: 4),
+                                  Text(widget.deleteLabel, style: TextStyle(color: deleteColor, fontSize: 11, fontWeight: FontWeight.w600)),
+                                ],
+                              ),
+                            );
+                            return ClipRRect(
+                              borderRadius: BorderRadius.circular(14),
+                              child: _rightRevealProgress > 0
+                                  ? BackdropFilter(filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10), child: content)
+                                  : content,
+                            );
+                          }),
+                        ),
+                      ),
+                    ),
+                  ),
 
                 // ── Hauptkarte (verschoben mit Swipe-Offset) ──
                 Transform.translate(
@@ -1954,4 +2413,3 @@ class GlassStatusBadge extends StatelessWidget {
     );
   }
 }
-

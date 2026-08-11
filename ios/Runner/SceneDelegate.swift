@@ -31,6 +31,21 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                         WidgetCenter.shared.reloadAllTimelines()
                     }
                     result(nil)
+                } else if call.method == "updateCalendarEvents" {
+                    if let args = call.arguments as? [String: Any] {
+                        let defaults = UserDefaults(suiteName: "group.de.marcel.optimes")
+                        if let json = args["json"] as? String {
+                            defaults?.set(json, forKey: "calendar_widget_events")
+                        }
+                        if let readOnly = args["readOnly"] as? Bool {
+                            defaults?.set(readOnly, forKey: "read_only_mode")
+                        }
+                        defaults?.synchronize()
+                    }
+                    if #available(iOS 14.0, *) {
+                        WidgetCenter.shared.reloadAllTimelines()
+                    }
+                    result(nil)
                 } else {
                     result(FlutterMethodNotImplemented)
                 }
@@ -117,27 +132,19 @@ if url.scheme == "optimes" && url.absoluteString.contains("fahrtenbuch/neue-fahr
     }
 
     private func checkPendingPdf() {
-        guard let containerURL = FileManager.default
-            .containerURL(forSecurityApplicationGroupIdentifier: "group.de.marcel.optimes") else {
-            print("❌ Kein App Group Container")
-            return
-        }
-        let pdfURL = containerURL.appendingPathComponent("pending_dienstplan.pdf")
-        guard FileManager.default.fileExists(atPath: pdfURL.path) else {
-            print("ℹ️ Keine pending PDF")
-            return
-        }
-
-        let defaults = UserDefaults(suiteName: "group.de.marcel.optimes")
-        let fileName = defaults?.string(forKey: "PendingPdfName") ?? "dienstplan.pdf"
-
-        print("✅ Pending PDF gefunden: \(pdfURL.path)")
-        sendPdfToFlutter(path: pdfURL.path, fileName: fileName)
-
-        try? FileManager.default.removeItem(at: pdfURL)
-        defaults?.removeObject(forKey: "PendingPdfName")
-        defaults?.synchronize()
+    // Nutzt jetzt dieselbe (atomare, race-condition-sichere) Implementierung
+    // wie AppDelegate — keine zweite, abweichende Logik mehr hier.
+    guard let controller = window?.rootViewController as? FlutterViewController,
+          let appDelegate = UIApplication.shared.delegate as? AppDelegate else {
+        print("❌ SceneDelegate: Kein FlutterViewController oder AppDelegate verfügbar")
+        return
     }
+    let navChannel = FlutterMethodChannel(
+        name: "de.marcel.optimes/navigation",
+        binaryMessenger: controller.binaryMessenger
+    )
+    appDelegate.checkAndSendPendingPdf(navChannel: navChannel)
+}
 
     private func sendPdfToFlutter(path: String, fileName: String) {
         print("📤 Sende PDF an Flutter: \(fileName)")

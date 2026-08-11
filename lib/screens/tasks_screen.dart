@@ -23,6 +23,12 @@ import '../services/speech_log.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/scheduler.dart';
 import '../services/rule_engine.dart';
+import '../services/sync_service.dart';
+import '../widgets/entry_sheet.dart';
+import '../screens/calendar_view.dart';
+import '../models/calendar_event.dart';
+import '../widgets/entry_sheet.dart';
+import '../services/sync_service.dart';
 
 const _kCardRadius = BorderRadius.all(Radius.circular(14));
 final _kBlur10 = ImageFilter.blur(sigmaX: 10, sigmaY: 10);
@@ -122,7 +128,12 @@ class TaskStore {
   static final ValueNotifier<int> changesSignal = ValueNotifier(0);
   static void _notifyChanged() => changesSignal.value++;
 
-  static List<Task> loadAll() {
+  /// Rohdaten — ALLE lokal gespeicherten Aufgaben, unabhängig davon, ob
+  /// eine noch unbestätigte eigene Änderung (Kopiergerät) dabei ist. Nur
+  /// intern für Lese-Änderungs-Schreib-Zyklen und den Sync verwenden — NIE
+  /// direkt für die Anzeige, sonst würden zurückgehaltene Vorschläge
+  /// sichtbar.
+  static List<Task> loadAllRaw() {
     final box = Hive.box('einstellungen');
     final raw = box.get(_key);
     if (raw is String && raw.isNotEmpty) {
@@ -136,34 +147,46 @@ class TaskStore {
     return [];
   }
 
+  /// Für die Anzeige: blendet eigene, auf dem Kopiergerät eingebrachte
+  /// Änderungen aus, solange das Original sie noch nicht im
+  /// Konflikte-Screen bestätigt oder verworfen hat.
+  static List<Task> loadAll() =>
+      SyncService.instance.filterPendingTasks(loadAllRaw());
+
   static void saveAll(List<Task> tasks) {
     final box = Hive.box('einstellungen');
     box.put(_key, jsonEncode(tasks.map((t) => t.toJson()).toList()));
   }
 
-  // NEU
   static void add(Task task) {
-    final all = loadAll();
+    final all = loadAllRaw();
     all.add(task);
     saveAll(all);
-    _notifyChanged(); // NEU
+    // WICHTIG: pushTask() markiert den Datensatz (auf dem Kopiergerät)
+    // synchron als "ausstehend" — das MUSS passieren, bevor _notifyChanged()
+    // den TasksScreen zum Neuladen anstößt. Sonst wird kurzzeitig der noch
+    // unbestätigte Stand angezeigt, bevor die Pending-Markierung greift.
+    SyncService.instance.pushTask(task.id);
+    _notifyChanged();
   }
 
   static void update(Task task) {
-    final all = loadAll();
+    final all = loadAllRaw();
     final idx = all.indexWhere((t) => t.id == task.id);
     if (idx != -1) {
       all[idx] = task;
       saveAll(all);
-      _notifyChanged(); // NEU
+      SyncService.instance.pushTask(task.id);
+      _notifyChanged();
     }
   }
 
   static void delete(String id) {
-    final all = loadAll();
+    final all = loadAllRaw();
     all.removeWhere((t) => t.id == id);
     saveAll(all);
-    _notifyChanged(); // NEU
+    SyncService.instance.pushTask(id);
+    _notifyChanged();
   }
 
   static bool hasOpenTaskOnDay(DateTime day) {
@@ -182,7 +205,9 @@ class TaskStore {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class TasksScreen extends StatefulWidget {
-  const TasksScreen({super.key});
+  final void Function(bool showingYear)? onCalendarShowingYearChanged;
+
+  const TasksScreen({super.key, this.onCalendarShowingYearChanged});
 
   @override
   State<TasksScreen> createState() => TasksScreenState();
@@ -198,27 +223,58 @@ class TasksScreenState extends State<TasksScreen> with TickerProviderStateMixin 
 
   Timer? _periodicReloadTimer;
 
-  // NEU
+  // ── NEU: Kalender-Modus ──
+  final _calendarViewKey = GlobalKey<CalendarViewState>();
+  bool _calendarMode = false;
+  DateTime? _calendarFocusedMonth;
+
+  void setCalendarMode(bool v) => setState(() => _calendarMode = v);
+  void openYearView() => _calendarViewKey.currentState?.openYearView();
+  // NEU: für Deep-Link vom Kalender-Widget — springt direkt zu Heute,
+  // unabhängig davon ob Liste oder Kalender gerade aktiv war.
+  void jumpCalendarToToday() => _calendarViewKey.currentState?.jumpToToday();
+  bool _calendarShowingYear = false;
+
+  // ── Entwurf-Mechanismus (analog Fahrtenbuch) ──
+  final EntryDraft _draft = EntryDraft();
+  bool _draftVisible = false;
+  bool _entrySheetOpen = false;
+  late AnimationController _draftBannerCtrl;
+  late Animation<double> _draftBannerAnim;
+
+  bool get hasDraft => _draftVisible;
+
+  void _onCalendarMonthChanged(DateTime m) {
+    if (mounted) setState(() => _calendarFocusedMonth = m);
+  }
+
+  void _onCalendarShowingYearChanged(bool showing) {
+    if (mounted) setState(() => _calendarShowingYear = showing);
+    // NEU: nach außen melden, damit MainScreen die _GlassBottomNav
+    // in der Jahresübersicht ausblenden kann.
+    widget.onCalendarShowingYearChanged?.call(showing);
+  }
+
   @override
   void initState() {
     super.initState();
     _load();
-    TaskStore.changesSignal.addListener(_onTasksChangedExternally); // NEU
-    // Damit nach dem stündlichen App-weiten Cleanup auch dieser Screen
-    // (falls gerade offen) die aktualisierte Liste zeigt.
+    _draftBannerCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 180));
+    _draftBannerAnim = CurvedAnimation(parent: _draftBannerCtrl, curve: Curves.easeOut, reverseCurve: Curves.easeIn);
+    TaskStore.changesSignal.addListener(_onTasksChangedExternally);
     _periodicReloadTimer = Timer.periodic(const Duration(minutes: 5), (_) {
       if (mounted) _load();
     });
   }
 
-  // NEU: reagiert auf JEDE TaskStore-Änderung, egal von welchem Screen aus
   void _onTasksChangedExternally() {
     if (mounted) _load();
   }
 
   @override
   void dispose() {
-    TaskStore.changesSignal.removeListener(_onTasksChangedExternally); // NEU
+    TaskStore.changesSignal.removeListener(_onTasksChangedExternally);
+    _draftBannerCtrl.dispose();
     _periodicReloadTimer?.cancel();
     _scrollController.dispose();
     super.dispose();
@@ -237,15 +293,15 @@ class TasksScreenState extends State<TasksScreen> with TickerProviderStateMixin 
   }
 
   void closeOverlays() {
-  FocusManager.instance.primaryFocus?.unfocus();
-  if (_inlineEditId != null) {
-    final id = _inlineEditId!;
-    final cardKey = _taskCardKeys[id];
-    cardKey?.currentState?.commitInlineEditNow();
-    setState(() => _inlineEditId = null);
+    FocusManager.instance.primaryFocus?.unfocus();
+    if (_inlineEditId != null) {
+      final id = _inlineEditId!;
+      final cardKey = _taskCardKeys[id];
+      cardKey?.currentState?.commitInlineEditNow();
+      setState(() => _inlineEditId = null);
+    }
+    if (_openSwipedId != null) setState(() => _openSwipedId = null);
   }
-  if (_openSwipedId != null) setState(() => _openSwipedId = null);
-}
 
   List<Task> get _urgentTasks {
     final list = _tasks.where((t) => t.isUrgent && !t.done).toList();
@@ -271,17 +327,19 @@ class TasksScreenState extends State<TasksScreen> with TickerProviderStateMixin 
     return list;
   }
 
-    void _toggleDone(Task task) {
+  void _toggleDone(Task task) {
     HapticFeedback.lightImpact();
     setState(() {
       task.done = !task.done;
       task.completedAt = task.done ? DateTime.now() : null;
     });
     TaskStore.update(task);
-    if (task.done && task.hasReminder) {
+    if (task.done) {
       NotificationService.instance.cancelTaskReminders(task.id);
+    } else {
+      _scheduleReminders(task);
     }
-    _syncUrgentReminder(task); // NEU
+    _syncUrgentReminder(task);
   }
 
   void _deleteTaskWithAnimation(Task task) {
@@ -303,8 +361,6 @@ class TasksScreenState extends State<TasksScreen> with TickerProviderStateMixin 
       if (_inlineEditId == task.id) _inlineEditId = null;
     });
     TaskStore.delete(task.id);
-    // Löschung kurz nach Diktat = starkes Signal, dass die Erkennung
-    // komplett danebenlag (Nutzer wollte den Task gar nicht so).
     SpeechLog.markEdited(task.id, task.createdAt);
     NotificationService.instance.cancelTaskReminders(task.id);
   }
@@ -340,29 +396,110 @@ class TasksScreenState extends State<TasksScreen> with TickerProviderStateMixin 
     }
   }
 
+  // ── openQuickAddEvent für Kalender-Modus ──
+  void reopenDraft() {
+    if (_entrySheetOpen) return;
+    _showEntrySheet(mode: _draft.mode, reopening: true);
+  }
+
+  void openQuickAddEvent() {
+    closeOverlays();
+    if (_draftVisible) { reopenDraft(); return; }
+    _draft.mode = EntryMode.event;
+    final selected = _calendarViewKey.currentState?.selectedDay;
+    _showEntrySheet(mode: EntryMode.event, initialDate: selected);
+  }
+
+  void _scheduleEventReminders(CalendarEvent event) {
+    NotificationService.instance.cancelEventReminders(event.id);
+    final options = ReminderManager.optionsFor(ReminderMode.beforeDeadline);
+    for (int i = 0; i < event.reminderOptionIds.length; i++) {
+      final opt = options.firstWhere(
+        (o) => o.id == event.reminderOptionIds[i],
+        orElse: () => options.first,
+      );
+      NotificationService.instance.scheduleEventReminder(
+        eventId: event.id,
+        reminderIndex: i,
+        eventTitle: event.title,
+        eventStart: event.start,
+        reminderAt: event.start.subtract(opt.duration),
+      );
+    }
+    // NEU (Punkt 5): garantierte Erinnerung exakt zum Start.
+    NotificationService.instance.scheduleGuaranteedEventReminder(
+      eventId: event.id,
+      eventTitle: event.title,
+      eventStart: event.start,
+    );
+  }
+
   void openQuickAdd({String? initialTitle, DateTime? initialDate}) {
     closeOverlays();
+    if (_draftVisible) { reopenDraft(); return; }
+    _draft.mode = EntryMode.task;
+    _showEntrySheet(mode: EntryMode.task, initialTitle: initialTitle, initialDate: initialDate);
+  }
+
+  void _showEntrySheet({
+    required EntryMode mode,
+    String? initialTitle,
+    DateTime? initialDate,
+    bool reopening = false,
+  }) {
     final skin = AppTheme.of(context);
+    setState(() { _entrySheetOpen = true; _draftVisible = false; });
+    _draftBannerCtrl.reverse();
+
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       useSafeArea: false,
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.of(context).size.height * 0.92,
-      ),
-      builder: (_) => _TaskEditSheet(
+      constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.92),
+      builder: (_) => EntrySheet(
         skin: skin,
-        initialTitle: initialTitle,
-        initialDate: initialDate,
-                onSaved: (task) {
+        initialMode: mode,
+        draft: _draft,
+        initialTitle: reopening ? null : initialTitle,
+        initialDate: reopening ? null : initialDate,
+        onTaskSaved: (task) {
           TaskStore.add(task);
+          _draft.reset();
+          setState(() { _entrySheetOpen = false; _draftVisible = false; });
+          _draftBannerCtrl.reverse();
           _load();
           _scheduleReminders(task);
-          _syncUrgentReminder(task); // NEU
+          _syncUrgentReminder(task);
+        },
+        onEventSaved: (events) {
+          for (final event in events) {
+            CalendarEventStore.add(event);
+            _scheduleEventReminders(event);
+          }
+          _draft.reset();
+          setState(() { _entrySheetOpen = false; _draftVisible = false; });
+          _draftBannerCtrl.reverse();
         },
       ),
-    );
+    ).then((_) {
+      if (_entrySheetOpen) {
+        if (_draft.hasAnyData) {
+          setState(() { _entrySheetOpen = false; _draftVisible = true; });
+          _draftBannerCtrl.forward();
+        } else {
+          _draft.reset();
+          setState(() { _entrySheetOpen = false; _draftVisible = false; });
+        }
+      }
+    });
+  }
+
+  void _deleteDraft() {
+    HapticFeedback.mediumImpact();
+    _draft.reset();
+    setState(() { _draftVisible = false; _entrySheetOpen = false; });
+    _draftBannerCtrl.reverse();
   }
 
   void _editTaskFull(Task task) {
@@ -378,10 +515,12 @@ class TasksScreenState extends State<TasksScreen> with TickerProviderStateMixin 
       constraints: BoxConstraints(
         maxHeight: MediaQuery.of(context).size.height * 0.92,
       ),
-      builder: (_) => _TaskEditSheet(
+      builder: (_) => EntrySheet(
         skin: skin,
+        draft: EntryDraft(),
+        initialMode: EntryMode.task,
         existingTask: task,
-                onSaved: (updated) {
+        onTaskSaved: (updated) {
           TaskStore.update(updated);
           if (updated.title != titleBefore || updated.dueDate != dueBefore) {
             SpeechLog.markEdited(updated.id, updated.createdAt);
@@ -389,14 +528,13 @@ class TasksScreenState extends State<TasksScreen> with TickerProviderStateMixin 
           _load();
           NotificationService.instance.cancelTaskReminders(updated.id);
           _scheduleReminders(updated);
-          _syncUrgentReminder(updated); // NEU
+          _syncUrgentReminder(updated);
         },
       ),
     );
   }
 
   void _scheduleReminders(Task task) {
-    if (!task.hasReminder) return;
     for (var i = 0; i < task.reminderTimes.length; i++) {
       NotificationService.instance.scheduleTaskReminder(
         taskId: task.id,
@@ -405,14 +543,18 @@ class TasksScreenState extends State<TasksScreen> with TickerProviderStateMixin 
         reminderAt: task.reminderTimes[i],
       );
     }
+    if (task.hasDeadline && !task.done) {
+      NotificationService.instance.scheduleGuaranteedDueReminder(
+        taskId: task.id,
+        taskTitle: task.title,
+        dueDate: task.dueDate!,
+        hasTime: task.hasTime,
+      );
+    } else {
+      NotificationService.instance.cancelGuaranteedDueReminder(task.id);
+    }
   }
 
-    // NEU ─────────────────────────────────────────────────────────────────────
-  /// Zentrale Stelle, die nach JEDER Änderung an einer Aufgabe aufgerufen
-  /// wird (Anlegen, Bearbeiten, Erledigt-Toggle, Diktat) und dafür sorgt,
-  /// dass die einmalige 24h-Dringend-Erinnerung konsistent mit dem
-  /// tatsächlichen Zustand bleibt: läuft nur, wenn die Aufgabe aktuell als
-  /// dringend markiert UND nicht erledigt ist.
   void _syncUrgentReminder(Task task) {
     if (task.isUrgent && !task.done) {
       NotificationService.instance.scheduleUrgentReminder(
@@ -426,7 +568,7 @@ class TasksScreenState extends State<TasksScreen> with TickerProviderStateMixin 
 
   // ── Diktier-Flow ────────────────────────────────────────────────────────────
 
-    void _saveTaskFromSpeech(ParsedSpokenTask parsed, String logRef) {
+  void _saveTaskFromSpeech(ParsedSpokenTask parsed, String logRef) {
     final combined = parsed.combinedDateTime;
     final task = Task(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
@@ -440,7 +582,8 @@ class TasksScreenState extends State<TasksScreen> with TickerProviderStateMixin 
     SpeechLog.linkLastEntryToTask(logRef, task.id);
     _load();
     HapticFeedback.mediumImpact();
-    _syncUrgentReminder(task); // NEU
+    _scheduleReminders(task);
+    _syncUrgentReminder(task);
   }
 
   bool _isLikelyDuplicate(ParsedSpokenTask parsed) {
@@ -504,11 +647,13 @@ class TasksScreenState extends State<TasksScreen> with TickerProviderStateMixin 
       constraints: BoxConstraints(
         maxHeight: MediaQuery.of(context).size.height * 0.92,
       ),
-      builder: (_) => _TaskEditSheet(
+      builder: (_) => EntrySheet(
         skin: skin,
+        draft: EntryDraft(),
+        initialMode: EntryMode.task,
         existingTask: draft,
         isReviewMode: true,
-                onSaved: (finalTask) {
+        onTaskSaved: (finalTask) {
           if (_isLikelyDuplicate(parsed)) {
             HapticFeedback.lightImpact();
           }
@@ -521,72 +666,72 @@ class TasksScreenState extends State<TasksScreen> with TickerProviderStateMixin 
           }
           _load();
           _scheduleReminders(finalTask);
-          _syncUrgentReminder(finalTask); // NEU
+          _syncUrgentReminder(finalTask);
         },
       ),
     );
   }
 
   List<Widget> _buildListItems() {
-  final items = <Widget>[];
+    final items = <Widget>[];
 
-  void addTaskCard(Task t, {bool isUrgent = false}) {
-    _taskCardKeys.putIfAbsent(t.id, () => GlobalKey<_TaskCardState>());
-    items.add(Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: _TaskCard(
-        key: _taskCardKeys[t.id],
-        task: t,
-        skin: AppTheme.of(context),
-        externallyOpenKey: _openSwipedId,
-        onCardSwiped: _onCardSwiped,
-        onToggleDone: () => _toggleDone(t),
-        isInlineEditing: _inlineEditId == t.id,
-        onStartInlineEdit: () => _startInlineEdit(t.id),
-        onCommitInlineEdit: (v) => _commitInlineEdit(t, v),
-        onFullEdit: () => _editTaskFull(t),
-        onDelete: () => _deleteTaskWithAnimation(t),
-        isUrgent: isUrgent,
-      ),
-    ));
-  }
+    void addTaskCard(Task t, {bool isUrgent = false}) {
+      _taskCardKeys.putIfAbsent(t.id, () => GlobalKey<_TaskCardState>());
+      items.add(Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: _TaskCard(
+          key: _taskCardKeys[t.id],
+          task: t,
+          skin: AppTheme.of(context),
+          externallyOpenKey: _openSwipedId,
+          onCardSwiped: _onCardSwiped,
+          onToggleDone: () => _toggleDone(t),
+          isInlineEditing: _inlineEditId == t.id,
+          onStartInlineEdit: () => _startInlineEdit(t.id),
+          onCommitInlineEdit: (v) => _commitInlineEdit(t, v),
+          onFullEdit: () => _editTaskFull(t),
+          onDelete: () => _deleteTaskWithAnimation(t),
+          isUrgent: isUrgent,
+        ),
+      ));
+    }
 
-  final skin = AppTheme.of(context);
+    final skin = AppTheme.of(context);
 
-  if (_urgentTasks.isNotEmpty) {
-    items.add(_UrgentSectionHeader(skin: skin));
-    items.add(const SizedBox(height: 10));
-    for (final t in _urgentTasks) {
-      addTaskCard(t, isUrgent: true);
+    if (_urgentTasks.isNotEmpty) {
+      items.add(_UrgentSectionHeader(skin: skin));
+      items.add(const SizedBox(height: 10));
+      for (final t in _urgentTasks) {
+        addTaskCard(t, isUrgent: true);
+      }
+      items.add(const SizedBox(height: 18));
     }
-    items.add(const SizedBox(height: 18));
-  }
-  if (_deadlineTasks.isNotEmpty) {
-    items.add(_SectionHeader(icon: Icons.event_outlined, label: 'MIT FRIST', skin: skin));
-    items.add(const SizedBox(height: 10));
-    for (final t in _deadlineTasks) {
-      addTaskCard(t);
+    if (_deadlineTasks.isNotEmpty) {
+      items.add(_SectionHeader(icon: Icons.event_outlined, label: 'MIT FRIST', skin: skin));
+      items.add(const SizedBox(height: 10));
+      for (final t in _deadlineTasks) {
+        addTaskCard(t);
+      }
+      items.add(const SizedBox(height: 18));
     }
-    items.add(const SizedBox(height: 18));
-  }
-  if (_generalTasks.isNotEmpty) {
-    items.add(_SectionHeader(icon: Icons.notes_outlined, label: 'ALLGEMEIN', skin: skin));
-    items.add(const SizedBox(height: 10));
-    for (final t in _generalTasks) {
-      addTaskCard(t);
+    if (_generalTasks.isNotEmpty) {
+      items.add(_SectionHeader(icon: Icons.notes_outlined, label: 'ALLGEMEIN', skin: skin));
+      items.add(const SizedBox(height: 10));
+      for (final t in _generalTasks) {
+        addTaskCard(t);
+      }
+      items.add(const SizedBox(height: 18));
     }
-    items.add(const SizedBox(height: 18));
-  }
-  if (_doneTasks.isNotEmpty) {
-    items.add(_SectionHeader(icon: Icons.check_circle_outline, label: 'ERLEDIGT', skin: skin, muted: true));
-    items.add(const SizedBox(height: 10));
-    for (final t in _doneTasks) {
-      addTaskCard(t);
+    if (_doneTasks.isNotEmpty) {
+      items.add(_SectionHeader(icon: Icons.check_circle_outline, label: 'ERLEDIGT', skin: skin, muted: true));
+      items.add(const SizedBox(height: 10));
+      for (final t in _doneTasks) {
+        addTaskCard(t);
+      }
     }
-  }
 
-  return items;
-}
+    return items;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -597,120 +742,267 @@ class TasksScreenState extends State<TasksScreen> with TickerProviderStateMixin 
     return Scaffold(
       backgroundColor: skin.bgBase,
       body: NotificationListener<ScrollNotification>(
-  onNotification: (notification) {
-    // Greift zuverlässig auch wenn die ListView selbst scrollt — anders als
-    // ein reiner GestureDetector, der gegen das Scrollable die Gesture-Arena
-    // meist verliert.
-    if (_inlineEditId != null &&
-        notification is ScrollUpdateNotification &&
-        notification.scrollDelta != null &&
-        notification.scrollDelta! < -6) {
-      FocusManager.instance.primaryFocus?.unfocus();
-      _taskCardKeys[_inlineEditId]?.currentState?.commitInlineEditNow();
-      setState(() => _inlineEditId = null);
-    }
-    return false;
-  },
-  child: GestureDetector(
-  onTap: () {
-    FocusManager.instance.primaryFocus?.unfocus();
-    if (_inlineEditId != null) {
-      _taskCardKeys[_inlineEditId]?.currentState?.commitInlineEditNow();
-      setState(() => _inlineEditId = null);
-    }
-    if (_openSwipedId != null) setState(() => _openSwipedId = null);
-  },
-  behavior: HitTestBehavior.translucent,
-  child: Stack(
-          children: [
-            SafeArea(
-              bottom: false,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SizedBox(height: 50),
-                  Padding(
-  padding: const EdgeInsets.symmetric(horizontal: 24),
-  child: Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text('Aufgaben',
-          style: TextStyle(fontSize: 26, fontWeight: FontWeight.w700, color: skin.textPrimary)),
-      if (_tasks.isNotEmpty) ...[
-        const SizedBox(height: 8),
-        Text(
-          'Wischen · Tippen · Doppeltippen',
-          style: TextStyle(fontSize: 11, color: skin.surface(0.3)),
-        ),
-      ],
-    ],
-  ),
-),
-                  const SizedBox(height: 12),
-                  Expanded(
-                    child: !hasAnyOpen && _doneTasks.isEmpty
-                        ? Center(
-                            child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                              Icon(Icons.task_alt_outlined, size: 46, color: skin.surface(0.18)),
-                              const SizedBox(height: 12),
-                              Text('Keine Aufgaben', style: TextStyle(color: skin.surface(0.3), fontSize: 15)),
-                              const SizedBox(height: 8),
-                              Text('Tippe unten auf + um eine Aufgabe anzulegen',
-                                  style: TextStyle(color: skin.surface(0.2), fontSize: 12), textAlign: TextAlign.center),
-                            ]),
-                          )
-                        : ClipRect(
-                            child: BackdropFilter(
-                              filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
-                              child: FadingListView(
-  fadeFromBottom: bottomNavHeight + 20,
-  child: Builder(
-    builder: (context) {
-      final listItems = _buildListItems();
-      return ListView.builder(
-        controller: _scrollController,
-        padding: const EdgeInsets.fromLTRB(24, 4, 24, 0),
-        itemCount: listItems.length + 1, // +1 für den Bottom-Spacer
-        itemBuilder: (context, index) {
-          if (index == listItems.length) {
-            return SizedBox(height: bottomNavHeight + 100);
+        onNotification: (notification) {
+          if (_inlineEditId != null &&
+              notification is ScrollUpdateNotification &&
+              notification.scrollDelta != null &&
+              notification.scrollDelta! < -6) {
+            FocusManager.instance.primaryFocus?.unfocus();
+            _taskCardKeys[_inlineEditId]?.currentState?.commitInlineEditNow();
+            setState(() => _inlineEditId = null);
           }
-          return listItems[index];
+          return false;
         },
-      );
-    },
-  ),
-),
+        child: GestureDetector(
+          onTap: () {
+            FocusManager.instance.primaryFocus?.unfocus();
+            if (_inlineEditId != null) {
+              _taskCardKeys[_inlineEditId]?.currentState?.commitInlineEditNow();
+              setState(() => _inlineEditId = null);
+            }
+            if (_openSwipedId != null) setState(() => _openSwipedId = null);
+          },
+          behavior: HitTestBehavior.translucent,
+          child: Stack(
+            children: [
+              SafeArea(
+                bottom: false,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 50),
+                    if (!(_calendarMode && _calendarShowingYear)) ...[
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 24),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              _calendarMode
+                                  ? (_calendarFocusedMonth != null
+                                      ? DateFormat('MMMM', 'de').format(_calendarFocusedMonth!)
+                                      : 'Kalender')
+                                  : 'Aufgaben',
+                              style: TextStyle(fontSize: 26, fontWeight: FontWeight.w700, color: skin.textPrimary),
                             ),
+                            if (_calendarMode)
+                              GestureDetector(
+                                onTap: openYearView,
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(14),
+                                  child: BackdropFilter(
+                                    filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                      decoration: BoxDecoration(
+                                        color: skin.isLight
+                                            ? Colors.white.withValues(alpha: skin.glassOpacity)
+                                            : skin.bgCard.withValues(alpha: skin.glassOpacity),
+                                        borderRadius: BorderRadius.circular(14),
+                                        border: Border.all(color: skin.glassBorder),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(Icons.chevron_left_rounded, size: 16, color: skin.primary),
+                                          Text(
+                                            '${_calendarFocusedMonth?.year ?? DateTime.now().year}',
+                                            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: skin.primary),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          ],
                         ),
-                  ),
-                ],
+                      ),
+                      const SizedBox(height: 12),
+                    ] else
+                      const SizedBox(height: 8),
+                    Expanded(
+                      child: _calendarMode
+                          ? CalendarView(
+                              key: _calendarViewKey,
+                              skin: skin,
+                              onFocusedMonthChanged: _onCalendarMonthChanged,
+                              onShowingYearChanged: _onCalendarShowingYearChanged,
+                            )
+                          : !hasAnyOpen && _doneTasks.isEmpty
+                              ? Center(
+                                  child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                                    Icon(Icons.task_alt_outlined, size: 46, color: skin.surface(0.18)),
+                                    const SizedBox(height: 12),
+                                    Text('Keine Aufgaben', style: TextStyle(color: skin.surface(0.3), fontSize: 15)),
+                                    const SizedBox(height: 8),
+                                    Text('Tippe unten auf + um eine Aufgabe anzulegen',
+                                        style: TextStyle(color: skin.surface(0.2), fontSize: 12), textAlign: TextAlign.center),
+                                  ]),
+                                )
+                              : ClipRect(
+                                  child: BackdropFilter(
+                                    filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
+                                    child: FadingListView(
+                                      fadeFromBottom: bottomNavHeight + 20,
+                                      child: Builder(
+                                        builder: (context) {
+                                          final listItems = _buildListItems();
+                                          return ListView.builder(
+                                            controller: _scrollController,
+                                            padding: const EdgeInsets.fromLTRB(24, 4, 24, 0),
+                                            itemCount: listItems.length + 1,
+                                            itemBuilder: (context, index) {
+                                              if (index == listItems.length) {
+                                                return SizedBox(height: bottomNavHeight + 100);
+                                              }
+                                              return listItems[index];
+                                            },
+                                          );
+                                        },
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            // ── Floating Action Buttons ──
-            Positioned(
-              right: 20,
-              bottom: bottomNavHeight + 16,
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  DictationFab(
-  skin: skin,
-  onResult: _createTaskFromSpeech,
-  onNeedsReview: _reviewTaskFromSpeech,
-),
-                  const SizedBox(width: 12),
-                  _TasksFab(
-                    skin: skin,
-                    icon: Icons.add,
-                    onTap: () => openQuickAdd(),
+              // ── Bottom-Leiste: Heute (links) — Entwurf-Banner (Mitte) — FABs (rechts) ──
+              // NEU (Punkt 4): Der Block wird jetzt IMMER angezeigt, wenn
+              // Kalender-Modus aktiv ist — auch in der Jahresansicht. Nur
+              // Entwurf-Banner + FABs (die in der Jahresansicht keinen
+              // Sinn ergeben) werden dort ausgeblendet, "Heute" bleibt.
+              if (_calendarMode)
+                Positioned(
+                  left: 20,
+                  right: 20,
+                  bottom: bottomNavHeight + 16,
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      GestureDetector(
+                        onTap: () {
+                          HapticFeedback.mediumImpact();
+                          _calendarViewKey.currentState?.jumpToToday();
+                        },
+                        behavior: HitTestBehavior.opaque,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(16),
+                          child: BackdropFilter(
+                            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                              decoration: BoxDecoration(
+                                color: skin.isLight ? Colors.white.withValues(alpha: 0.72) : Colors.black.withValues(alpha: 0.55),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: skin.isLight ? Colors.white.withValues(alpha: 0.55) : Colors.white.withValues(alpha: 0.12),
+                                  width: 0.8,
+                                ),
+                              ),
+                              child: Text('Heute', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: skin.primary)),
+                            ),
+                          ),
+                        ),
+                      ),
+                      if (!_calendarShowingYear) ...[
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 10),
+                            child: AnimatedBuilder(
+                              animation: _draftBannerAnim,
+                              builder: (context, child) {
+                                if (!_draftVisible && _draftBannerAnim.value == 0) {
+                                  return const SizedBox.shrink();
+                                }
+                                return Opacity(
+                                  opacity: _draftBannerAnim.value.clamp(0.0, 1.0),
+                                  child: child,
+                                );
+                              },
+                              child: _EntryDraftBanner(
+                                skin: skin,
+                                draft: _draft,
+                                onReopen: reopenDraft,
+                                onDelete: _deleteDraft,
+                                externallyOpen: _openSwipedId,
+                                onCardSwiped: _onCardSwiped,
+                              ),
+                            ),
+                          ),
+                        ),
+                        _TasksFab(
+                          skin: skin,
+                          icon: _draftVisible ? Icons.edit_note_rounded : Icons.add,
+                          onTap: () {
+                            if (_entrySheetOpen) return;
+                            if (_draftVisible) {
+                              reopenDraft();
+                            } else {
+                              openQuickAddEvent();
+                            }
+                          },
+                        ),
+                      ],
+                    ],
                   ),
-                ],
-              ),
-            ),
-          ],
+                )
+              else if (!_calendarShowingYear)
+                Positioned(
+                  left: 20,
+                  right: 20,
+                  bottom: bottomNavHeight + 16,
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Expanded(
+                        child: AnimatedBuilder(
+                          animation: _draftBannerAnim,
+                          builder: (context, child) {
+                            if (!_draftVisible && _draftBannerAnim.value == 0) {
+                              return const SizedBox.shrink();
+                            }
+                            return Opacity(
+                              opacity: _draftBannerAnim.value.clamp(0.0, 1.0),
+                              child: child,
+                            );
+                          },
+                          child: _EntryDraftBanner(
+                            skin: skin,
+                            draft: _draft,
+                            onReopen: reopenDraft,
+                            onDelete: _deleteDraft,
+                            externallyOpen: _openSwipedId,
+                            onCardSwiped: _onCardSwiped,
+                          ),
+                        ),
+                      ),
+                      DictationFab(
+                        skin: skin,
+                        onResult: _createTaskFromSpeech,
+                        onNeedsReview: _reviewTaskFromSpeech,
+                      ),
+                      const SizedBox(width: 12),
+                      _TasksFab(
+                        skin: skin,
+                        icon: _draftVisible ? Icons.edit_note_rounded : Icons.add,
+                        onTap: () {
+                          if (_entrySheetOpen) return;
+                          if (_draftVisible) {
+                            reopenDraft();
+                          } else {
+                            openQuickAdd();
+                          }
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
         ),
-      ),
       ),
     );
   }
@@ -789,15 +1081,15 @@ class _TasksFab extends StatelessWidget {
       },
       behavior: HitTestBehavior.opaque,
       child: ClipRRect(
-  borderRadius: _kFabRadius,
-  child: BackdropFilter(
-    filter: _kBlur20,
-    child: Container(
-      width: 56,
-      height: 56,
-      decoration: BoxDecoration(
-        color: skin.isLight ? Colors.white.withValues(alpha: 0.72) : Colors.black.withValues(alpha: 0.55),
         borderRadius: _kFabRadius,
+        child: BackdropFilter(
+          filter: _kBlur20,
+          child: Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              color: skin.isLight ? Colors.white.withValues(alpha: 0.72) : Colors.black.withValues(alpha: 0.55),
+              borderRadius: _kFabRadius,
               border: Border.all(
                 color: skin.isLight ? Colors.white.withValues(alpha: 0.55) : Colors.white.withValues(alpha: 0.12),
                 width: 0.8,
@@ -1060,18 +1352,21 @@ class _TaskCardState extends State<_TaskCard> with TickerProviderStateMixin, Swi
         GestureDetector(
           onTap: widget.onToggleDone,
           behavior: HitTestBehavior.opaque,
-          child: Padding(
-            padding: const EdgeInsets.only(right: 12),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 180),
-              width: 24,
-              height: 24,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: task.done ? skin.statComplete : Colors.transparent,
-                border: Border.all(color: task.done ? skin.statComplete : skin.surface(0.28), width: 1.8),
+          child: SizedBox(
+            width: 34,
+            height: 34,
+            child: Center(
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                width: 21,
+                height: 21,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: task.done ? skin.statComplete : Colors.transparent,
+                  border: Border.all(color: task.done ? skin.statComplete : skin.surface(0.28), width: 1.6),
+                ),
+                child: task.done ? const Icon(Icons.check, size: 13, color: Colors.white) : null,
               ),
-              child: task.done ? const Icon(Icons.check, size: 15, color: Colors.white) : null,
             ),
           ),
         ),
@@ -1114,27 +1409,27 @@ class _TaskCardState extends State<_TaskCard> with TickerProviderStateMixin, Swi
     );
 
     Widget cardWidget = ClipRRect(
-  borderRadius: _kCardRadius,
-  child: Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-      decoration: BoxDecoration(
-        color: widget.isUrgent
-            ? const Color(0xFFEF5B5B).withValues(alpha: skin.isLight ? 0.04 : 0.07)
-            : (skin.isLight ? Colors.white.withValues(alpha: skin.glassOpacity) : skin.bgCard.withValues(alpha: skin.glassOpacity)),
-        borderRadius: _kCardRadius,
-            border: Border.all(
-              color: widget.isUrgent
-                  ? const Color(0xFFEF5B5B).withValues(alpha: 0.45)
-                  : (widget.isInlineEditing ? skin.primary.withValues(alpha: 0.45) : skin.glassBorder),
-              width: (widget.isUrgent || widget.isInlineEditing) ? 1.5 : 1.0,
-            ),
-            boxShadow: [
-              BoxShadow(color: skin.glassShadow, blurRadius: 24, spreadRadius: 0, offset: const Offset(0, 6)),
-              BoxShadow(color: skin.glassHighlight, blurRadius: 0, spreadRadius: -1, offset: const Offset(0, 1)),
-            ],
+      borderRadius: _kCardRadius,
+     child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        decoration: BoxDecoration(
+          color: widget.isUrgent
+              ? const Color(0xFFEF5B5B).withValues(alpha: skin.isLight ? 0.04 : 0.07)
+              : (skin.isLight ? Colors.white.withValues(alpha: skin.glassOpacity) : skin.bgCard.withValues(alpha: skin.glassOpacity)),
+          borderRadius: _kCardRadius,
+          border: Border.all(
+            color: widget.isUrgent
+                ? const Color(0xFFEF5B5B).withValues(alpha: 0.45)
+                : (widget.isInlineEditing ? skin.primary.withValues(alpha: 0.45) : skin.glassBorder),
+            width: (widget.isUrgent || widget.isInlineEditing) ? 1.5 : 1.0,
           ),
-          child: cardInner,
+          boxShadow: [
+            BoxShadow(color: skin.glassShadow, blurRadius: 24, spreadRadius: 0, offset: const Offset(0, 6)),
+            BoxShadow(color: skin.glassHighlight, blurRadius: 0, spreadRadius: -1, offset: const Offset(0, 1)),
+          ],
         ),
+        child: cardInner,
+      ),
     );
 
     return AnimatedBuilder(
@@ -1152,13 +1447,13 @@ class _TaskCardState extends State<_TaskCard> with TickerProviderStateMixin, Swi
         onHorizontalDragUpdate: widget.isInlineEditing ? null : _onPanUpdate,
         onHorizontalDragEnd: widget.isInlineEditing ? null : _onPanEnd,
         onVerticalDragUpdate: widget.isInlineEditing
-    ? (d) {
-        if (d.delta.dy > 6) {
-          FocusManager.instance.primaryFocus?.unfocus();
-          commitInlineEditNow();
-        }
-      }
-    : null,
+            ? (d) {
+                if (d.delta.dy > 6) {
+                  FocusManager.instance.primaryFocus?.unfocus();
+                  commitInlineEditNow();
+                }
+              }
+            : null,
         onTap: _handleTap,
         onDoubleTap: _handleDoubleTap,
         child: ClipRect(
@@ -1173,14 +1468,14 @@ class _TaskCardState extends State<_TaskCard> with TickerProviderStateMixin, Swi
                 child: Opacity(
                   opacity: (swipeOffset.abs() / _revealWidth).clamp(0.0, 1.0),
                   child: ClipRRect(
-  borderRadius: _kCardRadius,
-  child: BackdropFilter(
-    filter: _kBlur10,
-    child: Container(
-      margin: const EdgeInsets.only(left: 6),
-      decoration: BoxDecoration(
-        color: skin.deleteColor.withValues(alpha: 0.10),
-        borderRadius: _kCardRadius,
+                    borderRadius: _kCardRadius,
+                    child: BackdropFilter(
+                      filter: _kBlur10,
+                      child: Container(
+                        margin: const EdgeInsets.only(left: 6),
+                        decoration: BoxDecoration(
+                          color: skin.deleteColor.withValues(alpha: 0.10),
+                          borderRadius: _kCardRadius,
                           border: Border.all(color: skin.deleteColor.withValues(alpha: 0.25)),
                         ),
                         child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
@@ -1203,763 +1498,198 @@ class _TaskCardState extends State<_TaskCard> with TickerProviderStateMixin, Swi
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TASK EDIT SHEET
+// ENTRY DRAFT BANNER
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _TaskDateTile extends StatefulWidget {
+class _EntryDraftBanner extends StatefulWidget {
   final AppSkin skin;
-  final DateTime? date;
-  final VoidCallback onTap;
-  final VoidCallback onDoubleTap;
-  final ValueChanged<int> onSwipeDay;
-
-  const _TaskDateTile({
+  final EntryDraft draft;
+  final VoidCallback onReopen;
+  final VoidCallback onDelete;
+  final String? externallyOpen;
+  final void Function(String?) onCardSwiped;
+  const _EntryDraftBanner({
     required this.skin,
-    required this.date,
-    required this.onTap,
-    required this.onDoubleTap,
-    required this.onSwipeDay,
+    required this.draft,
+    required this.onReopen,
+    required this.onDelete,
+    required this.externallyOpen,
+    required this.onCardSwiped,
   });
 
   @override
-  State<_TaskDateTile> createState() => _TaskDateTileState();
+  State<_EntryDraftBanner> createState() => _EntryDraftBannerState();
 }
 
-class _TaskDateTileState extends State<_TaskDateTile> {
-  double _hAccum = 0;
-  static const double _pxPerDay = 120;
-
-  @override
-  Widget build(BuildContext context) {
-    final skin = widget.skin;
-    final hasDate = widget.date != null;
-    final dateLabel = hasDate ? DateFormat('EEE, dd.MM.yyyy', 'de').format(widget.date!) : 'Datum wählen';
-
-    return GestureDetector(
-      onTap: widget.onTap,
-      onDoubleTap: widget.onDoubleTap,
-      onHorizontalDragStart: hasDate ? (_) => _hAccum = 0 : null,
-      onHorizontalDragUpdate: hasDate
-          ? (d) {
-              _hAccum += d.delta.dx;
-              while (_hAccum >= _pxPerDay) {
-                _hAccum -= _pxPerDay;
-                widget.onSwipeDay(1);
-                HapticFeedback.selectionClick();
-              }
-              while (_hAccum <= -_pxPerDay) {
-                _hAccum += _pxPerDay;
-                widget.onSwipeDay(-1);
-                HapticFeedback.selectionClick();
-              }
-            }
-          : null,
-      child: ClipRRect(
-  borderRadius: _kCardRadius,
-  child: BackdropFilter(
-    filter: _kBlur10,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-            decoration: BoxDecoration(
-              color: hasDate ? skin.primary.withValues(alpha: skin.isLight ? 0.08 : 0.14) : (skin.isLight ? Colors.white.withValues(alpha: skin.glassOpacity) : skin.bgCard.withValues(alpha: skin.glassOpacity)),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: hasDate ? skin.primary.withValues(alpha: 0.32) : skin.glassBorder,
-                width: hasDate ? 1.3 : 1.0,
-              ),
-              boxShadow: [BoxShadow(color: skin.glassShadow, blurRadius: 14, offset: const Offset(0, 4))],
-            ),
-            child: Row(children: [
-              Icon(Icons.calendar_today_outlined, size: 15, color: hasDate ? skin.primary : skin.surface(0.4)),
-              const SizedBox(width: 9),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text('DATUM', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: hasDate ? skin.primary : skin.surface(0.35), letterSpacing: 1.0)),
-                    const SizedBox(height: 2),
-                    Text(
-                      dateLabel,
-                      style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: hasDate ? skin.textPrimary : skin.surface(0.32)),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
-              if (hasDate) Icon(Icons.unfold_more_rounded, size: 13, color: skin.surface(0.3)),
-            ]),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _TaskTimeTile extends StatefulWidget {
-  final AppSkin skin;
-  final bool enabled;
-  final TimeOfDay? time;
-  final VoidCallback onTap;
-  final VoidCallback onDoubleTap;
-  final ValueChanged<int> onSwipeMinute;
-
-  const _TaskTimeTile({
-    required this.skin,
-    required this.enabled,
-    required this.time,
-    required this.onTap,
-    required this.onDoubleTap,
-    required this.onSwipeMinute,
-  });
-
-  @override
-  State<_TaskTimeTile> createState() => _TaskTimeTileState();
-}
-
-class _TaskTimeTileState extends State<_TaskTimeTile> {
-  double _vAccum = 0;
-  static const double _pxPerMin = 10;
-
-  @override
-  Widget build(BuildContext context) {
-    final skin = widget.skin;
-    final hasTime = widget.time != null;
-    final timeLabel = hasTime ? widget.time!.format(context) : 'Uhrzeit';
-
-    return Opacity(
-      opacity: widget.enabled ? 1.0 : 0.4,
-      child: GestureDetector(
-        onTap: widget.enabled ? widget.onTap : null,
-        onDoubleTap: widget.onDoubleTap,
-        onVerticalDragStart: widget.enabled && hasTime ? (_) => _vAccum = 0 : null,
-        onVerticalDragUpdate: widget.enabled && hasTime
-            ? (d) {
-                _vAccum += -d.delta.dy;
-                while (_vAccum >= _pxPerMin) {
-                  _vAccum -= _pxPerMin;
-                  widget.onSwipeMinute(1);
-                  HapticFeedback.selectionClick();
-                }
-                while (_vAccum <= -_pxPerMin) {
-                  _vAccum += _pxPerMin;
-                  widget.onSwipeMinute(-1);
-                  HapticFeedback.selectionClick();
-                }
-              }
-            : null,
-        child: ClipRRect(
-  borderRadius: _kCardRadius,
-  child: BackdropFilter(
-    filter: _kBlur10,
-    child: Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-      decoration: BoxDecoration(
-        color: hasTime ? skin.primary.withValues(alpha: skin.isLight ? 0.08 : 0.14) : (skin.isLight ? Colors.white.withValues(alpha: skin.glassOpacity) : skin.bgCard.withValues(alpha: skin.glassOpacity)),
-        borderRadius: _kCardRadius,
-                border: Border.all(
-                  color: hasTime ? skin.primary.withValues(alpha: 0.32) : skin.glassBorder,
-                  width: hasTime ? 1.3 : 1.0,
-                ),
-                boxShadow: [BoxShadow(color: skin.glassShadow, blurRadius: 14, offset: const Offset(0, 4))],
-              ),
-              child: Row(children: [
-                Icon(Icons.schedule_outlined, size: 15, color: hasTime ? skin.primary : skin.surface(0.4)),
-                const SizedBox(width: 9),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text('UHRZEIT', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: hasTime ? skin.primary : skin.surface(0.35), letterSpacing: 1.0)),
-                      const SizedBox(height: 2),
-                      Text(
-                        timeLabel,
-                        style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: hasTime ? skin.textPrimary : skin.surface(0.32)),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
-                if (hasTime) Icon(Icons.unfold_more_rounded, size: 13, color: skin.surface(0.3)),
-              ]),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _SheetHandleBar extends StatelessWidget {
-  final AppSkin skin;
-  const _SheetHandleBar({required this.skin});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => Navigator.pop(context),
-      onVerticalDragEnd: (d) {
-        if ((d.primaryVelocity ?? 0) > 100) Navigator.pop(context);
-      },
-      child: Container(
-        width: double.infinity,
-        color: Colors.transparent,
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        alignment: Alignment.center,
-        child: SheetHandle(skin: skin),
-      ),
-    );
-  }
-}
-
-class _TaskEditSheet extends StatefulWidget {
-  final AppSkin skin;
-  final String? initialTitle;
-  final DateTime? initialDate;
-  final Task? existingTask;
-  final bool isReviewMode;
-  final void Function(Task task) onSaved;
-
-  const _TaskEditSheet({
-    required this.skin,
-    this.initialTitle,
-    this.initialDate,
-    this.existingTask,
-    this.isReviewMode = false,
-    required this.onSaved,
-  });
-
-  @override
-  State<_TaskEditSheet> createState() => _TaskEditSheetState();
-}
-
-class _TaskEditSheetState extends State<_TaskEditSheet> {
-  late TextEditingController _titleCtrl;
-  late TextEditingController _notesCtrl;
-  final _titleFocus = FocusNode();
-  DateTime? _dueDate;
-  bool _hasTime = false;
-  bool _fristEnabled = true;
-  bool _isUrgent = false;
-
-  List<String> _selectedReminderIds = [];
-  List<ReminderOption> _quickOptions = [];
-
-  bool get _isEditing => widget.existingTask != null;
-
-  ReminderMode get _mode => _dueDate != null ? ReminderMode.beforeDeadline : ReminderMode.relative;
+class _EntryDraftBannerState extends State<_EntryDraftBanner>
+    with TickerProviderStateMixin, SwipeAnimationMixin {
+  static const String cardKey = '__entry_draft__';
+  static const double _revealWidth = 76.0;
+  static const double _snapThreshold = 38.0;
+  bool _isOpen = false;
+  bool _dragging = false;
+  double _dragStartX = 0;
+  double _dragStartY = 0;
 
   @override
   void initState() {
     super.initState();
-    _titleCtrl = TextEditingController(text: widget.existingTask?.title ?? widget.initialTitle ?? '');
-    _notesCtrl = TextEditingController(text: widget.existingTask?.notes ?? '');
-    if (widget.existingTask != null) {
-      _dueDate = widget.existingTask!.dueDate;
-      _hasTime = widget.existingTask!.hasTime;
-      _isUrgent = widget.existingTask!.isUrgent;
-    } else if (widget.initialDate != null) {
-      _dueDate = widget.initialDate;
-      _hasTime = false;
-      _isUrgent = false;
-    } else {
-      _dueDate = null;
-      _hasTime = false;
-      _isUrgent = false;
+    initSwipeAnimation(vsync: this);
+  }
+
+  @override
+  void didUpdateWidget(_EntryDraftBanner oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.externallyOpen != cardKey && _isOpen) {
+      animateSwipeTo(0);
+      setState(() => _isOpen = false);
     }
-    _fristEnabled = _dueDate != null;
-    _selectedReminderIds = List<String>.from(widget.existingTask?.reminderOptionIds ?? []);
-    _refreshQuickOptions();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_isEditing) FocusScope.of(context).requestFocus(_titleFocus);
-    });
   }
 
   @override
   void dispose() {
-    _titleCtrl.dispose();
-    _notesCtrl.dispose();
-    _titleFocus.dispose();
+    disposeSwipeAnimation();
     super.dispose();
   }
 
-  void _refreshQuickOptions() {
-    _quickOptions = ReminderManager.getSorted(_mode);
+  void _onPanStart(DragStartDetails d) {
+    _dragging = false;
+    _dragStartX = d.globalPosition.dx;
+    _dragStartY = d.globalPosition.dy;
   }
 
-  Future<void> _pickDate() async {
-    final skin = widget.skin;
-    final result = await showSingleDatePicker(
-      context: context,
-      skin: skin,
-      initialDate: _dueDate ?? DateTime.now(),
-      minimumDate: DateTime.now().subtract(const Duration(days: 1)),
-      maximumDate: DateTime(DateTime.now().year + 3),
-    );
-    if (result != null) {
-      final hadDeadlineBefore = _dueDate != null;
-      setState(() {
-        _dueDate = DateTime(result.year, result.month, result.day, _dueDate?.hour ?? 0, _dueDate?.minute ?? 0);
-        _fristEnabled = true;
-      });
-      if (!hadDeadlineBefore) await _onDeadlineModeChanged();
+  void _onPanUpdate(DragUpdateDetails d) {
+    final totalDx = d.globalPosition.dx - _dragStartX;
+    final totalDy = (d.globalPosition.dy - _dragStartY).abs();
+    if (!_dragging) {
+      if (totalDy > totalDx.abs()) return;
+      if (totalDx > 0) return;
+      if (totalDx.abs() < 8) return;
+      _dragging = true;
     }
+    final newOffset = (swipeOffset + d.delta.dx).clamp(-_revealWidth, 0.0);
+    setSwipeOffsetImmediate(newOffset);
   }
 
-  void _swipeDate(int deltaDays) {
-    if (_dueDate == null) return;
-    setState(() {
-      _dueDate = _dueDate!.add(Duration(days: deltaDays));
-    });
-  }
-
-  void _doubleTapDate() {
-    HapticFeedback.mediumImpact();
-    if (_dueDate != null) {
-      _clearDate();
+  void _onPanEnd(DragEndDetails d) {
+    if (!_dragging) return;
+    _dragging = false;
+    final v = d.primaryVelocity ?? d.velocity.pixelsPerSecond.dx;
+    if (swipeOffset < -_snapThreshold || v < -400) {
+      animateSwipeTo(-_revealWidth);
+      setState(() => _isOpen = true);
+      widget.onCardSwiped(cardKey);
     } else {
-      final now = DateTime.now();
-      setState(() {
-        _dueDate = DateTime(now.year, now.month, now.day, 0, 0);
-        _hasTime = false;
-        _fristEnabled = true;
-      });
+      animateSwipeTo(0);
+      if (_isOpen) {
+        setState(() => _isOpen = false);
+        widget.onCardSwiped(null);
+      }
     }
   }
 
-  void _doubleTapTime() {
-    HapticFeedback.mediumImpact();
-    if (_hasTime && _dueDate != null) {
-      setState(() => _hasTime = false);
-    } else if (!_hasTime && _dueDate != null) {
-      final now = DateTime.now();
-      setState(() {
-        _dueDate = DateTime(_dueDate!.year, _dueDate!.month, _dueDate!.day, now.hour + 1, 0);
-        _hasTime = true;
-        _fristEnabled = true;
-      });
-    } else {
-      final now = DateTime.now();
-      setState(() {
-        _dueDate = DateTime(now.year, now.month, now.day, now.hour + 1, 0);
-        _hasTime = true;
-        _fristEnabled = true;
-      });
-    }
+  void _close() {
+    animateSwipeTo(0);
+    if (mounted) setState(() => _isOpen = false);
+    widget.onCardSwiped(null);
   }
 
-  Future<void> _pickTime() async {
-    if (_dueDate == null) return;
-    final skin = widget.skin;
-    final base = _dueDate!;
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (_) => IOSTimePicker(
-        initialTime: TimeOfDay(hour: base.hour, minute: base.minute),
-        skin: skin,
-        label: 'Uhrzeit auswählen',
-        onTimeSelected: (t) {
-          setState(() {
-            final d = _dueDate!;
-            _dueDate = DateTime(d.year, d.month, d.day, t.hour, t.minute);
-            _hasTime = true;
-          });
-        },
-      ),
-    );
+  void _onDeleteTap() {
+    _close();
+    widget.onDelete();
   }
 
-  void _swipeTime(int deltaMinutes) {
-    if (_dueDate == null || !_hasTime) return;
-    setState(() {
-      _dueDate = _dueDate!.add(Duration(minutes: deltaMinutes));
-    });
-  }
-
-  Future<void> _clearDate() async {
-    final hadDeadlineBefore = _dueDate != null;
-    setState(() {
-      _dueDate = null;
-      _hasTime = false;
-      _fristEnabled = false;
-    });
-    if (hadDeadlineBefore) await _onDeadlineModeChanged();
-  }
-
-  Future<void> _setFristEnabled(bool enabled) async {
-    if (enabled == _fristEnabled) return;
-    if (!enabled) {
-      final hadDeadlineBefore = _dueDate != null;
-      setState(() {
-        _fristEnabled = false;
-        _dueDate = null;
-        _hasTime = false;
-      });
-      if (hadDeadlineBefore) await _onDeadlineModeChanged();
-    } else {
-      final hadDeadlineBefore = _dueDate != null;
-      final now = DateTime.now();
-      setState(() {
-        _fristEnabled = true;
-        _dueDate = DateTime(now.year, now.month, now.day, now.hour + 1, 0);
-        _hasTime = true;
-      });
-      if (!hadDeadlineBefore) await _onDeadlineModeChanged();
-    }
-  }
-
-  Future<void> _onDeadlineModeChanged() async {
-    final hadReminders = _selectedReminderIds.isNotEmpty;
-    setState(() {
-      _selectedReminderIds = [];
-      _refreshQuickOptions();
-    });
-    if (hadReminders && mounted) {
-      await _showReminderResetInfoDialog();
-    }
-  }
-
-  Future<void> _showReminderResetInfoDialog() async {
-  await confirmActionDialog(
-    context: context,
-    skin: widget.skin,
-    icon: Icons.notifications_off_outlined,
-    title: 'Erinnerungen zurückgesetzt',
-    message: 'Da sich der Fristen-Status geändert hat, wurden alle bisher gewählten Erinnerungen entfernt. Du kannst unten neue auswählen.',
-    cancelLabel: 'Verstanden',
-    confirmLabel: 'Verstanden',
-  );
-}
-
-  void _toggleReminderOption(String id) {
-  if (_selectedReminderIds.contains(id)) {
-    setState(() => _selectedReminderIds.remove(id));
-  } else {
-    if (_selectedReminderIds.length >= ReminderManager.maxSelectable) {
-      HapticFeedback.heavyImpact();
-      showGlassSnackBar(
-        context,
-        'Maximal 3 Erinnerungen pro Aufgabe.',
-        type: GlassSnackBarType.warning,
-      );
+  void _handleTap() {
+    if (_isOpen) {
+      _close();
       return;
     }
-    HapticFeedback.selectionClick();
-    setState(() => _selectedReminderIds.add(id));
-  }
-}
-
-  List<DateTime> _computeReminderTimes() {
-    final options = ReminderManager.optionsFor(_mode);
-    final base = _mode == ReminderMode.beforeDeadline ? _dueDate! : DateTime.now();
-    final times = <DateTime>[];
-    for (final id in _selectedReminderIds) {
-      final opt = options.firstWhere((o) => o.id == id, orElse: () => options.first);
-      final time = _mode == ReminderMode.beforeDeadline ? base.subtract(opt.duration) : base.add(opt.duration);
-      times.add(time);
-    }
-    times.sort();
-    return times;
-  }
-
-  void _save() {
-    final title = _titleCtrl.text.trim();
-    if (title.isEmpty) return;
-
-    for (final id in _selectedReminderIds) {
-      ReminderManager.recordUsage(_mode, id);
-    }
-
-    final task = widget.existingTask ??
-        Task(id: DateTime.now().millisecondsSinceEpoch.toString(), title: title, createdAt: DateTime.now());
-    task.title = title;
-    task.dueDate = _dueDate;
-    task.hasTime = _dueDate != null && _hasTime;
-    task.notes = _notesCtrl.text.trim();
-    task.isUrgent = _isUrgent;
-    task.reminderOptionIds = List<String>.from(_selectedReminderIds);
-    task.reminderTimes = _computeReminderTimes();
-    widget.onSaved(task);
-    Navigator.pop(context);
+    widget.onReopen();
   }
 
   @override
   Widget build(BuildContext context) {
     final skin = widget.skin;
-    return Padding(
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom,
-        top: MediaQuery.of(context).padding.top + 12,
-      ),
-      child: GlassSheet(
-        skin: skin,
-        child: NotificationListener<ScrollNotification>(
-          onNotification: (notification) {
-            if (notification is ScrollUpdateNotification) {
-              if (notification.scrollDelta != null && notification.scrollDelta! < -5) {
-                FocusScope.of(context).unfocus();
-              }
-            }
-            return false;
-          },
-          child: GestureDetector(
-            onVerticalDragUpdate: (d) {
-              if (d.delta.dy > 12) FocusScope.of(context).unfocus();
-            },
-            child: SingleChildScrollView(
-              physics: const BouncingScrollPhysics(),
-              child: Padding(
-                padding: EdgeInsets.fromLTRB(20, 4, 20, 20 + MediaQuery.of(context).padding.bottom),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _SheetHandleBar(skin: skin),
-                    const SizedBox(height: 4),
-                    Row(children: [
-                      Icon(
-                        widget.isReviewMode ? Icons.mic_outlined : Icons.task_alt_outlined,
-                        size: 18,
-                        color: skin.primary,
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        widget.isReviewMode
-                            ? 'Erkannt — bitte prüfen'
-                            : (_isEditing ? 'Aufgabe bearbeiten' : 'Neue Aufgabe'),
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: skin.textPrimary),
-                      ),
-                    ]),
-                    if (widget.isReviewMode) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        'Diktat wurde automatisch erkannt — Titel und Datum ggf. anpassen.',
-                        style: TextStyle(fontSize: 11.5, color: skin.textMuted),
-                      ),
-                    ],
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: _titleCtrl,
-                      focusNode: _titleFocus,
-                      autofocus: !_isEditing,
-                      maxLines: 3,
-                      minLines: 1,
-                      textCapitalization: TextCapitalization.sentences,
-                      style: TextStyle(color: skin.textPrimary, fontSize: 17, fontWeight: FontWeight.w500),
-                      decoration: InputDecoration(
-                        hintText: 'Titel',
-                        hintStyle: TextStyle(color: skin.surface(0.22), fontSize: 17),
-                        border: InputBorder.none,
-                        isDense: true,
-                        contentPadding: EdgeInsets.zero,
-                      ),
-                      onSubmitted: (_) => _save(),
-                    ),
+    final isEvent = widget.draft.mode == EntryMode.event;
+    final label = widget.draft.title.trim().isNotEmpty
+        ? widget.draft.title.trim()
+        : (isEvent ? 'Neues Ereignis – Entwurf' : 'Neue Aufgabe – Entwurf');
 
-                    const SizedBox(height: 14),
-                    Container(height: 0.6, color: skin.surface(0.10)),
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: _notesCtrl,
-                      maxLines: 4,
-                      minLines: 1,
-                      textCapitalization: TextCapitalization.sentences,
-                      style: TextStyle(color: skin.textPrimary, fontSize: 14, fontWeight: FontWeight.w500, height: 1.4),
-                      decoration: InputDecoration(
-                        hintText: 'Notiz hinzufügen…',
-                        hintStyle: TextStyle(color: skin.surface(0.26), fontSize: 14),
-                        border: InputBorder.none,
-                        isDense: true,
-                        contentPadding: EdgeInsets.zero,
+    return GestureDetector(
+      onHorizontalDragStart: _onPanStart,
+      onHorizontalDragUpdate: _onPanUpdate,
+      onHorizontalDragEnd: _onPanEnd,
+      onTap: _handleTap,
+      child: SizedBox(
+        height: 52,
+        child: ClipRect(
+          child: Stack(clipBehavior: Clip.hardEdge, children: [
+            Positioned(
+              right: 0, top: 0, bottom: 0, width: _revealWidth,
+              child: GestureDetector(
+                onTap: _onDeleteTap,
+                child: Opacity(
+                  opacity: (swipeOffset.abs() / _revealWidth).clamp(0.0, 1.0),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(22),
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                      child: Container(
+                        margin: const EdgeInsets.only(left: 6),
+                        decoration: BoxDecoration(
+                          color: skin.deleteColor.withValues(alpha: 0.14),
+                          borderRadius: BorderRadius.circular(22),
+                          border: Border.all(color: skin.deleteColor.withValues(alpha: 0.30)),
+                        ),
+                        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                          Icon(Icons.delete_outline, color: skin.deleteColor, size: 18),
+                          const SizedBox(height: 2),
+                          Text('Löschen', style: TextStyle(color: skin.deleteColor, fontSize: 9, fontWeight: FontWeight.w600)),
+                        ]),
                       ),
                     ),
-
-                    const SizedBox(height: 16),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(
-                          child: Row(
-                            children: [
-                              Text(
-                                'DRINGEND',
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w700,
-                                  color: _isUrgent ? const Color(0xFFEF5B5B).withValues(alpha: 0.85) : skin.surface(0.38),
-                                  letterSpacing: 1.2,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Container(
-                                  height: 0.5,
-                                  color: _isUrgent ? const Color(0xFFEF5B5B).withValues(alpha: 0.25) : skin.surface(0.12),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Transform.scale(
-                          scale: 0.75,
-                          child: Switch(
-                            value: _isUrgent,
-                            onChanged: (v) {
-                              HapticFeedback.selectionClick();
-                              setState(() => _isUrgent = v);
-                            },
-                            activeThumbColor: const Color(0xFFEF5B5B),
-                            activeTrackColor: const Color(0xFFEF5B5B).withValues(alpha: 0.28),
-                            inactiveThumbColor: skin.surface(0.4),
-                            inactiveTrackColor: skin.surface(0.08),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(child: _SectionLabel(label: 'FRIST', skin: skin)),
-                        Transform.scale(
-                          scale: 0.75,
-                          child: Switch(
-                            value: _fristEnabled,
-                            onChanged: (v) => _setFristEnabled(v),
-                            activeThumbColor: skin.primary,
-                            activeTrackColor: skin.primary.withValues(alpha: 0.28),
-                            inactiveThumbColor: skin.surface(0.4),
-                            inactiveTrackColor: skin.surface(0.08),
-                          ),
-                        ),
-                      ],
-                    ),
-                    if (_fristEnabled) ...[
-                      const SizedBox(height: 8),
-                      Row(children: [
-                        Expanded(
-                          child: _TaskDateTile(
-                            skin: skin,
-                            date: _dueDate,
-                            onTap: _pickDate,
-                            onDoubleTap: _doubleTapDate,
-                            onSwipeDay: _swipeDate,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: _TaskTimeTile(
-                            skin: skin,
-                            enabled: _dueDate != null,
-                            time: (_dueDate != null && _hasTime) ? TimeOfDay(hour: _dueDate!.hour, minute: _dueDate!.minute) : null,
-                            onTap: _pickTime,
-                            onDoubleTap: _doubleTapTime,
-                            onSwipeMinute: _swipeTime,
-                          ),
-                        ),
-                      ]),
-                      const SizedBox(height: 6),
-                      Text('Wischen · Tippen · Doppeltippen', style: TextStyle(fontSize: 10, color: skin.surface(0.28))),
-                    ],
-                    const SizedBox(height: 16),
-                    _SectionLabel(label: 'HINWEISEN', skin: skin),
-                    const SizedBox(height: 8),
-                    Text(
-                      _dueDate == null
-                          ? 'Wann möchtest du erinnert werden?'
-                          : 'Wie weit vor der Frist möchtest du erinnert werden?',
-                      style: TextStyle(fontSize: 12, color: skin.surface(0.4)),
-                    ),
-                    const SizedBox(height: 10),
-                    _ReminderQuickChips(
-  options: _quickOptions,
-  selectedIds: _selectedReminderIds,
-  onToggle: _toggleReminderOption,
-),
-                    if (_selectedReminderIds.isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      Text(
-                        '${_selectedReminderIds.length} von ${ReminderManager.maxSelectable} Erinnerungen gewählt',
-                        style: TextStyle(fontSize: 10.5, color: skin.surface(0.32)),
-                      ),
-                    ],
-
-                    const SizedBox(height: 22),
-                    GlassPrimaryButton(
-                      skin: skin,
-                      label: widget.isReviewMode
-                          ? 'Übernehmen'
-                          : (_isEditing ? 'Speichern' : 'Hinzufügen'),
-                      icon: Icons.check_circle_outline,
-                      large: true,
-                      onTap: _save,
-                    ),
-                  ],
+                  ),
                 ),
               ),
             ),
-          ),
+            Transform.translate(
+              offset: Offset(swipeOffset, 0),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(22),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                  child: Container(
+                    height: 52,
+                    decoration: BoxDecoration(
+                      color: skin.isLight ? Colors.white.withValues(alpha: 0.72) : Colors.black.withValues(alpha: 0.55),
+                      borderRadius: BorderRadius.circular(22),
+                      border: Border.all(
+                        color: skin.isLight ? Colors.white.withValues(alpha: 0.55) : Colors.white.withValues(alpha: 0.12),
+                        width: 0.8,
+                      ),
+                      boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: skin.isLight ? 0.08 : 0.35), blurRadius: 24, offset: const Offset(0, 6))],
+                    ),
+                    child: Stack(children: [
+                      Center(child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                          Icon(isEvent ? Icons.event_note_rounded : Icons.edit_note_rounded, size: 16, color: skin.primary),
+                          const SizedBox(width: 6),
+                          Flexible(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis,
+                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: skin.textPrimary))),
+                        ]),
+                      )),
+                      Positioned(top: 6, left: 0, right: 0,
+                        child: Center(child: Container(width: 40, height: 4,
+                            decoration: BoxDecoration(color: skin.surface(0.18), borderRadius: BorderRadius.circular(2))))),
+                    ]),
+                  ),
+                ),
+              ),
+            ),
+          ]),
         ),
       ),
     );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// REMINDER QUICK CHIPS
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _ReminderQuickChips extends StatelessWidget {
-  final List<ReminderOption> options;
-  final List<String> selectedIds;
-  final void Function(String id) onToggle;
-
-  const _ReminderQuickChips({
-    required this.options,
-    required this.selectedIds,
-    required this.onToggle,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 34,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        physics: const BouncingScrollPhysics(),
-        itemCount: options.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 6),
-        itemBuilder: (context, i) {
-          final opt = options[i];
-          final selected = selectedIds.contains(opt.id);
-          return GlassChip(
-            label: opt.label,
-            active: selected,
-            icon: Icons.check_rounded,
-            onTap: () => onToggle(opt.id),
-          );
-        },
-      ),
-    );
-  }
-}
-
-class _SectionLabel extends StatelessWidget {
-  final String label;
-  final AppSkin skin;
-  const _SectionLabel({required this.label, required this.skin});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(children: [
-      Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: skin.surface(0.38), letterSpacing: 1.2)),
-      const SizedBox(width: 8),
-      Expanded(child: Container(height: 0.5, color: skin.surface(0.12))),
-    ]);
   }
 }

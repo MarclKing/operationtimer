@@ -2,6 +2,7 @@ import UIKit
 import Flutter
 import WidgetKit
 import UserNotifications  // ← NEU: für lokale Notifications
+import workmanager        // NEU
 
 @main
 @objc class AppDelegate: FlutterAppDelegate {
@@ -29,9 +30,17 @@ import UserNotifications  // ← NEU: für lokale Notifications
         }
 
         GeneratedPluginRegistrant.register(with: self)
+
+        // NEU: Zwingend erforderlich für workmanager auf iOS — Apple verlangt,
+        // dass jede BGTaskScheduler-Identifier-Registrierung synchron HIER
+        // passiert, bevor didFinishLaunchingWithOptions zurückkehrt. Ohne das
+        // stürzt die App beim ersten registerPeriodicTask()-Aufruf aus main.dart ab.
+        WorkmanagerPlugin.registerTask(withIdentifier: "de.marcel.optimes.appleCalendarSync")
+
         let result = super.application(application, didFinishLaunchingWithOptions: launchOptions)
 
-        if let controller = window?.rootViewController as? FlutterViewController {
+        DispatchQueue.main.async {
+        if let controller = self.window?.rootViewController as? FlutterViewController {
             let widgetChannel = FlutterMethodChannel(
                 name: "de.marcel.optimes/widget",
                 binaryMessenger: controller.binaryMessenger
@@ -42,6 +51,22 @@ import UserNotifications  // ← NEU: für lokale Notifications
                        let json = args["json"] as? String {
                         let defaults = UserDefaults(suiteName: "group.de.marcel.optimes")
                         defaults?.set(json, forKey: "schedule_entries")
+                        defaults?.synchronize()
+                    }
+                    if #available(iOS 14.0, *) {
+                        WidgetCenter.shared.reloadAllTimelines()
+                    }
+                    result(nil)
+                } else if call.method == "updateCalendarEvents" {
+                    // Datenquelle für die beiden neuen Kalender-Widgets.
+                    if let args = call.arguments as? [String: Any] {
+                        let defaults = UserDefaults(suiteName: "group.de.marcel.optimes")
+                        if let json = args["json"] as? String {
+                            defaults?.set(json, forKey: "calendar_widget_events")
+                        }
+                        if let readOnly = args["readOnly"] as? Bool { // NEU
+                            defaults?.set(readOnly, forKey: "read_only_mode")
+                        }
                         defaults?.synchronize()
                     }
                     if #available(iOS 14.0, *) {
@@ -64,30 +89,71 @@ import UserNotifications  // ← NEU: für lokale Notifications
                 self.checkAndSendPendingPdf(navChannel: navChannel)
             }
         }
+        }
 
         return result
     }
 
     // ── PDF aus App Group Container (Share Extension) ───────────────────────
-    private func checkAndSendPendingPdf(navChannel: FlutterMethodChannel) {
-        guard let containerURL = FileManager.default
-            .containerURL(forSecurityApplicationGroupIdentifier: "group.de.marcel.optimes") else {
-            return
+    //
+    // WICHTIG: Diese Methode wird bei einem Kaltstart über die Share
+    // Extension ZWEIMAL aufgerufen — einmal aus didFinishLaunchingWithOptions
+    // (asyncAfter 1.0s) und einmal aus application(_:open:), weil die
+    // Extension jetzt korrekt "optimes://shared-pdf" öffnet (siehe
+    // ShareViewController). Beide Aufrufe liefen bisher fast parallel und
+    // konkurrierten um dieselbe Datei: einer sendet+löscht, der andere findet
+    // sie danach nicht mehr → "PathNotFoundException". Fix: die Datei wird
+    // ATOMAR verschoben, sobald sie entdeckt wird — nur der Aufruf, der die
+    // Datei zuerst verschiebt, verarbeitet sie; der andere bricht sauber ab.
+    func checkAndSendPendingPdf(navChannel: FlutterMethodChannel, retriesLeft: Int = 6) {
+    guard let containerURL = FileManager.default
+        .containerURL(forSecurityApplicationGroupIdentifier: "group.de.marcel.optimes") else {
+        return
+    }
+    let pdfURL = containerURL.appendingPathComponent("pending_dienstplan.pdf")
+    let workingURL = containerURL.appendingPathComponent("pending_dienstplan_processing.pdf")
+
+    do {
+        if FileManager.default.fileExists(atPath: workingURL.path) {
+            try? FileManager.default.removeItem(at: workingURL)
         }
-        let pdfURL = containerURL.appendingPathComponent("pending_dienstplan.pdf")
-        guard FileManager.default.fileExists(atPath: pdfURL.path) else { return }
+        try FileManager.default.moveItem(at: pdfURL, to: workingURL)
+    } catch {
+        // NEU: Die Share Extension schreibt die Datei jetzt PARALLEL zum
+        // open()-Aufruf, nicht mehr davor. Die Datei kann daher beim ersten
+        // Check noch fehlen — kurz erneut versuchen statt sofort aufzugeben.
+        if retriesLeft > 0 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                self.checkAndSendPendingPdf(navChannel: navChannel, retriesLeft: retriesLeft - 1)
+            }
+        }
+        return
+    }
 
         let defaults = UserDefaults(suiteName: "group.de.marcel.optimes")
         let fileName = defaults?.string(forKey: "PendingPdfName") ?? "dienstplan.pdf"
 
-        navChannel.invokeMethod("openSharedPdf", arguments: [
-            "path": pdfURL.path,
-            "fileName": fileName
-        ])
+        var didCleanup = false
+        let cleanup = {
+            guard !didCleanup else { return }
+            didCleanup = true
+            try? FileManager.default.removeItem(at: workingURL)
+            defaults?.removeObject(forKey: "PendingPdfName")
+            defaults?.synchronize()
+        }
 
-        try? FileManager.default.removeItem(at: pdfURL)
-        defaults?.removeObject(forKey: "PendingPdfName")
-        defaults?.synchronize()
+        navChannel.invokeMethod("openSharedPdf", arguments: [
+            "path": workingURL.path,
+            "fileName": fileName
+        ]) { _ in
+            cleanup()
+        }
+
+        // Fallback: falls die Dart-Seite aus irgendeinem Grund nie antwortet
+        // (z.B. Hot-Reload währenddessen), spätestens nach 10s aufräumen.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 10.0) {
+            cleanup()
+        }
     }
 
     // ── PDF aus Dokument-Inbox ("Öffnen mit" / direkt geteilt) ─────────────
@@ -150,19 +216,5 @@ import UserNotifications  // ← NEU: für lokale Notifications
         }
 
         return super.application(app, open: url, options: options)
-    }
-
-    // ── Ältere iOS-Variante (sourceApplication) ─────────────────────────────
-    override func application(
-        _ application: UIApplication,
-        open url: URL,
-        sourceApplication: String?,
-        annotation: Any
-    ) -> Bool {
-        if url.isFileURL && url.pathExtension.lowercased() == "pdf" {
-            handleInboxPdf(url: url)
-            return true
-        }
-        return super.application(application, open: url, sourceApplication: sourceApplication, annotation: annotation)
     }
 }

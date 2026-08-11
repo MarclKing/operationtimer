@@ -415,3 +415,164 @@ class RelationshipOptionCard extends StatelessWidget {
 // Privater Alias, damit das Sheet oben dieselbe Karte ohne Export-Konflikt
 // nutzen kann (gleiche Klasse, nur intern referenziert).
 typedef _RelationshipOptionCard = RelationshipOptionCard;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LESEMODUS-WELCOME
+// ─────────────────────────────────────────────────────────────────────────────
+
+// NEU: Der eigentliche "versteckende" Splash läuft jetzt bereits VOR dem
+// Zurückspringen zum Homescreen in settings_screen.dart (_ReadOnlyActivationSplash).
+// Hier wird nur noch direkt das Welcome-Sheet gezeigt — kein doppelter Splash mehr.
+Future<void> showReadOnlyModeWelcome(BuildContext context) async {
+  await showModalBottomSheet(
+    context: context,
+    backgroundColor: Colors.transparent,
+    isScrollControlled: true,
+    isDismissible: false,
+    enableDrag: false,
+    useSafeArea: false,
+    builder: (_) => const _ReadOnlyWelcomeSheet(),
+  );
+}
+
+class _ReadOnlyWelcomeSheet extends StatefulWidget {
+  const _ReadOnlyWelcomeSheet();
+
+  @override
+  State<_ReadOnlyWelcomeSheet> createState() => _ReadOnlyWelcomeSheetState();
+}
+
+class _ReadOnlyWelcomeSheetState extends State<_ReadOnlyWelcomeSheet> {
+  int _step = 0;
+
+  static const _steps = [
+    (
+      icon: Icons.lock_outline_rounded,
+      title: 'Du hast den Lesemodus aktiviert!',
+      text: 'Du hast nun einen eingeschränkten Zugriff auf bestimmte vertrauliche Funktionen der App.',
+    ),
+    (
+      icon: Icons.event_note_outlined,
+      title: 'Dienstplan',
+      text: 'Den Dienstplan kannst du weiterhin im eingeschränkten Zugriff ansehen, aber nicht mehr bearbeiten oder neu hochladen.',
+    ),
+    (
+      icon: Icons.task_alt_rounded,
+      title: 'Aufgaben & Kalender',
+      text: 'Du hast hier **deinen eigenen** Aufgaben- und Kalenderbereich! **Sie laufen komplett getrennt vom verknüpften Gerät.**',
+    ),
+    (
+      icon: Icons.sync_rounded,
+      title: 'Kalender-Sync',
+      text: 'Du hast die Möglichkeit, deinen Kalender mit dem verknüpften Gerät zu verbinden und einen gemeinsamen Kalender zu synchronisieren. Dabei könnt ihr über gemeinsame Sync-Gruppen Einträge bzw. Ereignisse anlegen, die automatisch zwischen euren Geräten abgeglichen werden — praktisch für alles, was ihr beide im Blick behalten wollt.',
+    ),
+  ];
+
+  void _next() {
+    if (_step < _steps.length - 1) {
+      setState(() => _step++);
+    } else {
+      Navigator.pop(context);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final skin = AppTheme.of(context);
+    final s = _steps[_step];
+    return PopScope(
+      canPop: false,
+      child: GlassSheet(
+        skin: skin,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 36),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 60,
+                height: 60,
+                decoration: BoxDecoration(
+                  color: skin.primary.withValues(alpha: skin.isLight ? 0.12 : 0.18),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: Icon(s.icon, color: skin.primary, size: 28),
+              ),
+              const SizedBox(height: 18),
+              Text(s.title,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 19, fontWeight: FontWeight.w700, color: skin.textPrimary)),
+              const SizedBox(height: 10),
+              _HighlightedStepText(
+                text: s.text,
+                baseStyle: TextStyle(fontSize: 13.5, color: skin.textMuted, height: 1.5),
+                highlightColor: const Color(0xFF34C759),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(
+                  _steps.length,
+                  (i) => Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 3),
+                    width: i == _step ? 18 : 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      color: i == _step ? skin.primary : skin.surface(0.18),
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              GlassPrimaryButton(
+                skin: skin,
+                large: true,
+                label: _step < _steps.length - 1 ? 'Weiter' : "Los geht's!",
+                icon: Icons.arrow_forward_rounded,
+                onTap: _next,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HIGHLIGHTED STEP TEXT (NEU, Punkt 5) — Text mit **markierten** Wörtern in
+// grün, für die Lesemodus-Welcome-Steps.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _HighlightedStepText extends StatelessWidget {
+  final String text;
+  final TextStyle baseStyle;
+  final Color highlightColor;
+  const _HighlightedStepText({
+    required this.text,
+    required this.baseStyle,
+    required this.highlightColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final spans = <TextSpan>[];
+    final pattern = RegExp(r'\*\*(.+?)\*\*');
+    int last = 0;
+    for (final match in pattern.allMatches(text)) {
+      if (match.start > last) {
+        spans.add(TextSpan(text: text.substring(last, match.start), style: baseStyle));
+      }
+      spans.add(TextSpan(
+        text: match.group(1),
+        style: baseStyle.copyWith(color: highlightColor, fontWeight: FontWeight.w700),
+      ));
+      last = match.end;
+    }
+    if (last < text.length) {
+      spans.add(TextSpan(text: text.substring(last), style: baseStyle));
+    }
+    return RichText(textAlign: TextAlign.center, text: TextSpan(children: spans));
+  }
+}

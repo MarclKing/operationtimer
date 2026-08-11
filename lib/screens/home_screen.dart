@@ -24,7 +24,9 @@ class HomeScreen extends StatefulWidget {
   final VoidCallback? onNavigateToFahrtenbuch;
   final VoidCallback? onNavigateToFahrtenbuchNeueFahrt;
   final VoidCallback? onNavigateToTasks;
-  final VoidCallback? onNavigateToTasksQuickAdd; // NEU
+  final VoidCallback? onNavigateToTasksQuickAdd;
+  final VoidCallback? onNavigateToTasksQuickAddEvent;
+  final VoidCallback? onNavigateToSchedule;
   final DateTime selectedDate;
   final ValueChanged<DateTime> onDateChanged;
   final VoidCallback? onNavigateToScheduleAndImport;
@@ -37,7 +39,9 @@ class HomeScreen extends StatefulWidget {
     this.onNavigateToFahrtenbuch,
     this.onNavigateToFahrtenbuchNeueFahrt,
     this.onNavigateToTasks,
-    this.onNavigateToTasksQuickAdd, // NEU
+    this.onNavigateToTasksQuickAdd,
+    this.onNavigateToTasksQuickAddEvent,
+    this.onNavigateToSchedule,
     this.onNavigateToScheduleAndImport,
   });
 
@@ -55,7 +59,7 @@ class HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, W
 
   // ── NEU: Wetter-State, wird verzögert nach erstem Frame befüllt ──────────
 WeatherData? _weatherData;
-bool _isRefreshingWeather = false;   // ← NEU: für Tap-to-Refresh Icon
+bool _isRefreshingWeather = false;
 
   // Review-Callback von main.dart
   void Function(ParsedSpokenTask, String)? onReviewFromHomescreen;
@@ -65,14 +69,14 @@ bool _isRefreshingWeather = false;   // ← NEU: für Tap-to-Refresh Icon
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this); 
-    TaskStore.changesSignal.addListener(_onTasksChangedExternally); // NEU
+    TaskStore.changesSignal.addListener(_onTasksChangedExternally);
     _selectedDate = widget.selectedDate;
     _now = DateTime.now();
 
     // Sofort verfügbaren Cache zeigen (kein Warten, kein Netzwerk-Call)
 _weatherData = WeatherService.instance.cached;
 
-WeatherService.instance.refreshSignal.addListener(_onWeatherInvalidated);   // ← NEU
+WeatherService.instance.refreshSignal.addListener(_onWeatherInvalidated);
 
     _greetingCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 600));
     _greetingFade = CurvedAnimation(parent: _greetingCtrl, curve: Curves.easeOut);
@@ -113,7 +117,7 @@ Future<void> _refreshWeatherManual() async {
   HapticFeedback.mediumImpact();
   setState(() => _isRefreshingWeather = true);
 
-  WeatherService.instance.invalidateCache(); // Cache umgehen → echter Fetch erzwungen
+  WeatherService.instance.invalidateCache();
   final box = Hive.box('einstellungen');
   final useGps = box.get('weather_use_gps', defaultValue: true) as bool;
   final cityName = useGps ? '' : (_getWeatherCity() ?? '');
@@ -143,7 +147,7 @@ Future<void> _refreshWeatherManual() async {
 void dispose() {
   WidgetsBinding.instance.removeObserver(this);
   WeatherService.instance.refreshSignal.removeListener(_onWeatherInvalidated);
-  TaskStore.changesSignal.removeListener(_onTasksChangedExternally); // NEU
+  TaskStore.changesSignal.removeListener(_onTasksChangedExternally);
   _greetingCtrl.dispose();
   super.dispose();
 }
@@ -158,7 +162,7 @@ void _onTasksChangedExternally() {
 void didChangeAppLifecycleState(AppLifecycleState state) {
   super.didChangeAppLifecycleState(state);
   if (state == AppLifecycleState.resumed) {
-    _refreshWeather(); // App wieder im Vordergrund → still im Hintergrund nachladen
+    _refreshWeather();
   }
 }
 
@@ -190,7 +194,7 @@ void didChangeAppLifecycleState(AppLifecycleState state) {
       isUrgent: parsed.isUrgent,
     );
     TaskStore.add(task);
-    setState(() {}); // Aufgaben-Preview aktualisieren
+    setState(() {});
     HapticFeedback.mediumImpact();
     showGlassSnackBar(context, '„${task.title}" gespeichert',
     type: GlassSnackBarType.success);
@@ -320,13 +324,15 @@ Future<void> _showDuplicateDialog(ParsedSpokenTask parsed, String logRef) async 
   List<Task> _getUpcomingTasks() {
     final all = TaskStore.loadAll();
     final open = all.where((t) => !t.done).toList();
-    open.sort((a, b) {
+    int byDue(Task a, Task b) {
       if (a.dueDate == null && b.dueDate == null) return 0;
       if (a.dueDate == null) return 1;
       if (b.dueDate == null) return -1;
       return a.dueDate!.compareTo(b.dueDate!);
-    });
-    return open.take(7).toList();
+    }
+    final urgent = open.where((t) => t.isUrgent).toList()..sort(byDue);
+    final rest = open.where((t) => !t.isUrgent).toList()..sort(byDue);
+    return [...urgent, ...rest].take(7).toList();
   }
 
   bool get _hasScheduleThisMonth {
@@ -362,10 +368,12 @@ Future<void> _showDuplicateDialog(ParsedSpokenTask parsed, String logRef) async 
     final upcomingTasks = _getUpcomingTasks();
     final bottomNavHeight = 70.0 + MediaQuery.of(context).padding.bottom;
 
-    final box = Hive.box('einstellungen');
+    
+final box = Hive.box('einstellungen');
     final taskAddMode = box.get('homescreen_task_add_mode', defaultValue: 'dictate') as String;
     final useDictate = taskAddMode == 'dictate';
-
+    final compactTiles = box.get('homescreen_compact_tiles', defaultValue: false) as bool;
+    final readOnlyMode = box.get('read_only_mode', defaultValue: false) as bool;
     return Scaffold(
   backgroundColor: skin.bgBase,
   body: SafeArea(
@@ -416,7 +424,67 @@ Future<void> _showDuplicateDialog(ParsedSpokenTask parsed, String logRef) async 
       const gap = 10.0;
       final kachelW = (constraints.maxWidth - gap * 2) / 3;
       // Höhe proportional zur Kachel-Breite, mit sinnvollen Grenzen
-      final kachelH = (kachelW * 1.02).clamp(84.0, 128.0);
+      // Kompakter Inhalt ist immer eine einzeilige Row (Icon 30px + Padding
+      // 12 oben/unten) — 58px ist die exakt passende Höhe dafür, unabhängig
+      // von der Kachel-Breite.
+      final kachelH = compactTiles
+        ? 58.0
+        : (kachelW * 1.02).clamp(84.0, 128.0);
+
+      // NEU: im Lesemodus andere Kachel-Belegung — Diktieren/Entry-Sheet
+      // Aufgabe, Entry-Sheet neues Ereignis, Kurzverknüpfung Dienstplan.
+      if (readOnlyMode) {
+        return Row(
+          children: [
+            Expanded(
+              child: _DictationTaskKachel(
+                skin: skin,
+                height: kachelH,
+                compact: compactTiles,
+                onResult: _createTaskFromSpeech,
+                onNeedsReview: _reviewTaskFromSpeech,
+                onNavigateToTasks: widget.onNavigateToTasks,
+                onNavigateToTasksQuickAdd: widget.onNavigateToTasksQuickAdd,
+                useDictate: useDictate,
+              ),
+            ),
+            const SizedBox(width: gap),
+            Expanded(
+              child: _QuickAccessKachel(
+                skin: skin,
+                height: kachelH,
+                compact: compactTiles,
+                icon: '📅',
+                label: 'Neuer Termin',
+                compactLabel: 'Termin',
+                sublabel: 'Kalender →',
+                accentColor: const Color(0xFF2FD3C7),
+                onTap: () {
+                  HapticFeedback.mediumImpact();
+                  widget.onNavigateToTasksQuickAddEvent?.call();
+                },
+              ),
+            ),
+            const SizedBox(width: gap),
+            Expanded(
+              child: _QuickAccessKachel(
+                skin: skin,
+                height: kachelH,
+                compact: compactTiles,
+                icon: '📋',
+                label: 'Dienstplan',
+                compactLabel: 'Plan',
+                sublabel: 'Ansehen →',
+                accentColor: const Color(0xFFFFB347),
+                onTap: () {
+                  HapticFeedback.mediumImpact();
+                  widget.onNavigateToSchedule?.call();
+                },
+              ),
+            ),
+          ],
+        );
+      }
 
       return Row(
         children: [
@@ -424,6 +492,7 @@ Future<void> _showDuplicateDialog(ParsedSpokenTask parsed, String logRef) async 
             child: _StempeluhrKachel(
               skin: skin,
               height: kachelH,
+              compact: compactTiles,
               onNavigateToMonth: widget.onNavigateToMonth,
             ),
           ),
@@ -432,8 +501,10 @@ Future<void> _showDuplicateDialog(ParsedSpokenTask parsed, String logRef) async 
             child: _QuickAccessKachel(
               skin: skin,
               height: kachelH,
+              compact: compactTiles,
               icon: '🚗',
               label: 'Neue Fahrt',
+              compactLabel: 'Fahrt',
               sublabel: 'KM + Foto →',
               accentColor: const Color(0xFF2D6CFF),
               onTap: () {
@@ -447,10 +518,11 @@ Future<void> _showDuplicateDialog(ParsedSpokenTask parsed, String logRef) async 
             child: _DictationTaskKachel(
               skin: skin,
               height: kachelH,
+              compact: compactTiles,
               onResult: _createTaskFromSpeech,
               onNeedsReview: _reviewTaskFromSpeech,
               onNavigateToTasks: widget.onNavigateToTasks,
-              onNavigateToTasksQuickAdd: widget.onNavigateToTasksQuickAdd, // NEU
+              onNavigateToTasksQuickAdd: widget.onNavigateToTasksQuickAdd,
               useDictate: useDictate,
             ),
           ),
@@ -589,8 +661,8 @@ Future<void> _showDuplicateDialog(ParsedSpokenTask parsed, String logRef) async 
       temp: tempStr,
       city: cityLabel,
       detail: detail,
-      isRefreshing: _isRefreshingWeather,      // ← NEU
-      onRefresh: _refreshWeatherManual,        // ← NEU
+      isRefreshing: _isRefreshingWeather,
+      onRefresh: _refreshWeatherManual,
     ),
   );
 } else {
@@ -603,8 +675,8 @@ Future<void> _showDuplicateDialog(ParsedSpokenTask parsed, String logRef) async 
         icon: weatherIcon,
         temp: tempStr,
         city: cityLabel,
-        isRefreshing: _isRefreshingWeather,    // ← NEU
-        onRefresh: _refreshWeatherManual,      // ← NEU
+        isRefreshing: _isRefreshingWeather,
+        onRefresh: _refreshWeatherManual,
       ),
     ),
   );
@@ -790,8 +862,10 @@ class _DiensteKachel extends StatelessWidget {
 class _QuickAccessKachel extends StatefulWidget {
   final AppSkin skin;
   final double height;
+  final bool compact;
   final String icon;
   final String label;
+  final String? compactLabel;
   final String sublabel;
   final Color accentColor;
   final VoidCallback onTap;
@@ -800,8 +874,10 @@ class _QuickAccessKachel extends StatefulWidget {
   const _QuickAccessKachel({
     required this.skin,
     required this.height,
+    required this.compact,
     required this.icon,
     required this.label,
+    this.compactLabel,
     required this.sublabel,
     required this.accentColor,
     required this.onTap,
@@ -872,47 +948,76 @@ class _QuickAccessKachelState extends State<_QuickAccessKachel>
                       offset: const Offset(0, 4)),
                 ],
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Icon Badge kompakt
-                  Container(
-                    width: 34,
-                    height: 34,
-                    decoration: BoxDecoration(
-                      color: widget.accentColor.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(10),
+              child: widget.compact
+                  ? Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          width: 30,
+                          height: 30,
+                          decoration: BoxDecoration(
+                            color: widget.accentColor.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(9),
+                          ),
+                          child: Center(
+                            child: Text(widget.icon, style: const TextStyle(fontSize: 15)),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            widget.compactLabel ?? widget.label,
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w700,
+                              color: skin.textPrimary,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    )
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: 34,
+                          height: 34,
+                          decoration: BoxDecoration(
+                            color: widget.accentColor.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Center(
+                            child: Text(widget.icon,
+                                style: const TextStyle(fontSize: 17)),
+                          ),
+                        ),
+                        const Spacer(),
+                        Text(
+                          widget.label,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: skin.textPrimary,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 1),
+                        Text(
+                          widget.sublabel,
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w500,
+                            color: widget.accentColor
+                                .withValues(alpha: skin.isLight ? 0.8 : 0.7),
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
                     ),
-                    child: Center(
-                      child: Text(widget.icon,
-                          style: const TextStyle(fontSize: 17)),
-                    ),
-                  ),
-                  const Spacer(),
-                  Text(
-                    widget.label,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: skin.textPrimary,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 1),
-                  Text(
-                    widget.sublabel,
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w500,
-                      color: widget.accentColor
-                          .withValues(alpha: skin.isLight ? 0.8 : 0.7),
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
             ),
           ),
         ),
@@ -928,11 +1033,13 @@ class _QuickAccessKachelState extends State<_QuickAccessKachel>
 class _StempeluhrKachel extends StatefulWidget {
   final AppSkin skin;
   final double height;
+  final bool compact;
   final VoidCallback onNavigateToMonth;
 
   const _StempeluhrKachel({
     required this.skin,
     required this.height,
+    required this.compact,
     required this.onNavigateToMonth,
   });
 
@@ -1036,7 +1143,7 @@ class _StempeluhrKachelState extends State<_StempeluhrKachel>
       if (mounted) {
         setState(() {
           _justStamped = false;
-          _customTime = null; // NEU: nach dem Stempeln zurück auf "jetzt"
+          _customTime = null;
         });
       }
     });
@@ -1108,54 +1215,69 @@ class _StempeluhrKachelState extends State<_StempeluhrKachel>
                       offset: const Offset(0, 4)),
                 ],
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: 34,
-                    height: 34,
-                    decoration: BoxDecoration(
-                      color: accentColor
-                          .withValues(alpha: _justStamped ? 0.25 : 0.15),
-                      borderRadius: BorderRadius.circular(10),
+              child: widget.compact
+                  ? Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          width: 30,
+                          height: 30,
+                          decoration: BoxDecoration(
+                            color: accentColor.withValues(alpha: _justStamped ? 0.25 : 0.15),
+                            borderRadius: BorderRadius.circular(9),
+                          ),
+                          child: Center(
+                            child: AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 200),
+                              child: _justStamped
+                                  ? Icon(Icons.check_rounded, key: const ValueKey('check'), size: 16, color: accentColor)
+                                  : Icon(Icons.login_rounded, key: const ValueKey('stamp'), size: 16, color: accentColor),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          _justStamped ? '✓' : timeStr,
+                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: skin.textPrimary),
+                        ),
+                      ],
+                    )
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: 34,
+                          height: 34,
+                          decoration: BoxDecoration(
+                            color: accentColor.withValues(alpha: _justStamped ? 0.25 : 0.15),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Center(
+                            child: AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 200),
+                              child: _justStamped
+                                  ? Icon(Icons.check_rounded, key: const ValueKey('check'), size: 18, color: accentColor)
+                                  : Icon(Icons.login_rounded, key: const ValueKey('stamp'), size: 18, color: accentColor),
+                            ),
+                          ),
+                        ),
+                        const Spacer(),
+                        Text(
+                          _justStamped ? 'Gestempelt!' : 'Kommen',
+                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: skin.textPrimary),
+                          maxLines: 1,
+                        ),
+                        const SizedBox(height: 1),
+                        Text(
+                          _justStamped ? '✓ gespeichert' : timeStr,
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w500,
+                            color: accentColor.withValues(alpha: skin.isLight ? 0.85 : 0.75),
+                          ),
+                        ),
+                      ],
                     ),
-                    child: Center(
-                      child: AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 200),
-                        child: _justStamped
-                            ? Icon(Icons.check_rounded,
-                                key: const ValueKey('check'),
-                                size: 18,
-                                color: accentColor)
-                            : Icon(Icons.login_rounded,
-                                key: const ValueKey('stamp'),
-                                size: 18,
-                                color: accentColor),
-                      ),
-                    ),
-                  ),
-                  const Spacer(),
-                  Text(
-                    _justStamped ? 'Gestempelt!' : 'Kommen',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: skin.textPrimary,
-                    ),
-                    maxLines: 1,
-                  ),
-                  const SizedBox(height: 1),
-                  Text(
-                    _justStamped ? '✓ gespeichert' : timeStr,
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w500,
-                      color: accentColor
-                          .withValues(alpha: skin.isLight ? 0.85 : 0.75),
-                    ),
-                  ),
-                ],
-              ),
             ),
           ),
         ),
@@ -1227,6 +1349,17 @@ class _TaskPreviewKachel extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
             ),
           ),
+          if (t.isUrgent) ...[
+const SizedBox(width: 6),
+ Container(
+  width: 6,
+ height: 6,
+ decoration: const BoxDecoration(
+ shape: BoxShape.circle,
+ color: Color(0xFFEF5B5B),
+  ),
+ ),
+ ],
           if (dueLabel.isNotEmpty) ...[
             const SizedBox(width: 8),
             Text(
@@ -1314,16 +1447,16 @@ class _WeatherChip extends StatelessWidget {
   final String icon;
   final String temp;
   final String city;
-  final bool isRefreshing;          // ← NEU
-  final VoidCallback? onRefresh;    // ← NEU
+  final bool isRefreshing;
+  final VoidCallback? onRefresh;
 
   const _WeatherChip({
     required this.skin,
     required this.icon,
     required this.temp,
     required this.city,
-    this.isRefreshing = false,      // ← NEU
-    this.onRefresh,                 // ← NEU
+    this.isRefreshing = false,
+    this.onRefresh,
   });
 
   @override
@@ -1362,15 +1495,15 @@ class _WeatherChip extends StatelessWidget {
         ),
       ],
     ),
-    if (onRefresh != null) ...[                              // ← NEU
-      const SizedBox(width: 4),                               // ← NEU
-      _RefreshButton(                                         // ← NEU
-        skin: skin,                                           // ← NEU
-        isRefreshing: isRefreshing,                           // ← NEU
-        onTap: onRefresh!,                                    // ← NEU
-        size: 13,                                             // ← NEU
-      ),                                                       // ← NEU
-    ],                                                         // ← NEU
+    if (onRefresh != null) ...[
+      const SizedBox(width: 4),
+      _RefreshButton(
+        skin: skin,
+        isRefreshing: isRefreshing,
+        onTap: onRefresh!,
+        size: 13,
+      ),
+    ],
   ],
 ),
         ),
@@ -1390,8 +1523,8 @@ class _WeatherKachelGross extends StatelessWidget {
   final String temp;
   final String city;
   final String detail;
-  final bool isRefreshing;          // ← NEU
-  final VoidCallback? onRefresh;    // ← NEU
+  final bool isRefreshing;
+  final VoidCallback? onRefresh;
 
   const _WeatherKachelGross({
     required this.skin,
@@ -1400,8 +1533,8 @@ class _WeatherKachelGross extends StatelessWidget {
     required this.temp,
     required this.city,
     required this.detail,
-    this.isRefreshing = false,      // ← NEU
-    this.onRefresh,                 // ← NEU
+    this.isRefreshing = false,
+    this.onRefresh,
   });
 
   List<({String time, String label, Color color})> _nextTwoSunEvents() {
@@ -1501,7 +1634,7 @@ class _WeatherKachelGross extends StatelessWidget {
                                 ? Icons.location_on
                                 : Icons.location_city_outlined,
                             size: 11,
-                            color: const Color(0xFF5B8DEF), // ← BLAU
+                            color: const Color(0xFF5B8DEF),
                           ),
                           const SizedBox(width: 3),
                           Flexible(
@@ -1850,19 +1983,21 @@ class _DienstplanPlaceholderKachel extends StatelessWidget {
 class _DictationTaskKachel extends StatefulWidget {
   final AppSkin skin;
   final double height;
+  final bool compact;
   final void Function(ParsedSpokenTask, String) onResult;
   final void Function(ParsedSpokenTask, String) onNeedsReview;
   final VoidCallback? onNavigateToTasks;
-  final VoidCallback? onNavigateToTasksQuickAdd; // NEU
+  final VoidCallback? onNavigateToTasksQuickAdd;
   final bool useDictate;
 
   const _DictationTaskKachel({
     required this.skin,
     required this.height,
+    required this.compact,
     required this.onResult,
     required this.onNeedsReview,
     this.onNavigateToTasks,
-    this.onNavigateToTasksQuickAdd, // NEU
+    this.onNavigateToTasksQuickAdd,
     required this.useDictate,
   });
 
@@ -1981,27 +2116,47 @@ class _DictationTaskKachelState extends State<_DictationTaskKachel>
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(color: accentColor.withValues(alpha: 0.65), width: 1.6),
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Container(
-                          width: 34,
-                          height: 34,
-                          decoration: BoxDecoration(
-                            color: accentColor.withValues(alpha: 0.28),
-                            borderRadius: BorderRadius.circular(10),
+                    child: widget.compact
+                        ? Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Container(
+                                width: 30,
+                                height: 30,
+                                decoration: BoxDecoration(
+                                  color: accentColor.withValues(alpha: 0.28),
+                                  borderRadius: BorderRadius.circular(9),
+                                ),
+                                child: const Icon(Icons.mic_rounded, size: 16, color: accentColor),
+                              ),
+                              const SizedBox(width: 8),
+                              const Text(
+                                'Höre zu…',
+                                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Colors.white),
+                              ),
+                            ],
+                          )
+                        : Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Container(
+                                width: 34,
+                                height: 34,
+                                decoration: BoxDecoration(
+                                  color: accentColor.withValues(alpha: 0.28),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: const Icon(Icons.mic_rounded, size: 18, color: accentColor),
+                              ),
+                              const Spacer(),
+                              const Text('Aufgabe',
+                                  style: TextStyle(
+                                      fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white)),
+                              const SizedBox(height: 1),
+                              const Text('Höre zu…',
+                                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w500, color: accentColor)),
+                            ],
                           ),
-                          child: const Icon(Icons.mic_rounded, size: 18, color: accentColor),
-                        ),
-                        const Spacer(),
-                        Text('Aufgabe',
-                            style: TextStyle(
-                                fontSize: 13, fontWeight: FontWeight.w700, color: widget.skin.textPrimary)),
-                        const SizedBox(height: 1),
-                        const Text('Höre zu…',
-                            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w500, color: accentColor)),
-                      ],
-                    ),
                   ),
                 ),
               ),
@@ -2153,7 +2308,38 @@ class _DictationTaskKachelState extends State<_DictationTaskKachel>
                           ),
                       ],
                     ),
-                    child: Column(
+                    child: widget.compact
+                        ? Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Container(
+                                width: 30,
+                                height: 30,
+                                decoration: BoxDecoration(
+                                  color: accentColor.withValues(
+                                      alpha: _isListening ? 0.22 + 0.08 * _pulseAnim.value : 0.15),
+                                  borderRadius: BorderRadius.circular(9),
+                                ),
+                                child: Center(
+                                  child: Icon(
+                                    _isListening ? Icons.mic_rounded : Icons.mic_none_rounded,
+                                    size: 16,
+                                    color: accentColor,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Flexible(
+                                child: Text(
+                                  _isListening ? 'Höre zu…' : 'Task',
+                                  style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: skin.textPrimary),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          )
+                        : Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Container(
@@ -2161,45 +2347,27 @@ class _DictationTaskKachelState extends State<_DictationTaskKachel>
                           height: 34,
                           decoration: BoxDecoration(
                             color: accentColor.withValues(
-                                alpha: _isListening
-                                    ? 0.22 + 0.08 * _pulseAnim.value
-                                    : 0.15),
+                                alpha: _isListening ? 0.22 + 0.08 * _pulseAnim.value : 0.15),
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: Center(
                             child: AnimatedSwitcher(
                               duration: const Duration(milliseconds: 200),
                               child: _isListening
-                                  ? Icon(Icons.mic_rounded,
-                                      key: const ValueKey('on'),
-                                      size: 18,
-                                      color: accentColor)
-                                  : Icon(Icons.mic_none_rounded,
-                                      key: const ValueKey('off'),
-                                      size: 18,
-                                      color: accentColor),
+                                  ? Icon(Icons.mic_rounded, key: const ValueKey('on'), size: 18, color: accentColor)
+                                  : Icon(Icons.mic_none_rounded, key: const ValueKey('off'), size: 18, color: accentColor),
                             ),
                           ),
                         ),
                         const Spacer(),
-                        Text(
-                          'Aufgabe',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: skin.textPrimary,
-                          ),
-                        ),
+                        Text('Aufgabe', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: skin.textPrimary)),
                         const SizedBox(height: 1),
                         Text(
                           _isListening ? 'Höre zu…' : 'Halten & sprechen',
                           style: TextStyle(
                             fontSize: 10,
                             fontWeight: FontWeight.w500,
-                            color: _isListening
-                                ? accentColor
-                                : accentColor.withValues(
-                                    alpha: skin.isLight ? 0.8 : 0.7),
+                            color: _isListening ? accentColor : accentColor.withValues(alpha: skin.isLight ? 0.8 : 0.7),
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,

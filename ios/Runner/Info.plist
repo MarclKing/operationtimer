@@ -16,6 +16,11 @@
 		<string>6.0</string>
 		<key>CFBundleName</key>
 		<string>optimes</string>
+		<!-- Calendar Berechtigungen für device_calendar Plugin -->
+		<key>NSCalendarsFullAccessUsageDescription</key>
+		<string>OpTimes benötigt Zugriff auf deinen Kalender, um Termine mit Apple Kalender zu synchronisieren.</string>
+		<key>NSCalendarsUsageDescription</key>
+		<string>OpTimes benötigt Zugriff auf deinen Kalender, um Termine mit Apple Kalender zu synchronisieren.</string>
 		<key>NSMicrophoneUsageDescription</key>
 		<string>Diese App benötigt Mikrofonzugriff, um gesprochene Aufgaben per Diktierfunktion zu erfassen.</string>
 		<key>NSSpeechRecognitionUsageDescription</key>
@@ -40,6 +45,14 @@
 				</array>
 				<key>CFBundleURLName</key>
 				<string>de.marcel.optimes</string>
+			</dict>
+			<dict>
+				<key>CFBundleURLSchemes</key>
+				<array>
+					<string>optimes</string>
+				</array>
+				<key>CFBundleURLName</key>
+				<string>de.marcel.optimes.sharepdf</string>
 			</dict>
 		</array>
 		<key>UIApplicationSceneManifest</key>
@@ -138,5 +151,15 @@
 		<string>Für die Wetteranzeige auf dem Homescreen</string>
 		<key>UIStatusBarHidden</key>
 		<false/>
+		<!-- NEU: Hintergrund-Sync für Apple-Kalender-Änderungen ohne App-Start -->
+		<key>UIBackgroundModes</key>
+		<array>
+			<string>fetch</string>
+			<string>processing</string>
+		</array>
+		<key>BGTaskSchedulerPermittedIdentifiers</key>
+		<array>
+			<string>de.marcel.optimes.appleCalendarSync</string>
+		</array>
 	</dict>
 </plist>

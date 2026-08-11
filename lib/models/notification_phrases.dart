@@ -624,3 +624,14 @@ List<String> taskUrgentRecurringBody(RelationshipStyle style) => switch (style) 
   RelationshipStyle.vorname => _urgentBodyVorname,
   RelationshipStyle.familie => _urgentBodyFamilie,
 };
+
+// ─────────────────────────────────────────────────────────────────────────
+// KALENDER-TERMIN — bewusst OHNE Stil-Varianten (neutral für alle
+// RelationshipStyle), wie vereinbart. Eigener Baustein, damit die
+// Formulierung ("beginnt um") sich klar von Aufgaben ("fällig") abhebt.
+// ─────────────────────────────────────────────────────────────────────────
+
+const String eventReminderTitle = 'Termin-Erinnerung 📅';
+
+String eventReminderBody(String title, String timeLabel) =>
+    'Termin "$title" beginnt um $timeLabel.';

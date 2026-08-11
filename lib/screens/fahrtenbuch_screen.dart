@@ -65,6 +65,18 @@ class Fahrt {
 
   int get kmGefahren => kmEnd - kmStart;
 
+  /// Vollständigkeit — unabhängig vom "eingetragen"-Status (uebertragen).
+  /// Prüft alle Pflichtfelder, die für eine vollständig dokumentierte
+  /// Fahrt nötig sind.
+  bool get isComplete =>
+      kennzeichen.trim().isNotEmpty &&
+      kmStart > 0 &&
+      kmEnd > 0 &&
+      abfahrtZeit != null &&
+      ankunftZeit != null &&
+      fahrtTyp.trim().isNotEmpty &&
+      fahrtZiel.trim().isNotEmpty;
+
   Map<String, dynamic> toMap() => {
         'id': id,
         'datum': datum.toIso8601String(),
@@ -218,37 +230,38 @@ class KmMemory {
     return result;
   }
 
-  static void delete(String kennzeichen) {
-    final box = Hive.box('einstellungen');
-    final all = _loadAll();
-    all.remove(kennzeichen.toUpperCase());
-    box.put(_hiveKey, all);
-  }
+  static Map<String, dynamic>? getEntry(String kennzeichen) =>
+    _loadAll()[kennzeichen.toUpperCase()];
 
-  static void save(String kennzeichen, int kmEnd) {
-    if (kennzeichen.trim().isEmpty || kmEnd <= 0) return;
-    final box = Hive.box('einstellungen');
-    final all = _loadAll();
-    all[kennzeichen.toUpperCase()] = {
-      'kmEnd': kmEnd,
-      'datum': DateTime.now().toIso8601String(),
-      'kennzeichen': kennzeichen.toUpperCase(),
-    };
-    // Einträge auf 30 begrenzen — älteste zuerst entfernen
-    if (all.length > 30) {
-      final sorted = all.entries.toList()
-        ..sort((a, b) {
-          final da = DateTime.tryParse(a.value['datum'] as String? ?? '') ?? DateTime(2000);
-          final db = DateTime.tryParse(b.value['datum'] as String? ?? '') ?? DateTime(2000);
-          return da.compareTo(db); // älteste zuerst
-        });
-      final toRemove = sorted.take(all.length - 30);
-      for (final entry in toRemove) {
-        all.remove(entry.key);
-      }
+static void delete(String kennzeichen) {
+  final box = Hive.box('einstellungen');
+  final all = _loadAll();
+  final key = kennzeichen.toUpperCase();
+  all.remove(key);
+  box.put(_hiveKey, all);
+  SyncService.instance.pushVehicleMemory(key);
+}
+
+static void save(String kennzeichen, int kmEnd) {
+  if (kennzeichen.trim().isEmpty || kmEnd <= 0) return;
+  final box = Hive.box('einstellungen');
+  final all = _loadAll();
+  final key = kennzeichen.toUpperCase();
+  all[key] = {'kmEnd': kmEnd, 'datum': DateTime.now().toIso8601String(), 'kennzeichen': key};
+  if (all.length > 30) {
+    final sorted = all.entries.toList()
+      ..sort((a, b) {
+        final da = DateTime.tryParse(a.value['datum'] as String? ?? '') ?? DateTime(2000);
+        final db = DateTime.tryParse(b.value['datum'] as String? ?? '') ?? DateTime(2000);
+        return da.compareTo(db);
+      });
+    for (final entry in sorted.take(all.length - 30)) {
+      all.remove(entry.key);
     }
-    box.put(_hiveKey, all);
   }
+  box.put(_hiveKey, all);
+  SyncService.instance.pushVehicleMemory(key);
+}
 
   static List<Map<String, dynamic>> getAll() {
     return _loadAll().values.toList();
@@ -564,13 +577,19 @@ _selectionBarAnim = CurvedAnimation(
   curve: Curves.easeOutCubic,
   reverseCurve: Curves.easeInCubic,
 );
+    SyncService.instance.scheduleDataChanged.addListener(_onSyncDataChanged);
   }
 
   late AnimationController _selectionBarCtrl;
   late Animation<double> _selectionBarAnim;
 
+  void _onSyncDataChanged() {
+    if (mounted) setState(() {});
+  }
+
   @override
   void dispose() {
+    SyncService.instance.scheduleDataChanged.removeListener(_onSyncDataChanged);
     _draftBannerCtrl.dispose();
     _selectionBarCtrl.dispose();
     _fahrtScrollController.dispose();
@@ -925,7 +944,9 @@ _selectionBarAnim = CurvedAnimation(
     for (final key in box.keys) {
       final k = key.toString();
       if (!k.startsWith('fahrten_')) continue;
-      final raw = box.get(k);
+      final monthKey = k.substring('fahrten_'.length);
+      final rawStored = box.get(k);
+      final raw = SyncService.instance.visibleValueFor('fahrten', monthKey, rawStored);
       if (raw is! List) continue;
       for (final e in raw) {
         try {
@@ -966,13 +987,21 @@ _selectionBarAnim = CurvedAnimation(
       existing.add(fahrt);
     }
     box.put('fahrten_$monthKey', existing.map((f) => f.toMap()).toList());
+
+    // KM-Gedächtnis nur aktualisieren, wenn wirklich ein Endstand vorliegt —
+    // das ist unabhängig vom Sync und darf den Push nicht blockieren.
     if (fahrt.kennzeichen.isNotEmpty && fahrt.kmEnd > 0) {
       KmMemory.save(fahrt.kennzeichen, fahrt.kmEnd);
-      SyncService.instance.pushFahrtenMonth(monthKey);
     }
+
+    // WICHTIG: Push MUSS bei jeder Änderung passieren, unabhängig davon, ob
+    // die Fahrt schon vollständig ausgefüllt ist. Nur so markiert
+    // _markPendingOwn() den Monat auf dem Kopiergerät synchron als
+    // "ausstehend", BEVOR setState() unten die Anzeige neu lädt.
+    SyncService.instance.pushFahrtenMonth(monthKey);
+
     setState(() {});
   }
-
   void _deleteFahrt(String id) {
     final box = Hive.box('einstellungen');
     final fahrt = _getAllFahrten().where((f) => f.id == id).firstOrNull;
@@ -994,27 +1023,21 @@ _selectionBarAnim = CurvedAnimation(
     }
     existing.removeWhere((f) => f.id == id);
     box.put('fahrten_$monthKey', existing.map((f) => f.toMap()).toList());
+
+    // WICHTIG: Löschungen wurden bisher NIE gepusht — deshalb blieb der
+    // gelöschte Eintrag auf dem anderen Gerät stehen bzw. kam beim
+    // nächsten Sync sogar wieder zurück.
+    SyncService.instance.pushFahrtenMonth(monthKey);
+
     setState(() {});
   }
 
-  Future<bool?> _discardDraft() async {
-    final skin = AppTheme.of(context);
-    // ── confirmDeleteDialog aus glass_dialogs.dart ──
-    final confirmed = await confirmDeleteDialog(
-      context: context,
-      skin: skin,
-      title: 'Entwurf verwerfen',
-      message: 'Alle eingegebenen Daten werden unwiderruflich gelöscht.',
-      cancelLabel: 'Zurück',
-      confirmLabel: 'Verwerfen',
-    );
-    if (confirmed == true && mounted) {
-      _draft.reset();
-      setState(() { _draftVisible = false; _sheetOpen = false; });
-      _draftBannerCtrl.reverse();
-      widget.onDraftChanged?.call();
-    }
-    return confirmed;
+  void _deleteDraft() {
+    HapticFeedback.mediumImpact();
+    _draft.reset();
+    setState(() { _draftVisible = false; _sheetOpen = false; });
+    _draftBannerCtrl.reverse();
+    widget.onDraftChanged?.call();
   }
 
   @override
@@ -1169,83 +1192,83 @@ Widget build(BuildContext context) {
             ),
           ),
 
-          // ── Draft Banner ────────────────────────────────────────────────────
-          AnimatedBuilder(
-            animation: _draftBannerAnim,
-            builder: (context, child) {
-              if (!_draftVisible && _draftBannerAnim.value == 0) return const SizedBox.shrink();
-              final bottomOffset = bottomNavHeight + 12;
-              return Positioned(
-                bottom: bottomOffset, left: 16, right: 16,
-                child: Transform.translate(
-                  offset: Offset(0, 8 * (1 - _draftBannerAnim.value)),
-                  child: Opacity(opacity: _draftBannerAnim.value.clamp(0.0, 1.0), child: child),
-                ),
-              );
-            },
-            child: _DraftBanner(skin: skin, onReopen: reopenDraft, onDiscard: _discardDraft),
-          ),
-
-          // ── Glass FAB ───────────────────────────────────────────────────────
-          AnimatedBuilder(
-            animation: _selectionBarAnim,
-            builder: (context, child) {
-              final bottomOffset = _draftVisible
-                  ? bottomNavHeight + draftBannerHeight + 20
-                  : bottomNavHeight + 16;
-              // FAB blendet aus wenn Selection aktiv
-              return Positioned(
-                bottom: bottomOffset,
-                right: 20,
-                child: Opacity(
-                  opacity: (1 - _selectionBarAnim.value).clamp(0.0, 1.0),
-                  child: child,
-                ),
-              );
-            },
-            child: GestureDetector(
-              onTap: () {
-                if (_sheetOpen) return;
-                if (_draftVisible) {
-                  reopenDraft();
-                } else {
-                  showAddFahrtOverlay();
-                }
-              },
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(20),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                  child: Container(
-                    width: 56,
-                    height: 56,
-                    decoration: BoxDecoration(
-                      color: skin.isLight
-                          ? Colors.white.withValues(alpha: 0.72)
-                          : Colors.black.withValues(alpha: 0.55),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: skin.isLight
-                            ? Colors.white.withValues(alpha: 0.55)
-                            : Colors.white.withValues(alpha: 0.12),
-                        width: 0.8,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: skin.isLight ? 0.08 : 0.35),
-                          blurRadius: 24,
-                          offset: const Offset(0, 6),
-                        ),
-                      ],
-                    ),
-                    child: Icon(
-                      _draftVisible ? Icons.edit_note_rounded : Icons.add,
-                      color: skin.primary,
-                      size: 24,
+          // ── Entwurf-Banner + FAB in einer Reihe ──────────────────────────────
+          Positioned(
+            left: 16,
+            right: 16,
+            bottom: bottomNavHeight + 16,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Expanded(
+                  child: AnimatedBuilder(
+                    animation: _draftBannerAnim,
+                    builder: (context, child) {
+                      if (!_draftVisible && _draftBannerAnim.value == 0) return const SizedBox.shrink();
+                      return Opacity(opacity: _draftBannerAnim.value.clamp(0.0, 1.0), child: child);
+                    },
+                    child: _DraftBanner(
+                      skin: skin,
+                      onReopen: reopenDraft,
+                      onDelete: _deleteDraft,
+                      externallyOpen: _openSwipedFahrtId,
+                      onCardSwiped: (id) => setState(() => _openSwipedFahrtId = id),
                     ),
                   ),
                 ),
-              ),
+                const SizedBox(width: 12),
+                AnimatedBuilder(
+                  animation: _selectionBarAnim,
+                  builder: (context, child) => Opacity(
+                    opacity: (1 - _selectionBarAnim.value).clamp(0.0, 1.0),
+                    child: child,
+                  ),
+                  child: GestureDetector(
+                    onTap: () {
+                      if (_sheetOpen) return;
+                      if (_draftVisible) {
+                        reopenDraft();
+                      } else {
+                        showAddFahrtOverlay();
+                      }
+                    },
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(20),
+                      child: BackdropFilter(
+                        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                        child: Container(
+                          width: 56,
+                          height: 56,
+                          decoration: BoxDecoration(
+                            color: skin.isLight
+                                ? Colors.white.withValues(alpha: 0.72)
+                                : Colors.black.withValues(alpha: 0.55),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: skin.isLight
+                                  ? Colors.white.withValues(alpha: 0.55)
+                                  : Colors.white.withValues(alpha: 0.12),
+                              width: 0.8,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: skin.isLight ? 0.08 : 0.35),
+                                blurRadius: 24,
+                                offset: const Offset(0, 6),
+                              ),
+                            ],
+                          ),
+                          child: Icon(
+                            _draftVisible ? Icons.edit_note_rounded : Icons.add,
+                            color: skin.primary,
+                            size: 24,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -1262,106 +1285,182 @@ Widget build(BuildContext context) {
 class _DraftBanner extends StatefulWidget {
   final AppSkin skin;
   final VoidCallback onReopen;
-  final Future<bool?> Function() onDiscard;
-  const _DraftBanner({required this.skin, required this.onReopen, required this.onDiscard});
+  final VoidCallback onDelete;
+  final String? externallyOpen;
+  final void Function(String?) onCardSwiped;
+  const _DraftBanner({
+    required this.skin,
+    required this.onReopen,
+    required this.onDelete,
+    required this.externallyOpen,
+    required this.onCardSwiped,
+  });
 
   @override
   State<_DraftBanner> createState() => _DraftBannerState();
 }
 
-class _DraftBannerState extends State<_DraftBanner> {
-  double _drag = 0;
-  bool _hapticFired = false;
-  static const double _threshold = 90.0;
-  static const double _maxDrag = 160.0;
+class _DraftBannerState extends State<_DraftBanner>
+    with TickerProviderStateMixin, SwipeAnimationMixin {
+  static const String cardKey = '__fahrt_draft__';
+  static const double _revealWidth = 80.0;
+  static const double _snapThreshold = 40.0;
+  bool _isOpen = false;
+  bool _dragging = false;
+  double _dragStartX = 0;
+  double _dragStartY = 0;
 
-  void _reset() => setState(() { _drag = 0; _hapticFired = false; });
+  @override
+  void initState() {
+    super.initState();
+    initSwipeAnimation(vsync: this);
+  }
+
+  @override
+  void didUpdateWidget(_DraftBanner oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.externallyOpen != cardKey && _isOpen) {
+      animateSwipeTo(0);
+      setState(() => _isOpen = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    disposeSwipeAnimation();
+    super.dispose();
+  }
+
+  void _onPanStart(DragStartDetails d) {
+    _dragging = false;
+    _dragStartX = d.globalPosition.dx;
+    _dragStartY = d.globalPosition.dy;
+  }
+
+  void _onPanUpdate(DragUpdateDetails d) {
+    final totalDx = d.globalPosition.dx - _dragStartX;
+    final totalDy = (d.globalPosition.dy - _dragStartY).abs();
+    if (!_dragging) {
+      if (totalDy > totalDx.abs()) return;
+      if (totalDx > 0) return;
+      if (totalDx.abs() < 8) return;
+      _dragging = true;
+    }
+    final newOffset = (swipeOffset + d.delta.dx).clamp(-_revealWidth, 0.0);
+    setSwipeOffsetImmediate(newOffset);
+  }
+
+  void _onPanEnd(DragEndDetails d) {
+    if (!_dragging) return;
+    _dragging = false;
+    final v = d.primaryVelocity ?? d.velocity.pixelsPerSecond.dx;
+    if (swipeOffset < -_snapThreshold || v < -400) {
+      animateSwipeTo(-_revealWidth);
+      setState(() => _isOpen = true);
+      widget.onCardSwiped(cardKey);
+    } else {
+      animateSwipeTo(0);
+      if (_isOpen) {
+        setState(() => _isOpen = false);
+        widget.onCardSwiped(null);
+      }
+    }
+  }
+
+  void _close() {
+    animateSwipeTo(0);
+    if (mounted) setState(() => _isOpen = false);
+    widget.onCardSwiped(null);
+  }
+
+  void _onDeleteTap() {
+    _close();
+    widget.onDelete();
+  }
+
+  void _handleTap() {
+    if (_isOpen) {
+      _close();
+      return;
+    }
+    widget.onReopen();
+  }
 
   @override
   Widget build(BuildContext context) {
     final skin = widget.skin;
-    final progress = (-_drag / _threshold).clamp(0.0, 1.0);
 
     return GestureDetector(
-      onTap: _drag == 0 ? widget.onReopen : null,
-      onHorizontalDragUpdate: (d) {
-        final next = (_drag + d.delta.dx).clamp(-_maxDrag, 0.0);
-        setState(() => _drag = next);
-        if (!_hapticFired && -_drag >= _threshold) { _hapticFired = true; HapticFeedback.mediumImpact(); }
-        else if (_hapticFired && -_drag < _threshold) { _hapticFired = false; }
-      },
-      onHorizontalDragEnd: (d) async {
-        if (-_drag >= _threshold) {
-          HapticFeedback.heavyImpact();
-          final confirmed = await widget.onDiscard();
-          if (confirmed != true && mounted) _reset();
-        } else {
-          _reset();
-        }
-      },
-      child: Stack(children: [
-        Positioned.fill(
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(22),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: skin.deleteColor.withValues(alpha: 0.15 + progress * 0.15),
-                  borderRadius: BorderRadius.circular(22),
-                  border: Border.all(color: skin.deleteColor.withValues(alpha: 0.25 + progress * 0.35), width: 0.8),
-                ),
-                child: Align(
-                  alignment: Alignment.centerRight,
-                  child: Padding(
-                    padding: const EdgeInsets.only(right: 22),
-                    child: Opacity(
-                      opacity: progress,
-                      child: Row(mainAxisSize: MainAxisSize.min, children: [
-                        Icon(Icons.delete_outline, color: skin.deleteColor, size: 18),
-                        const SizedBox(width: 6),
-                        Text('Löschen', style: TextStyle(color: skin.deleteColor, fontSize: 13,
-                            fontWeight: progress >= 1.0 ? FontWeight.w800 : FontWeight.w600)),
-                      ]),
+      onHorizontalDragStart: _onPanStart,
+      onHorizontalDragUpdate: _onPanUpdate,
+      onHorizontalDragEnd: _onPanEnd,
+      onTap: _handleTap,
+      child: SizedBox(
+        height: 52,
+        child: ClipRect(
+          child: Stack(clipBehavior: Clip.hardEdge, children: [
+            Positioned(
+              right: 0, top: 0, bottom: 0, width: _revealWidth,
+              child: GestureDetector(
+                onTap: _onDeleteTap,
+                child: Opacity(
+                  opacity: (swipeOffset.abs() / _revealWidth).clamp(0.0, 1.0),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(22),
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                      child: Container(
+                        margin: const EdgeInsets.only(left: 6),
+                        decoration: BoxDecoration(
+                          color: skin.deleteColor.withValues(alpha: 0.14),
+                          borderRadius: BorderRadius.circular(22),
+                          border: Border.all(color: skin.deleteColor.withValues(alpha: 0.30)),
+                        ),
+                        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                          Icon(Icons.delete_outline, color: skin.deleteColor, size: 20),
+                          const SizedBox(height: 2),
+                          Text('Löschen', style: TextStyle(color: skin.deleteColor, fontSize: 10, fontWeight: FontWeight.w600)),
+                        ]),
+                      ),
                     ),
                   ),
                 ),
               ),
             ),
-          ),
-        ),
-        Transform.translate(
-          offset: Offset(_drag, 0),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(22),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-              child: Container(
-                height: 52,
-                decoration: BoxDecoration(
-                  color: skin.isLight ? Colors.white.withValues(alpha: 0.72) : Colors.black.withValues(alpha: 0.55),
-                  borderRadius: BorderRadius.circular(22),
-                  border: Border.all(
-                    color: skin.isLight ? Colors.white.withValues(alpha: 0.55) : Colors.white.withValues(alpha: 0.12),
-                    width: 0.8,
+            Transform.translate(
+              offset: Offset(swipeOffset, 0),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(22),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                  child: Container(
+                    height: 52,
+                    decoration: BoxDecoration(
+                      color: skin.isLight ? Colors.white.withValues(alpha: 0.72) : Colors.black.withValues(alpha: 0.55),
+                      borderRadius: BorderRadius.circular(22),
+                      border: Border.all(
+                        color: skin.isLight ? Colors.white.withValues(alpha: 0.55) : Colors.white.withValues(alpha: 0.12),
+                        width: 0.8,
+                      ),
+                      boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: skin.isLight ? 0.08 : 0.35), blurRadius: 24, offset: const Offset(0, 6))],
+                    ),
+                    child: Stack(children: [
+                      Center(child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                        Icon(Icons.edit_note_rounded, size: 18, color: skin.primary),
+                        const SizedBox(width: 8),
+                        Text('Neue Fahrt – Entwurf', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: skin.textPrimary)),
+                      ])),
+                      Positioned(top: 6, left: 0, right: 0,
+                        child: Center(child: Container(width: 40, height: 4,
+                            decoration: BoxDecoration(color: skin.surface(0.18), borderRadius: BorderRadius.circular(2))))),
+                    ]),
                   ),
-                  boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: skin.isLight ? 0.08 : 0.35), blurRadius: 24, offset: const Offset(0, 6))],
                 ),
-                child: Stack(children: [
-                  Center(child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                    Icon(Icons.edit_note_rounded, size: 18, color: skin.primary),
-                    const SizedBox(width: 8),
-                    Text('Neue Fahrt – Entwurf', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: skin.textPrimary)),
-                  ])),
-                  Positioned(top: 6, left: 0, right: 0,
-                    child: Center(child: Container(width: 40, height: 4,
-                        decoration: BoxDecoration(color: skin.surface(0.18), borderRadius: BorderRadius.circular(2))))),
-                ]),
               ),
             ),
-          ),
+          ]),
         ),
-      ]),
+      ),
     );
   }
 }
@@ -1990,9 +2089,9 @@ void _closeSilently() {
                                         width: 100,
                                         child: Row(mainAxisAlignment: MainAxisAlignment.end, children: [
                                           Icon(
-                                            fahrt.uebertragen ? Icons.check_circle_rounded : Icons.radio_button_unchecked,
+                                            fahrt.isComplete ? Icons.check_circle_rounded : Icons.radio_button_unchecked,
                                             size: 12,
-                                            color: fahrt.uebertragen ? skin.statComplete : skin.statOpen,
+                                            color: fahrt.isComplete ? skin.statComplete : skin.statOpen,
                                           ),
                                           const SizedBox(width: 4),
                                           Flexible(child: Text(
@@ -2633,6 +2732,9 @@ class _FahrtEintragenSheetState extends State<_FahrtEintragenSheet> {
   void _openKmInput(TextEditingController ctrl, String label, {bool isStart = false}) {
     FocusScope.of(context).unfocus();
     final skin = AppTheme.of(context);
+    if (ctrl.text == '0') {
+      ctrl.text = '';
+    }
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -4323,7 +4425,7 @@ border: Border.all(color: widget.skin.glassBorder),
     return AnimatedBuilder(
       animation: widget.ctrl,
       builder: (context, _) {
-        final isEmpty = widget.ctrl.text.isEmpty;
+        final isEmpty = widget.ctrl.text.isEmpty || widget.ctrl.text == '0';
         final hasFoto = widget.fotoPath != null;
         final br = BorderRadius.circular(20);
 

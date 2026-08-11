@@ -7,7 +7,9 @@ import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:timezone/data/latest.dart' as tzdata;
+import 'package:workmanager/workmanager.dart'; // NEU
 import 'services/travel_mode_service.dart';
+import 'services/apple_calendar_sync_service.dart';
 import 'widgets/glass_dialogs.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 import 'dart:async';
@@ -20,7 +22,6 @@ import 'screens/support_screen.dart';
 import 'screens/fahrtenbuch_screen.dart';
 import 'screens/export_hinweise_screen.dart';
 import 'screens/welcome_screen.dart';
-import 'screens/splash_screen.dart';
 import 'services/pdf_service.dart';
 import 'screens/dictation_help_screen.dart';
 import 'screens/bva_screen.dart';
@@ -37,10 +38,78 @@ import 'package:intl/intl.dart';
 import 'screens/tasks_screen.dart';
 import 'services/notification_service.dart';
 import 'services/auth_service.dart';
-import 'screens/admin_rules_screen.dart';
 import 'services/rule_engine.dart';
 import 'services/sync_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'widgets/notification_center.dart';
+import 'models/calendar_event.dart'; // NEU
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TAB-DEFINITION — steuert Reihenfolge & Sichtbarkeit der Haupt-Tabs.
+// Im Lesemodus fallen Monat & Fahrtenbuch weg, alle Indizes werden daraus
+// dynamisch berechnet statt hartcodiert zu sein.
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum _Tab { home, month, schedule, fahrtenbuch, tasks }
+
+List<_Tab> _computeActiveTabs({required bool readOnly}) => [
+      _Tab.home,
+      if (!readOnly) _Tab.month,
+      _Tab.schedule,
+      if (!readOnly) _Tab.fahrtenbuch,
+      _Tab.tasks,
+    ];
+
+// ─────────────────────────────────────────────────────────────────────────
+// HINTERGRUND-SYNC (Apple Kalender → Firestore) — NEU
+//
+// Läuft in einem EIGENEN, komplett neuen Isolate, den iOS irgendwann nach
+// eigenem Ermessen startet (BGAppRefreshTask via workmanager-Plugin). Alle
+// Anthropic-typischen Annahmen ("App läuft schon") gelten hier NICHT — der
+// Isolate hat keinerlei Zustand aus main(), deshalb wird hier die komplette
+// Mindest-Init-Kette nochmal durchlaufen, exakt wie beim normalen App-Start,
+// nur ohne UI-bezogene Teile (RuleEngine/NotificationService nicht nötig).
+// ─────────────────────────────────────────────────────────────────────────
+
+const String kAppleCalendarBgTaskName = 'appleCalendarSync';
+const String kAppleCalendarBgTaskId = 'de.marcel.optimes.appleCalendarSync';
+
+@pragma('vm:entry-point')
+void callbackDispatcher() {
+  Workmanager().executeTask((task, inputData) async {
+    debugPrint('🕐 BG-Task gestartet: $task');
+    try {
+      WidgetsFlutterBinding.ensureInitialized();
+
+      await Hive.initFlutter();
+      if (!Hive.isBoxOpen('arbeitszeiten')) await Hive.openBox('arbeitszeiten');
+      if (!Hive.isBoxOpen('einstellungen')) await Hive.openBox('einstellungen');
+      tzdata.initializeTimeZones();
+
+      await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+      FirebaseFirestore.instance.settings = const Settings(
+        persistenceEnabled: true,
+        cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+      );
+
+      await AuthService.instance.init();
+      // WICHTIG: SyncService._token ist privat und wird ausschließlich in
+      // _startSync() gesetzt, das nur über init()/onTokenSet() erreichbar
+      // ist. Ohne diesen Aufruf würde AppleCalendarSyncService.pullAllLinkedGroups()
+      // zwar lokal pullen, aber der neue pushCalendarEvent()-Aufruf danach
+      // würde wegen "if (_token == null) return;" stillschweigend nichts tun.
+      await SyncService.instance.init();
+
+      await AppleCalendarSyncService.instance.requestPermission();
+      await AppleCalendarSyncService.instance.pullAllLinkedGroups();
+
+      debugPrint('✅ BG-Task fertig: $task');
+    } catch (e) {
+      debugPrint('⚠️ BG-Task Fehler ($task): $e');
+    }
+    return Future.value(true);
+  });
+}
 
 Future<void> _initializeAppServicesInBackground() async {
   try {
@@ -84,29 +153,56 @@ Future<void> _initializeAppServicesInBackground() async {
 
   _migrateOldEntries();
   await runAutoCleanup();
+
+  // NEU: Widgets direkt nach dem initialen Sync mit aktuellen Daten
+  // befüllen, statt auf die erste manuelle Änderung zu warten.
+  try {
+    await ScheduleScreenState.pushScheduleToWidget();
+  } catch (e) {
+    debugPrint('⚠️ Initial Schedule-Widget-Push fehlgeschlagen: $e');
+  }
+  try {
+    await CalendarEventStore.pushUpcomingEventsToWidget();
+  } catch (e) {
+    debugPrint('⚠️ Initial Kalender-Widget-Push fehlgeschlagen: $e');
+  }
 }
 
 void main() async {
   WidgetsBinding binding = WidgetsFlutterBinding.ensureInitialized();
   FlutterNativeSplash.preserve(widgetsBinding: binding);
 
-  // Querformat sperren
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);
 
-  // Hive MUSS vor Services initialisiert werden, die darauf zugreifen
   await Hive.initFlutter();
   await Hive.openBox('arbeitszeiten');
   await Hive.openBox('einstellungen');
+
   await initializeDateFormatting('de', null);
-  tzdata.initializeTimeZones(); 
+
+  tzdata.initializeTimeZones();
+
+  // NEU: Hintergrund-Sync registrieren — läuft nach iOS' eigenem Zeitplan
+  // (keine Garantie, aber i.d.R. mehrmals täglich bei normaler Nutzung).
+  try {
+    await Workmanager().initialize(callbackDispatcher, isInDebugMode: false);
+    await Workmanager().registerPeriodicTask(
+      kAppleCalendarBgTaskId,
+      kAppleCalendarBgTaskName,
+      frequency: const Duration(hours: 1),
+      constraints: Constraints(networkType: NetworkType.connected),
+    );
+  } catch (e) {
+    debugPrint('⚠️ Workmanager-Registrierung fehlgeschlagen: $e');
+  }
 
   try {
     FlutterNativeSplash.remove();
-  } catch (e) {
-    debugPrint('⚠️  FlutterNativeSplash.remove() fehlgeschlagen (im Web normal): $e');
+  } catch (_) {
+    // Web kann den Splash-Remove-Channel nicht sofort bereitstellen.
   }
 
   runApp(const MyApp());
@@ -178,7 +274,7 @@ class MyApp extends StatelessWidget {
                 });
               } else if (name == 'optimes://dienstplan' || name == '/dienstplan') {
                 Future.delayed(const Duration(milliseconds: 200), () {
-                  MyApp.mainScreenKey.currentState?._goToPage(2);
+                  MyApp.mainScreenKey.currentState?.goToScheduleTab();
                 });
               } else if (name.isNotEmpty &&
                   name != '/' &&
@@ -211,7 +307,7 @@ class MyApp extends StatelessWidget {
               ),
               useMaterial3: true,
             ),
-            home: const SplashScreen(),
+            home: MainScreen(key: MyApp.mainScreenKey),
           ),
         );
       },
@@ -247,16 +343,52 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin, 
   final _monthKey = GlobalKey<MonthScreenState>();
   final _fahrtenbuchKey = GlobalKey<FahrtenbuchScreenState>();
   final _tasksKey = GlobalKey<TasksScreenState>();
+  final _bellKey = GlobalKey<NotificationBellButtonState>();
   final ValueNotifier<bool> _dayCardDragging = ValueNotifier(false);
   final ValueNotifier<bool> _homeOverlayActive = ValueNotifier(false);
   final ValueNotifier<bool> _navCompact = ValueNotifier(false);
   final ValueNotifier<bool> _scheduleForeignView = ValueNotifier(false);
+  // NEU: true, während der Tasks-Tab die Kalender-Jahresübersicht zeigt —
+  // steuert das Ausblenden der Bottom-Navbar.
+  final ValueNotifier<bool> _tasksShowingYear = ValueNotifier(false);
   static const _navChannel = MethodChannel('de.marcel.optimes/navigation');
 
-  bool get _dienstplanEnabled => true;
-  int get _pageCount => _dienstplanEnabled ? 5 : 4;
-  bool get _isOnSchedulePage => _dienstplanEnabled && _currentPage == 2;
-  bool get _isOnFahrtenbuchPage => _currentPage == (_dienstplanEnabled ? 3 : 2);
+  // ── NEU: View-Mode für Tasks-Tab (Liste ⇄ Kalender) ──
+  final ValueNotifier<bool> _tasksCalendarMode = ValueNotifier(false);
+  late AnimationController _calToggleCtrl; // für die Icon-Morph-Animation
+
+  // ── Lesemodus ────────────────────────────────────────────────────────────
+  bool get _readOnlyMode =>
+      Hive.box('einstellungen').get('read_only_mode', defaultValue: false) as bool;
+
+  List<_Tab> get _activeTabs => _computeActiveTabs(readOnly: _readOnlyMode);
+  int _indexOfTab(_Tab t) => _activeTabs.indexOf(t);
+
+  int get _pageCount => _activeTabs.length;
+  bool get _isOnSchedulePage => _currentPage == _indexOfTab(_Tab.schedule);
+  bool get _isOnFahrtenbuchPage =>
+      !_readOnlyMode && _currentPage == _indexOfTab(_Tab.fahrtenbuch);
+
+  /// Öffentlicher Helfer, damit externe Aufrufer (z.B. Deep-Links in MyApp)
+  /// nicht selbst mit Indizes hantieren müssen.
+  void goToScheduleTab() => _goToPage(_indexOfTab(_Tab.schedule));
+  void goToHomeTab() => _goToPage(0);
+
+  // NEU: Nur im Lesemodus gibt es ein eigenes Kalender-Icon in der Navbar,
+  // das nativ umschaltet, statt über den Umschalter oben rechts zu gehen
+  // (der bleibt im Normalmodus unverändert). Beide Methoden zeigen auf
+  // denselben physischen Tasks-Screen, schalten nur dessen internen Modus.
+  void _selectTasksListView() {
+    _goToPage(_indexOfTab(_Tab.tasks));
+    _tasksCalendarMode.value = false;
+    _tasksKey.currentState?.setCalendarMode(false);
+  }
+
+  void _selectCalendarView() {
+    _goToPage(_indexOfTab(_Tab.tasks));
+    _tasksCalendarMode.value = true;
+    _tasksKey.currentState?.setCalendarMode(true);
+  }
 
   @override
   void initState() {
@@ -276,6 +408,12 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin, 
     _menuAnimController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 250),
+    );
+
+    // ── NEU: Calendar Toggle Animation Controller ──
+    _calToggleCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 320),
     );
 
     if (!kIsWeb) {
@@ -327,8 +465,13 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin, 
         final path = args['path'] as String;
         await Future.delayed(const Duration(milliseconds: 150));
         if (!mounted) return;
+        if (path == 'kalender') {
+          await _navigateToCalendarToday();
+          return;
+        }
         if (path == 'fahrtenbuch_neue_fahrt_scan') {
-          await _animateToPage(_dienstplanEnabled ? 3 : 2);
+          if (_readOnlyMode) return;
+          await _animateToPage(_indexOfTab(_Tab.fahrtenbuch));
           await Future.delayed(const Duration(milliseconds: 500));
           if (!mounted) return;
           _fahrtenbuchKey.currentState?.triggerKmStartScan();
@@ -338,7 +481,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin, 
           final dateKey = url.split('/').last;
           await _navigateToScheduleNote(dateKey);
         } else if (path == 'dienstplan') {
-          await _animateToPage(2);
+          await _animateToPage(_indexOfTab(_Tab.schedule));
         }
       } else if (call.method == 'openSharedPdf') {
         final args = Map<String, dynamic>.from(call.arguments as Map);
@@ -358,8 +501,6 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin, 
       }
     });
 
-    // onOverlayStateChanged wurde entfernt - nicht mehr benötigt
-
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) maybeShowWelcomeDialog(context);
     });
@@ -371,6 +512,13 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin, 
     // gelöscht werden, ohne dass die App komplett neu gestartet wird.
     _cleanupTimer = Timer.periodic(const Duration(hours: 1), (_) {
       runAutoCleanup();
+    });
+
+    // NEU: Periodischer Apple-Kalender-Abgleich alle 15 Minuten, damit
+    // Änderungen aus Apple auch bei durchgehend geöffneter App zeitnah
+    // ankommen, nicht nur beim Resume/Neustart.
+    Timer.periodic(const Duration(minutes: 15), (_) {
+      AppleCalendarSyncService.instance.pullAllLinkedGroups();
     });
 
     // ── NEU: Review-Callback für Homescreen ──
@@ -392,6 +540,10 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin, 
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _checkTravelModeTz();
+      // NEU: Apple-Kalender bei jedem App-Wiedereinstieg neu abgleichen,
+      // damit im Apple-Kalender erstellte/geänderte/gelöschte Termine
+      // zeitnah in der App ankommen, nicht erst beim nächsten App-Start.
+      AppleCalendarSyncService.instance.pullAllLinkedGroups();
     } else if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.inactive ||
         state == AppLifecycleState.detached) {
@@ -406,6 +558,22 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin, 
     if (Hive.isBoxOpen('einstellungen')) {
       Hive.box('einstellungen').flush();
     }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _cleanupTimer?.cancel();
+    _intentSub?.cancel();
+    _slideCtrl.dispose();
+    _menuAnimController.dispose();
+    _calToggleCtrl.dispose(); // NEU
+    _tasksCalendarMode.dispose(); // NEU
+    _dayCardDragging.dispose();
+    _navCompact.dispose();
+    _scheduleForeignView.dispose();
+    _tasksShowingYear.dispose();
+    super.dispose();
   }
 
   Future<void> _checkTravelModeTz() async {
@@ -431,33 +599,40 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin, 
     );
   }
 
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _cleanupTimer?.cancel();
-    _intentSub?.cancel();
-    _slideCtrl.dispose();
-    _menuAnimController.dispose();
-    _dayCardDragging.dispose();
-    _navCompact.dispose();
-    _scheduleForeignView.dispose();
-    super.dispose();
-  }
-
   Future<void> _navigateToScheduleNote(String dateKey) async {
     _closeMenu();
     _homeKey.currentState?.closeOverlays();
     _scheduleKey.currentState?.closeOverlays();
     await Future.delayed(const Duration(milliseconds: 250));
     if (!mounted) return;
-    await _animateToPage(2);
+    await _animateToPage(_indexOfTab(_Tab.schedule));
     if (!mounted) return;
     await Future.delayed(const Duration(milliseconds: 500));
     if (!mounted) return;
-    _scheduleKey.currentState?.openNoteOverlay(dateKey);
+    if (!_readOnlyMode) _scheduleKey.currentState?.openNoteOverlay(dateKey);
+  }
+
+  Future<void> _navigateToCalendarToday() async {
+    _closeMenu();
+    _homeKey.currentState?.closeOverlays();
+    _scheduleKey.currentState?.closeOverlays();
+    await Future.delayed(const Duration(milliseconds: 250));
+    if (!mounted) return;
+    await _animateToPage(_indexOfTab(_Tab.tasks));
+    if (!mounted) return;
+    // Kalenderansicht aktivieren — dieselbe Umschaltung wie beim
+    // oberen Icon (Normalmodus) bzw. eigenen Navbar-Tab (Lesemodus).
+    _tasksCalendarMode.value = true;
+    _tasksKey.currentState?.setCalendarMode(true);
+    // Kurze Wartezeit, bis CalendarView tatsächlich gebaut/gemounted ist,
+    // bevor jumpToToday() darauf aufgerufen wird.
+    await Future.delayed(const Duration(milliseconds: 400));
+    if (!mounted) return;
+    _tasksKey.currentState?.jumpCalendarToToday();
   }
 
   void _handleSharedPdfWithBytesAndName(String path, List<int> bytes, String fileName) async {
+    if (_readOnlyMode) return; // Import im Lesemodus nicht erlaubt
     if (!mounted) return;
     _closeMenu();
     _homeKey.currentState?.closeOverlays();
@@ -469,7 +644,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin, 
     if (displayName.length > 40) displayName = '${displayName.substring(0, 37)}...';
     final confirmed = await _showImportConfirmDialog(displayName, skin);
     if (!mounted || confirmed != true) return;
-    if (_dienstplanEnabled) await _animateToPage(2);
+    await _animateToPage(_indexOfTab(_Tab.schedule));
     if (!mounted) return;
     _autoImportPdf(path, fileName, skin, preloadedBytes: bytes);
   }
@@ -511,6 +686,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin, 
   void handleSharedPdf(String path) => _handleSharedPdfWithBytes(path, []);
 
   void _handleSharedPdf(String path) async {
+    if (_readOnlyMode) return; // Import im Lesemodus nicht erlaubt
     if (!mounted) return;
     _closeMenu();
     _homeKey.currentState?.closeOverlays();
@@ -523,12 +699,13 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin, 
     if (displayName.length > 40) displayName = '${displayName.substring(0, 37)}...';
     final confirmed = await _showImportConfirmDialog(displayName, skin);
     if (!mounted || confirmed != true) return;
-    if (_dienstplanEnabled) await _animateToPage(2);
+    await _animateToPage(_indexOfTab(_Tab.schedule));
     if (!mounted) return;
     _autoImportPdf(path, fileName, skin);
   }
 
   void _handleSharedPdfWithBytes(String path, List<int> bytes) async {
+    if (_readOnlyMode) return; // Import im Lesemodus nicht erlaubt
     if (!mounted) return;
     _closeMenu();
     _homeKey.currentState?.closeOverlays();
@@ -541,7 +718,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin, 
     if (displayName.length > 40) displayName = '${displayName.substring(0, 37)}...';
     final confirmed = await _showImportConfirmDialog(displayName, skin);
     if (!mounted || confirmed != true) return;
-    if (_dienstplanEnabled) await _animateToPage(2);
+    await _animateToPage(_indexOfTab(_Tab.schedule));
     if (!mounted) return;
     _autoImportPdf(path, fileName, skin, preloadedBytes: bytes);
   }
@@ -670,6 +847,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin, 
   }
 
   void _openUploadSheet(String path, String fileName, AppSkin skin, {List<int>? preloadedBytes, String? autoImportError}) {
+    if (_readOnlyMode) return;
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -701,22 +879,23 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin, 
   }
 
   void _goToPage(int index) {
-  FocusManager.instance.primaryFocus?.unfocus();
-  _closeMenu();
-  _homeKey.currentState?.closeOverlays();
-  _scheduleKey.currentState?.closeOverlays();
-  _monthKey.currentState?.closeAllRows();
-  _fahrtenbuchKey.currentState?.closeOverlays();
-  _tasksKey.currentState?.closeOverlays();
+    FocusManager.instance.primaryFocus?.unfocus();
+    _closeMenu();
+    _homeKey.currentState?.closeOverlays();
+    _scheduleKey.currentState?.closeOverlays();
+    _monthKey.currentState?.closeAllRows();
+    _fahrtenbuchKey.currentState?.closeOverlays();
+    _tasksKey.currentState?.closeOverlays();
 
-  if (index == 0) _navCompact.value = false; // ← NEU
+    if (index == 0) _navCompact.value = false;
 
-  if (index == 2 && _dienstplanEnabled) {
-    _scheduleKey.currentState?.refreshTaskMarkers();
+    final tabs = _activeTabs;
+    if (index >= 0 && index < tabs.length && tabs[index] == _Tab.schedule) {
+      _scheduleKey.currentState?.refreshTaskMarkers();
+    }
+
+    _animateToPage(index);
   }
-
-  _animateToPage(index);
-}
 
   void _onPlusPressed() {
     final hasDraft = _fahrtenbuchKey.currentState?.hasDraft ?? false;
@@ -730,25 +909,35 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin, 
 
   void _selectTab(int index) {
     if (index == _currentPage) {
-      switch (index) {
-        case 1:
-          _monthKey.currentState?.scrollToTop();
-          break;
-        case 2:
-          if (_dienstplanEnabled) _scheduleKey.currentState?.scrollToTop();
-          break;
-        case 3:
-          _fahrtenbuchKey.currentState?.scrollToTop();
-          break;
-        case 4:
-          if (_dienstplanEnabled) _tasksKey.currentState?.scrollToTop();
-          break;
+      final tabs = _activeTabs;
+      if (index >= 0 && index < tabs.length) {
+        switch (tabs[index]) {
+          case _Tab.month:
+            _monthKey.currentState?.scrollToTop();
+            break;
+          case _Tab.schedule:
+            _scheduleKey.currentState?.scrollToTop();
+            break;
+          case _Tab.fahrtenbuch:
+            _fahrtenbuchKey.currentState?.scrollToTop();
+            break;
+          case _Tab.tasks:
+            if (_tasksCalendarMode.value) {
+              _tasksCalendarMode.value = false;
+              _tasksKey.currentState?.setCalendarMode(false);
+            }
+            _tasksKey.currentState?.scrollToTop();
+            break;
+          case _Tab.home:
+            break;
+        }
       }
       return;
     }
 
-    // NEU: Wenn wir zum Schedule-Tab (Index 2) wechseln, Task-Marker aktualisieren
-    if (index == 2 && _dienstplanEnabled) {
+    // NEU: Wenn wir zum Schedule-Tab wechseln, Task-Marker aktualisieren
+    final tabs = _activeTabs;
+    if (index >= 0 && index < tabs.length && tabs[index] == _Tab.schedule) {
       _scheduleKey.currentState?.refreshTaskMarkers();
     }
 
@@ -790,25 +979,26 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin, 
     }
 
     if (targetPage != _currentPage) {
-  _homeKey.currentState?.closeOverlays();
-  _scheduleKey.currentState?.closeOverlays();
-  _monthKey.currentState?.closeAllRows();
-  _fahrtenbuchKey.currentState?.closeOverlays();
-  _tasksKey.currentState?.closeOverlays();
+      _homeKey.currentState?.closeOverlays();
+      _scheduleKey.currentState?.closeOverlays();
+      _monthKey.currentState?.closeAllRows();
+      _fahrtenbuchKey.currentState?.closeOverlays();
+      _tasksKey.currentState?.closeOverlays();
 
-  if (targetPage == 2 && _dienstplanEnabled) {
-    _scheduleKey.currentState?.refreshTaskMarkers();
-  }
-}
+      final tabs = _activeTabs;
+      if (targetPage >= 0 && targetPage < tabs.length && tabs[targetPage] == _Tab.schedule) {
+        _scheduleKey.currentState?.refreshTaskMarkers();
+      }
+    }
 
-if (targetPage == 0) _navCompact.value = false; // ← NEU
+    if (targetPage == 0) _navCompact.value = false;
 
-setState(() => _currentPage = targetPage);
-_slideCtrl.animateTo(
-  targetPage.toDouble(),
-  duration: const Duration(milliseconds: 260),
-  curve: Curves.easeOutCubic,
-);
+    setState(() => _currentPage = targetPage);
+    _slideCtrl.animateTo(
+      targetPage.toDouble(),
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOutCubic,
+    );
   }
 
   Widget _wrapWithScrollListener(Widget child) {
@@ -821,50 +1011,75 @@ _slideCtrl.animateTo(
     );
   }
 
-  List<Widget> _buildPages() => [
+  List<Widget> _buildPages() {
+    final readOnly = _readOnlyMode;
+    return [
       HomeScreen(
         key: _homeKey,
         selectedDate: _sharedDate,
         onDateChanged: (d) => setState(() => _sharedDate = d),
-        onNavigateToMonth: () => _goToPage(1),
-        onNavigateToFahrtenbuch: () => _goToPage(_dienstplanEnabled ? 3 : 2),
+        onNavigateToMonth: () {
+          if (readOnly) return;
+          _goToPage(_indexOfTab(_Tab.month));
+        },
+        onNavigateToFahrtenbuch: () {
+          if (readOnly) return;
+          _goToPage(_indexOfTab(_Tab.fahrtenbuch));
+        },
         onNavigateToFahrtenbuchNeueFahrt: () async {
-          await _animateToPage(_dienstplanEnabled ? 3 : 2);
+          if (readOnly) return;
+          await _animateToPage(_indexOfTab(_Tab.fahrtenbuch));
           await Future.delayed(const Duration(milliseconds: 500));
           if (!mounted) return;
           _fahrtenbuchKey.currentState?.triggerKmStartScan();
         },
-        onNavigateToTasks: () => _goToPage(_dienstplanEnabled ? 4 : 3),
+        onNavigateToTasks: () => _goToPage(_indexOfTab(_Tab.tasks)),
+        onNavigateToTasksQuickAdd: () => _tasksKey.currentState?.openQuickAdd(),
+        onNavigateToTasksQuickAddEvent: () => _tasksKey.currentState?.openQuickAddEvent(),
+        onNavigateToSchedule: () => _goToPage(_indexOfTab(_Tab.schedule)),
         onNavigateToScheduleAndImport: () async {
-          await _animateToPage(2);
+          if (readOnly) return;
+          await _animateToPage(_indexOfTab(_Tab.schedule));
           await Future.delayed(const Duration(milliseconds: 400));
           if (!mounted) return;
           _showUploadSheet(context, AppTheme.of(context));
         },
       ),
-      _wrapWithScrollListener(MonthScreen(
-        key: _monthKey,
-        selectedMonth: _sharedMonth,
-        onMonthChanged: (m) => setState(() => _sharedMonth = m),
-        onNavigateToHome: () => _goToPage(0),
-      )),
-      if (_dienstplanEnabled)
-        _wrapWithScrollListener(ScheduleScreen(
-          key: _scheduleKey,
+      if (!readOnly)
+        _wrapWithScrollListener(MonthScreen(
+          key: _monthKey,
+          selectedMonth: _sharedMonth,
+          onMonthChanged: (m) => setState(() => _sharedMonth = m),
           onNavigateToHome: () => _goToPage(0),
-          onNavigateToMonth: () => _goToPage(1),
-          onMonthChanged: (m) => setState(() => _scheduleViewMonth = m),
-          dayCardDragging: _dayCardDragging,
-          onForeignViewChanged: (v) => _scheduleForeignView.value = v,
         )),
-      _wrapWithScrollListener(FahrtenbuchScreen(
-        key: _fahrtenbuchKey,
-        onDraftChanged: () => setState(() {}),
+      _wrapWithScrollListener(ScheduleScreen(
+        key: _scheduleKey,
+        onNavigateToHome: () => _goToPage(0),
+        onNavigateToMonth: () {
+          if (readOnly) return;
+          _goToPage(_indexOfTab(_Tab.month));
+        },
+        onMonthChanged: (m) => setState(() => _scheduleViewMonth = m),
+        dayCardDragging: _dayCardDragging,
+        onForeignViewChanged: (v) => _scheduleForeignView.value = v,
+        readOnly: readOnly,
       )),
-      _wrapWithScrollListener(TasksScreen(key: _tasksKey)),
+      if (!readOnly)
+        _wrapWithScrollListener(FahrtenbuchScreen(
+          key: _fahrtenbuchKey,
+          onDraftChanged: () => setState(() {}),
+        )),
+      _wrapWithScrollListener(TasksScreen(
+        key: _tasksKey,
+        onCalendarShowingYearChanged: (v) => _tasksShowingYear.value = v,
+      )),
     ];
+  }
 
   void _toggleMenu() {
+    if (!_menuOpen) {
+      _bellKey.currentState?.closeOverlay();
+    }
     setState(() {
       _menuOpen = !_menuOpen;
       if (_menuOpen) {
@@ -910,6 +1125,7 @@ _slideCtrl.animateTo(
     final screenWidth = MediaQuery.of(context).size.width;
     final topPad = MediaQuery.of(context).padding.top;
     final bottomPad = MediaQuery.of(context).padding.bottom;
+    final readOnly = _readOnlyMode;
 
     return ValueListenableBuilder(
       valueListenable: Hive.box('einstellungen').listenable(),
@@ -951,20 +1167,43 @@ _slideCtrl.animateTo(
                 bottom: bottomPad > 0 ? bottomPad + 8 : 16,
                 left: 0,
                 right: 0,
-                child: Center(
-                  child: ValueListenableBuilder<bool>(
-                    valueListenable: _navCompact,
-                    builder: (context, compact, _) => _GlassBottomNav(
-                      selectedIndex: _currentPage,
-                      dienstplanEnabled: _dienstplanEnabled,
-                      onTap: (index) {
-                        // Tap expandiert die Navbar sofort wieder
-                        _navCompact.value = false;
-                        _selectTab(index);
-                      },
-                      compact: compact,
-                    ),
-                  ),
+                child: ValueListenableBuilder<bool>(
+                  // NEU: in der Kalender-Jahresübersicht bleibt nur der
+                  // "Heute"-Button (aus tasks_screen.dart) sichtbar —
+                  // die Haupt-Navbar wird komplett ausgeblendet.
+                  valueListenable: _tasksShowingYear,
+                  builder: (context, showingYear, _) {
+                    if (showingYear) return const SizedBox.shrink();
+                    return Center(
+                      child: ValueListenableBuilder<bool>(
+                        valueListenable: _navCompact,
+                        builder: (context, compact, _) => ValueListenableBuilder<bool>(
+                          valueListenable: _tasksCalendarMode,
+                          builder: (context, calendarActive, __) => _GlassBottomNav(
+                            selectedIndex: _currentPage,
+                            readOnlyMode: readOnly,
+                            onTap: (index) {
+                              // Tap expandiert die Navbar sofort wieder
+                              _navCompact.value = false;
+                              _selectTab(index);
+                            },
+                            compact: compact,
+                            showCalendarSplit: readOnly,
+                            calendarActive: calendarActive,
+                            tasksTabIndex: _indexOfTab(_Tab.tasks),
+                            onSelectTasksList: () {
+                              _navCompact.value = false;
+                              _selectTasksListView();
+                            },
+                            onSelectCalendar: () {
+                              _navCompact.value = false;
+                              _selectCalendarView();
+                            },
+                          ),
+                        ),
+                      ),
+                    );
+                  },
                 ),
               ),
 
@@ -1013,7 +1252,7 @@ _slideCtrl.animateTo(
                                   _Divider(),
 
                                   // DYNAMISCHE EINTRÄGE je nach aktiver Seite
-                                  if (_isOnFahrtenbuchPage && _currentPage != (_dienstplanEnabled ? 4 : 3)) ...[
+                                  if (_isOnFahrtenbuchPage && _currentPage != _indexOfTab(_Tab.tasks)) ...[
                                     _DropdownItem(
                                       icon: Icons.directions_car_outlined,
                                       label: 'Fahrzeuge verwalten',
@@ -1038,7 +1277,7 @@ _slideCtrl.animateTo(
                                     ),
                                     _Divider(),
                                   ],
-                                  if (_isOnSchedulePage && !_isOnFahrtenbuchPage) ...[
+                                  if (_isOnSchedulePage && !_isOnFahrtenbuchPage && !readOnly) ...[
                                     _DropdownItem(
                                       icon: Icons.upload_file_outlined,
                                       label: 'Dienstplan importieren',
@@ -1049,7 +1288,7 @@ _slideCtrl.animateTo(
                                     ),
                                     _Divider(),
                                   ],
-                                  if (_currentPage == 1) ...[
+                                  if (_currentPage == _indexOfTab(_Tab.month)) ...[
                                     _DropdownItem(
                                       icon: Icons.picture_as_pdf_outlined,
                                       label: 'Zeiten exportieren',
@@ -1073,7 +1312,7 @@ _slideCtrl.animateTo(
                                     _Divider(),
                                   ],
 
-                                  if (_currentPage == (_dienstplanEnabled ? 4 : 3)) ...[
+                                  if (_currentPage == _indexOfTab(_Tab.tasks)) ...[
                                     _DropdownItem(
                                       icon: Icons.mic_outlined,
                                       label: 'Sprachbefehle & Hilfe',
@@ -1108,7 +1347,7 @@ _slideCtrl.animateTo(
                 ),
               ),
 
-              Positioned(
+                            Positioned(
                 top: 0,
                 left: 0,
                 right: 0,
@@ -1116,71 +1355,129 @@ _slideCtrl.animateTo(
                   padding: EdgeInsets.only(top: topPad + 8, left: 20, right: 16, bottom: 8),
                   color: Colors.transparent,
                   child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const SizedBox(width: 40),
-                      const Spacer(),
-                      if (_isOnFahrtenbuchPage)
-                        GestureDetector(
-                          onTap: _onPlusPressed,
-                          child: SizedBox(
-                            width: 40,
-                            height: 40,
-                            child: Center(
-                              child: Icon(
-                                hasDraft ? Icons.edit_note_rounded : Icons.add,
-                                color: skin.textPrimary,
-                                size: 22,
+                      Expanded(
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            if (_isOnFahrtenbuchPage)
+                              GestureDetector(
+                                onTap: _onPlusPressed,
+                                child: SizedBox(
+                                  width: 40,
+                                  height: 40,
+                                  child: Center(
+                                    child: Icon(
+                                      hasDraft ? Icons.edit_note_rounded : Icons.add,
+                                      color: skin.textPrimary,
+                                      size: 22,
+                                    ),
+                                  ),
+                                ),
                               ),
-                            ),
-                          ),
-                        ),
-                      if (_currentPage == (_dienstplanEnabled ? 4 : 3))
-                        GestureDetector(
-                          onTap: () => _tasksKey.currentState?.openQuickAdd(),
-                          child: SizedBox(
-                            width: 40,
-                            height: 40,
-                            child: Center(
-                              child: Icon(
-                                Icons.add,
-                                color: skin.textPrimary,
-                                size: 22,
-                              ),
-                            ),
-                          ),
-                        ),
-                      if (_isOnSchedulePage)
-                        ValueListenableBuilder<bool>(
-                          valueListenable: _scheduleForeignView,
-                          builder: (context, isForeign, _) => GestureDetector(
-                            onTap: isForeign
-                                ? null
-                                : () => _scheduleKey.currentState?.openColleagueSearch(),
-                            child: SizedBox(
-                              width: 40,
-                              height: 40,
-                              child: Center(
-                                child: AnimatedSwitcher(
-                                  duration: const Duration(milliseconds: 200),
-                                  child: isForeign
-                                      ? Icon(
-                                          Icons.person_rounded,
-                                          key: const ValueKey('foreign'),
-                                          color: skin.primary,
-                                          size: 22,
-                                        )
-                                      : Icon(
-                                          Icons.search_rounded,
-                                          key: const ValueKey('search'),
+                            if (!readOnly && _currentPage == _indexOfTab(_Tab.tasks))
+                              ValueListenableBuilder<bool>(
+                                valueListenable: _tasksCalendarMode,
+                                builder: (context, isCalendar, _) => GestureDetector(
+                                  onTap: () {
+                                    HapticFeedback.selectionClick();
+                                    final newValue = !isCalendar;
+                                    _tasksCalendarMode.value = newValue;
+                                    _tasksKey.currentState?.setCalendarMode(newValue);
+                                    _calToggleCtrl.forward(from: 0);
+                                  },
+                                  child: SizedBox(
+                                    width: 40,
+                                    height: 40,
+                                    child: Center(
+                                      child: AnimatedSwitcher(
+                                        duration: const Duration(milliseconds: 280),
+                                        transitionBuilder: (child, anim) => RotationTransition(
+                                          turns: Tween<double>(begin: 0.75, end: 1.0).animate(anim),
+                                          child: ScaleTransition(
+                                            scale: CurvedAnimation(parent: anim, curve: Curves.easeOutBack),
+                                            child: FadeTransition(opacity: anim, child: child),
+                                          ),
+                                        ),
+                                        child: Icon(
+                                          isCalendar ? Icons.view_list_rounded : Icons.calendar_month_outlined,
+                                          key: ValueKey(isCalendar),
                                           color: skin.textPrimary,
                                           size: 22,
                                         ),
+                                      ),
+                                    ),
+                                  ),
                                 ),
                               ),
-                            ),
-                          ),
+                            if (_currentPage == _indexOfTab(_Tab.tasks))
+                              ValueListenableBuilder<bool>(
+                                valueListenable: _tasksCalendarMode,
+                                builder: (context, isCalendar, _) => GestureDetector(
+                                  onTap: () => isCalendar
+                                      ? _tasksKey.currentState?.openQuickAddEvent()
+                                      : _tasksKey.currentState?.openQuickAdd(),
+                                  child: SizedBox(
+                                    width: 40,
+                                    height: 40,
+                                    child: Center(
+                                      child: Icon(
+                                        Icons.add,
+                                        color: skin.textPrimary,
+                                        size: 22,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            if (_isOnSchedulePage && !readOnly)
+                              ValueListenableBuilder<bool>(
+                                valueListenable: _scheduleForeignView,
+                                builder: (context, isForeign, _) => GestureDetector(
+                                  onTap: isForeign
+                                      ? null
+                                      : () => _scheduleKey.currentState?.openColleagueSearch(),
+                                  child: SizedBox(
+                                    width: 40,
+                                    height: 40,
+                                    child: Center(
+                                      child: AnimatedSwitcher(
+                                        duration: const Duration(milliseconds: 200),
+                                        child: isForeign
+                                            ? Icon(
+                                                Icons.person_rounded,
+                                                key: const ValueKey('foreign'),
+                                                color: skin.primary,
+                                                size: 22,
+                                              )
+                                            : Icon(
+                                                Icons.search_rounded,
+                                                key: const ValueKey('search'),
+                                                color: skin.textPrimary,
+                                                size: 22,
+                                              ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          ],
                         ),
+                      ),
+                      NotificationBellButton(
+                        key: _bellKey,
+                        onBeforeOpen: _closeMenu,
+                        onNavigateToTasksList: _selectTasksListView,
+                        onNavigateToCalendar: _selectCalendarView,
+                        onOpenSyncConflicts: () => Navigator.push(
+                          context,
+                          CupertinoPageRoute(builder: (_) => const SyncConflictsScreen()),
+                        ),
+                        onOpenCalendarSyncSettings: () => Navigator.push(
+                          context,
+                          CupertinoPageRoute(builder: (_) => const TasksDictationSettingsScreen()),
+                        ),
+                      ),
                       GestureDetector(
                         onTap: _toggleMenu,
                         child: SizedBox(
@@ -1219,6 +1516,7 @@ _slideCtrl.animateTo(
   }
 
   void _showUploadSheet(BuildContext context, AppSkin skin) {
+    if (_readOnlyMode) return;
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -1284,152 +1582,152 @@ class _KfzVerwaltungSheetState extends State<_KfzVerwaltungSheet> {
     final kz = entry['kennzeichen'] as String;
     final ctrl = TextEditingController(text: (entry['kmEnd'] as int).toString());
     showModalBottomSheet(
-  context: context,
-  backgroundColor: Colors.transparent,
-  isScrollControlled: true,
-  builder: (_) => Padding(
-    padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-    child: GlassSheet(
-      skin: skin,
-      child: Padding(
-  padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
-  child: Column(
-    mainAxisSize: MainAxisSize.min,
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Center(child: SheetHandle(skin: skin)),
-            const SizedBox(height: 16),
-            Text('KM-Stand bearbeiten – $kz',
-                style: TextStyle(color: skin.textPrimary, fontSize: 16, fontWeight: FontWeight.w700)),
-            const SizedBox(height: 16),
-            TextField(
-              controller: ctrl,
-              autofocus: true,
-              keyboardType: TextInputType.number,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              style: TextStyle(color: skin.textPrimary, fontSize: 28, fontWeight: FontWeight.w700),
-              decoration: InputDecoration(
-                hintText: '0',
-                hintStyle: TextStyle(color: skin.surface(0.2), fontSize: 28),
-                border: InputBorder.none,
-                suffix: Text(' km', style: TextStyle(color: skin.surface(0.4), fontSize: 16)),
-              ),
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+        child: GlassSheet(
+          skin: skin,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(child: SheetHandle(skin: skin)),
+                const SizedBox(height: 16),
+                Text('KM-Stand bearbeiten – $kz',
+                    style: TextStyle(color: skin.textPrimary, fontSize: 16, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: ctrl,
+                  autofocus: true,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  style: TextStyle(color: skin.textPrimary, fontSize: 28, fontWeight: FontWeight.w700),
+                  decoration: InputDecoration(
+                    hintText: '0',
+                    hintStyle: TextStyle(color: skin.surface(0.2), fontSize: 28),
+                    border: InputBorder.none,
+                    suffix: Text(' km', style: TextStyle(color: skin.surface(0.4), fontSize: 16)),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                GlassPrimaryButton(
+                  skin: skin,
+                  label: 'Übernehmen',
+                  onTap: () {
+                    final km = int.tryParse(ctrl.text);
+                    if (km != null && km > 0) {
+                      KmMemory.save(kz, km);
+                      Navigator.pop(context);
+                      _load();
+                    }
+                  },
+                ),
+              ],
             ),
-            const SizedBox(height: 16),
-            GlassPrimaryButton(
-              skin: skin,
-              label: 'Übernehmen',
-              onTap: () {
-                final km = int.tryParse(ctrl.text);
-                if (km != null && km > 0) {
-                  KmMemory.save(kz, km);
-                  Navigator.pop(context);
-                  _load();
-                }
-              },
-            ),
-          ],
+          ),
         ),
       ),
-    ),
-  ),
-);
-}
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final skin = AppTheme.of(context);
     return ConstrainedBox(
-  constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.75),
-  child: GlassSheet(
-    skin: skin,
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        SheetHandle(skin: skin),
-        const SizedBox(height: 16),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Row(children: [
-            Icon(Icons.directions_car_outlined, color: skin.primary, size: 20),
-            const SizedBox(width: 10),
-            Text('Fahrzeuge & KM-Stand', style: TextStyle(color: skin.textPrimary, fontSize: 17, fontWeight: FontWeight.w700)),
-          ]),
-        ),
-              const SizedBox(height: 12),
-              if (_entries.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.all(32),
-                  child: Text('Noch keine Fahrzeuge gespeichert.',
-                      style: TextStyle(color: skin.textMuted, fontSize: 14), textAlign: TextAlign.center),
-                )
-              else
-                Flexible(
-                  child: ListView.builder(
-                    shrinkWrap: true,
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                    itemCount: _entries.length,
-                    itemBuilder: (context, i) {
-  final e = _entries[i];
-  final kz = e['kennzeichen'] as String? ?? '';
-  final km = e['kmEnd'] as int? ?? 0;
-  final datum = e['datum'] as String?;
-  final dateStr = datum != null
-      ? DateFormat('dd.MM.yy').format(DateTime.tryParse(datum) ?? DateTime.now())
-      : '';
-  return Padding(
-    padding: const EdgeInsets.only(bottom: 8),
-    child: GlassSwipeCard(
-      height: 72,
-      cardKey: kz,
-      onTap: () => _editKm(e),
-      onDelete: () => _deleteEntry(kz),
-      animateDelete: false, // _deleteEntry zeigt eigenen confirmDeleteDialog, danach _load()
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(14),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-          child: Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            decoration: BoxDecoration(
-              color: skin.isLight ? Colors.white.withValues(alpha: 0.72) : skin.bgCard.withValues(alpha: 0.65),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: skin.glassBorder),
+      constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.75),
+      child: GlassSheet(
+        skin: skin,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SheetHandle(skin: skin),
+            const SizedBox(height: 16),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Row(children: [
+                Icon(Icons.directions_car_outlined, color: skin.primary, size: 20),
+                const SizedBox(width: 10),
+                Text('Fahrzeuge & KM-Stand', style: TextStyle(color: skin.textPrimary, fontSize: 17, fontWeight: FontWeight.w700)),
+              ]),
             ),
-            child: Row(children: [
-              Container(
-                width: 36, height: 36,
-                decoration: BoxDecoration(
-                  color: skin.primary.withValues(alpha: 0.10),
-                  borderRadius: BorderRadius.circular(10),
+            const SizedBox(height: 12),
+            if (_entries.isEmpty)
+              Padding(
+                padding: const EdgeInsets.all(32),
+                child: Text('Noch keine Fahrzeuge gespeichert.',
+                    style: TextStyle(color: skin.textMuted, fontSize: 14), textAlign: TextAlign.center),
+              )
+            else
+              Flexible(
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                  itemCount: _entries.length,
+                  itemBuilder: (context, i) {
+                    final e = _entries[i];
+                    final kz = e['kennzeichen'] as String? ?? '';
+                    final km = e['kmEnd'] as int? ?? 0;
+                    final datum = e['datum'] as String?;
+                    final dateStr = datum != null
+                        ? DateFormat('dd.MM.yy').format(DateTime.tryParse(datum) ?? DateTime.now())
+                        : '';
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: GlassSwipeCard(
+                        height: 72,
+                        cardKey: kz,
+                        onTap: () => _editKm(e),
+                        onDelete: () => _deleteEntry(kz),
+                        animateDelete: false,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(14),
+                          child: BackdropFilter(
+                            filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+                            child: Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                              decoration: BoxDecoration(
+                                color: skin.isLight ? Colors.white.withValues(alpha: 0.72) : skin.bgCard.withValues(alpha: 0.65),
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(color: skin.glassBorder),
+                              ),
+                              child: Row(children: [
+                                Container(
+                                  width: 36, height: 36,
+                                  decoration: BoxDecoration(
+                                    color: skin.primary.withValues(alpha: 0.10),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Icon(Icons.directions_car_outlined, color: skin.primary, size: 18),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                    Text(kz, style: TextStyle(color: skin.textPrimary, fontSize: 15, fontWeight: FontWeight.w700)),
+                                    Text('${_formatKm(km)} km  ·  $dateStr',
+                                        style: TextStyle(color: skin.textMuted, fontSize: 11)),
+                                  ]),
+                                ),
+                                Icon(Icons.edit_outlined, color: skin.surface(0.3), size: 16),
+                              ]),
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
                 ),
-                child: Icon(Icons.directions_car_outlined, color: skin.primary, size: 18),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(kz, style: TextStyle(color: skin.textPrimary, fontSize: 15, fontWeight: FontWeight.w700)),
-                  Text('${_formatKm(km)} km  ·  $dateStr',
-                      style: TextStyle(color: skin.textMuted, fontSize: 11)),
-                ]),
-              ),
-              Icon(Icons.edit_outlined, color: skin.surface(0.3), size: 16),
-            ]),
-          ),
+          ],
         ),
       ),
-    ),
-  );
-},                          // schließt itemBuilder
-                  ),        // schließt ListView.builder
-                ),           // schließt Flexible
-              ],             // schließt Column children
-            ),               // schließt Column
-          ),                 // schließt GlassSheet
-        );                   // schließt ConstrainedBox
-  }                          // schließt build()
-}   
+    );
+  }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Dropdown Helpers
@@ -1470,15 +1768,28 @@ class _Divider extends StatelessWidget {
 
 class _GlassBottomNav extends StatefulWidget {
   final int selectedIndex;
-  final bool dienstplanEnabled;
+  final bool readOnlyMode;
   final Function(int) onTap;
   final bool compact;
+  // NEU: Im Lesemodus wird das Aufgaben-Icon durch zwei eigenständige Icons
+  // (Aufgaben / Kalender) ersetzt — beide zeigen auf denselben physischen
+  // Tasks-Screen, schalten nur dessen internen Anzeigemodus um.
+  final bool showCalendarSplit;
+  final bool calendarActive;
+  final int tasksTabIndex;
+  final VoidCallback? onSelectTasksList;
+  final VoidCallback? onSelectCalendar;
 
   const _GlassBottomNav({
     required this.selectedIndex,
-    required this.dienstplanEnabled,
+    required this.readOnlyMode,
     required this.onTap,
     this.compact = false,
+    this.showCalendarSplit = false,
+    this.calendarActive = false,
+    this.tasksTabIndex = -1,
+    this.onSelectTasksList,
+    this.onSelectCalendar,
   });
 
   @override
@@ -1528,18 +1839,82 @@ class _GlassBottomNavState extends State<_GlassBottomNav>
     widget.onTap(index);
   }
 
+  // NEU: ausgelagertes Icon-Rendering (Pill bei Auswahl, sonst schlicht),
+  // damit sowohl normale Tab-Icons als auch die im Lesemodus aufgeteilten
+  // Aufgaben-/Kalender-Icons dieselbe Optik nutzen.
+  Widget _navIconWidget({
+    required AppSkin skin,
+    required IconData icon,
+    required IconData activeIcon,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeInOut,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 3),
+        child: isSelected
+            ? ClipRRect(
+                borderRadius: BorderRadius.circular(14),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: skin.isLight
+                          ? Colors.white.withValues(alpha: 0.75)
+                          : Colors.white.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: skin.isLight
+                            ? Colors.white.withValues(alpha: 0.85)
+                            : Colors.white.withValues(alpha: 0.18),
+                        width: 0.8,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: skin.isLight ? 0.04 : 0.20),
+                          blurRadius: 6,
+                          offset: const Offset(0, 1),
+                        ),
+                      ],
+                    ),
+                    child: Icon(activeIcon, color: skin.primary, size: 24),
+                  ),
+                ),
+              )
+            : Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                child: Icon(icon, color: skin.surface(0.35), size: 21),
+              ),
+      ),
+    );
+  }
+
+  _NavItem _navItemFor(_Tab tab, int index) {
+    switch (tab) {
+      case _Tab.home:
+        return _NavItem(Icons.home_outlined, Icons.home_filled, 'Zeiterfassung', index);
+      case _Tab.month:
+        return _NavItem(Icons.access_time_outlined, Icons.access_time_filled, 'Monatsübersicht', index);
+      case _Tab.schedule:
+        return _NavItem(Icons.event_note_outlined, Icons.event_note, 'Dienstplan', index);
+      case _Tab.fahrtenbuch:
+        return _NavItem(Icons.directions_car_outlined, Icons.directions_car, 'Fahrtenbuch', index);
+      case _Tab.tasks:
+        return _NavItem(Icons.check_rounded, Icons.check_rounded, 'Aufgaben', index);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final skin = AppTheme.of(context);
 
-    final items = [
-      _NavItem(Icons.home_outlined, Icons.home_filled, 'Zeiterfassung', 0),
-      _NavItem(Icons.access_time_outlined, Icons.access_time_filled, 'Monatsübersicht', 1),
-      if (widget.dienstplanEnabled)
-        _NavItem(Icons.event_note_outlined, Icons.event_note, 'Dienstplan', 2),
-      _NavItem(Icons.directions_car_outlined, Icons.directions_car, 'Fahrtenbuch', widget.dienstplanEnabled ? 3 : 2),
-      _NavItem(Icons.check_rounded, Icons.check_rounded, 'Aufgaben', widget.dienstplanEnabled ? 4 : 3),
-    ];
+    final tabs = _computeActiveTabs(readOnly: widget.readOnlyMode);
+    final items = [for (int i = 0; i < tabs.length; i++) _navItemFor(tabs[i], i)];
 
     final navContent = AnimatedBuilder(
       animation: _stretchAnim,
@@ -1583,63 +1958,41 @@ class _GlassBottomNavState extends State<_GlassBottomNav>
             child: Row(
               mainAxisSize: MainAxisSize.min,
               mainAxisAlignment: MainAxisAlignment.center,
-              children: items.map((item) {
-                final isSelected = widget.selectedIndex == item.index;
-                return GestureDetector(
-                  onTap: () => _handleTap(item.index),
-                  behavior: HitTestBehavior.opaque,
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 180),
-                    curve: Curves.easeInOut,
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 3),
-                    child: isSelected
-                        ? ClipRRect(
-                            borderRadius: BorderRadius.circular(14),
-                            child: BackdropFilter(
-                              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 18, vertical: 8),
-                                decoration: BoxDecoration(
-                                  color: skin.isLight
-                                      ? Colors.white.withValues(alpha: 0.75)
-                                      : Colors.white.withValues(alpha: 0.12),
-                                  borderRadius: BorderRadius.circular(14),
-                                  border: Border.all(
-                                    color: skin.isLight
-                                        ? Colors.white.withValues(alpha: 0.85)
-                                        : Colors.white.withValues(alpha: 0.18),
-                                    width: 0.8,
-                                  ),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withValues(
-                                          alpha: skin.isLight ? 0.04 : 0.20),
-                                      blurRadius: 6,
-                                      offset: const Offset(0, 1),
-                                    ),
-                                  ],
-                                ),
-                                child: Icon(
-                                  item.activeIcon,
-                                  color: skin.primary,
-                                  size: 24,
-                                ),
-                              ),
-                            ),
-                          )
-                        : Padding(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 8),
-                            child: Icon(
-                              item.icon,
-                              color: skin.surface(0.35),
-                              size: 21,
-                            ),
-                          ),
-                  ),
-                );
-              }).toList(),
+              children: () {
+                // NEU: Im Lesemodus wird der Aufgaben-Eintrag durch zwei
+                // eigenständige Icons ersetzt (Aufgaben / Kalender) — beide
+                // zeigen auf denselben physischen Tasks-Screen und schalten
+                // nur dessen internen Anzeigemodus um.
+                final children = <Widget>[];
+                for (final item in items) {
+                  if (widget.showCalendarSplit && item.index == widget.tasksTabIndex) {
+                    final onTasksPage = widget.selectedIndex == widget.tasksTabIndex;
+                    children.add(_navIconWidget(
+                      skin: skin,
+                      icon: Icons.check_rounded,
+                      activeIcon: Icons.check_rounded,
+                      isSelected: onTasksPage && !widget.calendarActive,
+                      onTap: () => widget.onSelectTasksList?.call(),
+                    ));
+                    children.add(_navIconWidget(
+                      skin: skin,
+                      icon: Icons.calendar_month_outlined,
+                      activeIcon: Icons.calendar_month_rounded,
+                      isSelected: onTasksPage && widget.calendarActive,
+                      onTap: () => widget.onSelectCalendar?.call(),
+                    ));
+                  } else {
+                    children.add(_navIconWidget(
+                      skin: skin,
+                      icon: item.icon,
+                      activeIcon: item.activeIcon,
+                      isSelected: widget.selectedIndex == item.index,
+                      onTap: () => _handleTap(item.index),
+                    ));
+                  }
+                }
+                return children;
+              }(),
             ),
           ),
         ),
@@ -1671,7 +2024,7 @@ class _GlassBottomNavState extends State<_GlassBottomNav>
                   ..onUpdate = (details) {
                     if (!_isDraggingNav) return;
                     final delta = details.localPosition.dx - _dragStartX;
-                    final itemCount = widget.dienstplanEnabled ? 5 : 4;
+                    final itemCount = tabs.length;
                     final steps = (delta / _scrubItemWidth).round();
                     final newIndex =
                         (_dragStartIndex + steps).clamp(0, itemCount - 1);

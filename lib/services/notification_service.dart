@@ -5,7 +5,8 @@ import 'package:timezone/data/latest.dart' as tz;
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
 import '../models/relationship_style.dart';
-import '../models/notification_phrases.dart' show WeatherCategory, categoryFor;
+import '../models/notification_phrases.dart'
+    show WeatherCategory, categoryFor, eventReminderTitle, eventReminderBody;
 import 'weather_service.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
 
@@ -103,14 +104,22 @@ class NotificationService {
   // Feste IDs für die wiederkehrende Tagesvorschau (Morgen/Abend) und für
   // den reinen Badge-Reset — getrennt von den dynamischen Task-Reminder-IDs
   // (siehe _notificationId), damit sie sich nie überschneiden können.
-  static const int _dailyOverviewMorningId = 900001;
-  static const int _dailyOverviewEveningId = 900002;
-  static const int _badgeOnlyNotificationId = 900099;
+  static const int _dailyOverviewMorningId = 9000001;
+  static const int _dailyOverviewEveningId = 9000002;
+  static const int _badgeOnlyNotificationId = 9000099;
 
   // Basis-Offset für die "dringend, alle 6h" wiederkehrenden IDs — eigener
   // Nummernraum, getrennt von den normalen Task-Remindern (_notificationId)
   // und den Tagesvorschau-IDs oben.
-  static const int _urgentRecurringIdBase = 800000;
+  static const int _urgentRecurringIdBase = 3000000;
+
+  // ── KALENDER-TERMIN REMINDER (NEU) ──────────────────────────────────────
+  // Eigener ID-Nummernraum, getrennt von Task-Remindern (_notificationId),
+  // Dringend-Remindern (_urgentRecurringIdBase) und Tagesvorschau
+  // (_dailyOverviewMorningId/_dailyOverviewEveningId) — kann also nie
+  // kollidieren. Bewusst neutraler Text ohne RelationshipStyle, wie
+  // vereinbart.
+  static const int _eventReminderIdBase = 4000000;
 
   Future<void> init() async {
     if (_initialized) return;
@@ -344,6 +353,7 @@ class NotificationService {
     for (int i = 0; i < 10; i++) {
       cancelTaskReminder(taskId, i);
     }
+    cancelGuaranteedDueReminder(taskId); // NEU
     // Auch eine eventuell laufende Dringend-Erinnerung für diese Aufgabe
     // stoppen — relevant, wenn die Aufgabe erledigt/gelöscht wird.
     cancelUrgentReminder(taskId);
@@ -355,7 +365,10 @@ class NotificationService {
   }
 
   int _notificationId(String taskId, int reminderIndex) {
-    return (taskId.hashCode.abs() % 100000) * 10 + reminderIndex;
+    // NEU: eigener Basis-Offset (1.000.000), damit Task-IDs garantiert
+    // nicht mehr mit Dringend- (3.000.000+), Event- (4.000.000+) oder
+    // Tagesvorschau-IDs (9.000.000+) kollidieren können.
+    return 1000000 + (taskId.hashCode.abs() % 100000) * 10 + reminderIndex;
   }
 
   // ── DRINGEND, EINMALIGE ERINNERUNG NACH 24H (NEU) ─────────────────────────
@@ -406,6 +419,132 @@ class NotificationService {
     _plugin.cancel(_urgentRecurringId(taskId));
   }
 
+  // ── GARANTIERTE FÄLLIG-ERINNERUNG (NEU) ───────────────────────────────────
+  //
+  // Unabhängig davon, ob manuell ein "X vorher"-Chip gewählt wurde: sobald
+  // eine Aufgabe fällig ist, MUSS eine Notification kommen. Fester, für
+  // diesen Zweck reservierter Index (50) — kollidiert nie mit den max. 3
+  // wählbaren Chip-Remindern (Index 0-2) oder der Sofort-Notification (99).
+  static const int _dueReminderIndex = 50;
+  /// NEU (Punkt 3): öffentlich, damit das Notification-Center exakt
+  /// denselben Standard-Uhrzeit-Wert nutzt wie der echte iOS-Reminder.
+  static const int dueTimeDefaultHour = 9; // Uhrzeit für Aufgaben ohne Uhrzeit
+
+  void scheduleGuaranteedDueReminder({
+    required String taskId,
+    required String taskTitle,
+    required DateTime dueDate,
+    required bool hasTime,
+  }) {
+    final fireAt = hasTime
+        ? dueDate
+        : DateTime(dueDate.year, dueDate.month, dueDate.day, dueTimeDefaultHour, 0);
+        
+    // Liegt der Zeitpunkt schon in der Vergangenheit (Frist z.B. heute
+    // Mittag, Aufgabe wird aber erst abends angelegt/bearbeitet): sofort
+    // auslösen, statt die Erinnerung stillschweigend zu verlieren.
+    if (fireAt.isBefore(DateTime.now())) {
+      showTaskOverdueNow(taskId: taskId, taskTitle: taskTitle);
+      return;
+    }
+
+    final copy = RelationshipTexts.taskDueToday(
+      style: _style,
+      taskTitle: taskTitle,
+      fullName: _fullName,
+    );
+
+    _plugin.zonedSchedule(
+      _notificationId(taskId, _dueReminderIndex),
+      copy.title,
+      copy.body,
+      tz.TZDateTime.from(fireAt, tz.local),
+      _detailsFor(copy, badgeNumber: _countOverdueOpenTasks() + 1),
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
+      payload: taskId,
+    );
+  }
+
+  void cancelGuaranteedDueReminder(String taskId) {
+    _plugin.cancel(_notificationId(taskId, _dueReminderIndex));
+  }
+
+  // ── KALENDER-TERMIN REMINDER (NEU) ──────────────────────────────────────
+
+  int _eventNotificationId(String eventId, int reminderIndex) {
+    return _eventReminderIdBase + (eventId.hashCode.abs() % 100000) * 10 + reminderIndex;
+  }
+
+  /// Plant eine einzelne Erinnerung für einen Kalender-Termin. [reminderAt]
+  /// ist der bereits berechnete Zeitpunkt (Termin-Start minus Vorlaufzeit),
+  /// exakt wie bei scheduleTaskReminder — nur der Text ist neutral.
+  void scheduleEventReminder({
+    required String eventId,
+    required int reminderIndex,
+    required String eventTitle,
+    required DateTime eventStart,
+    required DateTime reminderAt,
+  }) {
+    if (reminderAt.isBefore(DateTime.now())) return;
+
+    final timeLabel = DateFormat('HH:mm').format(eventStart);
+    final id = _eventNotificationId(eventId, reminderIndex);
+
+    _plugin.zonedSchedule(
+      id,
+      eventReminderTitle,
+      eventReminderBody(eventTitle, timeLabel),
+      tz.TZDateTime.from(reminderAt, tz.local),
+      const NotificationDetails(
+        iOS: DarwinNotificationDetails(sound: 'default', interruptionLevel: InterruptionLevel.active),
+      ),
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
+      payload: 'event:$eventId',
+    );
+  }
+
+  /// Storniert ALLE Reminder eines Termins (max. 3 möglich, Index 0-2 reicht
+  /// als Löschbereich mit etwas Puffer).
+  void cancelEventReminders(String eventId) {
+    for (int i = 0; i < 5; i++) {
+      _plugin.cancel(_eventNotificationId(eventId, i));
+    }
+    cancelGuaranteedEventReminder(eventId); // NEU (Punkt 5)
+  }
+
+  // ── GARANTIERTE TERMIN-ERINNERUNG (NEU, Punkt 5) ─────────────────────────
+  //
+  // Analog zur garantierten Fällig-Erinnerung bei Aufgaben: unabhängig von
+  // gewählten "Hinweisen" bekommt jeder Termin zusätzlich GENAU EINE
+  // Erinnerung exakt zum Start.
+  static const int _eventGuaranteedIndex = 50;
+
+  void scheduleGuaranteedEventReminder({
+    required String eventId,
+    required String eventTitle,
+    required DateTime eventStart,
+  }) {
+    if (eventStart.isBefore(DateTime.now())) return;
+    _plugin.zonedSchedule(
+      _eventNotificationId(eventId, _eventGuaranteedIndex),
+      eventReminderTitle,
+      eventReminderBody(eventTitle, DateFormat('HH:mm').format(eventStart)),
+      tz.TZDateTime.from(eventStart, tz.local),
+      const NotificationDetails(
+        iOS: DarwinNotificationDetails(sound: 'default', interruptionLevel: InterruptionLevel.active),
+      ),
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
+      payload: 'event:$eventId',
+    );
+  }
+
+  void cancelGuaranteedEventReminder(String eventId) {
+    _plugin.cancel(_eventNotificationId(eventId, _eventGuaranteedIndex));
+  }
+
   // ── TAGESVORSCHAU ──────────────────────────────────────────────────────────
 
   /// Liest den Schichtcode für einen bestimmten Tag direkt aus Hive —
@@ -414,48 +553,48 @@ class NotificationService {
   /// Eintrag laut DienstplanParser) wird als "frei" behandelt, kein Eintrag
   /// als "kein Dienstplan vorhanden".
   ({bool hasShift, bool isFree, String? code, String? resolvedShift}) _shiftInfoForDay(DateTime day) {
-  final box = Hive.box('einstellungen');
-  final monthKey = DateFormat('yyyy-MM').format(day);
-  final dayKey = DateFormat('yyyy-MM-dd').format(day);
-  final raw = box.get('schedule_$monthKey');
-  if (raw is Map) {
-    final shift = raw[dayKey];
-    if (shift is String && shift.trim().isNotEmpty) {
-      final trimmed = shift.trim().toUpperCase();
-      if (trimmed == 'X') {
-        return (hasShift: true, isFree: true, code: null, resolvedShift: null);
+    final box = Hive.box('einstellungen');
+    final monthKey = DateFormat('yyyy-MM').format(day);
+    final dayKey = DateFormat('yyyy-MM-dd').format(day);
+    final raw = box.get('schedule_$monthKey');
+    if (raw is Map) {
+      final shift = raw[dayKey];
+      if (shift is String && shift.trim().isNotEmpty) {
+        final trimmed = shift.trim().toUpperCase();
+        if (trimmed == 'X') {
+          return (hasShift: true, isFree: true, code: null, resolvedShift: null);
+        }
+        return (
+          hasShift: true,
+          isFree: false,
+          code: trimmed,
+          resolvedShift: _resolveShift(trimmed),
+        );
       }
-      return (
-        hasShift: true,
-        isFree: false,
-        code: trimmed,
-        resolvedShift: _resolveShift(trimmed),
-      );
+    }
+    return (hasShift: false, isFree: false, code: null, resolvedShift: null);
+  }
+
+  /// Löst Dienstcodes in die gewünschten Anzeigestrings auf.
+  String _resolveShift(String code) {
+    switch (code) {
+      case 'T':  return 'Tagdienst';
+      case 'U':  return 'Urlaub';
+      case 'X':  return 'einen freien Tag'; // wird nur in isFree-Zweig genutzt
+      // P/F: Kürzel beibehalten
+      case 'P':  return 'P';
+      case 'P1': return 'P1';
+      case 'P2': return 'P2';
+      case 'F':  return 'F';
+      case 'F1': return 'F1';
+      case 'F2': return 'F2';
+      // Weitere Kürzel
+      case 'DA': return 'DA';
+      case 'VK': return 'VK';
+      case 'IS': return 'IS';
+      default:   return code; // unbekannte Codes einfach zeigen
     }
   }
-  return (hasShift: false, isFree: false, code: null, resolvedShift: null);
-}
-
-/// Löst Dienstcodes in die gewünschten Anzeigestrings auf.
-String _resolveShift(String code) {
-  switch (code) {
-    case 'T':  return 'Tagdienst';
-    case 'U':  return 'Urlaub';
-    case 'X':  return 'einen freien Tag'; // wird nur in isFree-Zweig genutzt
-    // P/F: Kürzel beibehalten
-    case 'P':  return 'P';
-    case 'P1': return 'P1';
-    case 'P2': return 'P2';
-    case 'F':  return 'F';
-    case 'F1': return 'F1';
-    case 'F2': return 'F2';
-    // Weitere Kürzel
-    case 'DA': return 'DA';
-    case 'VK': return 'VK';
-    case 'IS': return 'IS';
-    default:   return code; // unbekannte Codes einfach zeigen
-  }
-}
 
   /// true, wenn für diesen Tag eine Notiz hinterlegt ist (Telefonnummer
   /// oder Text) — identische Hive-Konvention zu _NoteData in

@@ -981,10 +981,12 @@ class ScheduleScreen extends StatefulWidget {
   final void Function(DateTime)? onMonthChanged;
   final ValueNotifier<bool>? dayCardDragging;
   final void Function(bool)? onForeignViewChanged;
+  final bool readOnly;
 
   const ScheduleScreen({
     super.key, required this.onNavigateToHome, required this.onNavigateToMonth,
     this.onMonthChanged, this.dayCardDragging, this.onForeignViewChanged,
+    this.readOnly = false,
   });
 
   @override
@@ -1053,10 +1055,23 @@ class ScheduleScreenState extends State<ScheduleScreen> {
     final monthKey = DateFormat('yyyy-MM').format(_selectedMonth);
     _scrollPositions[monthKey] = 0.0;
     WidgetsBinding.instance.addPostFrameCallback((_) => scrollToToday());
+    SyncService.instance.scheduleDataChanged.addListener(_onSyncDataChanged);
+  }
+
+  void _onSyncDataChanged() {
+    if (mounted) {
+      loadScheduleData();
+      pushScheduleToWidget(); // NEU — sonst bleiben Widgets im Lesemodus leer,
+                               // da Dienstplan-Daten hier nur per Sync ankommen
+    }
   }
 
   @override
-  void dispose() { _listScrollController.dispose(); super.dispose(); }
+  void dispose() {
+    SyncService.instance.scheduleDataChanged.removeListener(_onSyncDataChanged);
+    _listScrollController.dispose();
+    super.dispose();
+  }
 
   void scrollToTop() {
     if (_listScrollController.hasClients) {
@@ -1072,7 +1087,8 @@ class ScheduleScreenState extends State<ScheduleScreen> {
   void loadScheduleData() {
     final box = Hive.box('einstellungen');
     final monthKey = DateFormat('yyyy-MM').format(_selectedMonth);
-    final raw = box.get('schedule_$monthKey');
+    final rawStored = box.get('schedule_$monthKey');
+    final raw = SyncService.instance.visibleValueFor('schedule', monthKey, rawStored);
     setState(() {
       _scheduleData = {};
       if (raw is Map) { for (final entry in raw.entries) { _scheduleData[entry.key.toString()] = entry.value.toString(); } }
@@ -1166,6 +1182,7 @@ class ScheduleScreenState extends State<ScheduleScreen> {
 
   // ── NEU: Kollegen-Suche öffnen / verlassen ──
   Future<void> openColleagueSearch() async {
+    if (widget.readOnly) return;
     final skin = AppTheme.of(context);
     closeOverlays();
     await showModalBottomSheet(
@@ -1195,6 +1212,7 @@ class ScheduleScreenState extends State<ScheduleScreen> {
   }
 
   void openNoteOverlay(String dateKey) {
+    if (widget.readOnly) return;
     HapticFeedback.lightImpact();
     setState(() { _activeNoteKey = dateKey; _noteOverlayVisible = true; });
   }
@@ -1202,6 +1220,7 @@ class ScheduleScreenState extends State<ScheduleScreen> {
   void _closeNoteOverlay() => setState(() { _noteOverlayVisible = false; _activeNoteKey = null; });
 
   void openColleaguesOverlay(String dateKey, {String? viewerName}) {
+    if (widget.readOnly) return;
     HapticFeedback.lightImpact();
     setState(() {
       _activeColleaguesKey = dateKey;
@@ -1266,7 +1285,7 @@ class ScheduleScreenState extends State<ScheduleScreen> {
   duration: const Duration(seconds: 3),
 );
 }
-}
+  }
 
   void _onCardSwiped(String? dateKey) => setState(() => _openSwipedCardKey = dateKey);
 
@@ -1437,7 +1456,7 @@ class ScheduleScreenState extends State<ScheduleScreen> {
                                 color: isChrome ? const Color(0xFF999999) : const Color(0xFFEF5B5B)),
                           ]),
 
-                          if (_hasSchedule) ...[
+                          if (_hasSchedule && !widget.readOnly) ...[
                             const SizedBox(height: 8),
                             Row(children: [
                               const SizedBox(width: 5),
@@ -1484,6 +1503,9 @@ class ScheduleScreenState extends State<ScheduleScreen> {
                                 itemCount: days.length + 1,
                                 itemBuilder: (context, index) {
                                   if (index == days.length) {
+                                    if (widget.readOnly) {
+                                      return SizedBox(height: bottomNavHeight + 40);
+                                    }
                                     final bool isLeaveButton = isForeignView;
                                     return Padding(
                                       padding: EdgeInsets.only(top: 8, bottom: bottomNavHeight + 40),
@@ -1545,8 +1567,9 @@ class ScheduleScreenState extends State<ScheduleScreen> {
                                       ),
                                       dayCardDragging: widget.dayCardDragging,
                                       eventText: _eventsData[key],
-                                      hasTask: !isForeignView && entry != null && TaskStore.hasOpenTaskOnDay(day), // NEU
-                                      foreignMode: isForeignView, // NEU
+                                      hasTask: !isForeignView && entry != null && TaskStore.hasOpenTaskOnDay(day),
+                                      foreignMode: isForeignView,
+                                      readOnly: widget.readOnly,
                                     ),
                                   );
                                 },
@@ -2402,10 +2425,9 @@ class _DayCard extends StatefulWidget {
   final VoidCallback onOpenColleagues;
   final ValueNotifier<bool>? dayCardDragging;
   final String? eventText;
-  final bool hasTask; // true, wenn an diesem Tag eine offene Aufgabe mit Deadline existiert
-  /// NEU: true in der Kollegen-Fremdansicht. Deaktiviert Swipe (Notiz/Löschen)
-  /// und Long-Press (Notiz) – nur Doppeltipp (Kollegen-Overlay) bleibt aktiv.
+  final bool hasTask;
   final bool foreignMode;
+  final bool readOnly;
 
   const _DayCard({
     required this.day, required this.entry, required this.skin, required this.isChrome,
@@ -2413,7 +2435,8 @@ class _DayCard extends StatefulWidget {
     required this.onCardSwiped, required this.onOpenNote, required this.onNoteChanged,
     required this.onOpenColleagues, this.dayCardDragging, this.eventText,
     this.hasTask = false,
-    this.foreignMode = false, // NEU
+    this.foreignMode = false,
+    this.readOnly = false,
   });
 
   @override
@@ -2459,7 +2482,7 @@ class _DayCardState extends State<_DayCard> with TickerProviderStateMixin, Swipe
 
   Color _color(String part) => _shiftColor(part, isChrome: widget.isChrome);
   bool get _isBirthdayDay => widget.entry?.hasBirthday ?? false;
-  bool get _hasNote => !widget.foreignMode && !_NoteData.load(widget.dateKey).isEmpty;
+  bool get _hasNote => !widget.foreignMode && !widget.readOnly && !_NoteData.load(widget.dateKey).isEmpty;
 
   void _onPanStart(DragStartDetails d) { _dragging = false; _dragStartX = d.globalPosition.dx; _dragStartY = d.globalPosition.dy; }
 
@@ -2580,26 +2603,25 @@ class _DayCardState extends State<_DayCard> with TickerProviderStateMixin, Swipe
           );
         }),
                 Expanded(child: shiftContent),
-        // NACHHER:
-if (widget.entry != null && widget.entry!.shift.isNotEmpty) ...[
-  if (widget.hasTask) ...[
-    Icon(Icons.task_alt_rounded, size: 11,
-        color: widget.isChrome
-            ? const Color(0xFFCCCCCC).withValues(alpha: 0.85)
-            : skin.primary.withValues(alpha: 0.7)),
-    const SizedBox(width: 5),
-  ],
-  if (hasEvent) ...[
-    Icon(Icons.flag_rounded, size: 11,
-        color: widget.isChrome
-            ? const Color(0xFFFFB347).withValues(alpha: 0.75)
-            : const Color(0xFFFFB347)),
-    const SizedBox(width: 5),
-  ],
-  _isBirthdayDay
-      ? const SizedBox(width: 7, height: 7)
-      : _DayDot(day: widget.day, skin: skin, isChrome: widget.isChrome, isChanged: widget.isChanged),
-],
+        if (widget.entry != null && widget.entry!.shift.isNotEmpty) ...[
+          if (widget.hasTask) ...[
+            Icon(Icons.task_alt_rounded, size: 11,
+                color: widget.isChrome
+                    ? const Color(0xFFCCCCCC).withValues(alpha: 0.85)
+                    : skin.primary.withValues(alpha: 0.7)),
+            const SizedBox(width: 5),
+          ],
+          if (hasEvent) ...[
+            Icon(Icons.flag_rounded, size: 11,
+                color: widget.isChrome
+                    ? const Color(0xFFFFB347).withValues(alpha: 0.75)
+                    : const Color(0xFFFFB347)),
+            const SizedBox(width: 5),
+          ],
+          _isBirthdayDay
+              ? const SizedBox(width: 7, height: 7)
+              : _DayDot(day: widget.day, skin: skin, isChrome: widget.isChrome, isChanged: widget.isChanged),
+        ],
       ],
     );
 
@@ -2632,7 +2654,7 @@ if (widget.entry != null && widget.entry!.shift.isNotEmpty) ...[
                 ],
               ),
               child: cardInner),
-            if (widget.foreignMode)
+            if (widget.foreignMode || widget.readOnly)
               Positioned(
                 left: 0, top: 0, bottom: 0, width: 3.0,
                 child: Container(color: skin.primary.withValues(alpha: 0.9)),
@@ -2664,16 +2686,17 @@ if (widget.entry != null && widget.entry!.shift.isNotEmpty) ...[
       child: cardWidget,
     );
 
+    final bool interactionsLocked = widget.foreignMode || widget.readOnly;
     return GestureDetector(
-      onHorizontalDragStart: widget.foreignMode ? null : _onPanStart,
-      onHorizontalDragUpdate: widget.foreignMode ? null : _onPanUpdate,
-      onHorizontalDragEnd: widget.foreignMode ? null : _onPanEnd,
-      onLongPressStart: widget.foreignMode ? null : _onLongPressStart,
-      onLongPress: widget.foreignMode ? null : _onLongPress,
-      onLongPressEnd: widget.foreignMode ? null : _onLongPressEnd,
-      onLongPressCancel: widget.foreignMode ? null : _onLongPressCancel,
+      onHorizontalDragStart: interactionsLocked ? null : _onPanStart,
+      onHorizontalDragUpdate: interactionsLocked ? null : _onPanUpdate,
+      onHorizontalDragEnd: interactionsLocked ? null : _onPanEnd,
+      onLongPressStart: interactionsLocked ? null : _onLongPressStart,
+      onLongPress: interactionsLocked ? null : _onLongPress,
+      onLongPressEnd: interactionsLocked ? null : _onLongPressEnd,
+      onLongPressCancel: interactionsLocked ? null : _onLongPressCancel,
       onTap: _isOpen ? _close : null,
-      onDoubleTap: () {
+      onDoubleTap: widget.readOnly ? null : () {
         HapticFeedback.lightImpact();
         _close();
         Future.delayed(const Duration(milliseconds: 150), () { if (mounted) widget.onOpenColleagues(); });
@@ -2682,7 +2705,7 @@ if (widget.entry != null && widget.entry!.shift.isNotEmpty) ...[
         builder: (context, constraints) => SizedBox(
           child: ClipRect(
             child: Stack(clipBehavior: Clip.hardEdge, children: [
-              if (!widget.foreignMode)
+              if (!widget.foreignMode && !widget.readOnly)
               Positioned(
                 right: 0, top: 4, bottom: 4, width: _revealWidth,
                 child: Row(children: [
@@ -2729,7 +2752,7 @@ if (widget.entry != null && widget.entry!.shift.isNotEmpty) ...[
 )),
                 ]),
               ),
-Transform.translate(offset: Offset(widget.foreignMode ? 0 : swipeOffset, 0), child: animatedCard),
+Transform.translate(offset: Offset((widget.foreignMode || widget.readOnly) ? 0 : swipeOffset, 0), child: animatedCard),
             ]),
           ),
         ),

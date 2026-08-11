@@ -231,6 +231,13 @@ class MonthScreenState extends State<MonthScreen> with TickerProviderStateMixin 
       reverseCurve: Curves.easeInBack,
     );
     _loadHomeEntry();
+    // NEU: Nach Token-Verknüpfung, Sync-Pull oder Trennen soll die
+    // Monatsübersicht sich ohne manuellen Monatswechsel aktualisieren.
+    SyncService.instance.scheduleDataChanged.addListener(_onSyncDataChanged);
+  }
+
+  void _onSyncDataChanged() {
+    if (mounted) setState(() {});
   }
 
   @override
@@ -251,6 +258,7 @@ class MonthScreenState extends State<MonthScreen> with TickerProviderStateMixin 
 
   @override
   void dispose() {
+    SyncService.instance.scheduleDataChanged.removeListener(_onSyncDataChanged);
     _saveAnimController.dispose();
     _flyController.dispose();
     _kommenController.dispose();
@@ -623,18 +631,20 @@ Future<void> _checkTravelModeTz() async {
     final List<Map<String, dynamic>> entries = [];
 
     for (final key in box.keys) {
-      if (key.toString().startsWith(monthKey)) {
-        final data = box.get(key);
+      final dayKey = key.toString();
+      if (dayKey.startsWith(monthKey)) {
+        final rawStored = box.get(key);
+        final data = SyncService.instance.visibleValueFor('arbeitszeiten', dayKey, rawStored);
         if (data != null) {
           if (data is List) {
             for (final entry in data) {
               final e = Map<String, dynamic>.from(entry);
-              if (!e.containsKey('datum')) e['datum'] = key.toString();
+              if (!e.containsKey('datum')) e['datum'] = dayKey;
               entries.add(e);
             }
           } else {
             final e = Map<String, dynamic>.from(data);
-            if (!e.containsKey('datum')) e['datum'] = key.toString();
+            if (!e.containsKey('datum')) e['datum'] = dayKey;
             entries.add(e);
           }
         }
@@ -1575,37 +1585,48 @@ class _MonthEntryCard extends StatelessWidget {
                           // die große Kommen/Gehen-Zeile bleibt so IMMER an
                           // exakt derselben Stelle.
                           height: 27,
-                          child: Stack(
-                            clipBehavior: Clip.none,
-                            children: [
-                              Positioned(
-                                left: 0,
-                                top: 0,
-                                child: Text(
-                                  gehen.isEmpty ? '--:--' : gehen,
-                                  style: TextStyle(
-                                      fontSize: 26,
-                                      fontWeight: FontWeight.w700,
-                                      height: 1.0,
-                                      color: gehen.isEmpty
-                                          ? skin.surface(0.2)
-                                          : skin.gehenColor),
-                                ),
-                              ),
-                              if (hasZoneInfo)
+                          // NEU: IntrinsicWidth gibt dem Stack begrenzte
+                          // Breiten-Constraints (statt der von der Row
+                          // durchgereichten unbegrenzten Breite). Ohne das
+                          // wirft der Stack "requires bounded constraints",
+                          // sobald beide Positioned-Texte (Zeit + Zonen-
+                          // Referenz) gleichzeitig vorhanden sind — weil
+                          // beide nur left/top statt left+right setzen und
+                          // der Stack daher nicht selbst wissen kann, wie
+                          // breit er werden soll.
+                          child: IntrinsicWidth(
+                            child: Stack(
+                              clipBehavior: Clip.none,
+                              children: [
                                 Positioned(
                                   left: 0,
-                                  top: 27,
+                                  top: 0,
                                   child: Text(
-                                    '$gehenRaw · ${_shortTzName(gehenRawTz!)}',
+                                    gehen.isEmpty ? '--:--' : gehen,
                                     style: TextStyle(
-                                        fontSize: 9,
+                                        fontSize: 26,
+                                        fontWeight: FontWeight.w700,
                                         height: 1.0,
-                                        fontWeight: FontWeight.w600,
-                                        color: skin.primary.withValues(alpha: 0.5)),
+                                        color: gehen.isEmpty
+                                            ? skin.surface(0.2)
+                                            : skin.gehenColor),
                                   ),
                                 ),
-                            ],
+                                if (hasZoneInfo)
+                                  Positioned(
+                                    left: 0,
+                                    top: 27,
+                                    child: Text(
+                                      '$gehenRaw · ${_shortTzName(gehenRawTz!)}',
+                                      style: TextStyle(
+                                          fontSize: 9,
+                                          height: 1.0,
+                                          fontWeight: FontWeight.w600,
+                                          color: skin.primary.withValues(alpha: 0.5)),
+                                    ),
+                                  ),
+                              ],
+                            ),
                           ),
                         ),
                       ],
