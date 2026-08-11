@@ -338,7 +338,20 @@ class SyncService {
     // vollwertiges Zweitgerät (Lesemodus aus) ist der Kalender ein
     // 1:1-Spiegel — dort syncen ausnahmslos ALLE Termine.
     if (_isReadOnly && !_eventIsSyncScoped(e)) {
-      await _delete('calendar_events', id);
+      // NEU: Nur löschen, wenn für diese ID überhaupt jemals ein echter
+      // Push stattgefunden hat (_syncver_calendar_events/$id wird
+      // ausschließlich in _push() gesetzt). Frisch aus Apple gepullte
+      // Events (siehe AppleCalendarSyncService._pullCalendarInternal)
+      // haben nie ein Firestore-Dokument — der Delete-Call wäre in dem
+      // Fall garantiert ein No-Op. Reine Effizienz-Optimierung, kein
+      // Verhaltensunterschied: Events, die tatsächlich mal gepusht
+      // wurden (z.B. weil die Gruppe zwischenzeitlich sync-gescoped war),
+      // werden weiterhin korrekt entfernt.
+      final everPushed = Hive.box('einstellungen')
+          .get('_syncver_calendar_events/$id') != null;
+      if (everPushed) {
+        await _delete('calendar_events', id);
+      }
       return;
     }
     await _push('calendar_events', id, e.toJson());
