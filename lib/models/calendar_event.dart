@@ -6,6 +6,8 @@ import 'package:hive_flutter/hive_flutter.dart';
 import '../services/sync_service.dart';
 import '../services/apple_calendar_sync_service.dart';
 import '../services/event_group_store.dart'; // NEU — für Gruppenfarbe
+import '../services/notification_service.dart'; // NEU — für Benachrichtigungen
+import '../services/reminder_manager.dart'; // NEU — für Erinnerungsoptionen
 
 // ─────────────────────────────────────────────────────────────────────────
 // GRUPPE / FARBE
@@ -186,6 +188,39 @@ class CalendarEventStore {
     }
   }
 
+  /// Zentrale Methode zum Planen von Benachrichtigungen für einen Termin
+  static void _scheduleNotifications(CalendarEvent e) {
+    // Erst alle alten Benachrichtigungen für diesen Termin löschen
+    NotificationService.instance.cancelEventReminders(e.id);
+
+    // Ganztägige Termine bekommen keine Erinnerungs-Benachrichtigungen
+    // (laufen separat über den Banner, wie im Notification-Center)
+    if (e.allDay) return;
+
+    // Haupt-Erinnerung (garantierte Benachrichtigung)
+    NotificationService.instance.scheduleGuaranteedEventReminder(
+      eventId: e.id,
+      eventTitle: e.title,
+      eventStart: e.start,
+    );
+
+    // Benutzerdefinierte Erinnerungen basierend auf den reminderOptionIds
+    final options = ReminderManager.optionsFor(ReminderMode.beforeDeadline);
+    for (var i = 0; i < e.reminderOptionIds.length; i++) {
+      final opt = options.firstWhere(
+        (o) => o.id == e.reminderOptionIds[i],
+        orElse: () => options.first,
+      );
+      NotificationService.instance.scheduleEventReminder(
+        eventId: e.id,
+        reminderIndex: i,
+        eventTitle: e.title,
+        eventStart: e.start,
+        reminderAt: e.start.subtract(opt.duration),
+      );
+    }
+  }
+
   /// Rohdaten — ALLE lokal gespeicherten Ereignisse, unabhängig davon, ob
   /// ein noch unbestätigter eigener Vorschlag (Kopiergerät, beim Erst-
   /// Verknüpfen mitgebracht) dabei ist. Nur intern für Lese-Änderungs-
@@ -218,8 +253,6 @@ class CalendarEventStore {
     box.put(_key, jsonEncode(events.map((e) => e.toJson()).toList()));
   }
 
-  /// Öffentlicher Zugriff für EventGroupStore (Gruppen-Löschung) und
-  /// SyncService (Remote-Übernahme).
   /// Öffentlicher Zugriff für EventGroupStore (Gruppen-Löschung) und
   /// SyncService (Remote-Übernahme).
   static Future<void> saveAllExternal(List<CalendarEvent> events, {bool notify = true}) async {
@@ -259,6 +292,11 @@ class CalendarEventStore {
   /// beim Aktivieren des Lesemodus, um dieses Gerät bewusst vom Sync zu
   /// trennen, statt mit den bisher gepullten Original-Daten weiterzuarbeiten.
   static void resetLocal() {
+    // Benachrichtigungen für alle gelöschten Termine stornieren
+    final all = loadAllRaw();
+    for (final e in all) {
+      NotificationService.instance.cancelEventReminders(e.id);
+    }
     _saveAll([]);
     _notifyChanged();
     pushUpcomingEventsToWidget();
@@ -270,7 +308,8 @@ class CalendarEventStore {
     final all = loadAllRaw()..add(e);
     _saveAll(all);
     _notifyChanged();
-    pushUpcomingEventsToWidget(); // NEU: sonst bleibt das Widget bei rein extern (Apple/Sync) importierten Terminen leer
+    _scheduleNotifications(e); // NEU — bisher gefehlt!
+    pushUpcomingEventsToWidget();
   }
 
   static void updateExternal(CalendarEvent e) {
@@ -280,15 +319,21 @@ class CalendarEventStore {
       all[idx] = e;
       _saveAll(all);
       _notifyChanged();
-      pushUpcomingEventsToWidget(); // NEU
+      _scheduleNotifications(e); // NEU — bisher gefehlt!
+      pushUpcomingEventsToWidget();
     }
   }
 
   static void deleteExternal(String id) {
+    // Benachrichtigungen für gelöschten Termin stornieren
+    final existing = byId(id);
+    if (existing != null) {
+      NotificationService.instance.cancelEventReminders(id);
+    }
     final all = loadAllRaw()..removeWhere((e) => e.id == id);
     _saveAll(all);
     _notifyChanged();
-    pushUpcomingEventsToWidget(); // NEU
+    pushUpcomingEventsToWidget();
   }
 
   // ── LOKALE ÄNDERUNGEN (mit Push zum Apple-Kalender) ────────────────────
@@ -300,7 +345,8 @@ class CalendarEventStore {
     _notifyChanged();
     SyncService.instance.pushCalendarEvent(e.id);
     AppleCalendarSyncService.instance.pushEvent(e);
-    pushUpcomingEventsToWidget(); // NEU
+    _scheduleNotifications(e); // NEU — zentral geplant
+    pushUpcomingEventsToWidget();
   }
 
   static void update(CalendarEvent e) {
@@ -312,23 +358,25 @@ class CalendarEventStore {
       _saveAll(all);
       _notifyChanged();
       SyncService.instance.pushCalendarEvent(e.id);
-      AppleCalendarSyncService.instance.pushEvent(e);   
-      pushUpcomingEventsToWidget(); // NEU
+      AppleCalendarSyncService.instance.pushEvent(e);
+      _scheduleNotifications(e); // NEU — zentral geplant (überschreibt alte)
+      pushUpcomingEventsToWidget();
     }
   }
 
   /// Löscht IMMER die ganze Serie (wie vereinbart — keine
   /// "nur dieses Vorkommen"-Abfrage).
   static void delete(String id) {
-    final existing = byId(id);                          // NEU — vor dem Entfernen holen
+    final existing = byId(id);
+    if (existing != null) {
+      NotificationService.instance.cancelEventReminders(id); // NEU — Benachrichtigungen stornieren
+      AppleCalendarSyncService.instance.deleteEvent(existing);
+    }
     final all = loadAllRaw()..removeWhere((e) => e.id == id);
     _saveAll(all);
     _notifyChanged();
     SyncService.instance.pushCalendarEvent(id); // fehlt lokal -> Sync löscht remote
-    if (existing != null) {
-      AppleCalendarSyncService.instance.deleteEvent(existing);   // NEU
-    }
-    pushUpcomingEventsToWidget(); // NEU
+    pushUpcomingEventsToWidget();
   }
 
   static CalendarEvent? byId(String id) {
