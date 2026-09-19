@@ -2020,8 +2020,8 @@ class _SyncTokenAndReadOnlySectionState extends State<_SyncTokenAndReadOnlySecti
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (_) => Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+        builder: (sheetCtx) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(sheetCtx).viewInsets.bottom),
         child: GlassSheet(
           skin: skin,
           child: StatefulBuilder(
