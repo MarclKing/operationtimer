@@ -328,16 +328,23 @@ class SyncService {
     if (_token == null) return;
     if (_isReadOnly && !CalendarSyncHandshake.instance.isActive) return;
 
-    final e = CalendarEventStore.byId(id);
-    if (e == null) {
-      await _delete('calendar_events', id);
-      return;
-    }
-    // NEU: Der Sync/Lokal-Scope einer Gruppe entscheidet nur im Lesemodus
-    // (Handshake-Feature) darüber, ob ein Termin geteilt wird. Als
-    // vollwertiges Zweitgerät (Lesemodus aus) ist der Kalender ein
-    // 1:1-Spiegel — dort syncen ausnahmslos ALLE Termine.
-    if (_isReadOnly && !_eventIsSyncScoped(e)) {
+   final e = CalendarEventStore.byId(id);
+if (e == null) {
+  await _delete('calendar_events', id);
+  return;
+}
+
+// Bugfix: Apple-Import-Termine sind IMMER geräte-lokal — auch als
+// vollwertiges Zweitgerät (Lesemodus aus). Nie in den geteilten
+// Firestore-Datensatz pushen.
+if (e.groupKeys.contains(AppleCalendarSyncService.appleImportGroupKey)) {
+  final everPushed =
+      Hive.box('einstellungen').get('_syncver_calendar_events/$id') != null;
+  if (everPushed) await _delete('calendar_events', id);
+  return;
+}
+
+if (_isReadOnly && !_eventIsSyncScoped(e)) 
       // NEU: Nur löschen, wenn für diese ID überhaupt jemals ein echter
       // Push stattgefunden hat (_syncver_calendar_events/$id wird
       // ausschließlich in _push() gesetzt). Frisch aus Apple gepullte
@@ -381,10 +388,17 @@ class SyncService {
   }
 
   Future<void> pushEventGroup(String key) async {
-    if (_token == null) return;
-    if (_isReadOnly && !CalendarSyncHandshake.instance.isActive) return;
+  if (_token == null) return;
+  if (_isReadOnly && !CalendarSyncHandshake.instance.isActive) return;
 
-    final all = EventGroupStore.loadAll();
+  if (key == AppleCalendarSyncService.appleImportGroupKey) {
+    final everPushed =
+        Hive.box('einstellungen').get('_syncver_event_groups/$key') != null;
+    if (everPushed) await _delete('event_groups', key);
+    return;
+  }
+
+  final all = EventGroupStore.loadAll();
     final idx = all.indexWhere((g) => g.key == key);
     final g = idx == -1 ? null : all[idx];
     if (g == null) {
@@ -1000,11 +1014,12 @@ Future<void> _clearCalendarSyncverMeta() async {
         debugPrint('$_tag: Remote-Event-IDs Abruf Fehler: $e');
       }
       for (final e in CalendarEventStore.loadAllRaw()) {
-        if (!remoteEventIds.contains(e.id)) {
-          _markPendingOwn('calendar_events', e.id);
-          await _push('calendar_events', e.id, e.toJson(), isInitialLinkSync: true);
-        }
-      }
+  if (e.groupKeys.contains(AppleCalendarSyncService.appleImportGroupKey)) continue; // NEU
+  if (!remoteEventIds.contains(e.id)) {
+    _markPendingOwn('calendar_events', e.id);
+    await _push('calendar_events', e.id, e.toJson(), isInitialLinkSync: true);
+  }
+}
     }
 
     debugPrint('$_tag: Initial Sync als Kopiergerät abgeschlossen.');

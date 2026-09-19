@@ -281,10 +281,18 @@ class CalendarEventStore {
       }
     }
     for (final old in previous.values) {
-      if (!newIds.contains(old.id)) {
-        await AppleCalendarSyncService.instance.deleteEvent(old);
-      }
+  if (!newIds.contains(old.id)) {
+    // Bugfix: Termine aus der reinen Apple-Import-Sammelgruppe sind nur
+    // Pull, nie Push zurück. Verschwindet so ein Termin durch einen
+    // automatischen Abgleich (Reconciliation/Restore/Gruppen-Umschichtung),
+    // darf das NIE den echten Apple-Termin löschen — nur ein explizites
+    // Nutzer-Löschen über delete() (ruft deleteEvent() direkt auf) darf das.
+    if (old.groupKeys.contains(AppleCalendarSyncService.appleImportGroupKey)) {
+      continue;
     }
+    await AppleCalendarSyncService.instance.deleteEvent(old);
+  }
+}
     pushUpcomingEventsToWidget(); // NEU
   }
 
