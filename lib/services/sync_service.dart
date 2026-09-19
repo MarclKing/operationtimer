@@ -344,7 +344,7 @@ if (e.groupKeys.contains(AppleCalendarSyncService.appleImportGroupKey)) {
   return;
 }
 
-if (_isReadOnly && !_eventIsSyncScoped(e)) 
+if (_isReadOnly && !_eventIsSyncScoped(e)) {
       // NEU: Nur löschen, wenn für diese ID überhaupt jemals ein echter
       // Push stattgefunden hat (_syncver_calendar_events/$id wird
       // ausschließlich in _push() gesetzt). Frisch aus Apple gepullte
