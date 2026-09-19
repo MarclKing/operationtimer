@@ -43,6 +43,7 @@ import 'services/sync_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'widgets/notification_center.dart';
 import 'models/calendar_event.dart'; // NEU
+import 'services/feature_flags.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TAB-DEFINITION — steuert Reihenfolge & Sichtbarkeit der Haupt-Tabs.
@@ -100,8 +101,12 @@ void callbackDispatcher() {
       // würde wegen "if (_token == null) return;" stillschweigend nichts tun.
       await SyncService.instance.init();
 
-      await AppleCalendarSyncService.instance.requestPermission();
+     await AppleCalendarSyncService.instance.requestPermission();
       await AppleCalendarSyncService.instance.pullAllLinkedGroups();
+
+// NEU: Tagesvorschau mit aktuellem Dienstplan-Stand neu planen, damit
+// sie nicht wochenlang denselben (veralteten) Dienstcode zeigt.
+    await NotificationService.instance.init();
 
       debugPrint('✅ BG-Task fertig: $task');
     } catch (e) {
@@ -537,19 +542,17 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin, 
   }
 
   @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      _checkTravelModeTz();
-      // NEU: Apple-Kalender bei jedem App-Wiedereinstieg neu abgleichen,
-      // damit im Apple-Kalender erstellte/geänderte/gelöschte Termine
-      // zeitnah in der App ankommen, nicht erst beim nächsten App-Start.
-      AppleCalendarSyncService.instance.pullAllLinkedGroups();
-    } else if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.inactive ||
-        state == AppLifecycleState.detached) {
-      _flushHiveBoxes();
-    }
+void didChangeAppLifecycleState(AppLifecycleState state) {
+  if (state == AppLifecycleState.resumed) {
+    _checkTravelModeTz();
+    AppleCalendarSyncService.instance.pullAllLinkedGroups();
+    NotificationService.instance.scheduleDailyOverview(); // NEU — Inhalt bei jedem Öffnen auffrischen
+  } else if (state == AppLifecycleState.paused ||
+      state == AppLifecycleState.inactive ||
+      state == AppLifecycleState.detached) {
+    _flushHiveBoxes();
   }
+}
 
   void _flushHiveBoxes() {
     if (Hive.isBoxOpen('arbeitszeiten')) {
@@ -1290,28 +1293,29 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin, 
                                   ],
                                   if (_currentPage == _indexOfTab(_Tab.month)) ...[
                                     _DropdownItem(
-                                      icon: Icons.picture_as_pdf_outlined,
-                                      label: 'Zeiten exportieren',
-                                      onTap: () {
-                                        _closeMenu();
-                                        PdfService.showMonthPickerAndExport(context);
-                                      },
-                                    ),
-                                    _Divider(),
-                                    _DropdownItem(
-                                      icon: Icons.description_outlined,
-                                      label: 'BVA-Dienstreise',
-                                      onTap: () {
-                                        _closeMenu();
-                                        Navigator.push(
-                                          context,
-                                          CupertinoPageRoute(builder: (_) => const BvaScreen()),
-                                        );
-                                      },
-                                    ),
-                                    _Divider(),
-                                  ],
-
+    icon: Icons.picture_as_pdf_outlined,
+    label: 'Zeiten exportieren',
+    onTap: () {
+      _closeMenu();
+      PdfService.showMonthPickerAndExport(context);
+    },
+  ),
+  _Divider(),
+  if (FeatureFlags.bvaEnabled) ...[
+    _DropdownItem(
+      icon: Icons.description_outlined,
+      label: 'BVA-Dienstreise',
+      onTap: () {
+        _closeMenu();
+        Navigator.push(
+          context,
+          CupertinoPageRoute(builder: (_) => const BvaScreen()),
+        );
+      },
+    ),
+    _Divider(),
+  ],
+],
                                   if (_currentPage == _indexOfTab(_Tab.tasks)) ...[
                                     _DropdownItem(
                                       icon: Icons.mic_outlined,

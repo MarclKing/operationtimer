@@ -56,9 +56,9 @@ class ShareViewController: UIViewController {
             }
 
             if let bytes = pdfData, !bytes.isEmpty {
-                let defaults = UserDefaults(suiteName: "group.de.marcel.optimes")
+                let defaults = UserDefaults(suiteName: AppGroup.id)
                 let containerURL = FileManager.default
-                    .containerURL(forSecurityApplicationGroupIdentifier: "group.de.marcel.optimes")
+                    .containerURL(forSecurityApplicationGroupIdentifier: AppGroup.id)
 
                 if let containerURL {
                     let pendingURL = containerURL.appendingPathComponent("pending_dienstplan.pdf")

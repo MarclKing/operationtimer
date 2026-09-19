@@ -49,7 +49,7 @@ import workmanager        // NEU
                 if call.method == "updateSchedule" {
                     if let args = call.arguments as? [String: Any],
                        let json = args["json"] as? String {
-                        let defaults = UserDefaults(suiteName: "group.de.marcel.optimes")
+                        let defaults = UserDefaults(suiteName: AppGroup.id)
                         defaults?.set(json, forKey: "schedule_entries")
                         defaults?.synchronize()
                     }
@@ -60,7 +60,7 @@ import workmanager        // NEU
                 } else if call.method == "updateCalendarEvents" {
                     // Datenquelle für die beiden neuen Kalender-Widgets.
                     if let args = call.arguments as? [String: Any] {
-                        let defaults = UserDefaults(suiteName: "group.de.marcel.optimes")
+                        let defaults = UserDefaults(suiteName: AppGroup.id)
                         if let json = args["json"] as? String {
                             defaults?.set(json, forKey: "calendar_widget_events")
                         }
@@ -107,7 +107,7 @@ import workmanager        // NEU
     // Datei zuerst verschiebt, verarbeitet sie; der andere bricht sauber ab.
     func checkAndSendPendingPdf(navChannel: FlutterMethodChannel, retriesLeft: Int = 6) {
     guard let containerURL = FileManager.default
-        .containerURL(forSecurityApplicationGroupIdentifier: "group.de.marcel.optimes") else {
+        .containerURL(forSecurityApplicationGroupIdentifier: AppGroup.id) else {
         return
     }
     let pdfURL = containerURL.appendingPathComponent("pending_dienstplan.pdf")
@@ -130,7 +130,7 @@ import workmanager        // NEU
         return
     }
 
-        let defaults = UserDefaults(suiteName: "group.de.marcel.optimes")
+        let defaults = UserDefaults(suiteName: AppGroup.id)
         let fileName = defaults?.string(forKey: "PendingPdfName") ?? "dienstplan.pdf"
 
         var didCleanup = false

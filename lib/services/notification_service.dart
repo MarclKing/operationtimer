@@ -719,16 +719,17 @@ class NotificationService {
       if (fireTime.isBefore(now)) fireTime = fireTime.add(const Duration(days: 1));
 
       await _plugin.zonedSchedule(
-        _dailyOverviewMorningId,
-        copy.title,
-        copy.body,
-        tz.TZDateTime.from(fireTime, tz.local),
-        _detailsFor(copy, badgeNumber: _countOverdueOpenTasks()),
-        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-        uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
-        matchDateTimeComponents: DateTimeComponents.time,
-        payload: 'daily_overview',
-      );
+  _dailyOverviewMorningId,
+  copy.title,
+  copy.body,
+  tz.TZDateTime.from(fireTime, tz.local),
+  _detailsFor(copy, badgeNumber: _countOverdueOpenTasks()),
+  androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+  uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
+  // matchDateTimeComponents entfernt — jede Vorschau wird jetzt einzeln
+  // mit frischem Inhalt geplant, statt für immer denselben Text zu wiederholen.
+  payload: 'daily_overview',
+);
     }
 
     // ── Vorabend-Vorschau für MORGEN (optional) ──
@@ -743,16 +744,17 @@ class NotificationService {
         if (fireTime.isBefore(now)) fireTime = fireTime.add(const Duration(days: 1));
 
         await _plugin.zonedSchedule(
-          _dailyOverviewEveningId,
-          copy.title,
-          copy.body,
-          tz.TZDateTime.from(fireTime, tz.local),
-          _detailsFor(copy, badgeNumber: _countOverdueOpenTasks()),
-          androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-          uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
-          matchDateTimeComponents: DateTimeComponents.time,
-          payload: 'daily_overview_evening',
-        );
+  _dailyOverviewMorningId,
+  copy.title,
+  copy.body,
+  tz.TZDateTime.from(fireTime, tz.local),
+  _detailsFor(copy, badgeNumber: _countOverdueOpenTasks()),
+  androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+  uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
+  // matchDateTimeComponents entfernt — jede Vorschau wird jetzt einzeln
+  // mit frischem Inhalt geplant, statt für immer denselben Text zu wiederholen.
+  payload: 'daily_overview_evening',
+);
       }
     }
   }

@@ -31,6 +31,7 @@ import '../services/sync_service.dart';
 import '../services/calendar_sync_handshake.dart';
 import 'dart:convert';
 import '../services/apple_calendar_sync_service.dart';
+import '../services/feature_flags.dart';
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1056,6 +1057,131 @@ class _ProfileSettingsScreenState extends State<_ProfileSettingsScreen> {
                           onChanged: _selectStyle,
                         ),
                       ]),
+                    ),
+                    const SizedBox(height: 16),                                      // NEU
+                    const _SectionHeader(label: 'Funktionsfreischaltung'),           // NEU
+                    GlassSurface(                                                    // NEU
+                      borderRadius: 18,
+                      padding: EdgeInsets.zero,
+                      child: Column(children: [
+                        GlassListItem(
+                          leading: Container(
+                            width: 32, height: 32,
+                            decoration: BoxDecoration(color: const Color(0xFF8B8B9E), borderRadius: BorderRadius.circular(8)),
+                            child: const Icon(Icons.lock_outline_rounded, color: Colors.white, size: 18),
+                          ),
+                          title: 'Funktionen verwalten',
+                          subtitle: 'BVA · Kalender-Sync · Apple-Kalender',
+                          isLast: true,
+                          trailing: Icon(Icons.chevron_right_rounded, size: 18, color: skin.surface(0.28)),
+                          onTap: () => Navigator.push(
+                            context,
+                            CupertinoPageRoute(builder: (_) => const _FeatureAccessSettingsScreen()),
+                          ),
+                        ),
+                      ]),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UNTERMENÜ: FUNKTIONSFREISCHALTUNG (NEU)
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _FeatureAccessSettingsScreen extends StatefulWidget {
+  const _FeatureAccessSettingsScreen();
+  @override
+  State<_FeatureAccessSettingsScreen> createState() => _FeatureAccessSettingsScreenState();
+}
+
+class _FeatureAccessSettingsScreenState extends State<_FeatureAccessSettingsScreen> {
+  late bool _bva;
+  late bool _calendarSync;
+  late bool _appleCalendar;
+
+  @override
+  void initState() {
+    super.initState();
+    _bva = FeatureFlags.bvaEnabled;
+    _calendarSync = FeatureFlags.calendarSyncEnabled;
+    _appleCalendar = FeatureFlags.appleCalendarEnabled;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final skin = AppTheme.of(context);
+    return Scaffold(
+      backgroundColor: skin.bgBase,
+      body: SafeArea(
+        child: Column(
+          children: [
+            _SettingsHeader(title: 'Funktionsfreischaltung', onBack: () => Navigator.pop(context)),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    GlassSurface(
+                      borderRadius: 18,
+                      padding: EdgeInsets.zero,
+                      child: Column(children: [
+                        GlassListItem(
+                          leading: Container(
+                            width: 32, height: 32,
+                            decoration: BoxDecoration(color: const Color(0xFFFFB347), borderRadius: BorderRadius.circular(8)),
+                            child: const Icon(Icons.description_outlined, color: Colors.white, size: 18),
+                          ),
+                          title: 'BVA-Abrechnungen',
+                          subtitle: 'BVA-Dienstreise-Formular erreichbar',
+                          switchValue: _bva,
+                          onSwitchChanged: (v) {
+                            setState(() => _bva = v);
+                            FeatureFlags.bvaEnabled = v;
+                          },
+                        ),
+                        GlassListItem(
+                          leading: Container(
+                            width: 32, height: 32,
+                            decoration: BoxDecoration(color: const Color(0xFF3DD6C8), borderRadius: BorderRadius.circular(8)),
+                            child: const Icon(Icons.sync_rounded, color: Colors.white, size: 18),
+                          ),
+                          title: 'Kalender-Sync (Lesemodus)',
+                          subtitle: 'Kalender-Freigabe mit Original-Gerät anfragbar',
+                          switchValue: _calendarSync,
+                          onSwitchChanged: (v) {
+                            setState(() => _calendarSync = v);
+                            FeatureFlags.calendarSyncEnabled = v;
+                          },
+                        ),
+                        GlassListItem(
+                          leading: Container(
+                            width: 32, height: 32,
+                            decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(8)),
+                            child: const Icon(Icons.apple, color: Colors.white, size: 18),
+                          ),
+                          title: 'Apple-Kalender teilen',
+                          subtitle: 'Globalen Apple-Kalender-Import erlauben',
+                          isLast: true,
+                          switchValue: _appleCalendar,
+                          onSwitchChanged: (v) {
+                            setState(() => _appleCalendar = v);
+                            FeatureFlags.appleCalendarEnabled = v;
+                          },
+                        ),
+                      ]),
+                    ),
+                    const _SectionFootnote(
+                      text: 'Deaktivierte Funktionen werden ausgeblendet bzw. sind nicht mehr erreichbar. '
+                            'Bereits aktive Verbindungen (z.B. laufender Kalender-Sync) laufen unverändert weiter.',
                     ),
                   ],
                 ),
@@ -2943,6 +3069,7 @@ class _CalendarSyncCardState extends State<_CalendarSyncCard> {
 
         // ── Lesemodus-Gerät: aus → Schalter zum Anfragen (wie bisher) ────
         if (isReader) {
+          if (!FeatureFlags.calendarSyncEnabled) return const SizedBox.shrink(); // NEU
           final enabled = _readOnly;
           return Opacity(
             opacity: enabled ? 1.0 : 0.4,
@@ -3250,9 +3377,10 @@ class TasksDictationSettingsScreen extends StatelessWidget {
                               context,
                               CupertinoPageRoute(builder: (_) => const _EventGroupSettingsScreen())),
                         ),
-                        _DefaultEventGroupRow(isLast: false),   // GEÄNDERT: war true
-                        const _AppleCalendarSyncRow(isLast: true),  // <- HIER ist der Apple-Schalter
-  ]),
+                        _DefaultEventGroupRow(isLast: !FeatureFlags.appleCalendarEnabled),   // GEÄNDERT
+                        if (FeatureFlags.appleCalendarEnabled)                                 // NEU
+                          const _AppleCalendarSyncRow(isLast: true),
+                      ]),
                     ),
 
                     if (SyncTokenService.instance.localToken != null) ...[

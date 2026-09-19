@@ -81,19 +81,19 @@ struct Provider: TimelineProvider {
     }
 
     func getSnapshot(in context: Context, completion: @escaping (DienstplanTimelineEntry) -> Void) {
-        UserDefaults(suiteName: "group.de.marcel.optimes")?.synchronize()
+        UserDefaults(suiteName: AppGroup.id)?.synchronize()
         completion(loadEntry())
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<DienstplanTimelineEntry>) -> Void) {
-        UserDefaults(suiteName: "group.de.marcel.optimes")?.synchronize()
+        UserDefaults(suiteName: AppGroup.id)?.synchronize()
         let entry = loadEntry()
         let next = Calendar.current.date(byAdding: .minute, value: 15, to: Date())!
         completion(Timeline(entries: [entry], policy: .after(next)))
     }
 
     private func loadEntry() -> DienstplanTimelineEntry {
-        let defaults = UserDefaults(suiteName: "group.de.marcel.optimes")
+        let defaults = UserDefaults(suiteName: AppGroup.id)
         let json     = defaults?.string(forKey: "schedule_entries") ?? "[]"
         let data     = json.data(using: .utf8) ?? Data()
         let decoded  = (try? JSONSerialization.jsonObject(with: data) as? [[String: String]]) ?? []

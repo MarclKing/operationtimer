@@ -29,7 +29,7 @@ struct CalendarWidgetTimelineEntry: TimelineEntry {
 
 // NEU: Lesemodus-Flag aus dem App Group Storage lesen
 func isReadOnlyModeActive() -> Bool {
-    UserDefaults(suiteName: "group.de.marcel.optimes")?.bool(forKey: "read_only_mode") ?? false
+    UserDefaults(suiteName: AppGroup.id)?.bool(forKey: "read_only_mode") ?? false
 }
 
 // NEU: Ersatzansicht für das Fahrtenbuch-Quick-Start-Widget im Lesemodus
@@ -61,19 +61,19 @@ struct CalendarWidgetProvider: TimelineProvider {
     }
 
     func getSnapshot(in context: Context, completion: @escaping (CalendarWidgetTimelineEntry) -> Void) {
-        UserDefaults(suiteName: "group.de.marcel.optimes")?.synchronize()
+        UserDefaults(suiteName: AppGroup.id)?.synchronize()
         completion(loadEntry())
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<CalendarWidgetTimelineEntry>) -> Void) {
-        UserDefaults(suiteName: "group.de.marcel.optimes")?.synchronize()
+        UserDefaults(suiteName: AppGroup.id)?.synchronize()
         let entry = loadEntry()
         let next = Calendar.current.date(byAdding: .minute, value: 15, to: Date())!
         completion(Timeline(entries: [entry], policy: .after(next)))
     }
 
     private func loadEntry() -> CalendarWidgetTimelineEntry {
-        let defaults = UserDefaults(suiteName: "group.de.marcel.optimes")
+        let defaults = UserDefaults(suiteName: AppGroup.id)
         let cal = Calendar.current
         let today = cal.startOfDay(for: Date())
         let isoFmt = ISO8601DateFormatter()

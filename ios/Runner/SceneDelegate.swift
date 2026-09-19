@@ -23,7 +23,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                 if call.method == "updateSchedule" {
                     if let args = call.arguments as? [String: Any],
                        let json = args["json"] as? String {
-                        let defaults = UserDefaults(suiteName: "group.de.marcel.optimes")
+                        let defaults = UserDefaults(suiteName: AppGroup.id)
                         defaults?.set(json, forKey: "schedule_entries")
                         defaults?.synchronize()
                     }
@@ -33,7 +33,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                     result(nil)
                 } else if call.method == "updateCalendarEvents" {
                     if let args = call.arguments as? [String: Any] {
-                        let defaults = UserDefaults(suiteName: "group.de.marcel.optimes")
+                        let defaults = UserDefaults(suiteName: AppGroup.id)
                         if let json = args["json"] as? String {
                             defaults?.set(json, forKey: "calendar_widget_events")
                         }
