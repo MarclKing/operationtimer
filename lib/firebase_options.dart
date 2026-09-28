@@ -31,7 +31,7 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyACeQuVl2qKy_hAQ5NUqaDW7yDUHwLJeOE',
-    appId: '1:594306195787:android:2864dbd8feb8c0379f08ce',
+    appId: '1:594306195787:android:b9d389bb0ee8e77f9f08ce',
     messagingSenderId: '594306195787',
     projectId: 'optimes-707',
     storageBucket: 'optimes-707.firebasestorage.app',
