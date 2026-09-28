@@ -1,4 +1,4 @@
-package com.example.meine_app
+package de.marcel.optimes
 
 import io.flutter.embedding.android.FlutterActivity
 

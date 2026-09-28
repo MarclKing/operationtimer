@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.meine_app"
+    namespace = "de.marcel.optimes"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -17,7 +17,7 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.meine_app"
+        applicationId = "de.marcel.optimes"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
