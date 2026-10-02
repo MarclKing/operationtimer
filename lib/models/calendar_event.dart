@@ -252,7 +252,7 @@ class CalendarEventStore {
     }
     return _decodedCache!;
   }
-  
+
   /// Für die Anzeige: blendet eigene, auf dem Kopiergerät beim Erst-
   /// Verknüpfen mitgebrachte Ereignisse aus, solange das Original sie noch
   /// nicht im Konflikte-Screen bestätigt oder verworfen hat.
@@ -472,7 +472,7 @@ class CalendarEventStore {
     }
   }
 
-  static List<CalendarEvent> _occurrencesFor(
+   static List<CalendarEvent> _occurrencesFor(
     CalendarEvent e,
     DateTime rangeStart,
     DateTime rangeEnd,
@@ -490,14 +490,34 @@ class CalendarEventStore {
     // Sicherheitslimit gegen Endlosschleifen bei kaputten Daten.
     const maxIterations = 400;
     var occStart = e.start;
-    var i = 0;
 
+    // Schnellvorlauf für tägliche/wöchentliche Serien: ohne ihn bricht die
+    // Schleife nach 400 Schritten ab, bevor sie den sichtbaren Zeitraum
+    // erreicht.
+    final threshold = rangeStart.subtract(duration);
+    final stepDays = switch (e.repeat) {
+      RepeatRule.daily => 1,
+      RepeatRule.weekly => 7,
+      _ => 0,
+    };
+    if (stepDays > 0 && occStart.isBefore(threshold)) {
+      final steps = threshold.difference(occStart).inDays ~/ stepDays - 1;
+      if (steps > 0) occStart = occStart.add(Duration(days: steps * stepDays));
+    }
+
+    var i = 0;
     while (occStart.isBefore(rangeEnd) && i < maxIterations) {
       final occEnd = occStart.add(duration);
       if (occEnd.isAfter(rangeStart)) {
         out.add(e.occurrenceOn(occStart, occEnd));
       }
-      occStart = _nextOccurrence(occStart, e.repeat);
+      // Monatlich/jährlich immer vom ORIGINAL-Start aus rechnen, sonst
+      // "rutscht" der 31. nach einem kurzen Monat dauerhaft auf den 28.
+      occStart = switch (e.repeat) {
+        RepeatRule.monthly => _addMonths(e.start, i + 1),
+        RepeatRule.yearly => _addYearsSameDate(e.start, i + 1),
+        _ => _nextOccurrence(occStart, e.repeat),
+      };
       i++;
     }
     return out;

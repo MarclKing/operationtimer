@@ -29,6 +29,9 @@ const kTaskAccentColor = Color(0xFF8B5CF6);
 class ShiftLookup {
   static final Map<String, Map<String, String?>> _monthCache = {};
 
+  /// Nach Import/Sync/Löschen eines Dienstplans aufrufen.
+  static void invalidate() => _monthCache.clear();
+
   static String? codeForDay(DateTime day) {
     final monthKey = DateFormat('yyyy-MM').format(day);
     final dayKey = DateFormat('yyyy-MM-dd').format(day);
@@ -792,13 +795,13 @@ class _DayEntriesSection extends StatelessWidget {
     required this.onOpenDetail,
   });
 
-  List<CalendarEvent> _eventsForDay() {
+   List<CalendarEvent> _eventsForDay(List<Task> allTasks) {
     final all = CalendarEventStore.loadAll();
     final rangeStart = DateTime(selectedDay.year, selectedDay.month, selectedDay.day);
     final rangeEnd = rangeStart.add(const Duration(days: 1));
     final occ = CalendarEventStore.occurrencesInRange(all, rangeStart, rangeEnd);
 
-    final taskEvents = TaskStore.loadAll()
+       final taskEvents = allTasks
         .where((t) =>
             t.dueDate != null &&
             !t.done &&
@@ -819,7 +822,7 @@ class _DayEntriesSection extends StatelessWidget {
     return [...occ, ...taskEvents];
   }
 
-  List<Task> _urgentTasksOnDay() => TaskStore.loadAll()
+   List<Task> _urgentTasksOnDay(List<Task> allTasks) => allTasks
       .where((t) =>
           t.isUrgent &&
           !t.done &&
@@ -844,12 +847,13 @@ Widget build(BuildContext context) {
 }
 
   Widget _buildList(BuildContext context) {
-    final dayEntries = _eventsForDay()
+       final allTasks = TaskStore.loadAll();
+       final dayEntries = _eventsForDay(allTasks)
       ..sort((a, b) {
         if (a.allDay != b.allDay) return a.allDay ? -1 : 1;
         return a.start.compareTo(b.start);
       });
-    final urgent = _urgentTasksOnDay();
+       final urgent = _urgentTasksOnDay(allTasks);
 
     final taskEntries = dayEntries.where((e) => e.id.startsWith('task_')).toList();
     final calendarEntries = dayEntries.where((e) => !e.id.startsWith('task_')).toList();
@@ -1070,51 +1074,43 @@ class YearGrid extends StatelessWidget {
           ),
           Expanded(
             child: GridView.builder(
-              // NEU: Ohne diese Zeile fängt sich das Grid selbst die
-              // vertikale Wisch-Geste (Touch) und lässt sie nie beim
-              // äußeren Jahres-ListView ankommen — deshalb ging auf dem
-              // iPhone kein Jahreswechsel per Swipe, am Desktop per
-              // Mausrad aber schon.
-              physics: const NeverScrollableScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 90),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 3,
-                mainAxisSpacing: 10,
-                crossAxisSpacing: 8,
-                childAspectRatio: 0.95,
-              ),
-              itemCount: 12,
-              itemBuilder: (context, i) {
-                final month = i + 1;
-                final key = GlobalKey();
-                return _MiniMonthTile(
-                  key: key,
-                  skin: skin,
-                  year: year,
-                  month: month,
-                  onTap: () {
-                    final box = key.currentContext?.findRenderObject() as RenderBox?;
-                    if (box == null) return;
-                    final origin = box.localToGlobal(Offset.zero) & box.size;
-                    onMonthTap(month, origin);
-                  },
-                );
-              },
-            ),
+  // NEU: Ohne diese Zeile fängt sich das Grid selbst die
+  // vertikale Wisch-Geste (Touch) und lässt sie nie beim
+  // äußeren Jahres-ListView ankommen — deshalb ging auf dem
+  // iPhone kein Jahreswechsel per Swipe, am Desktop per
+  // Mausrad aber schon.
+  physics: const NeverScrollableScrollPhysics(),
+  padding: const EdgeInsets.fromLTRB(20, 0, 20, 90),
+  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+    crossAxisCount: 3,
+    mainAxisSpacing: 10,
+    crossAxisSpacing: 8,
+    childAspectRatio: 0.95,
+  ),
+  itemCount: 12,
+  itemBuilder: (context, i) {
+    final month = i + 1;
+    return _MiniMonthTile(
+      skin: skin,
+      year: year,
+      month: month,
+      onTap: (origin) => onMonthTap(month, origin),
+    );
+  },
+),
           ),
         ],
       ),
     );
   }
 }
-
 class _MiniMonthTile extends StatelessWidget {
   final AppSkin skin;
   final int year;
   final int month;
-  final VoidCallback onTap;
+  final void Function(Rect origin) onTap;
 
-  const _MiniMonthTile({super.key, required this.skin, required this.year, required this.month, required this.onTap});
+const _MiniMonthTile({required this.skin, required this.year, required this.month, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -1124,9 +1120,11 @@ class _MiniMonthTile extends StatelessWidget {
     final now = DateTime.now();
 
     return GestureDetector(
-      onTap: () {
+            onTap: () {
         HapticFeedback.selectionClick();
-        onTap();
+        final box = context.findRenderObject() as RenderBox?;
+        if (box == null) return;
+        onTap(box.localToGlobal(Offset.zero) & box.size);
       },
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

@@ -20,6 +20,7 @@ import 'package:archive/archive.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'tasks_screen.dart' show TaskStore;
 import '../services/sync_service.dart';
+import 'calendar_view.dart' show ShiftLookup;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Entfernt: extension _AppSkinGlass   → jetzt AppSkinGlass in glass_kit.dart
@@ -1084,7 +1085,8 @@ class ScheduleScreenState extends State<ScheduleScreen> {
     return box.get('dienstplan_dev_placeholder', defaultValue: false) as bool;
   }
 
-  void loadScheduleData() {
+    void loadScheduleData() {
+    ShiftLookup.invalidate();
     final box = Hive.box('einstellungen');
     final monthKey = DateFormat('yyyy-MM').format(_selectedMonth);
     final rawStored = box.get('schedule_$monthKey');
