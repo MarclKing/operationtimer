@@ -231,7 +231,7 @@ class CalendarEventStore {
     final raw = box.get(_key);
     if (raw is String && raw.isNotEmpty) {
       try {
-        final decoded = jsonDecode(raw) as List;
+        final decoded = _decode(raw);
         return decoded
             .map((e) => CalendarEvent.fromJson(Map<String, dynamic>.from(e as Map)))
             .toList();
@@ -242,6 +242,17 @@ class CalendarEventStore {
     return [];
   }
 
+  static String? _rawCache;
+  static List<dynamic>? _decodedCache;
+
+  static List<dynamic> _decode(String raw) {
+    if (_decodedCache == null || raw != _rawCache) {
+      _decodedCache = jsonDecode(raw) as List;
+      _rawCache = raw;
+    }
+    return _decodedCache!;
+  }
+  
   /// Für die Anzeige: blendet eigene, auf dem Kopiergerät beim Erst-
   /// Verknüpfen mitgebrachte Ereignisse aus, solange das Original sie noch
   /// nicht im Konflikte-Screen bestätigt oder verworfen hat.

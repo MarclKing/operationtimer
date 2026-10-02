@@ -138,7 +138,7 @@ class TaskStore {
     final raw = box.get(_key);
     if (raw is String && raw.isNotEmpty) {
       try {
-        final decoded = jsonDecode(raw) as List;
+        final decoded = _decode(raw);
         return decoded.map((e) => Task.fromJson(Map<String, dynamic>.from(e as Map))).toList();
       } catch (_) {
         return [];
@@ -147,6 +147,17 @@ class TaskStore {
     return [];
   }
 
+  static String? _rawCache;
+  static List<dynamic>? _decodedCache;
+
+  static List<dynamic> _decode(String raw) {
+    if (_decodedCache == null || raw != _rawCache) {
+      _decodedCache = jsonDecode(raw) as List;
+      _rawCache = raw;
+    }
+    return _decodedCache!;
+  }
+  
   /// Für die Anzeige: blendet eigene, auf dem Kopiergerät eingebrachte
   /// Änderungen aus, solange das Original sie noch nicht im
   /// Konflikte-Screen bestätigt oder verworfen hat.
