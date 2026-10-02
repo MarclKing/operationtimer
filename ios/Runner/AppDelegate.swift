@@ -37,7 +37,7 @@ import workmanager_apple     // NEU
         // stürzt die App beim ersten registerPeriodicTask()-Aufruf aus main.dart ab.
         WorkmanagerPlugin.registerPeriodicTask(
             withIdentifier: "de.marcel.optimes.appleCalendarSync",
-            frequency: NSNumber(value: 60 * 60)
+earliestBeginInSeconds: 60 * 60
         )
 
         let result = super.application(application, didFinishLaunchingWithOptions: launchOptions)
