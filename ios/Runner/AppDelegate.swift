@@ -36,9 +36,9 @@ import workmanager_apple     // NEU
         // passiert, bevor didFinishLaunchingWithOptions zurückkehrt. Ohne das
         // stürzt die App beim ersten registerPeriodicTask()-Aufruf aus main.dart ab.
         WorkmanagerPlugin.registerPeriodicTask(
-            withIdentifier: "de.marcel.optimes.appleCalendarSync",
-earliestBeginInSeconds: 60 * 60
-        )
+    withIdentifier: "de.marcel.optimes.appleCalendarSync",
+    earliestBeginInSeconds: NSNumber(value: 60 * 60) // Plugin erwartet NSNumber statt Int
+)
 
         let result = super.application(application, didFinishLaunchingWithOptions: launchOptions)
 
