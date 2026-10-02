@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'glass_kit.dart';
 import 'dart:ui';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
@@ -724,7 +725,7 @@ class DictationFabState extends State<DictationFab>
             child: ClipRRect(
               borderRadius: _kRadius20,
               child: _isActive
-                  ? BackdropFilter(
+                  ? PlatformBackdropFilter(
                       filter: _kBlur20,
                       child: fabContent,
                     )
@@ -739,7 +740,7 @@ class DictationFabState extends State<DictationFab>
   Widget _buildSpectrumBubble(AppSkin skin) {
     return ClipRRect(
       borderRadius: _kRadius20,
-      child: BackdropFilter(
+      child: PlatformBackdropFilter(
         filter: _kBlur22,
         child: Container(
           width: 88,
@@ -790,7 +791,7 @@ class DictationFabState extends State<DictationFab>
             alignment: Alignment.center,
             child: ClipRRect(
               borderRadius: _kRadius20,
-              child: BackdropFilter(
+              child: PlatformBackdropFilter(
                 filter: _kBlur20,
                 child: Container(
                   width: 56,
@@ -859,7 +860,7 @@ class DictationFabState extends State<DictationFab>
       width: targetWidth.clamp(minWidth, maxWidth),
       child: ClipRRect(
         borderRadius: _kRadius20,
-        child: BackdropFilter(
+        child: PlatformBackdropFilter(
           filter: _kBlur22,
           child: Container(
             decoration: BoxDecoration(
@@ -958,7 +959,7 @@ class _ExternalSpectrumBubble extends StatelessWidget {
         },
         child: ClipRRect(
           borderRadius: _kRadius20,
-          child: BackdropFilter(
+          child: PlatformBackdropFilter(
             filter: _kBlur22,
             child: Container(
               width: bubbleW,
@@ -1041,7 +1042,7 @@ class _ExternalTrashButton extends StatelessWidget {
               alignment: Alignment.center,
               child: ClipRRect(
                 borderRadius: _kRadius20,
-                child: BackdropFilter(
+                child: PlatformBackdropFilter(
                   filter: _kBlur20,
                   child: Container(
                     width: trashW,
@@ -1153,7 +1154,7 @@ class _ExternalRevealBubble extends StatelessWidget {
           width: clampedW,
           child: ClipRRect(
             borderRadius: _kRadius20,
-            child: BackdropFilter(
+            child: PlatformBackdropFilter(
               filter: _kBlur22,
               child: Container(
                 decoration: BoxDecoration(

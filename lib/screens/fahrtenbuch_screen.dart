@@ -1078,7 +1078,7 @@ Widget build(BuildContext context) {
                         const SizedBox(width: 10),
                         ClipRRect(
                           borderRadius: BorderRadius.circular(6),
-                          child: BackdropFilter(
+                          child: PlatformBackdropFilter(
                             filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
                             child: Container(
                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -1123,7 +1123,7 @@ Widget build(BuildContext context) {
                           ]),
                         )
                       : ClipRect(
-                          child: BackdropFilter(
+                          child: PlatformBackdropFilter(
                             filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
                             child: FadingListView(
                               fadeFromBottom: bottomNavHeight + extraBottomOffset + 20,
@@ -1225,7 +1225,7 @@ Widget build(BuildContext context) {
                     },
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(20),
-                      child: BackdropFilter(
+                      child: PlatformBackdropFilter(
                         filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
                         child: Container(
                           width: 56,
@@ -1422,7 +1422,7 @@ class _DraftBannerState extends State<_DraftBanner>
                   opacity: (swipeOffset.abs() / _revealWidth).clamp(0.0, 1.0),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(22),
-                    child: BackdropFilter(
+                    child: PlatformBackdropFilter(
                       filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
                       child: Container(
                         margin: const EdgeInsets.only(left: 6),
@@ -1446,7 +1446,7 @@ class _DraftBannerState extends State<_DraftBanner>
               offset: Offset(swipeOffset, 0),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(22),
-                child: BackdropFilter(
+                child: PlatformBackdropFilter(
                   filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
                   child: Container(
                     height: 52,
@@ -1817,7 +1817,7 @@ void _closeSilently() {
           color: Colors.transparent,
           child: ClipRRect(
             borderRadius: BorderRadius.circular(22),
-            child: BackdropFilter(
+            child: PlatformBackdropFilter(
               filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
               child: Container(
                 margin: const EdgeInsets.symmetric(horizontal: 36),
@@ -1948,7 +1948,7 @@ void _closeSilently() {
           return ClipRRect(
             borderRadius: BorderRadius.circular(14),
             child: rightProgress > 0
-                ? BackdropFilter(filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10), child: content)
+                ? PlatformBackdropFilter(filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10), child: content)
                 : content,
           );
         }),
@@ -1980,7 +1980,7 @@ void _closeSilently() {
       return ClipRRect(
         borderRadius: BorderRadius.circular(14),
         child: leftProgress > 0
-            ? BackdropFilter(filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10), child: content)
+            ? PlatformBackdropFilter(filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10), child: content)
             : content,
       );
     }),
@@ -2006,7 +2006,7 @@ void _closeSilently() {
       return ClipRRect(
         borderRadius: BorderRadius.circular(14),
         child: leftProgress > 0
-            ? BackdropFilter(filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10), child: content)
+            ? PlatformBackdropFilter(filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10), child: content)
             : content,
       );
     }),
@@ -2369,7 +2369,7 @@ class _ToggleKachelState extends State<_ToggleKachel> with SingleTickerProviderS
 
           return ClipRRect(
             borderRadius: BorderRadius.circular(16),
-            child: BackdropFilter(
+            child: PlatformBackdropFilter(
               filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 200), curve: Curves.easeInOut,
@@ -2661,7 +2661,7 @@ class _FahrtEintragenSheetState extends State<_FahrtEintragenSheet> {
           color: Colors.transparent,
           child: ClipRRect(
             borderRadius: BorderRadius.circular(22),
-            child: BackdropFilter(
+            child: PlatformBackdropFilter(
               filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
               child: Container(
                 margin: const EdgeInsets.symmetric(horizontal: 32),
@@ -2770,7 +2770,7 @@ class _FahrtEintragenSheetState extends State<_FahrtEintragenSheet> {
               const SizedBox(height: 16),
               ClipRRect(
                 borderRadius: BorderRadius.circular(14),
-                child: BackdropFilter(
+                child: PlatformBackdropFilter(
                   filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -3081,7 +3081,7 @@ class _FahrtEintragenSheetState extends State<_FahrtEintragenSheet> {
           padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
           child: ClipRRect(
             borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-            child: BackdropFilter(
+            child: PlatformBackdropFilter(
               filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
               child: Container(
                 decoration: BoxDecoration(
@@ -3219,7 +3219,7 @@ class _FahrtEintragenSheetState extends State<_FahrtEintragenSheet> {
                         onTap: _showFahrtTypPicker,
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(16),
-                          child: BackdropFilter(
+                          child: PlatformBackdropFilter(
                             filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
                             child: Container(
                               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
@@ -3375,7 +3375,7 @@ class _FahrtEintragenSheetState extends State<_FahrtEintragenSheet> {
                         Center(child: GestureDetector(
                           onTap: _confirmDelete,
                           child: ClipRRect(borderRadius: BorderRadius.circular(12),
-                            child: BackdropFilter(filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                            child: PlatformBackdropFilter(filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
                               child: Container(
                                 padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 20),
                                 decoration: BoxDecoration(
@@ -3397,7 +3397,7 @@ class _FahrtEintragenSheetState extends State<_FahrtEintragenSheet> {
                         Center(child: GestureDetector(
                           onTap: _confirmDiscard,
                           child: ClipRRect(borderRadius: BorderRadius.circular(12),
-                            child: BackdropFilter(filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                            child: PlatformBackdropFilter(filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
                               child: Container(
                                 padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 20),
                                 decoration: BoxDecoration(
@@ -3476,7 +3476,7 @@ class _FahrtTypPickerSheetState extends State<_FahrtTypPickerSheet> {
 
     return ClipRRect(
       borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-      child: BackdropFilter(
+      child: PlatformBackdropFilter(
         filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
         child: Container(
           decoration: BoxDecoration(
@@ -3524,7 +3524,7 @@ class _FahrtTypPickerSheetState extends State<_FahrtTypPickerSheet> {
                 const SizedBox(height: 12),
                 ClipRRect(
                   borderRadius: BorderRadius.circular(14),
-                  child: BackdropFilter(
+                  child: PlatformBackdropFilter(
                     filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -3810,7 +3810,7 @@ class _KennzeichenInputRowState extends State<_KennzeichenInputRow> {
           },
           child: ClipRRect(
             borderRadius: BorderRadius.circular(16),
-            child: BackdropFilter(
+            child: PlatformBackdropFilter(
               filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -4132,7 +4132,7 @@ class _ZeitBlockState extends State<_ZeitBlock> {
       },
       child: ClipRRect(
         borderRadius: BorderRadius.circular(16),
-        child: BackdropFilter(
+        child: PlatformBackdropFilter(
           filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
           child: Container(
             padding: const EdgeInsets.all(12),
@@ -4211,7 +4211,7 @@ class _BetriebsstoffCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(14),
-      child: BackdropFilter(
+      child: PlatformBackdropFilter(
         filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
         child: Container(
           padding: const EdgeInsets.all(10),
@@ -4547,7 +4547,7 @@ class _InputRow extends StatelessWidget {
       onDoubleTap: () { HapticFeedback.lightImpact(); ctrl.clear(); },
       child: ClipRRect(
         borderRadius: BorderRadius.circular(16),
-        child: BackdropFilter(
+        child: PlatformBackdropFilter(
           filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -4657,7 +4657,7 @@ class _FahrtZielInputFieldState extends State<_FahrtZielInputField> {
       children: [
         ClipRRect(
           borderRadius: BorderRadius.circular(16),
-          child: BackdropFilter(
+          child: PlatformBackdropFilter(
             filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -4730,7 +4730,7 @@ class _FahrtZielInputFieldState extends State<_FahrtZielInputField> {
           const SizedBox(height: 6),
           ClipRRect(
             borderRadius: BorderRadius.circular(14),
-            child: BackdropFilter(
+            child: PlatformBackdropFilter(
               filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
               child: Container(
                 decoration: BoxDecoration(

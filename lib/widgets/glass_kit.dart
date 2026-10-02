@@ -1,7 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
 import '../theme/app_theme.dart';
 import 'swipe_animation_mixin.dart';
 
@@ -2439,5 +2439,22 @@ class GlassStatusBadge extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+/// Wie BackdropFilter, aber auf Android ohne Blur (zu teuer beim Scrollen).
+class PlatformBackdropFilter extends StatelessWidget {
+  const PlatformBackdropFilter({
+    super.key,
+    required this.filter,
+    required this.child,
+  });
+
+  final ImageFilter filter;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (defaultTargetPlatform == TargetPlatform.android) return child;
+    return BackdropFilter(filter: filter, child: child);
   }
 }

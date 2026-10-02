@@ -791,7 +791,7 @@ class TasksScreenState extends State<TasksScreen> with TickerProviderStateMixin 
                                 onTap: openYearView,
                                 child: ClipRRect(
                                   borderRadius: BorderRadius.circular(14),
-                                  child: BackdropFilter(
+                                  child: PlatformBackdropFilter(
                                     filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
                                     child: Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -842,7 +842,7 @@ class TasksScreenState extends State<TasksScreen> with TickerProviderStateMixin 
                                   ]),
                                 )
                               : ClipRect(
-                                  child: BackdropFilter(
+                                  child: PlatformBackdropFilter(
                                     filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
                                     child: FadingListView(
                                       fadeFromBottom: bottomNavHeight + 20,
@@ -890,7 +890,7 @@ class TasksScreenState extends State<TasksScreen> with TickerProviderStateMixin 
                         behavior: HitTestBehavior.opaque,
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(16),
-                          child: BackdropFilter(
+                          child: PlatformBackdropFilter(
                             filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
                             child: Container(
                               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
@@ -1082,7 +1082,7 @@ class _TasksFab extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       child: ClipRRect(
         borderRadius: _kFabRadius,
-        child: BackdropFilter(
+        child: PlatformBackdropFilter(
           filter: _kBlur20,
           child: Container(
             width: 56,
@@ -1469,7 +1469,7 @@ class _TaskCardState extends State<_TaskCard> with TickerProviderStateMixin, Swi
                   opacity: (swipeOffset.abs() / _revealWidth).clamp(0.0, 1.0),
                   child: ClipRRect(
                     borderRadius: _kCardRadius,
-                    child: BackdropFilter(
+                    child: PlatformBackdropFilter(
                       filter: _kBlur10,
                       child: Container(
                         margin: const EdgeInsets.only(left: 6),
@@ -1632,7 +1632,7 @@ class _EntryDraftBannerState extends State<_EntryDraftBanner>
                   opacity: (swipeOffset.abs() / _revealWidth).clamp(0.0, 1.0),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(22),
-                    child: BackdropFilter(
+                    child: PlatformBackdropFilter(
                       filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
                       child: Container(
                         margin: const EdgeInsets.only(left: 6),
@@ -1656,7 +1656,7 @@ class _EntryDraftBannerState extends State<_EntryDraftBanner>
               offset: Offset(swipeOffset, 0),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(22),
-                child: BackdropFilter(
+                child: PlatformBackdropFilter(
                   filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
                   child: Container(
                     height: 52,

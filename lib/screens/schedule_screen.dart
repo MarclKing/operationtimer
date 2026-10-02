@@ -1252,7 +1252,7 @@ class ScheduleScreenState extends State<ScheduleScreen> {
       message: 'Alle Dienstplan-Daten werden unwiderruflich gelöscht.',
       extraContent: ClipRRect(
         borderRadius: BorderRadius.circular(10),
-        child: BackdropFilter(
+        child: PlatformBackdropFilter(
           filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -1293,7 +1293,7 @@ class ScheduleScreenState extends State<ScheduleScreen> {
   Widget _buildForeignBanner(AppSkin skin) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),
-      child: BackdropFilter(
+      child: PlatformBackdropFilter(
         filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
@@ -1377,7 +1377,7 @@ class ScheduleScreenState extends State<ScheduleScreen> {
                             const SizedBox(width: 10),
                             ClipRRect(
                               borderRadius: BorderRadius.circular(6),
-                              child: BackdropFilter(
+                              child: PlatformBackdropFilter(
                                 filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
                                 child: Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -1394,7 +1394,7 @@ class ScheduleScreenState extends State<ScheduleScreen> {
                               const SizedBox(width: 6),
                               ClipRRect(
                                 borderRadius: BorderRadius.circular(6),
-                                child: BackdropFilter(
+                                child: PlatformBackdropFilter(
                                   filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
                                   child: Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -1493,7 +1493,7 @@ class ScheduleScreenState extends State<ScheduleScreen> {
                             )
                           // ── FadingListView aus glass_kit.dart ──
                           : ClipRect(
-                              child: BackdropFilter(
+                              child: PlatformBackdropFilter(
                                 filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
                                 child: FadingListView(
                                   fadeFromBottom: bottomNavHeight + 20,
@@ -1514,7 +1514,7 @@ class ScheduleScreenState extends State<ScheduleScreen> {
                                           onTap: isLeaveButton ? leaveColleagueView : () => _deleteCurrentMonth(skin),
                                           child: ClipRRect(
                                             borderRadius: BorderRadius.circular(12),
-                                            child: BackdropFilter(
+                                            child: PlatformBackdropFilter(
                                               filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
                                               child: Container(
                                                 padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 20),
@@ -1803,7 +1803,7 @@ class _NoteOverlayState extends State<_NoteOverlay> with TickerProviderStateMixi
             constraints: BoxConstraints(minHeight: 180.0, maxHeight: maxCardHeight.clamp(180.0, screenH * 0.6)),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(24),
-              child: BackdropFilter(
+              child: PlatformBackdropFilter(
                 filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
                 child: Container(
                   decoration: BoxDecoration(
@@ -2062,7 +2062,7 @@ class _ColleaguesOverlayState extends State<_ColleaguesOverlay> with TickerProvi
     if (slots.isEmpty) return const SizedBox.shrink();
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),
-      child: BackdropFilter(
+      child: PlatformBackdropFilter(
         filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
@@ -2158,7 +2158,7 @@ class _ColleaguesOverlayState extends State<_ColleaguesOverlay> with TickerProvi
         ]),
         const SizedBox(height: 6),
         ClipRRect(borderRadius: BorderRadius.circular(10),
-          child: BackdropFilter(filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+          child: PlatformBackdropFilter(filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
             child: Container(width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: BoxDecoration(color: const Color(0xFFFFB347).withValues(alpha: 0.08), borderRadius: BorderRadius.circular(10), border: Border.all(color: const Color(0xFFFFB347).withValues(alpha: 0.3))),
@@ -2238,7 +2238,7 @@ class _ColleaguesOverlayState extends State<_ColleaguesOverlay> with TickerProvi
             constraints: BoxConstraints(maxHeight: maxCardHeight.clamp(180.0, screenH * 0.75)),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(24),
-              child: BackdropFilter(
+              child: PlatformBackdropFilter(
                 filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
                 child: Container(
                   decoration: BoxDecoration(
@@ -2275,7 +2275,7 @@ class _ColleaguesOverlayState extends State<_ColleaguesOverlay> with TickerProvi
                               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                                 if (_debugLog != null) ...[
                                   ClipRRect(borderRadius: BorderRadius.circular(10),
-                                    child: BackdropFilter(filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                                    child: PlatformBackdropFilter(filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
                                       child: Container(constraints: const BoxConstraints(maxHeight: 200),
                                         decoration: BoxDecoration(color: const Color(0xFFEF5B5B).withValues(alpha: 0.07), borderRadius: BorderRadius.circular(10), border: Border.all(color: const Color(0xFFEF5B5B).withValues(alpha: 0.28))),
                                         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -2342,7 +2342,7 @@ class _ColleaguesOverlayState extends State<_ColleaguesOverlay> with TickerProvi
                                   if (gebNames.isNotEmpty) ...[
                                     const SizedBox(height: 10),
                                     ClipRRect(borderRadius: BorderRadius.circular(10),
-                                      child: BackdropFilter(filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                                      child: PlatformBackdropFilter(filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
                                         child: Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                                           decoration: BoxDecoration(color: skin.isLight ? Colors.white.withValues(alpha: skin.glassOpacity) : skin.bgCard.withValues(alpha: skin.glassOpacity), borderRadius: BorderRadius.circular(10), border: Border.all(color: skin.glassBorder, width: 1.0)),
                                           child: Row(children: [
@@ -2634,7 +2634,7 @@ class _DayCardState extends State<_DayCard> with TickerProviderStateMixin, Swipe
           borderRadius: BorderRadius.circular(15.5),
         ),
         child: ClipRRect(borderRadius: BorderRadius.circular(14),
-          child: BackdropFilter(filter: ImageFilter.blur(sigmaX: skin.glassBlur * 0.5, sigmaY: skin.glassBlur * 0.5),
+          child: PlatformBackdropFilter(filter: ImageFilter.blur(sigmaX: skin.glassBlur * 0.5, sigmaY: skin.glassBlur * 0.5),
             child: Container(padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
               decoration: BoxDecoration(color: skin.isLight ? Colors.white.withValues(alpha: skin.glassOpacity) : skin.bgCard.withValues(alpha: skin.glassOpacity), borderRadius: BorderRadius.circular(14)),
               child: cardInner)),
@@ -2724,7 +2724,7 @@ class _DayCardState extends State<_DayCard> with TickerProviderStateMixin, Swipe
       return ClipRRect(
         borderRadius: BorderRadius.circular(14),
         child: _revealProgress > 0
-            ? BackdropFilter(filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10), child: content)
+            ? PlatformBackdropFilter(filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10), child: content)
             : content,
       );
     }),
@@ -2744,7 +2744,7 @@ class _DayCardState extends State<_DayCard> with TickerProviderStateMixin, Swipe
       return ClipRRect(
         borderRadius: BorderRadius.circular(14),
         child: _revealProgress > 0
-            ? BackdropFilter(filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10), child: content)
+            ? PlatformBackdropFilter(filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10), child: content)
             : content,
       );
     }),
@@ -3003,7 +3003,7 @@ class _DienstplanUploadSheetState extends State<DienstplanUploadSheet> {
     // ── GlassSheet-Aufbau direkt (kein wrapper nötig, da eigenes Styling) ──
     return ClipRRect(
       borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-      child: BackdropFilter(
+      child: PlatformBackdropFilter(
         filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
         child: Container(
           decoration: BoxDecoration(
@@ -3020,7 +3020,7 @@ class _DienstplanUploadSheetState extends State<DienstplanUploadSheet> {
               const SizedBox(height: 20),
               Row(children: [
                 ClipRRect(borderRadius: BorderRadius.circular(14),
-                  child: BackdropFilter(filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                  child: PlatformBackdropFilter(filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
                     child: Container(width: 44, height: 44,
                       decoration: BoxDecoration(color: skin.primaryWithAlpha(0.12), borderRadius: BorderRadius.circular(14)),
                       child: Icon(Icons.upload_file_outlined, color: skin.primary, size: 22)))),
@@ -3034,7 +3034,7 @@ class _DienstplanUploadSheetState extends State<DienstplanUploadSheet> {
               const SizedBox(height: 20),
               if (_hasFile) ...[
                 ClipRRect(borderRadius: BorderRadius.circular(12),
-                  child: BackdropFilter(filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                  child: PlatformBackdropFilter(filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                       decoration: BoxDecoration(
@@ -3060,7 +3060,7 @@ class _DienstplanUploadSheetState extends State<DienstplanUploadSheet> {
               if (_errorMessage != null) ...[
                 if (_isDevMode) ...[
                   ClipRRect(borderRadius: BorderRadius.circular(10),
-                    child: BackdropFilter(filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                    child: PlatformBackdropFilter(filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
                       child: Container(constraints: const BoxConstraints(maxHeight: 220),
                         decoration: BoxDecoration(color: skin.deleteColor.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(10), border: Border.all(color: skin.deleteColor.withValues(alpha: 0.3))),
                         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -3111,7 +3111,7 @@ class _DienstplanUploadSheetState extends State<DienstplanUploadSheet> {
                 GestureDetector(
                   onTap: _deleteSelectedMonth,
                   child: ClipRRect(borderRadius: BorderRadius.circular(14),
-                    child: BackdropFilter(filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                    child: PlatformBackdropFilter(filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
                       child: Container(width: double.infinity, padding: const EdgeInsets.symmetric(vertical: 13),
                         decoration: BoxDecoration(color: skin.deleteColor.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(14), border: Border.all(color: skin.deleteColor.withValues(alpha: 0.25))),
                         child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [

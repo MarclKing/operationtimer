@@ -885,7 +885,7 @@ class _SelectionBar extends StatelessWidget {
 
         return ClipRRect(
           borderRadius: BorderRadius.circular(16),
-          child: BackdropFilter(
+          child: PlatformBackdropFilter(
             filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
             child: Container(
               height: 52,

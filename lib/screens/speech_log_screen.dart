@@ -363,7 +363,7 @@ class _LogEntryCardState extends State<_LogEntryCard> {
       onCardSwiped: (openedKey) => widget.onSwiped(openedKey != null),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(14),
-        child: BackdropFilter(
+        child: PlatformBackdropFilter(
           filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
           child: Container(
             padding: const EdgeInsets.all(13),

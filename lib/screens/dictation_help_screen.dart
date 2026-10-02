@@ -361,7 +361,7 @@ class _ToolTile extends StatelessWidget {
       onTap: onTap,
       child: ClipRRect(
         borderRadius: BorderRadius.circular(12),
-        child: BackdropFilter(
+        child: PlatformBackdropFilter(
           filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
           child: Container(
             padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 13),

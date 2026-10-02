@@ -45,7 +45,7 @@ class _GlassSegmentSwitcher extends StatelessWidget {
     return Center(
       child: ClipRRect(
         borderRadius: BorderRadius.circular(18),
-        child: BackdropFilter(
+        child: PlatformBackdropFilter(
           filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
           child: Container(
             padding: const EdgeInsets.all(4),
@@ -1220,7 +1220,7 @@ GlassNavCard(
     double bottomNavHeight,
   ) {
     return ClipRect(
-      child: BackdropFilter(
+      child: PlatformBackdropFilter(
         filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
         child: FadingListView(
           fadeFromBottom: bottomNavHeight + 20,
@@ -1332,7 +1332,7 @@ GlassNavCard(
                                   },
                                   child: ClipRRect(
                                     borderRadius: BorderRadius.circular(12),
-                                    child: BackdropFilter(
+                                    child: PlatformBackdropFilter(
                                       filter: ImageFilter.blur(
                                           sigmaX: 10, sigmaY: 10),
                                       child: Container(
@@ -1951,7 +1951,7 @@ class _FlyingCardOverlay extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(24),
-        child: BackdropFilter(
+        child: PlatformBackdropFilter(
           filter:
               ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
           child: Container(
@@ -2354,7 +2354,7 @@ Widget? _buildZoneCrossingInfo(AppSkin skin) {
         child: ClipRRect(
           borderRadius:
               const BorderRadius.vertical(top: Radius.circular(28)),
-          child: BackdropFilter(
+          child: PlatformBackdropFilter(
             filter: ImageFilter.blur(
                 sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
             child: Container(
@@ -2637,7 +2637,7 @@ class _SwipeEditTimeFieldState extends State<_SwipeEditTimeField> {
           final skin = AppTheme.of(context);
           return ClipRRect(
             borderRadius: BorderRadius.circular(16),
-            child: BackdropFilter(
+            child: PlatformBackdropFilter(
               filter:
                   ImageFilter.blur(sigmaX: 10, sigmaY: 10),
               child: Container(
@@ -2725,7 +2725,7 @@ class _GlassTextFieldInput extends StatelessWidget {
     final skin = AppTheme.of(context);
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),
-      child: BackdropFilter(
+      child: PlatformBackdropFilter(
         filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
         child: Container(
           padding: const EdgeInsets.symmetric(
@@ -2804,7 +2804,7 @@ Future<String?> _showZonePickerSheet({
         final suggestions = TravelModeService.suggestedZoneIds();
         return ClipRRect(
           borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-          child: BackdropFilter(
+          child: PlatformBackdropFilter(
             filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
             child: Container(
               padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),

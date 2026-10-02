@@ -859,7 +859,7 @@ Widget build(BuildContext context) {
     final bottomNavHeight = 70.0 + MediaQuery.of(context).padding.bottom;
 
     return ClipRect(
-      child: BackdropFilter(
+      child: PlatformBackdropFilter(
         filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
         child: FadingListView(
           fadeFromBottom: bottomNavHeight + 20,

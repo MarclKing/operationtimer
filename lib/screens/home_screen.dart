@@ -742,7 +742,7 @@ class _DiensteKachel extends StatelessWidget {
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(18),
-      child: BackdropFilter(
+      child: PlatformBackdropFilter(
         filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
         child: Container(
           decoration: BoxDecoration(
@@ -928,7 +928,7 @@ class _QuickAccessKachelState extends State<_QuickAccessKachel>
             Transform.scale(scale: _pressScale.value, child: child),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(16),
-          child: BackdropFilter(
+          child: PlatformBackdropFilter(
             filter: ImageFilter.blur(
                 sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
             child: Container(
@@ -1199,7 +1199,7 @@ class _StempeluhrKachelState extends State<_StempeluhrKachel>
             Transform.scale(scale: _pressScale.value, child: child),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(16),
-          child: BackdropFilter(
+          child: PlatformBackdropFilter(
             filter: ImageFilter.blur(
                 sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
             child: Container(
@@ -1385,7 +1385,7 @@ const SizedBox(width: 6),
   Widget build(BuildContext context) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(18),
-      child: BackdropFilter(
+      child: PlatformBackdropFilter(
         filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
         child: Container(
           decoration: BoxDecoration(
@@ -1472,7 +1472,7 @@ class _WeatherChip extends StatelessWidget {
   Widget build(BuildContext context) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),
-      child: BackdropFilter(
+      child: PlatformBackdropFilter(
         filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -1581,7 +1581,7 @@ class _WeatherKachelGross extends StatelessWidget {
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(18),
-      child: BackdropFilter(
+      child: PlatformBackdropFilter(
         filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
         child: Container(
           padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
@@ -1941,7 +1941,7 @@ class _DienstplanPlaceholderKachel extends StatelessWidget {
       onTap: onTap,
       child: ClipRRect(
         borderRadius: BorderRadius.circular(18),
-        child: BackdropFilter(
+        child: PlatformBackdropFilter(
           filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -2115,7 +2115,7 @@ class _DictationTaskKachelState extends State<_DictationTaskKachel>
             child: IgnorePointer(
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(16),
-                child: BackdropFilter(
+                child: PlatformBackdropFilter(
                   filter: ImageFilter.blur(
                       sigmaX: widget.skin.glassBlur, sigmaY: widget.skin.glassBlur),
                   child: Container(
@@ -2279,7 +2279,7 @@ class _DictationTaskKachelState extends State<_DictationTaskKachel>
             builder: (context, child) {
               return ClipRRect(
                 borderRadius: BorderRadius.circular(16),
-                child: BackdropFilter(
+                child: PlatformBackdropFilter(
                   filter: ImageFilter.blur(
                       sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
                   child: Container(
