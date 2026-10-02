@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 70;
+	objectVersion = 54;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -113,28 +113,28 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		1F5D43192FD57E4900E8B51D /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
+		1F5D43192FD57E4900E8B51D /* Exceptions for "ShareExtension" folder in "ShareExtension" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
 			);
 			target = 1F5D43092FD57E4800E8B51D /* ShareExtension */;
 		};
-		1F5D43E52FD6014600E8B51D /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
+		1F5D43E52FD6014600E8B51D /* Exceptions for "DienstplanWidget" folder in "DienstplanWidgetExtension" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
 			);
 			target = 1F5D43D42FD6014200E8B51D /* DienstplanWidgetExtension */;
 		};
-		1F8BA8B3305E4A1E00A5083F /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
+		1F8BA8B3305E4A1E00A5083F /* Exceptions for "DienstplanWidget" folder in "ShareExtension" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				AppGroup.swift,
 			);
 			target = 1F5D43092FD57E4800E8B51D /* ShareExtension */;
 		};
-		1F939F172FE4A0CA007BAD12 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
+		1F939F172FE4A0CA007BAD12 /* Exceptions for "DienstplanWidget" folder in "Runner" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				AppGroup.swift,
@@ -145,8 +145,32 @@
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		1F5D430B2FD57E4900E8B51D /* ShareExtension */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (1F5D43192FD57E4900E8B51D /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = ShareExtension; sourceTree = "<group>"; };
-		1F5D43D82FD6014200E8B51D /* DienstplanWidget */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (1F939F172FE4A0CA007BAD12 /* PBXFileSystemSynchronizedBuildFileExceptionSet */, 1F8BA8B3305E4A1E00A5083F /* PBXFileSystemSynchronizedBuildFileExceptionSet */, 1F5D43E52FD6014600E8B51D /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = DienstplanWidget; sourceTree = "<group>"; };
+		1F5D430B2FD57E4900E8B51D /* ShareExtension */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				1F5D43192FD57E4900E8B51D /* Exceptions for "ShareExtension" folder in "ShareExtension" target */,
+			);
+			explicitFileTypes = {
+			};
+			explicitFolders = (
+			);
+			path = ShareExtension;
+			sourceTree = "<group>";
+		};
+		1F5D43D82FD6014200E8B51D /* DienstplanWidget */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				1F939F172FE4A0CA007BAD12 /* Exceptions for "DienstplanWidget" folder in "Runner" target */,
+				1F8BA8B3305E4A1E00A5083F /* Exceptions for "DienstplanWidget" folder in "ShareExtension" target */,
+				1F5D43E52FD6014600E8B51D /* Exceptions for "DienstplanWidget" folder in "DienstplanWidgetExtension" target */,
+			);
+			explicitFileTypes = {
+			};
+			explicitFolders = (
+			);
+			path = DienstplanWidget;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -407,7 +431,7 @@
 			);
 			mainGroup = 97C146E51CF9000F007C117D;
 			packageReferences = (
-				781AD8BC2B33823900A9FFBB /* XCLocalSwiftPackageReference "Flutter/ephemeral/Packages/FlutterGeneratedPluginSwiftPackage" */,
+				781AD8BC2B33823900A9FFBB /* XCLocalSwiftPackageReference "FlutterGeneratedPluginSwiftPackage" */,
 			);
 			productRefGroup = 97C146EF1CF9000F007C117D /* Products */;
 			projectDirPath = "";
@@ -487,13 +511,9 @@
 			inputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-frameworks-${CONFIGURATION}-input-files.xcfilelist",
 			);
-			inputPaths = (
-			);
 			name = "[CP] Embed Pods Frameworks";
 			outputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-frameworks-${CONFIGURATION}-output-files.xcfilelist",
-			);
-			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
@@ -546,13 +566,9 @@
 			inputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-resources-${CONFIGURATION}-input-files.xcfilelist",
 			);
-			inputPaths = (
-			);
 			name = "[CP] Copy Pods Resources";
 			outputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-resources-${CONFIGURATION}-output-files.xcfilelist",
-			);
-			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
@@ -1289,7 +1305,7 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		781AD8BC2B33823900A9FFBB /* XCLocalSwiftPackageReference "Flutter/ephemeral/Packages/FlutterGeneratedPluginSwiftPackage" */ = {
+		781AD8BC2B33823900A9FFBB /* XCLocalSwiftPackageReference "FlutterGeneratedPluginSwiftPackage" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Flutter/ephemeral/Packages/FlutterGeneratedPluginSwiftPackage;
 		};

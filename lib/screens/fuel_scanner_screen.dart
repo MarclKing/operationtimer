@@ -69,7 +69,9 @@ class _FuelScannerScreenState extends State<FuelScannerScreen>
           back,
           ResolutionPreset.high,
           enableAudio: false,
-          imageFormatGroup: ImageFormatGroup.yuv420,
+          imageFormatGroup: dartio.Platform.isAndroid
+              ? ImageFormatGroup.nv21
+              : ImageFormatGroup.yuv420,
         );
         await _controller!.initialize();
       } catch (e) {
@@ -79,7 +81,9 @@ class _FuelScannerScreenState extends State<FuelScannerScreen>
           back,
           ResolutionPreset.medium,
           enableAudio: false,
-          imageFormatGroup: ImageFormatGroup.yuv420,
+          imageFormatGroup: dartio.Platform.isAndroid
+              ? ImageFormatGroup.nv21
+              : ImageFormatGroup.yuv420,
         );
         await _controller!.initialize();
       }
@@ -153,9 +157,26 @@ class _FuelScannerScreenState extends State<FuelScannerScreen>
   InputImage? _inputImageFromCameraImage(CameraImage image) {
     try {
       final bytes = _concatenatePlanes(image.planes);
-      final imageRotation = InputImageRotation.rotation0deg;
+
+      // ALT:
+      // final imageRotation = InputImageRotation.rotation0deg;
+
+      // NEU (iOS-Verhalten bleibt gleich):
+      final imageRotation = dartio.Platform.isAndroid
+          ? (InputImageRotationValue.fromRawValue(
+                  _controller?.description.sensorOrientation ?? 0) ??
+              InputImageRotation.rotation0deg)
+          : InputImageRotation.rotation0deg;
+
       final inputImageFormat =
           InputImageFormatValue.fromRawValue(image.format.raw) ?? InputImageFormat.nv21;
+
+      // NEU:
+      if (dartio.Platform.isAndroid &&
+          (inputImageFormat != InputImageFormat.nv21 || image.planes.length != 1)) {
+        return null;
+      }
+
       return InputImage.fromBytes(
         bytes: bytes,
         metadata: InputImageMetadata(

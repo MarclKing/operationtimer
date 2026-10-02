@@ -34,7 +34,7 @@ class TravelModeService {
     final override = _box.get(_kDebugTz) as String?;
     if (override != null) return override;
     try {
-      return await FlutterTimezone.getLocalTimezone();
+      return (await FlutterTimezone.getLocalTimezone()).identifier;
     } catch (_) {
       final offsetH = DateTime.now().timeZoneOffset.inHours;
       const map = {

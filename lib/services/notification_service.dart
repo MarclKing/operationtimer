@@ -166,7 +166,7 @@ class NotificationService {
   Future<String> _getLocalTimezoneName() async {
     try {
       // flutter_timezone package
-      return await FlutterTimezone.getLocalTimezone();
+      return (await FlutterTimezone.getLocalTimezone()).identifier;
     } catch (_) {
       return 'Europe/Berlin'; // Fallback für dein Gerät
     }

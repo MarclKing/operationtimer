@@ -21,6 +21,7 @@ import '../widgets/glass_kit.dart';
 import '../widgets/glass_snackbar.dart';
 import '../widgets/glass_dialogs.dart';
 import '../utils/time_rounding.dart';
+import '../utils/cleanup.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:intl/intl.dart';
 import '../services/backup_service.dart';
@@ -2412,6 +2413,81 @@ class _DataManagementSettingsScreenState extends State<_DataManagementSettingsSc
     }
   }
 
+    String _describe(RetentionArea area, RetentionPreview p) {
+    switch (area) {
+      case RetentionArea.zeit:
+        return '${p.items} Zeiterfassungs-Einträge';
+      case RetentionArea.dienstplan:
+        final parts = <String>[];
+        if (p.items > 0) parts.add('${p.items} Dienstplan-Tage');
+        if (p.notes > 0) parts.add('${p.notes} Notizen');
+        return parts.join(' und ');
+      case RetentionArea.fahrtenbuch:
+        return '${p.items} eingetragene Fahrten';
+      case RetentionArea.tasks:
+        return '${p.items} erledigte Aufgaben';
+    }
+  }
+
+  String _retentionMessage(RetentionArea area, RetentionPreview p, String label) {
+    final what = _describe(area, p);
+    final buf = StringBuffer();
+    if (area == RetentionArea.tasks) {
+      buf.write('Bei „$label" werden $what gelöscht, die vor mehr als $label erledigt wurden.');
+    } else {
+      final d = DateFormat('dd.MM.yyyy').format(p.cutoff!);
+      buf.write('Bei „$label" werden $what vor dem $d gelöscht. '
+          'Maßgeblich ist das heutige Datum, nicht der Import-Zeitpunkt.');
+    }
+    if (area == RetentionArea.fahrtenbuch && p.kept > 0) {
+      buf.write('\n\n${p.kept} ältere, noch nicht eingetragene Fahrten bleiben erhalten.');
+    }
+    buf.write('\n\nDas kann nicht rückgängig gemacht werden.');
+    return buf.toString();
+  }
+
+  Future<void> _changeRetention(RetentionArea area, {int? months, String? taskRule}) async {
+    final box = Hive.box('einstellungen');
+    final preview = DataRetention.preview(area, months: months, taskRule: taskRule);
+
+    if (!preview.isEmpty) {
+      final label = area == RetentionArea.tasks ? _taskLabel(taskRule!) : _monthLabel(months!);
+      final confirmed = await confirmDeleteDialog(
+        context: context,
+        skin: AppTheme.of(context),
+        title: 'Ältere Daten jetzt löschen?',
+        message: _retentionMessage(area, preview, label),
+        cancelLabel: 'Abbrechen',
+        confirmLabel: 'Löschen',
+      );
+      if (confirmed != true || !mounted) return; // alter Wert bleibt
+    }
+
+    switch (area) {
+      case RetentionArea.zeit:
+        setState(() => _zeitDeleteMonths = months!);
+        await box.put('deleteAfterMonths_zeit', months);
+      case RetentionArea.dienstplan:
+        setState(() => _dienstplanDeleteMonths = months!);
+        await box.put('deleteAfterMonths_dienstplan', months);
+      case RetentionArea.fahrtenbuch:
+        setState(() => _fahrtenbuchDeleteMonths = months!);
+        await box.put('deleteAfterMonths_fahrtenbuch', months);
+      case RetentionArea.tasks:
+        setState(() => _taskAutoDelete = taskRule!);
+        await box.put('task_auto_delete', taskRule);
+    }
+
+    await DataRetention.apply(area); // sofort, nach den frisch gespeicherten Werten
+    if (area == RetentionArea.tasks) TaskStore.changesSignal.value++;
+    MyApp.mainScreenKey.currentState?.refreshAfterRetentionCleanup();
+
+    if (!preview.isEmpty && mounted) {
+      showGlassSnackBar(context, '✓ ${_describe(area, preview)} gelöscht',
+          type: GlassSnackBarType.success);
+    }
+  }
+
   Future<void> _exportBackup() async {
     try {
       await BackupService.exportBackup();
@@ -2509,10 +2585,7 @@ class _DataManagementSettingsScreenState extends State<_DataManagementSettingsSc
                             items: [1, 3, 6, 12]
                                 .map((m) => GlassDropdownItem(value: m, label: _monthLabel(m)))
                                 .toList(),
-                            onChanged: (v) {
-                              setState(() => _zeitDeleteMonths = v);
-                              box.put('deleteAfterMonths_zeit', v);
-                            },
+                            onChanged: (v) => _changeRetention(RetentionArea.zeit, months: v),
                           ),
                         ]),
                       ),
@@ -2535,10 +2608,7 @@ class _DataManagementSettingsScreenState extends State<_DataManagementSettingsSc
                           items: [1, 3, 6, 12]
                               .map((m) => GlassDropdownItem(value: m, label: _monthLabel(m)))
                               .toList(),
-                          onChanged: (v) {
-                            setState(() => _dienstplanDeleteMonths = v);
-                            box.put('deleteAfterMonths_dienstplan', v);
-                          },
+                          onChanged: (v) => _changeRetention(RetentionArea.dienstplan, months: v),
                         ),
                       ]),
                     ),
@@ -2561,10 +2631,7 @@ class _DataManagementSettingsScreenState extends State<_DataManagementSettingsSc
                             items: [1, 3, 6, 12]
                                 .map((m) => GlassDropdownItem(value: m, label: _monthLabel(m)))
                                 .toList(),
-                            onChanged: (v) {
-                              setState(() => _fahrtenbuchDeleteMonths = v);
-                              box.put('deleteAfterMonths_fahrtenbuch', v);
-                            },
+                            onChanged: (v) => _changeRetention(RetentionArea.fahrtenbuch, months: v),
                           ),
                         ]),
                       ),
@@ -2591,10 +2658,7 @@ class _DataManagementSettingsScreenState extends State<_DataManagementSettingsSc
                             GlassDropdownItem(value: '1w',    label: '1 Woche'),
                             GlassDropdownItem(value: '1m',    label: '1 Monat'),
                           ],
-                          onChanged: (v) {
-                            setState(() => _taskAutoDelete = v);
-                            box.put('task_auto_delete', v);
-                          },
+                          onChanged: (v) => _changeRetention(RetentionArea.tasks, taskRule: v),
                         ),
                       ]),
                     ),
@@ -2602,8 +2666,10 @@ class _DataManagementSettingsScreenState extends State<_DataManagementSettingsSc
                     const SizedBox(height: 8),
                     const _SectionFootnote(
                       text:
-                          'Jeder Bereich hat eine eigene Aufbewahrungsfrist. '
-                          'Erledigte Aufgaben werden standardmäßig nach 1 Tag gelöscht.',
+                          'Maßgeblich ist das heutige Datum: Bei „1 Monat" bleibt nur, was jünger als '
+'ein Monat ab heute ist. Änderungen wirken sofort, vorher wirst du gefragt, '
+'falls dabei Daten gelöscht würden. Beim Fahrtenbuch zählen nur bereits '
+'eingetragene Fahrten. Erledigte Aufgaben werden standardmäßig nach 1 Tag gelöscht.',
                     ),
 
                     if (!readOnly) ...[

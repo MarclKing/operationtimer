@@ -8,6 +8,7 @@ import '../screens/tasks_screen.dart' show TaskStore, Task;
 import '../models/calendar_event.dart';
 import '../services/event_group_store.dart';
 import 'calendar_sync_handshake.dart';
+import '../utils/cleanup.dart';
 import 'apple_calendar_sync_service.dart';
 
 /// Einfaches Datenobjekt für einen offenen Sync-Konflikt (nur für die
@@ -54,6 +55,7 @@ class SyncService {
   final List<StreamSubscription> _listeners = [];
   final Map<String, _PendingRemoteChange> _pendingRemoteChanges = {};
   Timer? _remoteBatchTimer;
+  Timer? _retentionTimer;
   final Map<String, DateTime> _lastIgnoredRemoteLogAt = {};
   bool _initialized = false;
   bool _isSyncing = false;
@@ -867,6 +869,7 @@ Future<void> _clearCalendarSyncverMeta() async {
     _startListeners(token);
     _startCalendarResetListener(token); // NEU
     initialSyncInProgress.value = false; // NEU
+    _scheduleRetentionCleanup();
     // NEU: Nach dem initialen Sync sollen offene Screens (Dienstplan,
     // Fahrtenbuch) sich sofort aktualisieren, ohne dass der Monat manuell
     // gewechselt werden muss.
@@ -879,6 +882,7 @@ Future<void> _clearCalendarSyncverMeta() async {
       await sub.cancel();
     }
     _listeners.clear();
+    _retentionTimer?.cancel();
     _token = null;
     _initialized = false;
     initialSyncInProgress.value = false; // NEU — Absicherung bei Abbruch
@@ -1087,19 +1091,19 @@ Future<void> _clearCalendarSyncverMeta() async {
 
   Future<void> _initialPull(String token) async {
     debugPrint('$_tag: Initial Pull…');
-    try {
-      final base = _db.collection('syncData').doc(token);
-      final collections = _activeCollections();
-      
-      // NEU: Collections, für die wir eine Reconciliation durchführen
-      const reconciledCollections = {'calendar_events', 'tasks'};
+    final base = _db.collection('syncData').doc(token);
+    final collections = _activeCollections();
 
-      for (final col in collections) {
+    // NEU: Collections, für die wir eine Reconciliation durchführen
+    const reconciledCollections = {'calendar_events', 'tasks'};
+
+    for (final col in collections) {
+      _isSyncing = true;
+      try {
         final snap = await base.collection(col).get().timeout(
           const Duration(seconds: 5),
           onTimeout: () => throw TimeoutException('Pull timeout ($col)'),
         );
-        _isSyncing = true;
         final remoteIds = <String>{};
         for (final doc in snap.docs) {
           remoteIds.add(doc.id);
@@ -1108,13 +1112,13 @@ Future<void> _clearCalendarSyncverMeta() async {
         if (reconciledCollections.contains(col)) {
           await _reconcileDeletions(col, remoteIds);
         }
+      } catch (e) {
+        debugPrint('$_tag: Initial Pull Fehler ($col): $e');
+      } finally {
         _isSyncing = false;
       }
-      debugPrint('$_tag: Initial Pull abgeschlossen.');
-    } catch (e) {
-      _isSyncing = false;
-      debugPrint('$_tag: Initial Pull Fehler: $e');
     }
+    debugPrint('$_tag: Initial Pull abgeschlossen.');
   }
 
   // ── NEU: Reconciliation nach dem Pull ─────────────────────────────────────
@@ -1294,6 +1298,22 @@ Future<void> _clearCalendarSyncverMeta() async {
     _remoteBatchTimer = Timer(const Duration(milliseconds: 250), () async {
       _remoteBatchTimer = null;
       await _flushPendingRemoteChanges();
+    });
+  }
+
+  /// Nach eingehenden Sync-Daten die lokalen Aufbewahrungsfristen erneut
+  /// anwenden (z.B. wenn das andere Gerät eine längere Frist hat).
+  /// Während des initialen Syncs bewusst NICHT: _initialSyncAsReader vergleicht
+  /// lokale Vorab-Snapshots mit dem Stand nach dem Pull, ein Löschen dazwischen
+  /// würde dort als "eigene Abweichung" gewertet und als Konflikt gepusht.
+  void _scheduleRetentionCleanup() {
+    if (initialSyncInProgress.value) return;
+    _retentionTimer?.cancel();
+    _retentionTimer = Timer(const Duration(seconds: 3), () async {
+      try {
+        await runAutoCleanup();
+      } catch (_) {}
+      scheduleDataChanged.value++;
     });
   }
 
@@ -1674,6 +1694,7 @@ Future<void> _clearCalendarSyncverMeta() async {
       };
       if (_screenRefreshCollections.contains(collection)) {
         scheduleDataChanged.value++;
+        _scheduleRetentionCleanup();
       }
     } catch (e) {
       debugPrint('$_tag: _writeLocal Fehler ($collection/$docId): $e');

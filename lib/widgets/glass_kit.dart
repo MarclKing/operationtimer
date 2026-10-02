@@ -1,12 +1,32 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 import '../theme/app_theme.dart';
 import 'swipe_animation_mixin.dart';
 
+/// Blur nur auf iOS/Desktop. Auf Android ist BackdropFilter in Listen zu teuer.
+final bool kGlassBlurEnabled = defaultTargetPlatform != TargetPlatform.android;
+
+class GlassBlur extends StatelessWidget {
+  final double sigma;
+  final Widget child;
+  const GlassBlur({super.key, required this.sigma, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    if (!kGlassBlurEnabled) return child;
+    return BackdropFilter(
+      filter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
+      child: child,
+    );
+  }
+}
+
 extension AppSkinGlass on AppSkin {
   double get glassBlur => isLight ? 18.0 : 22.0;
-  double get glassOpacity => isLight ? 0.62 : 0.55;
+  double get glassOpacity =>
+      kGlassBlurEnabled ? (isLight ? 0.62 : 0.55) : (isLight ? 0.80 : 0.78);
   Color get glassHighlight =>
       isLight ? Colors.white.withValues(alpha: 0.70) : Colors.white.withValues(alpha: 0.12);
   Color get glassBorder =>
@@ -63,10 +83,14 @@ class GlassSurface extends StatelessWidget {
         color: borderColor ?? (highlighted ? skin.primary.withValues(alpha: 0.45) : skin.glassBorder),
         width: borderWidth ?? (highlighted ? 1.5 : 1.0),
       ),
-      boxShadow: [
-        BoxShadow(color: skin.glassShadow, blurRadius: 24, spreadRadius: 0, offset: const Offset(0, 6)),
-        BoxShadow(color: skin.glassHighlight, blurRadius: 0, spreadRadius: -1, offset: const Offset(0, 1)),
-      ],
+            boxShadow: kGlassBlurEnabled
+          ? [
+              BoxShadow(color: skin.glassShadow, blurRadius: 24, spreadRadius: 0, offset: const Offset(0, 6)),
+              BoxShadow(color: skin.glassHighlight, blurRadius: 0, spreadRadius: -1, offset: const Offset(0, 1)),
+            ]
+          : [
+              BoxShadow(color: skin.glassShadow, blurRadius: 6, offset: const Offset(0, 2)),
+            ],
     );
 
     final inner = Container(
@@ -78,8 +102,8 @@ class GlassSurface extends StatelessWidget {
     if (!useBlur) return ClipRRect(borderRadius: br, child: inner);
     return ClipRRect(
       borderRadius: br,
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
+      child: GlassBlur(
+        sigma: skin.glassBlur,
         child: inner,
       ),
     );
@@ -97,13 +121,15 @@ class GlassSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
+       return ClipRRect(
       borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
+      child: GlassBlur(
+        sigma: skin.glassBlur,
         child: Container(
           decoration: BoxDecoration(
-            color: skin.isLight ? Colors.white.withValues(alpha: 0.82) : skin.bgSheet.withValues(alpha: 0.88),
+            color: skin.isLight
+                ? Colors.white.withValues(alpha: kGlassBlurEnabled ? 0.82 : 0.97)
+                : skin.bgSheet.withValues(alpha: kGlassBlurEnabled ? 0.88 : 0.98),
             borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
             border: Border.all(color: skin.glassBorder),
           ),
@@ -328,8 +354,8 @@ class GlassStatCard extends StatelessWidget {
     return Expanded(
       child: ClipRRect(
         borderRadius: BorderRadius.circular(12),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        child: GlassBlur(
+          sigma: 10,
           child: Container(
             padding: const EdgeInsets.symmetric(vertical: 9),
             decoration: BoxDecoration(
@@ -362,6 +388,9 @@ class FadingListView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // TESTWEISE deaktiviert (Schritt 2) — bei Bedarf wieder einkommentieren.
+    return child;
+    // ignore: dead_code
     return ShaderMask(
       shaderCallback: (bounds) {
         final h = bounds.height;
@@ -409,8 +438,8 @@ class GlassSegmentedControl<T> extends StatelessWidget {
     final skin = AppTheme.of(context);
     return ClipRRect(
       borderRadius: BorderRadius.circular(14),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+      child: GlassBlur(
+        sigma: 10,
         child: Container(
           padding: EdgeInsets.all(compact ? 3 : 4),
           decoration: BoxDecoration(
@@ -857,9 +886,9 @@ class _DropdownOverlayState<T> extends State<_DropdownOverlay<T>> {
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(14),
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 28, sigmaY: 28),
-                    child: Container(
+                 child: GlassBlur(
+  sigma: 28,
+  child: Container(
                       decoration: BoxDecoration(
                         color: skin.isLight
                             ? Colors.white.withValues(alpha: 0.94)
@@ -1229,9 +1258,9 @@ class _MultiDropdownOverlay<T> extends StatelessWidget {
                 constraints: BoxConstraints(minWidth: minWidth, maxWidth: maxWidth),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(14),
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 28, sigmaY: 28),
-                    child: Container(
+                  child: GlassBlur(
+  sigma: 28,
+  child: Container(
                       decoration: BoxDecoration(
                         color: skin.isLight ? Colors.white.withValues(alpha: 0.94) : const Color(0xFF2A2A2E).withValues(alpha: 0.97),
                         borderRadius: BorderRadius.circular(14),
@@ -1712,7 +1741,7 @@ class GlassSwipeCardState extends State<GlassSwipeCard>
                                   return ClipRRect(
                                     borderRadius: BorderRadius.circular(14),
                                     child: _leftRevealProgress > 0
-                                        ? BackdropFilter(filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10), child: content)
+                                        ? GlassBlur(sigma: 10, child: content)
                                         : content,
                                   );
                                 }),
@@ -1756,7 +1785,7 @@ class GlassSwipeCardState extends State<GlassSwipeCard>
                             return ClipRRect(
                               borderRadius: BorderRadius.circular(14),
                               child: _rightRevealProgress > 0
-                                  ? BackdropFilter(filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10), child: content)
+                                  ? GlassBlur(sigma: 10, child: content)
                                   : content,
                             );
                           }),
@@ -1848,8 +1877,8 @@ class GlassNavCard extends StatelessWidget {
           : (d) => onSwipe!(d.primaryVelocity ?? 0),
       child: ClipRRect(
         borderRadius: br,
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
+        child: GlassBlur(
+          sigma: skin.glassBlur,
           child: Container(
             height: height,
             decoration: BoxDecoration(
@@ -2071,9 +2100,8 @@ class GlassInfoCard extends StatelessWidget {
       child: useBlur
           ? ClipRRect(
               borderRadius: br,
-              child: BackdropFilter(
-                filter: ImageFilter.blur(
-                    sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
+              child: GlassBlur(
+                sigma: skin.glassBlur,
                 child: content,
               ),
             )

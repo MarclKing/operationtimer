@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:image_picker/image_picker.dart';
 import '../theme/app_theme.dart';
+import '../utils/km_text_parser.dart';
 import '../widgets/glass_snackbar.dart';
 
 class KmScannerScreen extends StatefulWidget {
@@ -39,6 +40,9 @@ class _KmScannerScreenState extends State<KmScannerScreen>
   String? _pendingKm;
   DateTime _lastFrameProcessed = DateTime.fromMillisecondsSinceEpoch(0);
 
+  // NEU: Android-Foto-Polling-Timer (statt Image-Stream)
+  Timer? _pollTimer;
+
   // Ergebnis
   String? _resultKm;
   String? _resultImagePath;
@@ -70,7 +74,9 @@ class _KmScannerScreenState extends State<KmScannerScreen>
           back,
           ResolutionPreset.high,
           enableAudio: false,
-          imageFormatGroup: ImageFormatGroup.yuv420,
+          imageFormatGroup: dartio.Platform.isAndroid
+              ? ImageFormatGroup.nv21
+              : ImageFormatGroup.yuv420,
         );
         await _controller!.initialize();
       } catch (e) {
@@ -80,7 +86,9 @@ class _KmScannerScreenState extends State<KmScannerScreen>
           back,
           ResolutionPreset.medium,
           enableAudio: false,
-          imageFormatGroup: ImageFormatGroup.yuv420,
+          imageFormatGroup: dartio.Platform.isAndroid
+              ? ImageFormatGroup.nv21
+              : ImageFormatGroup.yuv420,
         );
         await _controller!.initialize();
       }
@@ -95,6 +103,9 @@ class _KmScannerScreenState extends State<KmScannerScreen>
           // Autofokus explizit aktivieren – manche Geräte starten sonst
           // mit fixem/gesperrtem Fokus, was das Cockpit-Display unscharf lässt.
           await ctrl.setFocusMode(FocusMode.auto);
+          // NEU: Blitz aus — verhindert aufgehellte/überbelichtete Displays,
+          // die die OCR-Erkennung verschlechtern.
+          await ctrl.setFlashMode(FlashMode.off);
         }
       } catch (_) {}
 
@@ -109,7 +120,45 @@ class _KmScannerScreenState extends State<KmScannerScreen>
 
   void _startScanning() {
     if (_controller == null) return;
+    if (dartio.Platform.isAndroid) {
+      _startAndroidPolling();
+      return;
+    }
     _controller!.startImageStream(_onCameraFrame);
+  }
+
+  // NEU: Android: Foto-Polling statt Image-Stream (ML Kit liest Format/Rotation selbst)
+  void _startAndroidPolling() {
+    _pollTimer?.cancel();
+    _pollTimer = Timer.periodic(const Duration(milliseconds: 1200), (_) async {
+      if (_isProcessing || _isDisposed || _showConfirm) return;
+      final ctrl = _controller;
+      if (ctrl == null || !ctrl.value.isInitialized || ctrl.value.isTakingPicture) return;
+      _isProcessing = true;
+      try {
+        final xFile = await ctrl.takePicture();
+        final result = await _recognizer.processImage(InputImage.fromFilePath(xFile.path));
+        debugPrint('KM-Scan OCR: '
+            '${result.blocks.expand((b) => b.lines).map((l) => l.text).toList()}');
+        final km = _extractKm(result);
+        if (km != null && mounted && !_showConfirm) {
+          _pollTimer?.cancel();
+          HapticFeedback.mediumImpact();
+          setState(() {
+            _pendingKm = km;
+            _lastDetected = km;
+            _showConfirm = true;
+            _resultImagePath = xFile.path;
+          });
+        } else {
+          try { dartio.File(xFile.path).deleteSync(); } catch (_) {}
+        }
+      } catch (e) {
+        debugPrint('KM-Scan Android Fehler: $e');
+      } finally {
+        _isProcessing = false;
+      }
+    });
   }
 
   void _onCameraFrame(CameraImage image) {
@@ -158,9 +207,18 @@ class _KmScannerScreenState extends State<KmScannerScreen>
   InputImage? _inputImageFromCameraImage(CameraImage image) {
     try {
       final bytes = _concatenatePlanes(image.planes);
-      const imageRotation = InputImageRotation.rotation0deg;
-      final inputImageFormat =
+        final sensorOrientation = _controller?.description.sensorOrientation ?? 0;
+        final imageRotation = InputImageRotationValue.fromRawValue(sensorOrientation) ??
+          InputImageRotation.rotation0deg;
+            final inputImageFormat =
           InputImageFormatValue.fromRawValue(image.format.raw) ?? InputImageFormat.nv21;
+
+      // Android liefert nur mit NV21 + 1 Plane brauchbare Bytes
+      if (dartio.Platform.isAndroid &&
+          (inputImageFormat != InputImageFormat.nv21 || image.planes.length != 1)) {
+        return null;
+      }
+
       return InputImage.fromBytes(
         bytes: bytes,
         metadata: InputImageMetadata(
@@ -185,63 +243,9 @@ class _KmScannerScreenState extends State<KmScannerScreen>
   }
 
   String? _extractKm(RecognizedText result) {
-    final candidates = <_KmScanCandidate>[];
-
-    for (final block in result.blocks) {
-      for (final line in block.lines) {
-        final text = line.text.trim();
-        final lower = text.toLowerCase();
-        final noSpace = text.replaceAll(' ', '');
-
-        // Uhrzeiten raus (z.B. "12:32")
-        if (RegExp(r'^\d{1,2}:\d{2}$').hasMatch(text)) continue;
-
-        // Volle Datumsangaben raus (z.B. "3.7.2026", "03.07.2026")
-        if (RegExp(r'^\d{1,2}\.\d{1,2}\.\d{2,4}$').hasMatch(noSpace)) continue;
-
-        // Temperaturangaben raus (z.B. "+21.0°c")
-        if (lower.contains('°') || lower.contains('grad') || text.contains('+')) continue;
-
-        // Trip-Zähler mit einer Dezimalstelle raus (z.B. "9917.7")
-        if (RegExp(r'^\d{1,4}[.,]\d{1}$').hasMatch(noSpace)) continue;
-
-        String cleaned = noSpace;
-        cleaned = cleaned.replaceAll(RegExp(r'(?<=\d)\.(?=\d{3}\b)'), '');
-        final digitsOnly = cleaned.replaceAll(RegExp(r'[^\d]'), '');
-
-        if (digitsOnly.isEmpty) continue;
-        final value = int.tryParse(digitsOnly);
-        if (value == null) continue;
-        if (value < 1000 || value > 999999) continue;
-
-        if (text.contains('.') || text.contains(',')) {
-          final sepIdx = text.contains('.') ? text.indexOf('.') : text.indexOf(',');
-          final afterSep = text.substring(sepIdx + 1).replaceAll(RegExp(r'[^\d]'), '');
-          if (afterSep.length == 1) continue;
-        }
-
-        // Zeile enthält explizit "km" -> sehr wahrscheinlich der KM-Stand
-        final hasKmLabel = lower.contains('km');
-
-        candidates.add(_KmScanCandidate(
-          value: value,
-          digitCount: digitsOnly.length,
-          yPosition: line.boundingBox?.top ?? 0,
-          hasKmLabel: hasKmLabel,
-        ));
-      }
-    }
-
-    if (candidates.isEmpty) return null;
-    candidates.sort((a, b) {
-      // 1. Zeilen mit "km"-Label immer bevorzugen
-      if (a.hasKmLabel != b.hasKmLabel) return a.hasKmLabel ? -1 : 1;
-      // 2. Mehr Ziffern = wahrscheinlicher der Gesamt-KM-Stand
-      if (b.digitCount != a.digitCount) return b.digitCount.compareTo(a.digitCount);
-      // 3. Höherer Wert bevorzugen (Gesamt-KM > Trip-KM)
-      return b.value.compareTo(a.value);
-    });
-    return candidates.first.value.toString();
+    return KmTextParser.extract(
+      result.blocks.expand((block) => block.lines).map((line) => line.text),
+    );
   }
 
   void _acceptKm() {
@@ -273,6 +277,8 @@ class _KmScannerScreenState extends State<KmScannerScreen>
   }
 
   Future<void> _openGallery() async {
+    // NEU: Polling-Timer stoppen, sonst läuft er während der Galerie weiter.
+    _pollTimer?.cancel();
     if (_controller != null && _controller!.value.isStreamingImages) {
       await _controller!.stopImageStream();
     }
@@ -327,6 +333,9 @@ class _KmScannerScreenState extends State<KmScannerScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (_controller == null) return;
     if (state == AppLifecycleState.inactive) {
+      // NEU: Polling-Timer zuerst stoppen, sonst versucht er auf einen
+      // disposed Controller zuzugreifen.
+      _pollTimer?.cancel();
       if (_controller!.value.isStreamingImages) {
         _controller!.stopImageStream();
       }
@@ -339,6 +348,8 @@ class _KmScannerScreenState extends State<KmScannerScreen>
   @override
   void dispose() {
     _isDisposed = true;
+    // NEU: Polling-Timer aufräumen
+    _pollTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     if (_controller != null && _controller!.value.isStreamingImages) {
       _controller!.stopImageStream();
@@ -847,17 +858,4 @@ class _ConfirmOverlay extends StatelessWidget {
       ),
     );
   }
-}
-
-class _KmScanCandidate {
-  final int value;
-  final int digitCount;
-  final double yPosition;
-  final bool hasKmLabel;
-  _KmScanCandidate({
-    required this.value,
-    required this.digitCount,
-    required this.yPosition,
-    this.hasKmLabel = false,
-  });
 }

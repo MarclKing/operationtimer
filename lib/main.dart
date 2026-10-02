@@ -117,6 +117,21 @@ void callbackDispatcher() {
 }
 
 Future<void> _initializeAppServicesInBackground() async {
+  // Aufbewahrungsfristen VOR dem Sync anwenden, sonst schiebt
+  // SyncService._initialPush veraltete Monate noch einmal in die Cloud.
+  _migrateOldEntries();
+  for (final area in [
+    RetentionArea.zeit,
+    RetentionArea.dienstplan,
+    RetentionArea.fahrtenbuch,
+  ]) {
+    try {
+      await DataRetention.apply(area);
+    } catch (e) {
+      debugPrint('⚠️ Retention ($area) fehlgeschlagen: $e');
+    }
+  }
+
   try {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
@@ -156,7 +171,7 @@ Future<void> _initializeAppServicesInBackground() async {
     debugPrint('⚠️ NotificationService init fehlgeschlagen: $e');
   }
 
-  _migrateOldEntries();
+  // Nachlauf inkl. Aufgaben: hier ist das Sync-Token gesetzt, Löschungen gehen in die Cloud.
   await runAutoCleanup();
 
   // NEU: Widgets direkt nach dem initialen Sync mit aktuellen Daten
@@ -193,7 +208,7 @@ void main() async {
   // NEU: Hintergrund-Sync registrieren — läuft nach iOS' eigenem Zeitplan
   // (keine Garantie, aber i.d.R. mehrmals täglich bei normaler Nutzung).
   try {
-    await Workmanager().initialize(callbackDispatcher, isInDebugMode: false);
+    await Workmanager().initialize(callbackDispatcher);
     await Workmanager().registerPeriodicTask(
       kAppleCalendarBgTaskId,
       kAppleCalendarBgTaskName,
@@ -378,6 +393,11 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin, 
   /// nicht selbst mit Indizes hantieren müssen.
   void goToScheduleTab() => _goToPage(_indexOfTab(_Tab.schedule));
   void goToHomeTab() => _goToPage(0);
+    /// Von den Einstellungen nach einer Bereinigung aufgerufen.
+  void refreshAfterRetentionCleanup() {
+    _scheduleKey.currentState?.loadScheduleData();
+    if (mounted) setState(() {});
+  }
 
   // NEU: Nur im Lesemodus gibt es ein eigenes Kalender-Icon in der Navbar,
   // das nativ umschaltet, statt über den Umschalter oben rechts zu gehen
@@ -408,7 +428,6 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin, 
       upperBound: 4.0,
       value: 0.0,
     );
-    _slideCtrl.addListener(() => setState(() {}));
 
     _menuAnimController = AnimationController(
       vsync: this,
@@ -474,7 +493,9 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin, 
           await _navigateToCalendarToday();
           return;
         }
-        if (path == 'fahrtenbuch_neue_fahrt_scan') {
+        if (path == 'fahrtenbuch_neue_fahrt_scan' ||
+          path == 'fahrtenbuch' ||
+          url.contains('/neue-fahrt/scan-km-start')) {
           if (_readOnlyMode) return;
           await _animateToPage(_indexOfTab(_Tab.fahrtenbuch));
           await Future.delayed(const Duration(milliseconds: 500));
@@ -662,8 +683,8 @@ void didChangeAppLifecycleState(AppLifecycleState state) {
       confirmLabel: 'Importieren',
       extraContent: ClipRRect(
         borderRadius: BorderRadius.circular(10),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                child: GlassBlur(
+          sigma: 8,
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
@@ -938,13 +959,7 @@ void didChangeAppLifecycleState(AppLifecycleState state) {
       return;
     }
 
-    // NEU: Wenn wir zum Schedule-Tab wechseln, Task-Marker aktualisieren
-    final tabs = _activeTabs;
-    if (index >= 0 && index < tabs.length && tabs[index] == _Tab.schedule) {
-      _scheduleKey.currentState?.refreshTaskMarkers();
-    }
-
-    _goToPage(index);
+       _goToPage(index);
   }
 
   void _onDragStart(DragStartDetails d) {
@@ -1155,12 +1170,25 @@ void didChangeAppLifecycleState(AppLifecycleState state) {
                   ),
                 },
                 behavior: HitTestBehavior.translucent,
-                child: Stack(
+                                child: Stack(
                   children: List.generate(pageCount, (i) {
-                    final offset = (i.toDouble() - _slideCtrl.value) * screenWidth;
-                    return Transform.translate(
-                      offset: Offset(offset, 0),
-                      child: SizedBox(width: screenWidth, height: double.infinity, child: pages[i]),
+                    return AnimatedBuilder(
+                      animation: _slideCtrl,
+                      // child wird einmal gebaut und bei der Animation nur verschoben
+                      child: RepaintBoundary(
+                        child: SizedBox(width: screenWidth, height: double.infinity, child: pages[i]),
+                      ),
+                      builder: (context, child) {
+                        final rel = i.toDouble() - _slideCtrl.value;
+                        return Offstage(
+                          // komplett außerhalb des Bildschirms: nicht zeichnen
+                          offstage: rel.abs() >= 1.0,
+                          child: Transform.translate(
+                            offset: Offset(rel * screenWidth, 0),
+                            child: child,
+                          ),
+                        );
+                      },
                     );
                   }),
                 ),
@@ -1230,8 +1258,8 @@ void didChangeAppLifecycleState(AppLifecycleState state) {
                         color: Colors.transparent,
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(18),
-                          child: BackdropFilter(
-                            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                                                    child: GlassBlur(
+                            sigma: 20,
                             child: Container(
                               width: 220,
                               decoration: BoxDecoration(
@@ -1689,8 +1717,8 @@ class _KfzVerwaltungSheetState extends State<_KfzVerwaltungSheet> {
                         animateDelete: false,
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(14),
-                          child: BackdropFilter(
-                            filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+                                                    child: GlassBlur(
+                            sigma: 14,
                             child: Container(
                               width: double.infinity,
                               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -1863,8 +1891,8 @@ class _GlassBottomNavState extends State<_GlassBottomNav>
         child: isSelected
             ? ClipRRect(
                 borderRadius: BorderRadius.circular(14),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                                child: GlassBlur(
+                  sigma: 10,
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
                     decoration: BoxDecoration(
@@ -1934,13 +1962,13 @@ class _GlassBottomNavState extends State<_GlassBottomNav>
       },
       child: ClipRRect(
         borderRadius: BorderRadius.circular(22),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                child: GlassBlur(
+          sigma: 20,
           child: Container(
             decoration: BoxDecoration(
               color: skin.isLight
-                  ? Colors.white.withValues(alpha: 0.72)
-                  : Colors.black.withValues(alpha: 0.55),
+                  ? Colors.white.withValues(alpha: kGlassBlurEnabled ? 0.72 : 0.94)
+                  : Colors.black.withValues(alpha: kGlassBlurEnabled ? 0.55 : 0.88),
               borderRadius: BorderRadius.circular(22),
               border: Border.all(
                 color: skin.isLight
@@ -1952,7 +1980,7 @@ class _GlassBottomNavState extends State<_GlassBottomNav>
                 BoxShadow(
                   color: Colors.black.withValues(
                       alpha: skin.isLight ? 0.08 : 0.35),
-                  blurRadius: 24,
+                                   blurRadius: kGlassBlurEnabled ? 24 : 8,
                   spreadRadius: 0,
                   offset: const Offset(0, 6),
                 ),

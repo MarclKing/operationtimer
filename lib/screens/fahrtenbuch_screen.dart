@@ -1135,16 +1135,7 @@ Widget build(BuildContext context) {
                                 if (index == groupedItems.length) {
   return Padding(
     padding: EdgeInsets.fromLTRB(0, 8, 0, bottomNavHeight + extraBottomOffset + 32),
-    child: _ExportButtonAnimated(
-      skin: skin,
-      animation: _selectionBarAnim,
-      selectedCount: _selectedIds.length,
-      uebertragenState: _selectedUebertragenState,
-      onExportAll: _exportAll,
-      onExportSelected: _exportSelected,
-      onExitSelection: _exitSelectionMode,
-      onToggleUebertragen: _toggleSelectedUebertragen,
-    ),
+        child: _ExportAllButton(skin: skin, onTap: _exportAll),
   );
 }
                                 final item = groupedItems[index];
@@ -1225,7 +1216,7 @@ Widget build(BuildContext context) {
                   ),
                   child: GestureDetector(
                     onTap: () {
-                      if (_sheetOpen) return;
+                      if (_sheetOpen || _selectionMode) return;
                       if (_draftVisible) {
                         reopenDraft();
                       } else {
@@ -1271,6 +1262,30 @@ Widget build(BuildContext context) {
               ],
             ),
           ),
+
+          // ── Auswahlleiste: schwebt über der Navbar, solange Auswahlmodus aktiv ──
+          if (_selectionMode)
+            Positioned(
+              left: 16,
+              right: 16,
+              bottom: bottomNavHeight + 16,
+              child: SlideTransition(
+                position: Tween<Offset>(begin: const Offset(0, 0.5), end: Offset.zero)
+                    .animate(_selectionBarAnim),
+                child: FadeTransition(
+                  opacity: _selectionBarAnim,
+                  child: _ExportButtonAnimated(
+                    skin: skin,
+                    animation: _selectionBarAnim,
+                    selectedCount: _selectedIds.length,
+                    uebertragenState: _selectedUebertragenState,
+                    onExportSelected: _exportSelected,
+                    onExitSelection: _exitSelectionMode,
+                    onToggleUebertragen: _toggleSelectedUebertragen,
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     ),
@@ -1474,7 +1489,6 @@ class _ExportButtonAnimated extends StatelessWidget {
   final Animation<double> animation;
   final int selectedCount;
   final bool? uebertragenState;
-  final VoidCallback onExportAll;
   final VoidCallback onExportSelected;
   final VoidCallback onExitSelection;
   final VoidCallback onToggleUebertragen;
@@ -1484,7 +1498,6 @@ class _ExportButtonAnimated extends StatelessWidget {
     required this.animation,
     required this.selectedCount,
     required this.uebertragenState,
-    required this.onExportAll,
     required this.onExportSelected,
     required this.onExitSelection,
     required this.onToggleUebertragen,
@@ -1535,23 +1548,6 @@ class _ExportButtonAnimated extends StatelessWidget {
         final closeScale = Curves.easeOutBack.transform(((p - 0.1) / 0.6).clamp(0.0, 1.0));
         final countScale = Curves.easeOutBack.transform(((p - 0.2) / 0.6).clamp(0.0, 1.0));
         final chipScale = Curves.easeOutBack.transform(((p - 0.3) / 0.6).clamp(0.0, 1.0));
-        final normalOpacity = (1 - p * 2.5).clamp(0.0, 1.0);
-        final selectionOpacity = ((p - 0.4) / 0.6).clamp(0.0, 1.0);
-
-        Widget buildNormalContent() {
-          return GestureDetector(
-            onTap: onExportAll,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.upload_outlined, color: skin.primary, size: 16),
-                const SizedBox(width: 7),
-                Text('Alle Fahrten exportieren',
-                    style: TextStyle(color: skin.primary, fontSize: 13, fontWeight: FontWeight.w600)),
-              ],
-            ),
-          );
-        }
 
         Widget buildSelectionContent() {
           // Volle Breite, feste Icon-Buttons + flexibler Text -> passt immer.
@@ -1603,36 +1599,25 @@ class _ExportButtonAnimated extends StatelessWidget {
           );
         }
 
-        final Widget innerContent;
-        if (p <= 0.0) {
-          innerContent = buildNormalContent();
-        } else if (p >= 1.0) {
-          innerContent = buildSelectionContent();
-        } else {
-          innerContent = Stack(
-            alignment: Alignment.center,
-            children: [
-              Opacity(opacity: normalOpacity, child: IgnorePointer(child: buildNormalContent())),
-              Opacity(opacity: selectionOpacity, child: IgnorePointer(child: buildSelectionContent())),
-            ],
-          );
-        }
+        final Widget innerContent = buildSelectionContent();
 
         return SizedBox(
           width: double.infinity,
           child: ClipRRect(
             borderRadius: BorderRadius.circular(14),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+            child: GlassBlur(
+              sigma: 14,
               child: AnimatedContainer(
                 duration: Duration.zero,
                 height: buttonHeight,
                 padding: EdgeInsets.symmetric(horizontal: 16 + p * 4, vertical: 0),
-                alignment: p > 0.5 ? Alignment.centerLeft : Alignment.center,
+                alignment: Alignment.centerLeft,
                 decoration: BoxDecoration(
                   color: Color.lerp(
                     skin.primary.withValues(alpha: 0.07),
-                    skin.isLight ? Colors.white.withValues(alpha: 0.88) : Colors.black.withValues(alpha: 0.70),
+                    skin.isLight
+                        ? Colors.white.withValues(alpha: kGlassBlurEnabled ? 0.88 : 0.97)
+                        : Colors.black.withValues(alpha: kGlassBlurEnabled ? 0.70 : 0.94),
                     p,
                   ),
                   borderRadius: BorderRadius.circular(14),
@@ -1650,6 +1635,35 @@ class _ExportButtonAnimated extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+class _ExportAllButton extends StatelessWidget {
+  final AppSkin skin;
+  final VoidCallback onTap;
+  const _ExportAllButton({required this.skin, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: GlassSurface(
+        useBlur: false, // Listenende: kein Blur nötig
+        borderRadius: 14,
+        padding: const EdgeInsets.symmetric(vertical: 15, horizontal: 16),
+        overrideColor: skin.primary.withValues(alpha: 0.07),
+        borderColor: skin.primary.withValues(alpha: 0.22),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.upload_outlined, color: skin.primary, size: 16),
+            const SizedBox(width: 7),
+            Text('Alle Fahrten exportieren',
+                style: TextStyle(color: skin.primary, fontSize: 13, fontWeight: FontWeight.w600)),
+          ],
+        ),
+      ),
     );
   }
 }

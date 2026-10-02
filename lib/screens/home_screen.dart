@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
@@ -11,6 +12,7 @@ import '../widgets/glass_dialogs.dart';
 import '../widgets/glass_snackbar.dart';
 import '../models/relationship_style.dart';
 import '../services/weather_service.dart';
+import '../services/sync_service.dart';
 import 'tasks_screen.dart' show TaskStore, Task;
 import '../services/spoken_task_parser.dart';
 import '../utils/time_rounding.dart';
@@ -1094,7 +1096,7 @@ class _StempeluhrKachelState extends State<_StempeluhrKachel>
     super.dispose();
   }
 
-  void _stempel() {
+  Future<void> _stempel() async {
     final now = DateTime.now();
     final TimeOfDay kommen = _customTime ??
         (() {
@@ -1118,12 +1120,19 @@ class _StempeluhrKachelState extends State<_StempeluhrKachel>
       'createdAt': now.toIso8601String(),
     };
 
-    if (existing is List) {
-      existing.add(entry);
-      box.put(dateKey, existing);
-    } else {
-      box.put(dateKey, [entry]);
-    }
+    final entries = existing is List
+        ? List<dynamic>.from(existing)
+        : existing is Map
+            ? <dynamic>[Map<String, dynamic>.from(existing)]
+            : <dynamic>[];
+    entries.add(entry);
+    await box.put(dateKey, entries);
+    await box.flush();
+    unawaited(SyncService.instance.pushArbeitszeit(dateKey).catchError((error) {
+      debugPrint('Arbeitszeit-Sync fehlgeschlagen: $error');
+    }));
+
+    if (!mounted) return;
 
     HapticFeedback.mediumImpact();
     setState(() => _justStamped = true);
@@ -1165,7 +1174,7 @@ class _StempeluhrKachelState extends State<_StempeluhrKachel>
       onTapDown: (_) => _pressCtrl.forward(),
       onTapUp: (_) {
         _pressCtrl.reverse();
-        _stempel();
+        unawaited(_stempel());
       },
       onTapCancel: () => _pressCtrl.reverse(),
       onVerticalDragStart: (d) {

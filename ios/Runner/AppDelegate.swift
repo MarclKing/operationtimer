@@ -2,7 +2,7 @@ import UIKit
 import Flutter
 import WidgetKit
 import UserNotifications  // ← NEU: für lokale Notifications
-import workmanager        // NEU
+import workmanager_apple     // NEU
 
 @main
 @objc class AppDelegate: FlutterAppDelegate {
@@ -35,7 +35,10 @@ import workmanager        // NEU
         // dass jede BGTaskScheduler-Identifier-Registrierung synchron HIER
         // passiert, bevor didFinishLaunchingWithOptions zurückkehrt. Ohne das
         // stürzt die App beim ersten registerPeriodicTask()-Aufruf aus main.dart ab.
-        WorkmanagerPlugin.registerTask(withIdentifier: "de.marcel.optimes.appleCalendarSync")
+        WorkmanagerPlugin.registerPeriodicTask(
+            withIdentifier: "de.marcel.optimes.appleCalendarSync",
+            frequency: NSNumber(value: 60 * 60)
+        )
 
         let result = super.application(application, didFinishLaunchingWithOptions: launchOptions)
 
