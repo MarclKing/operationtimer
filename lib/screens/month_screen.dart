@@ -540,6 +540,7 @@ class MonthScreenState extends State<MonthScreen> with TickerProviderStateMixin 
     await Future.delayed(const Duration(milliseconds: 80));
     if (!mounted) return;
     final skin = AppTheme.of(context);
+    FocusManager.instance.primaryFocus?.unfocus();
     final result = await showSingleDatePicker(
       context: context,
       skin: skin,
@@ -568,6 +569,7 @@ Future<void> _checkTravelModeTz() async {
     final skin = AppTheme.of(context);
     TimeOfDay? selectedTime;
 
+    FocusManager.instance.primaryFocus?.unfocus();
     await showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -718,6 +720,7 @@ void _editEntry(Map<String, dynamic> entry) {
   final notizCtrl = TextEditingController(text: entry['Bemerkung'] ?? entry['notiz'] ?? '');
   final entryId = entry['id'] as String;
 
+  FocusManager.instance.primaryFocus?.unfocus();
   showModalBottomSheet(
     context: context,
     isScrollControlled: true,
@@ -902,7 +905,7 @@ void _editEntry(Map<String, dynamic> entry) {
   Widget build(BuildContext context) {
     final skin = AppTheme.of(context);
     final overlayOpen = _activeOverlay != _OverlayField.none;
-    final bottomNavHeight = 70.0 + MediaQuery.of(context).padding.bottom;
+    final bottomNavHeight = 70.0 + MediaQuery.paddingOf(context).bottom;
 
     final entries = _getEntriesForMonth();
     final monthName = DateFormat('MMMM yyyy', 'de').format(_selectedMonth);
@@ -1934,7 +1937,7 @@ class _FlyingCardOverlay extends StatelessWidget {
     final icon =
         isTkf ? Icons.person_outline_rounded : Icons.edit_note_rounded;
     final hint = isTkf ? 'Name des TKF' : 'Optionale Bemerkung...';
-    final screenH = MediaQuery.of(context).size.height;
+    final screenH = MediaQuery.sizeOf(context).height;
     final cardTop = screenH * 0.22;
 
     return AnimatedBuilder(
@@ -2149,6 +2152,7 @@ class _EditSheetState extends State<_EditSheet> {
       initialTime = TimeOfDay.now();
     }
 
+    FocusManager.instance.primaryFocus?.unfocus();
     await showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -2350,7 +2354,7 @@ Widget? _buildZoneCrossingInfo(AppSkin skin) {
       },
       child: Padding(
         padding: EdgeInsets.only(
-            bottom: MediaQuery.of(context).viewInsets.bottom),
+            bottom: MediaQuery.viewInsetsOf(context).bottom),
         child: ClipRRect(
           borderRadius:
               const BorderRadius.vertical(top: Radius.circular(28)),
@@ -2795,6 +2799,7 @@ Future<String?> _showZonePickerSheet({
   required String? currentTzId,
 }) async {
   final suggestions = TravelModeService.suggestedZoneIds();
+  FocusManager.instance.primaryFocus?.unfocus();
   return showModalBottomSheet<String>(
     context: context,
     backgroundColor: Colors.transparent,
@@ -2887,13 +2892,14 @@ Future<String?> _promptFreetextZone(BuildContext context, AppSkin skin) async {
   ({String tzId, String displayLabel})? verified;
   String? errorMsg;
 
+  FocusManager.instance.primaryFocus?.unfocus();
   return showModalBottomSheet<String>(
     context: context,
     backgroundColor: Colors.transparent,
     isScrollControlled: true,
     builder: (sheetContext) => Padding(
       padding: EdgeInsets.only(
-          bottom: MediaQuery.of(sheetContext).viewInsets.bottom),
+          bottom: MediaQuery.viewInsetsOf(sheetContext).bottom),
       child: GlassSheet(
         skin: skin,
         child: StatefulBuilder(

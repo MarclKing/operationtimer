@@ -63,7 +63,7 @@ class SyncService {
   bool get _isReadOnly =>
       Hive.box('einstellungen').get('read_only_mode', defaultValue: false) as bool;
 
-  static const _isolatedInReadOnly = {'tasks', 'calendar_events', 'event_groups'};
+  static const _isolatedInReadOnly = {'tasks', 'calendar_events', 'event_groups', 'dayplans'};
 
   /// Monats-Blob-Collections: hier führt ein blindes Überschreiben zum
   /// Verlust ganzer Zeiträume (Fahrten/Dienstplan/Arbeitszeiten eines
@@ -202,9 +202,9 @@ class SyncService {
     // Scope-Filterung für Termine (siehe _writeLocal, Fall
     // 'calendar_events') braucht bereits bekannte, lokal gespeicherte
     // Gruppen, um "Sync" korrekt zu erkennen.
-    const all = [
+        const all = [
       'arbeitszeiten', 'schedule', 'fahrten', 'notes', 'events',
-      'colleagues', 'tasks', 'event_groups', 'calendar_events', 'vehicle_memory',
+      'colleagues', 'dayplans', 'tasks', 'event_groups', 'calendar_events', 'vehicle_memory',
     ];
     if (!_isReadOnly) return all;
     // Im Lesemodus grundsätzlich isoliert (kein Listener) — AUSSER der
@@ -290,11 +290,23 @@ class SyncService {
     await _push('fahrten', monthKey, data);
   }
 
-  Future<void> pushNote(String dateKey) async {
+    Future<void> pushNote(String dateKey) async {
     if (_token == null) return;
     final box = Hive.box('einstellungen');
     final data = box.get('schedule_note_$dateKey');
     await _push('notes', dateKey, data);
+  }
+
+  /// NEU: Tagesplan eines Tages (Hive-Key 'dayplan_yyyy-MM-dd', JSON-String).
+  /// Leerer Plan = Hive-Key gelöscht -> Dokument wird remote gelöscht.
+  Future<void> pushDayPlan(String dateKey) async {
+    if (_token == null || _isReadOnly) return;
+    final data = Hive.box('einstellungen').get('dayplan_$dateKey');
+    if (data == null) {
+      await _delete('dayplans', dateKey);
+    } else {
+      await _push('dayplans', dateKey, data);
+    }
   }
 
   Future<void> pushColleagues(String monthKey) async {
@@ -619,6 +631,20 @@ Future<void> _clearCalendarSyncverMeta() async {
     final keptGroups = groups.where((g) => _ownerOf('event_groups', g.key) != foreignRole).toList();
     if (keptGroups.isNotEmpty && keptGroups.length != groups.length) {
       EventGroupStore.applyRemote(keptGroups);
+    }
+
+    // NEU: Tagespläne, die zuletzt vom jeweils anderen Gerät geschrieben
+    // wurden, entfernen — eigene bleiben erhalten.
+    {
+      final planBox = Hive.box('einstellungen');
+      for (final k in planBox.keys.toList()) {
+        final s = k.toString();
+        if (!s.startsWith('dayplan_')) continue;
+        final id = s.substring('dayplan_'.length);
+        if (_ownerOf('dayplans', id) == foreignRole) {
+          await planBox.delete(k);
+        }
+      }
     }
 
     // NEU: Ein Kopiergerät (reader) hat Dienstplan, Fahrtenbuch, Notizen,
@@ -985,7 +1011,32 @@ Future<void> _clearCalendarSyncverMeta() async {
 
     // ── Schritt 5: lokal-neue Aufgaben (noch nicht remote vorhanden) als
     // Vorschlag markieren — bereits remote vorhandene bleiben unberührt.
-    if (!_isReadOnly) {
+        if (!_isReadOnly) {
+      // NEU: Tagespläne, die das Original noch nicht kennt, hochladen.
+      // Tage, die remote schon existieren, behalten den Stand des Originals
+      // (wurde im Pull eben übernommen). Nur wenn der Abruf geklappt hat,
+      // sonst würde alles blind überschrieben.
+      Set<String> remotePlanIds = {};
+      var planIdsLoaded = false;
+      try {
+        final snap = await _db.collection('syncData').doc(token).collection('dayplans')
+            .get().timeout(const Duration(seconds: 8));
+        remotePlanIds = snap.docs.map((d) => d.id).toSet();
+        planIdsLoaded = true;
+      } catch (e) {
+        debugPrint('$_tag: Remote-Dayplan-IDs Abruf Fehler: $e');
+      }
+      if (planIdsLoaded) {
+        for (final key in settingsBox.keys.toList()) {
+          final k = key.toString();
+          if (!k.startsWith('dayplan_')) continue;
+          final id = k.substring('dayplan_'.length);
+          if (!remotePlanIds.contains(id)) {
+            await _push('dayplans', id, settingsBox.get(key));
+          }
+        }
+      }
+
       Set<String> remoteTaskIds = {};
       try {
         final snap = await _db.collection('syncData').doc(token).collection('tasks')

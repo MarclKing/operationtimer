@@ -16,6 +16,8 @@ import '../services/sync_service.dart';
 import 'tasks_screen.dart' show TaskStore, Task;
 import '../services/spoken_task_parser.dart';
 import '../utils/time_rounding.dart';
+import '../widgets/day_plan.dart';
+import '../widgets/location_actions.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HOME SCREEN — News-App-Style Dashboard
@@ -72,6 +74,7 @@ bool _isRefreshingWeather = false;
     super.initState();
     WidgetsBinding.instance.addObserver(this); 
     TaskStore.changesSignal.addListener(_onTasksChangedExternally);
+    SyncService.instance.scheduleDataChanged.addListener(_onPlanSync);
     _selectedDate = widget.selectedDate;
     _now = DateTime.now();
 
@@ -150,6 +153,7 @@ void dispose() {
   WidgetsBinding.instance.removeObserver(this);
   WeatherService.instance.refreshSignal.removeListener(_onWeatherInvalidated);
   TaskStore.changesSignal.removeListener(_onTasksChangedExternally);
+  SyncService.instance.scheduleDataChanged.removeListener(_onPlanSync);
   _greetingCtrl.dispose();
   super.dispose();
 }
@@ -174,6 +178,16 @@ void didChangeAppLifecycleState(AppLifecycleState state) {
     if (oldWidget.selectedDate != widget.selectedDate) {
       setState(() => _selectedDate = widget.selectedDate);
     }
+  }
+
+  void _onPlanSync() {
+    if (mounted) setState(() {});
+  }
+
+  /// Alle Ereignisse von heute (chronologisch). Welches vorne liegt, entscheidet der Stapel.
+  List<DayPlanItem> _getTodayEvents() {
+    final key = DateFormat('yyyy-MM-dd').format(_now);
+    return DayPlanStore.load(key);
   }
 
   /// Wird von außen (MainScreen) gesetzt, um benachrichtigt zu werden,
@@ -323,7 +337,7 @@ Future<void> _showDuplicateDialog(ParsedSpokenTask parsed, String logRef) async 
   }
 
   /// Offene Tasks (max. 3, die nächsten nach Deadline)
-  List<Task> _getUpcomingTasks() {
+  List<Task> _getUpcomingTasks({int limit = 7}) {
     final all = TaskStore.loadAll();
     final open = all.where((t) => !t.done).toList();
     int byDue(Task a, Task b) {
@@ -334,7 +348,7 @@ Future<void> _showDuplicateDialog(ParsedSpokenTask parsed, String logRef) async 
     }
     final urgent = open.where((t) => t.isUrgent).toList()..sort(byDue);
     final rest = open.where((t) => !t.isUrgent).toList()..sort(byDue);
-    return [...urgent, ...rest].take(7).toList();
+    return [...urgent, ...rest].take(limit).toList();
   }
 
   bool get _hasScheduleThisMonth {
@@ -367,8 +381,11 @@ Future<void> _showDuplicateDialog(ParsedSpokenTask parsed, String logRef) async 
     final skin = AppTheme.of(context);
     final todayShift = _getTodayShift();
     final upcomingShifts = _getUpcomingShifts();
-    final upcomingTasks = _getUpcomingTasks();
-    final bottomNavHeight = 70.0 + MediaQuery.of(context).padding.bottom;
+    final todayEvents = _getTodayEvents();
+    final screenH = MediaQuery.sizeOf(context).height;
+    final stackDepth = screenH >= 900 ? 3 : (screenH >= 800 ? 2 : 1);
+    final upcomingTasks = _getUpcomingTasks(limit: todayEvents.isEmpty ? 7 : 2);
+    final bottomNavHeight = 70.0 + MediaQuery.paddingOf(context).bottom;
 
     
 final box = Hive.box('einstellungen');
@@ -538,6 +555,13 @@ final box = Hive.box('einstellungen');
             ],
           ),
         ),
+
+        // ── Ereignis-Stapel (nur heute, nur wenn vorhanden) ──
+        if (todayEvents.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
+            child: _EventStackKachel(skin: skin, items: todayEvents, now: _now, depth: stackDepth),
+          ),
 
         // ── Aufgaben-Kachel: wächst bis max. zur Navbar, scrollt intern ──
         if (upcomingTasks.isNotEmpty)
@@ -2403,5 +2427,324 @@ extension _StringExt on String {
   String capitalize() {
     if (isEmpty) return this;
     return '${this[0].toUpperCase()}${substring(1)}';
+  }
+}
+// ─────────────────────────────────────────────────────────────────────────────
+// EREIGNIS-STAPEL (heutige Ereignisse, ein Wisch = eine Karte weiter)
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _EventStackKachel extends StatefulWidget {
+  final AppSkin skin;
+  final List<DayPlanItem> items;
+  final DateTime now;
+  final int depth;
+  const _EventStackKachel({
+    required this.skin,
+    required this.items,
+    required this.now,
+    required this.depth,
+  });
+
+  @override
+  State<_EventStackKachel> createState() => _EventStackKachelState();
+}
+
+class _EventStackKachelState extends State<_EventStackKachel> with SingleTickerProviderStateMixin {
+  static const double _cardH = 82;
+  static const double _peek = 8;
+  static const double _inset = 8;
+
+  late final AnimationController _ctrl;
+  int _sel = 0;
+  int _lastAuto = -1;
+  String _lastSig = '';
+  int _tok = 0;
+  double _dir = 1;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 320));
+    _syncSelection();
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  String _sig(List<DayPlanItem> l) => l.map((e) => '${e.id}@${e.start.millisecondsSinceEpoch}').join('|');
+
+  /// Das nächste anstehende Ereignis; sind alle vorbei, das letzte.
+  int _autoIdx() {
+    final n = widget.items.length;
+    final w = widget.now;
+    final nowMin = DateTime(w.year, w.month, w.day, w.hour, w.minute);
+    for (int i = 0; i < n; i++) {
+      if (!widget.items[i].start.isBefore(nowMin)) return i;
+    }
+    return n - 1;
+  }
+
+  /// Automatisch nach vorn holen, sobald sich das "nächste Ereignis" oder die Liste ändert.
+  /// Dazwischen bleibt die per Wisch gewählte Karte vorn.
+  void _syncSelection() {
+    final n = widget.items.length;
+    if (n == 0) {
+      _sel = 0;
+      return;
+    }
+    final sig = _sig(widget.items);
+    final auto = _autoIdx();
+    if (sig != _lastSig || auto != _lastAuto) {
+      _lastSig = sig;
+      _lastAuto = auto;
+      _sel = auto;
+      _tok++;
+      if (_ctrl.value != 0) _ctrl.value = 0;
+    }
+    if (_sel > n - 1) _sel = n - 1;
+  }
+
+  @override
+  void didUpdateWidget(covariant _EventStackKachel old) {
+    super.didUpdateWidget(old);
+    _syncSelection();
+  }
+
+  Future<void> _advance(int dir) async {
+    final target = _sel + dir;
+    if (target < 0 || target >= widget.items.length || _ctrl.isAnimating) return;
+    HapticFeedback.selectionClick();
+    _dir = dir.toDouble();
+    final tok = ++_tok;
+    await _ctrl.forward(from: 0);
+    if (!mounted || tok != _tok) return;
+    setState(() {
+      _sel = target;
+      _ctrl.value = 0;
+    });
+  }
+
+  Widget _slot(DayPlanItem it, double p,
+      {double opacity = 1, double dy = 0, double angle = 0, bool hl = false}) {
+    return Positioned(
+      left: _inset * p,
+      right: _inset * p,
+      top: _peek * p,
+      height: _cardH,
+      child: Opacity(
+        opacity: opacity.clamp(0.0, 1.0).toDouble(),
+        child: Transform.translate(
+          offset: Offset(0, dy),
+          child: Transform.rotate(
+            angle: angle,
+            child: _EventCard(skin: widget.skin, item: it, highlight: hl),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Punkt-Indikator (wie bei Apple): wo im Stapel bin ich, wie viele davor/danach.
+  Widget _dots() {
+    final skin = widget.skin;
+    final n = widget.items.length;
+    const maxDots = 7;
+    var start = 0;
+    var end = n;
+    if (n > maxDots) {
+      start = (_sel - maxDots ~/ 2).clamp(0, n - maxDots).toInt();
+      end = start + maxDots;
+    }
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (int i = start; i < end; i++)
+          Builder(builder: (_) {
+            final active = i == _sel;
+            final edge = n > maxDots && ((i == start && start > 0) || (i == end - 1 && end < n));
+            final size = active ? 8.0 : (edge ? 4.0 : 6.0);
+            return AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              margin: const EdgeInsets.symmetric(vertical: 3),
+              width: size,
+              height: size,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: active ? skin.surface(0.70) : skin.surface(0.18),
+              ),
+            );
+          }),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final items = widget.items;
+    final n = items.length;
+    if (n == 0) return const SizedBox.shrink();
+    final v = n < widget.depth ? n : widget.depth;
+    DayPlanItem? at(int i) => (i >= 0 && i < n) ? items[i] : null;
+
+    final stack = GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onVerticalDragEnd: (d) {
+        final vy = d.primaryVelocity ?? 0;
+        if (vy < -120) {
+          _advance(1);
+        } else if (vy > 120) {
+          _advance(-1);
+        }
+      },
+      child: SizedBox(
+        height: _cardH + _peek * (v - 1),
+        child: AnimatedBuilder(
+          animation: _ctrl,
+          builder: (context, _) {
+            final t = Curves.easeOutCubic.transform(_ctrl.value);
+            final animating = _ctrl.value > 0;
+            final children = <Widget>[];
+
+            if (!animating) {
+              for (int k = v - 1; k >= 0; k--) {
+                final it = at(_sel + k);
+                if (it != null) children.add(_slot(it, k.toDouble(), hl: k == 0));
+              }
+            } else if (_dir > 0) {
+              // vorwärts: vorderste Karte wischt nach links weg, der Rest rückt nach
+              final enter = at(_sel + v);
+              if (enter != null) children.add(_slot(enter, v - t, opacity: t));
+              for (int k = v - 1; k >= 1; k--) {
+                final it = at(_sel + k);
+                if (it != null) children.add(_slot(it, k - t));
+              }
+              children.add(_slot(items[_sel], 0,
+                  hl: true, opacity: 1 - t, dy: -_cardH * 1.3 * t));
+            } else {
+              // zurück: vorherige Karte kommt von links nach vorn, der Rest rutscht nach hinten
+              for (int k = v - 1; k >= 0; k--) {
+                final it = at(_sel + k);
+                if (it != null) children.add(_slot(it, k + t, opacity: k == v - 1 ? 1 - t : 1));
+              }
+              children.add(_slot(items[_sel - 1], 0,
+                  hl: true, opacity: t, dy: -_cardH * 1.3 * (1 - t)));
+            }
+            return Stack(clipBehavior: Clip.none, children: children);
+          },
+        ),
+      ),
+    );
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(child: stack),
+        if (n > 1) ...[
+          const SizedBox(width: 10),
+          _dots(),
+        ],
+      ],
+    );
+  }
+}
+
+class _EventCard extends StatelessWidget {
+  final AppSkin skin;
+  final DayPlanItem item;
+  final bool highlight;
+  const _EventCard({required this.skin, required this.item, this.highlight = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final it = item;
+    final fmt = DateFormat('HH:mm');
+    // Deckend, damit die Karten im Stapel nicht durcheinander scheinen
+    final glass = skin.isLight
+        ? Colors.white.withValues(alpha: skin.glassOpacity)
+        : skin.bgCard.withValues(alpha: skin.glassOpacity);
+    final solid = Color.alphaBlend(glass, skin.bgBase);
+
+    final loc = it.loc;
+    final name = (loc?.name ?? '').trim();
+    var addr = loc?.singleLine ?? '';
+    if (addr.isEmpty && loc != null && loc.hasCoords) {
+      addr = '${loc.lat!.toStringAsFixed(5)}, ${loc.lng!.toStringAsFixed(5)}';
+    }
+    if (addr.isEmpty) addr = it.location.trim();
+    // Zeile 2: Ortsname, wenn vorhanden, sonst die Adresse
+    final placeLine = name.isNotEmpty ? name : addr;
+    final canNav = placeLine.isNotEmpty && MapsNavigator.canNavigate(loc, it.location);
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: solid,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: highlight ? skin.primary.withValues(alpha: 0.45) : skin.glassBorder,
+          width: highlight ? 1.4 : 1.0,
+        ),
+        boxShadow: [BoxShadow(color: skin.glassShadow, blurRadius: 12, offset: const Offset(0, 4))],
+      ),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+        // Uhrzeit untereinander
+        Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(fmt.format(it.start), style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: skin.primary)),
+          const SizedBox(height: 3),
+          Text(fmt.format(it.end), style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500, color: skin.surface(0.42))),
+        ]),
+        const SizedBox(width: 14),
+        // Titel groß, darunter Ort/Adresse in Weiß
+        Expanded(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(it.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: skin.textPrimary, height: 1.2)),
+              if (placeLine.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Row(children: [
+                  Icon(Icons.place_outlined, size: 13, color: skin.textPrimary.withValues(alpha: 0.7)),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(placeLine,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500, color: skin.textPrimary, height: 1.2)),
+                  ),
+                ]),
+              ],
+            ],
+          ),
+        ),
+        // Navigieren
+        if (canNav) ...[
+          const SizedBox(width: 10),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () {
+              HapticFeedback.mediumImpact();
+              MapsNavigator.navigate(context, skin: skin, loc: it.loc, fallbackText: it.location);
+            },
+            child: Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: skin.primary.withValues(alpha: skin.isLight ? 0.13 : 0.22),
+                shape: BoxShape.circle,
+                border: Border.all(color: skin.primary.withValues(alpha: skin.isLight ? 0.28 : 0.45), width: 1.5),
+              ),
+              child: Icon(Icons.navigation_outlined, size: 18, color: skin.primary),
+            ),
+          ),
+        ],
+      ]),
+    );
   }
 }

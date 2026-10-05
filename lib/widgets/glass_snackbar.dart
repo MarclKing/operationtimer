@@ -1,3 +1,4 @@
+import 'glass_kit.dart';
 import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
@@ -185,7 +186,7 @@ class _GlassSnackOverlayState extends State<_GlassSnackOverlay>
 
   @override
   Widget build(BuildContext context) {
-    final bottomPad = MediaQuery.of(context).padding.bottom;
+    final bottomPad = MediaQuery.paddingOf(context).bottom;
     return Positioned(
       left: 16,
       right: 16,
@@ -212,7 +213,7 @@ class _GlassSnackOverlayState extends State<_GlassSnackOverlay>
             color: Colors.transparent,
             child: ClipRRect(
   borderRadius: _kSnackRadius,
-  child: BackdropFilter(
+  child: PlatformBackdropFilter(
     filter: _kSnackBlur,
     child: Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),

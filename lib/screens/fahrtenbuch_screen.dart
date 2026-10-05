@@ -757,7 +757,7 @@ _selectionBarAnim = CurvedAnimation(
       enableDrag: true,
       useSafeArea: false,
       builder: (_) => Padding(
-        padding: EdgeInsets.only(top: MediaQuery.of(context).size.height * 0.08),
+        padding: EdgeInsets.only(top: MediaQuery.sizeOf(context).height * 0.08),
         child: _FahrtEintragenSheet(
           skin: skin, draft: _draft, isEdit: false,
           onSave: (fahrt, {editingId}) {
@@ -814,7 +814,7 @@ _selectionBarAnim = CurvedAnimation(
       enableDrag: true,
       useSafeArea: false,
       builder: (_) => Padding(
-        padding: EdgeInsets.only(top: MediaQuery.of(context).size.height * 0.08),
+        padding: EdgeInsets.only(top: MediaQuery.sizeOf(context).height * 0.08),
         child: _FahrtEintragenSheet(
           skin: skin,
           draft: _draft,
@@ -900,7 +900,7 @@ _selectionBarAnim = CurvedAnimation(
       enableDrag: true,
       useSafeArea: false,
       builder: (_) => Padding(
-        padding: EdgeInsets.only(top: MediaQuery.of(context).size.height * 0.08),
+        padding: EdgeInsets.only(top: MediaQuery.sizeOf(context).height * 0.08),
         child: _FahrtEintragenSheet(
           skin: skin, draft: editDraft, isEdit: true, editingId: fahrt.id,
           onSave: (updatedFahrt, {editingId}) {
@@ -1045,7 +1045,7 @@ Widget build(BuildContext context) {
   final skin = AppTheme.of(context);
   final fahrten = _getAllFahrten();
   final groupedItems = _buildGroupedItems(fahrten);
-  final bottomNavHeight = 70.0 + MediaQuery.of(context).padding.bottom;
+  final bottomNavHeight = 70.0 + MediaQuery.paddingOf(context).bottom;
   final draftBannerHeight = 56.0;
   final extraBottomOffset = _draftVisible ? draftBannerHeight + 8 : 48.0;
 
@@ -2754,7 +2754,7 @@ class _FahrtEintragenSheetState extends State<_FahrtEintragenSheet> {
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (_) => Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+        padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
         // ── GlassSheet aus glass_kit.dart ──
         child: GlassSheet(
           skin: skin,
@@ -3040,7 +3040,7 @@ class _FahrtEintragenSheetState extends State<_FahrtEintragenSheet> {
       isScrollControlled: true,
       useSafeArea: false,
       builder: (_) => Padding(
-        padding: EdgeInsets.only(top: MediaQuery.of(context).size.height * 0.12),
+        padding: EdgeInsets.only(top: MediaQuery.sizeOf(context).height * 0.12),
         child: _FahrtTypPickerSheet(
           skin: skin,
           currentCode: _fahrtTypCode,
@@ -3078,7 +3078,7 @@ class _FahrtEintragenSheetState extends State<_FahrtEintragenSheet> {
       child: GestureDetector(
         onVerticalDragUpdate: (d) { if (d.delta.dy > 15) FocusScope.of(context).unfocus(); },
         child: Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+          padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
           child: ClipRRect(
             borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
             child: PlatformBackdropFilter(

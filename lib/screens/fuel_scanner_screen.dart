@@ -423,7 +423,7 @@ class _FuelScannerScreenState extends State<FuelScannerScreen>
               left: 0,
               right: 0,
               child: Container(
-                height: MediaQuery.of(context).padding.top + 80,
+                height: MediaQuery.paddingOf(context).top + 80,
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
@@ -439,7 +439,7 @@ class _FuelScannerScreenState extends State<FuelScannerScreen>
 
             // Header
             Positioned(
-              top: MediaQuery.of(context).padding.top + 16,
+              top: MediaQuery.paddingOf(context).top + 16,
               left: 16,
               right: 16,
               child: Row(
@@ -509,7 +509,7 @@ class _FuelScannerScreenState extends State<FuelScannerScreen>
             // Galerie-Button unten (nur wenn kein Confirm)
             if (!_showConfirm)
               Positioned(
-                bottom: MediaQuery.of(context).padding.bottom + 40,
+                bottom: MediaQuery.paddingOf(context).bottom + 40,
                 left: 0,
                 right: 0,
                 child: Column(
@@ -745,7 +745,7 @@ class _ConfirmOverlay extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: EdgeInsets.fromLTRB(
-          24, 28, 24, MediaQuery.of(context).padding.bottom + 32),
+          24, 28, 24, MediaQuery.paddingOf(context).bottom + 32),
       decoration: BoxDecoration(
         color: Colors.black.withOpacity(0.85),
         borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),

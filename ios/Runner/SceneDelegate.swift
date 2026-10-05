@@ -105,8 +105,14 @@ if url.scheme == "optimes" && url.absoluteString.contains("fahrtenbuch/neue-fahr
         if url.scheme == "optimes" {
             let urlString = url.absoluteString
 
-            if urlString == "optimes://shared-pdf" {
+                        if urlString == "optimes://shared-pdf" {
                 checkPendingPdf()
+                return
+            }
+
+            // NEU: Text / Link aus Share Extension (Maps → Tagesplan)
+            if urlString == "optimes://shared-text" {
+                checkPendingText()
                 return
             }
 
@@ -145,6 +151,19 @@ if url.scheme == "optimes" && url.absoluteString.contains("fahrtenbuch/neue-fahr
     )
     appDelegate.checkAndSendPendingPdf(navChannel: navChannel)
 }
+
+    private func checkPendingText() {
+        guard let controller = window?.rootViewController as? FlutterViewController,
+              let appDelegate = UIApplication.shared.delegate as? AppDelegate else {
+            print("❌ SceneDelegate: Kein FlutterViewController oder AppDelegate verfügbar (Text)")
+            return
+        }
+        let navChannel = FlutterMethodChannel(
+            name: "de.marcel.optimes/navigation",
+            binaryMessenger: controller.binaryMessenger
+        )
+        appDelegate.checkAndSendPendingText(navChannel: navChannel)
+    }
 
     private func sendPdfToFlutter(path: String, fileName: String) {
         print("📤 Sende PDF an Flutter: \(fileName)")

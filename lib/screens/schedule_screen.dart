@@ -1,4 +1,5 @@
 ﻿import 'dart:ui';
+import '../widgets/location_actions.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
@@ -21,6 +22,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'tasks_screen.dart' show TaskStore;
 import '../services/sync_service.dart';
 import 'calendar_view.dart' show ShiftLookup;
+import '../widgets/day_plan.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Entfernt: extension _AppSkinGlass   → jetzt AppSkinGlass in glass_kit.dart
@@ -826,7 +828,7 @@ class _ColleagueSearchSheetState extends State<ColleagueSearchSheet> {
     return GlassSheet(
       skin: skin,
       child: Padding(
-        padding: EdgeInsets.fromLTRB(20, 0, 20, 20 + MediaQuery.of(context).padding.bottom),
+        padding: EdgeInsets.fromLTRB(20, 0, 20, 20 + MediaQuery.paddingOf(context).bottom),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1187,6 +1189,7 @@ class ScheduleScreenState extends State<ScheduleScreen> {
     if (widget.readOnly) return;
     final skin = AppTheme.of(context);
     closeOverlays();
+    FocusManager.instance.primaryFocus?.unfocus();
     await showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -1346,7 +1349,7 @@ class ScheduleScreenState extends State<ScheduleScreen> {
     final displayMonth = isForeignView ? (_viewingColleagueMonth ?? _selectedMonth) : _selectedMonth;
     final monthName = DateFormat('MMMM yyyy', 'de').format(displayMonth);
     final days = _daysInMonth;
-    final bottomNavHeight = 70.0 + MediaQuery.of(context).padding.bottom;
+    final bottomNavHeight = 70.0 + MediaQuery.paddingOf(context).bottom;
     final monthKey = DateFormat('yyyy-MM').format(_selectedMonth);
     final changedDays = isForeignView ? <String>{} : _ChangedDays.load(monthKey);
 
@@ -1570,6 +1573,7 @@ class ScheduleScreenState extends State<ScheduleScreen> {
                                       dayCardDragging: widget.dayCardDragging,
                                       eventText: _eventsData[key],
                                       hasTask: !isForeignView && entry != null && TaskStore.hasOpenTaskOnDay(day),
+                                      hasPlan: !isForeignView && DayPlanStore.hasItems(key),
                                       foreignMode: isForeignView,
                                       readOnly: widget.readOnly,
                                     ),
@@ -1589,9 +1593,10 @@ class ScheduleScreenState extends State<ScheduleScreen> {
               _NoteOverlay(dateKey: _activeNoteKey!, skin: skin, onClose: _closeNoteOverlay),
 
             if (_colleaguesOverlayVisible && _activeColleaguesKey != null)
-              _ColleaguesOverlay(
+              _DayPlanOverlay(
                 dateKey: _activeColleaguesKey!, skin: skin, onClose: _closeColleaguesOverlay,
                 viewerName: _colleaguesViewerName,
+                onPlanChanged: () { if (mounted) setState(() {}); },
               ),
           ],
         ),
@@ -1767,9 +1772,9 @@ class _NoteOverlayState extends State<_NoteOverlay> with TickerProviderStateMixi
 
   @override
   Widget build(BuildContext context) {
-    final screenH = MediaQuery.of(context).size.height;
-    final keyboardH = MediaQuery.of(context).viewInsets.bottom;
-    final safeTop = MediaQuery.of(context).padding.top;
+    final screenH = MediaQuery.sizeOf(context).height;
+    final keyboardH = MediaQuery.viewInsetsOf(context).bottom;
+    final safeTop = MediaQuery.paddingOf(context).top;
     final cardTop = (safeTop + 56.0).clamp(safeTop + 48.0, screenH * 0.3);
     final maxCardHeight = screenH - cardTop - keyboardH - 32.0;
 
@@ -1904,39 +1909,40 @@ class _NoteOverlayState extends State<_NoteOverlay> with TickerProviderStateMixi
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// KOLLEGEN OVERLAY
+// DAY PLAN OVERLAY (früher: KOLLEGEN OVERLAY)
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _ColleaguesOverlay extends StatefulWidget {
+class _DayPlanOverlay extends StatefulWidget {
   final String dateKey;
   final AppSkin skin;
   final VoidCallback onClose;
-  /// NEU: Wenn gesetzt, wird dieser Name als "isSelf" markiert statt des
-  /// echten App-Nutzers – für die Fremdansicht aus Sicht eines Kollegen.
+  /// Fremdansicht: "ich" ist der gesuchte Kollege. Dann kein Tagesplan (ist persönlich).
   final String? viewerName;
-  const _ColleaguesOverlay({
-    required this.dateKey, required this.skin, required this.onClose, this.viewerName,
+  final VoidCallback? onPlanChanged;
+  const _DayPlanOverlay({
+    required this.dateKey, required this.skin, required this.onClose,
+    this.viewerName, this.onPlanChanged,
   });
 
   @override
-  State<_ColleaguesOverlay> createState() => _ColleaguesOverlayState();
+  State<_DayPlanOverlay> createState() => _DayPlanOverlayState();
 }
 
-class _ColleaguesOverlayState extends State<_ColleaguesOverlay> with TickerProviderStateMixin {
+class _DayPlanOverlayState extends State<_DayPlanOverlay> with TickerProviderStateMixin {
   late AnimationController _ctrl;
   late Animation<double> _scaleAnim;
   late Animation<double> _opacityAnim;
-  bool _expanded = false;
-  late AnimationController _expandCtrl;
-  late Animation<double> _expandAnim;
   Map<String, String> _colleagues = {};
   String? _eventText;
-  List<String> _ownShiftParts = []; // eigener (oder Fremd-)Dienst des Tages, gesplittet an "/"
-  String _ownName = '';             // eigener (oder Fremd-)Anzeigename
+  List<String> _ownShiftParts = [];
+  String _ownName = '';
   String? _debugLog;
   bool _debugLogCopied = false;
-  double _dragStartGlobalY = 0.0;
-  bool _isDraggingExpand = false;
+  List<DayPlanItem> _planItems = [];
+  String? _openSwipedPlanId;
+
+  bool get _showPlan => widget.viewerName == null;
+  AppSkin get skin => widget.skin;
 
   @override
   void initState() {
@@ -1944,20 +1950,34 @@ class _ColleaguesOverlayState extends State<_ColleaguesOverlay> with TickerProvi
     _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 320));
     _scaleAnim = CurvedAnimation(parent: _ctrl, curve: Curves.easeOutBack, reverseCurve: Curves.easeInBack);
     _opacityAnim = CurvedAnimation(parent: _ctrl, curve: Curves.easeOut, reverseCurve: Curves.easeIn);
-    _expandCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 380));
-    _expandAnim = CurvedAnimation(parent: _expandCtrl, curve: Curves.easeOutCubic, reverseCurve: Curves.easeInCubic);
+    _planItems = DayPlanStore.load(widget.dateKey);
+    SyncService.instance.scheduleDataChanged.addListener(_onSyncChanged);
     _ctrl.forward();
     _loadData();
   }
 
+  void _onSyncChanged() {
+    if (!mounted) return;
+    _loadData();
+    setState(() => _planItems = DayPlanStore.load(widget.dateKey));
+  }
+
   @override
-  void dispose() { _ctrl.dispose(); _expandCtrl.dispose(); super.dispose(); }
+  void dispose() {
+    SyncService.instance.scheduleDataChanged.removeListener(_onSyncChanged);
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  String get _dateLabel {
+    final d = DateTime.tryParse(widget.dateKey);
+    return d == null ? '' : DateFormat('EEE, dd. MMMM', 'de').format(d);
+  }
 
   void _loadData() {
     final box = Hive.box('einstellungen');
     final monthKey = widget.dateKey.substring(0, 7);
 
-    // ── Kollegen zuerst laden (wird für beide Fälle gebraucht) ──
     Map<String, String> colleagues = {};
     final raw = box.get('colleagues_$monthKey');
     if (raw is String) {
@@ -1972,14 +1992,11 @@ class _ColleaguesOverlayState extends State<_ColleaguesOverlay> with TickerProvi
 
     String ownShift;
     String ownDisplayName;
-
     if (widget.viewerName != null) {
-      // ── Fremdansicht: "ich" bin der gesuchte Kollege ──
       ownDisplayName = widget.viewerName!;
       ownShift = colleagues[widget.viewerName] ?? '';
-      colleagues.remove(widget.viewerName); // nicht doppelt in der generischen Liste anzeigen
+      colleagues.remove(widget.viewerName);
     } else {
-      // ── Normalfall: echter App-Nutzer ──
       final scheduleRaw = box.get('schedule_$monthKey');
       ownShift = '';
       if (scheduleRaw is Map) { ownShift = (scheduleRaw[widget.dateKey] ?? '').toString(); }
@@ -2014,21 +2031,78 @@ class _ColleaguesOverlayState extends State<_ColleaguesOverlay> with TickerProvi
   }
 
   void _close() => _ctrl.reverse().then((_) => widget.onClose());
-  void _expand() { setState(() => _expanded = true); _expandCtrl.animateTo(1.0, duration: const Duration(milliseconds: 380), curve: Curves.easeOutCubic); }
-  void _collapse() { _expandCtrl.animateTo(0.0, duration: const Duration(milliseconds: 300), curve: Curves.easeInCubic).then((_) => setState(() => _expanded = false)); }
 
-  void _onDragStart(DragStartDetails d) { _dragStartGlobalY = d.globalPosition.dy; _isDraggingExpand = true; }
-  void _onDragUpdate(DragUpdateDetails d) {}
-  void _onDragEnd(DragEndDetails d) {
-    if (!_isDraggingExpand) return;
-    _isDraggingExpand = false;
-    final dy = d.globalPosition.dy - _dragStartGlobalY;
-    final vel = d.primaryVelocity ?? 0;
-    if ((dy > 30 || vel > 300) && !_expanded) { _expand(); }
-    else if ((dy < -30 || vel < -300) && _expanded) { _collapse(); }
+  // ── Tagesplan: Laden / Hinzufügen / Bearbeiten ──────────────────────────
+  void _reloadPlan() {
+    if (!mounted) return;
+    setState(() {
+      _planItems = DayPlanStore.load(widget.dateKey);
+    });
+    widget.onPlanChanged?.call(); // Tageskarte bekommt ggf. das Plan-Icon
   }
 
-  AppSkin get skin => widget.skin;
+  Future<void> _openItemSheet({DayPlanItem? existing}) async {
+    final day = DateTime.tryParse(widget.dateKey) ?? DateTime.now();
+    FocusManager.instance.primaryFocus?.unfocus();
+    await showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      useSafeArea: false,
+      constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.92),
+      builder: (_) => DayPlanItemSheet(
+        skin: skin,
+        day: day,
+        existing: existing,
+        initialStart: existing == null ? DayPlanStore.suggestedStart(widget.dateKey, day) : null,
+        onSave: (item) async {
+          await DayPlanStore.upsert(widget.dateKey, item);
+          _reloadPlan();
+        },
+        onDelete: existing == null
+            ? null
+            : () async {
+                await DayPlanStore.delete(widget.dateKey, existing.id);
+                _reloadPlan();
+              },
+      ),
+    );
+  }
+
+  // ── Sheet "Alle Kollegen" (früher: ausgeklappter Bereich) ───────────────
+  void _openAllColleagues() {
+    HapticFeedback.selectionClick();
+    FocusManager.instance.primaryFocus?.unfocus();
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      useSafeArea: false,
+      constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.85),
+      builder: (sheetCtx) => GlassSheet(
+        skin: skin,
+        child: SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
+          padding: EdgeInsets.fromLTRB(20, 0, 20, 20 + MediaQuery.paddingOf(sheetCtx).bottom),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(child: SheetHandle(skin: skin)),
+              const SizedBox(height: 14),
+              Row(children: [
+                Icon(Icons.people_outline, color: skin.primary, size: 20),
+                const SizedBox(width: 10),
+                Text('Kollegen', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: skin.textPrimary)),
+              ]),
+              const SizedBox(height: 16),
+              _buildExpandedContent(),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   List<({String name, bool isSelf})> _namesForShifts(List<String> shiftCodes) {
     final result = <({String name, bool isSelf})>[];
@@ -2043,7 +2117,6 @@ class _ColleaguesOverlayState extends State<_ColleaguesOverlay> with TickerProvi
         result.add((name: name, isSelf: false));
       }
     }
-    // eigenen (oder Fremd-)Dienst nahtlos mit einsortieren
     if (_ownName.isNotEmpty) {
       for (final code in upperCodes) {
         if (_ownShiftParts.contains(code)) { result.add((name: _ownName, isSelf: true)); break; }
@@ -2108,6 +2181,72 @@ class _ColleaguesOverlayState extends State<_ColleaguesOverlay> with TickerProvi
     );
   }
 
+List<Widget> _pfWidgets() {
+  final isChrome = skin.key == 'chrome';
+  final workColor = isChrome ? const Color(0xFFCCCCCC) : const Color(0xFF5B8DEF);
+  final fColor = isChrome ? const Color(0xFFAAAAAA) : const Color(0xFF5B8DEF);
+  const vkColor = Color(0xFFEF5B5B);
+  const gebColor = Color(0xFFFF6B9D);
+
+  final p1Names = _namesForShifts(['P1']);
+  final p2Names = _namesForShifts(['P2']);
+  final pNames = _namesForShifts(['P']);
+  final vkNames = _namesForShifts(['VK']);
+  final f1Names = _namesForShifts(['F1']);
+  final fNames = _namesForShifts(['F']);
+  final f2Names = _namesForShifts(['F2']);
+  final gebNames = _birthdayNames();
+
+  final w = <Widget>[];
+  void gap() { if (w.isNotEmpty) w.add(const SizedBox(height: 10)); }
+
+  if (p1Names.isNotEmpty || pNames.isNotEmpty || p2Names.isNotEmpty) {
+    w.add(_shiftGroup(slots: [
+      if (p1Names.isNotEmpty) (label: 'P1', names: p1Names, color: workColor),
+      if (pNames.isNotEmpty) (label: 'P', names: pNames, color: workColor),
+      if (p2Names.isNotEmpty) (label: 'P2', names: p2Names, color: workColor),
+    ]));
+  }
+  if (vkNames.isNotEmpty) {
+    gap();
+    w.add(_shiftGroup(slots: [(label: 'VK', names: vkNames, color: vkColor)]));
+  }
+  if (f1Names.isNotEmpty || fNames.isNotEmpty || f2Names.isNotEmpty) {
+    gap();
+    w.add(_shiftGroup(slots: [
+      if (f1Names.isNotEmpty) (label: 'F1', names: f1Names, color: fColor),
+      if (fNames.isNotEmpty) (label: 'F', names: fNames, color: fColor),
+      if (f2Names.isNotEmpty) (label: 'F2', names: f2Names, color: fColor),
+    ]));
+  }
+  if (gebNames.isNotEmpty) {
+    gap();
+    w.add(ClipRRect(
+      borderRadius: BorderRadius.circular(10),
+      child: PlatformBackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: skin.isLight ? Colors.white.withValues(alpha: skin.glassOpacity) : skin.bgCard.withValues(alpha: skin.glassOpacity),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: skin.glassBorder, width: 1.0),
+          ),
+          child: Row(children: [
+            const Text('🎂', style: TextStyle(fontSize: 15)),
+            const SizedBox(width: 8),
+            Expanded(child: Text(gebNames.join(', '),
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: gebColor))),
+          ]),
+        ),
+      ),
+    ));
+  }
+  return w;
+}
+
+  /// Inhalt des "Alle Kollegen"-Sheets (= früher der ausgeklappte Bereich,
+  /// nur ohne führende Trennlinie).
   Widget _buildExpandedContent() {
     final isChrome = skin.key == 'chrome';
     final tColor = isChrome ? const Color(0xFFCCCCCC) : const Color(0xFF5B8DEF);
@@ -2136,7 +2275,6 @@ class _ColleaguesOverlayState extends State<_ColleaguesOverlay> with TickerProvi
         }
       }
     }
-    // eigene (oder Fremd-)"sonstige" Dienste ebenfalls einmischen
     if (_ownName.isNotEmpty) {
       for (final p in _ownShiftParts) {
         if (!knownShifts.contains(p) && p.isNotEmpty && p != 'LÜ' && p != 'LUE') {
@@ -2150,8 +2288,10 @@ class _ColleaguesOverlayState extends State<_ColleaguesOverlay> with TickerProvi
     final hasFreeGroup = daNames.isNotEmpty || uNames.isNotEmpty || xNames.isNotEmpty;
     final hasOther = otherEntries.isNotEmpty;
 
+    final pf = _pfWidgets();
+
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Padding(padding: const EdgeInsets.symmetric(vertical: 10), child: Divider(color: skin.glassBorder, height: 1)),
+      if (pf.isNotEmpty) ...[...pf, const SizedBox(height: 14)],
       if (_eventText != null && _eventText!.isNotEmpty) ...[
         Row(children: [
           Icon(Icons.flag_rounded, size: 12, color: const Color(0xFFFFB347)),
@@ -2184,31 +2324,110 @@ class _ColleaguesOverlayState extends State<_ColleaguesOverlay> with TickerProvi
     ]);
   }
 
+  // ── Kleine Bausteine ────────────────────────────────────────────────────
+  Widget _sectionLabel(IconData icon, String label) => Row(children: [
+        Icon(icon, size: 11, color: skin.primary),
+        const SizedBox(width: 4),
+        Text(label, style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: skin.primary, letterSpacing: 0.8)),
+      ]);
+
+  BoxDecoration _rowDecoration() => BoxDecoration(
+        color: skin.isLight ? Colors.white.withValues(alpha: skin.glassOpacity) : skin.bgCard.withValues(alpha: skin.glassOpacity),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: skin.glassBorder, width: 1.0),
+        boxShadow: [BoxShadow(color: skin.glassShadow, blurRadius: 12, offset: const Offset(0, 3))],
+      );
+
+  /// Kleine Kachel unter den Kollegen → öffnet das "Alle Kollegen"-Sheet.
+  Widget _allColleaguesTile() => GestureDetector(
+        onTap: _openAllColleagues,
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+          decoration: _rowDecoration(),
+          child: Row(children: [
+            Icon(Icons.people_outline, size: 14, color: skin.primary),
+            const SizedBox(width: 8),
+            Expanded(child: Text('Alle Kollegen', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: skin.textPrimary))),
+            Icon(Icons.chevron_right_rounded, size: 18, color: skin.surface(0.4)),
+          ]),
+        ),
+      );
+
+  Widget _addPlanButton() => GestureDetector(
+        onTap: () { HapticFeedback.lightImpact(); _openItemSheet(); },
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 11),
+          decoration: BoxDecoration(
+            color: skin.primary.withValues(alpha: 0.07),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: skin.primary.withValues(alpha: 0.22)),
+          ),
+          child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            Icon(Icons.add_rounded, size: 17, color: skin.primary),
+            const SizedBox(width: 6),
+            Text('Ereignis hinzufügen', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: skin.primary)),
+          ]),
+        ),
+      );
+
+  Widget _buildDebugLog() {
+    const red = Color(0xFFEF5B5B);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: ClipRRect(borderRadius: BorderRadius.circular(10),
+        child: PlatformBackdropFilter(filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+          child: Container(constraints: const BoxConstraints(maxHeight: 200),
+            decoration: BoxDecoration(color: red.withValues(alpha: 0.07), borderRadius: BorderRadius.circular(10), border: Border.all(color: red.withValues(alpha: 0.28))),
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Padding(padding: const EdgeInsets.fromLTRB(10, 8, 8, 6),
+                child: Row(children: [
+                  Container(padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                    decoration: BoxDecoration(color: red.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(4), border: Border.all(color: red.withValues(alpha: 0.35))),
+                    child: const Text('DEV', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: red, letterSpacing: 0.8))),
+                  const SizedBox(width: 6),
+                  const Expanded(child: Text('Parser-Log', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: red))),
+                  GestureDetector(
+                    onTap: () {
+                      Clipboard.setData(ClipboardData(text: _debugLog!));
+                      setState(() => _debugLogCopied = true);
+                      HapticFeedback.selectionClick();
+                      Future.delayed(const Duration(seconds: 2), () { if (mounted) setState(() => _debugLogCopied = false); });
+                    },
+                    child: AnimatedContainer(duration: const Duration(milliseconds: 200),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(color: _debugLogCopied ? skin.statComplete.withValues(alpha: 0.15) : red.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(7)),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        Icon(_debugLogCopied ? Icons.check_rounded : Icons.copy_outlined, size: 12, color: _debugLogCopied ? skin.statComplete : red),
+                        const SizedBox(width: 3),
+                        Text(_debugLogCopied ? 'Kopiert' : 'Kopieren', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: _debugLogCopied ? skin.statComplete : red)),
+                      ]),
+                    ),
+                  ),
+                ]),
+              ),
+              Divider(height: 1, color: red.withValues(alpha: 0.15)),
+              Flexible(child: SingleChildScrollView(padding: const EdgeInsets.all(10), child: Text(_debugLog!, style: const TextStyle(fontSize: 10, color: red, height: 1.4)))),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final screenH = MediaQuery.of(context).size.height;
-    final keyboardH = MediaQuery.of(context).viewInsets.bottom;
-    final safeTop = MediaQuery.of(context).padding.top;
+    final screenH = MediaQuery.sizeOf(context).height;
+    final safeTop = MediaQuery.paddingOf(context).top;
     final cardTop = (safeTop + 56.0).clamp(safeTop + 48.0, screenH * 0.3);
-    final bottomNavHeight = 70.0 + MediaQuery.of(context).padding.bottom;
-    final maxCardHeight = screenH - cardTop - keyboardH - bottomNavHeight - 16.0;
+    final bottomNavHeight = 70.0 + MediaQuery.paddingOf(context).bottom;
+    final maxCardHeight = screenH - cardTop - bottomNavHeight - 16.0;
 
-    final isChrome = skin.key == 'chrome';
-    final workColor = isChrome ? const Color(0xFFCCCCCC) : const Color(0xFF5B8DEF);
-    final fColor = isChrome ? const Color(0xFFAAAAAA) : const Color(0xFF5B8DEF);
-    const vkColor = Color(0xFFEF5B5B);
-    const gebColor = Color(0xFFFF6B9D);
+    final pfWidgets = _pfWidgets();
+    final hasAny = pfWidgets.isNotEmpty;
 
-    final p1Names = _namesForShifts(['P1']);
-    final p2Names = _namesForShifts(['P2']);
-    final pNames = _namesForShifts(['P']);
-    final vkNames = _namesForShifts(['VK']);
-    final f1Names = _namesForShifts(['F1']);
-    final fNames = _namesForShifts(['F']);
-    final f2Names = _namesForShifts(['F2']);
-    final gebNames = _birthdayNames();
-
-    final hasAny = [p1Names, p2Names, pNames, vkNames, f1Names, fNames, f2Names, gebNames].any((l) => l.isNotEmpty);
     final hasExpandable = _eventText != null || _namesForShifts(['T']).isNotEmpty || _namesForShifts(['IS']).isNotEmpty ||
         _namesForShifts(['AUF', 'AF']).isNotEmpty || _namesForShifts(['DA']).isNotEmpty ||
         _namesForShifts(['U']).isNotEmpty || _namesForShifts(['X']).isNotEmpty;
@@ -2255,148 +2474,87 @@ class _ColleaguesOverlayState extends State<_ColleaguesOverlay> with TickerProvi
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      // ── Header (bleibt beim Scrollen stehen) ──
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 14, 12, 0),
+                        child: Row(children: [
+                          Icon(Icons.event_note_outlined, size: 18, color: skin.primary),
+                          const SizedBox(width: 10),
+                          Text('TAGESPLAN',
+                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: skin.primary, letterSpacing: 1.0)),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(_dateLabel,
+                                maxLines: 1, overflow: TextOverflow.ellipsis,
+                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: skin.surface(0.38))),
+                          ),
+                          GestureDetector(onTap: _close, child: GlassIconBadge(skin: skin, icon: Icons.close)),
+                        ]),
+                      ),
+                      Padding(padding: const EdgeInsets.fromLTRB(16, 10, 16, 0), child: Divider(color: skin.glassBorder, height: 1)),
+
+                      // ── Inhalt (scrollbar) ──
                       Flexible(
                         child: SingleChildScrollView(
-                          physics: _expanded ? const BouncingScrollPhysics() : const NeverScrollableScrollPhysics(),
-                          child: Column(mainAxisSize: MainAxisSize.min, children: [
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(16, 14, 12, 0),
-                              child: Row(children: [
-                                Icon(Icons.people_outline, size: 18, color: skin.primary),
-                                const SizedBox(width: 10),
-                                Expanded(child: Text('KOLLEGEN',
-                                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: skin.primary, letterSpacing: 1.0))),
-                                GestureDetector(onTap: _close,
-                                    // ── GlassIconBadge aus glass_kit.dart ──
-                                    child: GlassIconBadge(skin: skin, icon: Icons.close)),
-                              ]),
-                            ),
-                            Padding(padding: const EdgeInsets.fromLTRB(16, 10, 16, 0), child: Divider(color: skin.glassBorder, height: 1)),
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                if (_debugLog != null) ...[
-                                  ClipRRect(borderRadius: BorderRadius.circular(10),
-                                    child: PlatformBackdropFilter(filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-                                      child: Container(constraints: const BoxConstraints(maxHeight: 200),
-                                        decoration: BoxDecoration(color: const Color(0xFFEF5B5B).withValues(alpha: 0.07), borderRadius: BorderRadius.circular(10), border: Border.all(color: const Color(0xFFEF5B5B).withValues(alpha: 0.28))),
-                                        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                                          Padding(padding: const EdgeInsets.fromLTRB(10, 8, 8, 6),
-                                            child: Row(children: [
-                                              Container(padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                                                decoration: BoxDecoration(color: const Color(0xFFEF5B5B).withValues(alpha: 0.15), borderRadius: BorderRadius.circular(4), border: Border.all(color: const Color(0xFFEF5B5B).withValues(alpha: 0.35))),
-                                                child: const Text('DEV', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: Color(0xFFEF5B5B), letterSpacing: 0.8))),
-                                              const SizedBox(width: 6),
-                                              Expanded(child: Text('Parser-Log', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: const Color(0xFFEF5B5B)))),
-                                              GestureDetector(
-                                                onTap: () {
-                                                  Clipboard.setData(ClipboardData(text: _debugLog!));
-                                                  setState(() => _debugLogCopied = true);
-                                                  HapticFeedback.selectionClick();
-                                                  Future.delayed(const Duration(seconds: 2), () { if (mounted) setState(() => _debugLogCopied = false); });
-                                                },
-                                                child: AnimatedContainer(duration: const Duration(milliseconds: 200),
-                                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                                  decoration: BoxDecoration(color: _debugLogCopied ? skin.statComplete.withValues(alpha: 0.15) : const Color(0xFFEF5B5B).withValues(alpha: 0.12), borderRadius: BorderRadius.circular(7)),
-                                                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                                                    Icon(_debugLogCopied ? Icons.check_rounded : Icons.copy_outlined, size: 12, color: _debugLogCopied ? skin.statComplete : const Color(0xFFEF5B5B)),
-                                                    const SizedBox(width: 3),
-                                                    Text(_debugLogCopied ? 'Kopiert' : 'Kopieren', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: _debugLogCopied ? skin.statComplete : const Color(0xFFEF5B5B))),
-                                                  ]),
-                                                ),
-                                              ),
-                                            ]),
-                                          ),
-                                          Divider(height: 1, color: const Color(0xFFEF5B5B).withValues(alpha: 0.15)),
-                                          Flexible(child: SingleChildScrollView(padding: const EdgeInsets.all(10), child: Text(_debugLog!, style: const TextStyle(fontSize: 10, color: Color(0xFFEF5B5B), height: 1.4)))),
-                                        ]),
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 12),
-                                ],
-                                if (!hasAny)
-                                  Center(child: Padding(padding: const EdgeInsets.symmetric(vertical: 16),
-                                    child: Column(children: [
-                                      Icon(Icons.people_outline, size: 32, color: skin.textMuted.withValues(alpha: 0.4)),
-                                      const SizedBox(height: 8),
-                                      Text('Keine Kollegen-Daten verfügbar.', style: TextStyle(color: skin.textMuted, fontSize: 13, fontWeight: FontWeight.w500), textAlign: TextAlign.center),
-                                      const SizedBox(height: 3),
-                                      Text('Bitte Dienstplan erneut importieren.', style: TextStyle(color: skin.textMuted.withValues(alpha: 0.6), fontSize: 11), textAlign: TextAlign.center),
-                                    ]),
-                                  )),
-                                if (hasAny) ...[
-                                  if (p1Names.isNotEmpty || pNames.isNotEmpty || p2Names.isNotEmpty)
-                                    _shiftGroup(slots: [
-                                      if (p1Names.isNotEmpty) (label: 'P1', names: p1Names, color: workColor),
-                                      if (pNames.isNotEmpty) (label: 'P', names: pNames, color: workColor),
-                                      if (p2Names.isNotEmpty) (label: 'P2', names: p2Names, color: workColor),
-                                    ]),
-                                  if (vkNames.isNotEmpty) ...[const SizedBox(height: 10), _shiftGroup(slots: [(label: 'VK', names: vkNames, color: vkColor)])],
-                                  if (f1Names.isNotEmpty || fNames.isNotEmpty || f2Names.isNotEmpty) ...[
-                                    const SizedBox(height: 10),
-                                    _shiftGroup(slots: [
-                                      if (f1Names.isNotEmpty) (label: 'F1', names: f1Names, color: fColor),
-                                      if (fNames.isNotEmpty) (label: 'F', names: fNames, color: fColor),
-                                      if (f2Names.isNotEmpty) (label: 'F2', names: f2Names, color: fColor),
-                                    ]),
-                                  ],
-                                  if (gebNames.isNotEmpty) ...[
-                                    const SizedBox(height: 10),
-                                    ClipRRect(borderRadius: BorderRadius.circular(10),
-                                      child: PlatformBackdropFilter(filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-                                        child: Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                                          decoration: BoxDecoration(color: skin.isLight ? Colors.white.withValues(alpha: skin.glassOpacity) : skin.bgCard.withValues(alpha: skin.glassOpacity), borderRadius: BorderRadius.circular(10), border: Border.all(color: skin.glassBorder, width: 1.0)),
-                                          child: Row(children: [
-                                            const Text('🎂', style: TextStyle(fontSize: 15)),
-                                            const SizedBox(width: 8),
-                                            Expanded(child: Text(gebNames.join(', '), style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: gebColor))),
-                                          ]),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ],
-                                if (_expanded)
-                                  AnimatedBuilder(
-                                    animation: _expandAnim,
-                                    builder: (context, child) => ClipRect(
-                                      child: Align(alignment: Alignment.topCenter, heightFactor: _expandAnim.value, child: child),
-                                    ),
-                                    child: _buildExpandedContent(),
-                                  ),
+                          physics: const BouncingScrollPhysics(),
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                // ═══ KOLLEGEN ═══
+                                _sectionLabel(Icons.people_outline, 'KOLLEGEN'),
                                 const SizedBox(height: 8),
-                              ]),
+                                if (_debugLog != null) _buildDebugLog(),
+                                if (!hasAny)
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(vertical: 6),
+                                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                      Text(hasExpandable ? 'Keine Kollegen in P oder F.' : 'Keine Kollegen-Daten verfügbar.',
+                                          style: TextStyle(color: skin.textMuted, fontSize: 12.5, fontWeight: FontWeight.w500)),
+                                      if (!hasExpandable) ...[
+                                        const SizedBox(height: 2),
+                                        Text('Bitte Dienstplan erneut importieren.',
+                                            style: TextStyle(color: skin.textMuted.withValues(alpha: 0.6), fontSize: 11)),
+                                      ],
+                                    ]),
+                                  ),
+                                if (hasAny) ...pfWidgets,
+                                if (hasExpandable) ...[
+                                  const SizedBox(height: 10),
+                                  _allColleaguesTile(),
+                                ],
+
+                                // ═══ EREIGNISSE (nur eigene Ansicht) ═══
+                                if (_showPlan) ...[
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(vertical: 14),
+                                    child: Divider(color: skin.glassBorder, height: 1),
+                                  ),
+                                  _sectionLabel(Icons.schedule_outlined, 'EREIGNISSE'),
+                                  const SizedBox(height: 8),
+                                  for (final it in _planItems)
+                                    _PlanRow(
+                                      key: ValueKey(it.id),
+                                      item: it,
+                                      skin: skin,
+                                      externallyOpenId: _openSwipedPlanId,
+                                      onSwiped: (id) => setState(() => _openSwipedPlanId = id),
+                                      onTap: () { HapticFeedback.selectionClick(); _openItemSheet(existing: it); },
+                                      onDelete: () async {
+                                        await DayPlanStore.delete(widget.dateKey, it.id);
+                                        _reloadPlan();
+                                      },
+                                    ),
+                                  if (_planItems.isNotEmpty) const SizedBox(height: 2),
+                                  _addPlanButton(),
+                                ],
+                              ],
                             ),
-                          ]),
-                        ),
-                      ),
-                      if (hasExpandable)
-                        GestureDetector(
-                          onVerticalDragStart: _onDragStart,
-                          onVerticalDragUpdate: _onDragUpdate,
-                          onVerticalDragEnd: _onDragEnd,
-                          onTap: () { HapticFeedback.selectionClick(); if (_expanded) { _collapse(); } else { _expand(); } },
-                          behavior: HitTestBehavior.opaque,
-                          child: Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.symmetric(vertical: 10),
-                            decoration: BoxDecoration(border: Border(top: BorderSide(color: skin.glassBorder, width: 0.5))),
-                            child: Column(mainAxisSize: MainAxisSize.min, children: [
-                              AnimatedBuilder(
-                                animation: _expandCtrl,
-                                builder: (_, __) => Transform.rotate(
-                                  angle: _expandCtrl.value * 3.14159,
-                                  child: Icon(Icons.keyboard_arrow_down, size: 14, color: skin.surface(0.3)),
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Container(width: 36, height: 3.5,
-                                  decoration: BoxDecoration(color: skin.surface(0.18), borderRadius: BorderRadius.circular(2))),
-                              const SizedBox(height: 2),
-                            ]),
                           ),
                         ),
+                      ),
                     ],
                   ),
                 ),
@@ -2410,7 +2568,630 @@ class _ColleaguesOverlayState extends State<_ColleaguesOverlay> with TickerProvi
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DAY CARD
+// PLAN ROW (Ereignis-Zeile mit Wisch-Löschen)
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _PlanRow extends StatefulWidget {
+  final DayPlanItem item;
+  final AppSkin skin;
+  final String? externallyOpenId;
+  final void Function(String?)? onSwiped;
+  final VoidCallback onTap;
+  final VoidCallback onDelete;
+  const _PlanRow({
+    super.key,
+    required this.item,
+    required this.skin,
+    this.externallyOpenId,
+    this.onSwiped,
+    required this.onTap,
+    required this.onDelete,
+  });
+
+  @override
+  State<_PlanRow> createState() => _PlanRowState();
+}
+
+class _PlanRowState extends State<_PlanRow> with TickerProviderStateMixin, SwipeAnimationMixin {
+  static const double _revealWidth = 76.0;
+  static const double _snapThreshold = 38.0;
+  bool _isOpen = false;
+  bool _dragging = false;
+  double _dragStartX = 0;
+  double _dragStartY = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    initSwipeAnimation(vsync: this);
+  }
+
+  @override
+  void didUpdateWidget(_PlanRow old) {
+    super.didUpdateWidget(old);
+    if (widget.externallyOpenId != widget.item.id && _isOpen) {
+      animateSwipeTo(0);
+      setState(() => _isOpen = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    disposeSwipeAnimation();
+    super.dispose();
+  }
+
+  void _onPanStart(DragStartDetails d) {
+    _dragging = false;
+    _dragStartX = d.globalPosition.dx;
+    _dragStartY = d.globalPosition.dy;
+  }
+
+  void _onPanUpdate(DragUpdateDetails d) {
+    final totalDx = d.globalPosition.dx - _dragStartX;
+    final totalDy = (d.globalPosition.dy - _dragStartY).abs();
+    if (!_dragging) {
+      if (totalDy > totalDx.abs()) return;
+      if (totalDx > 0 && !_isOpen) return;
+      if (totalDx.abs() < 8) return;
+      _dragging = true;
+    }
+    setSwipeOffsetImmediate((swipeOffset + d.delta.dx).clamp(-_revealWidth, 0.0));
+  }
+
+  void _onPanEnd(DragEndDetails d) {
+    if (!_dragging) return;
+    _dragging = false;
+    final v = d.primaryVelocity ?? d.velocity.pixelsPerSecond.dx;
+    if (swipeOffset < -_snapThreshold || v < -400) {
+      animateSwipeTo(-_revealWidth);
+      setState(() => _isOpen = true);
+      widget.onSwiped?.call(widget.item.id);
+    } else {
+      animateSwipeTo(0);
+      if (_isOpen) {
+        setState(() => _isOpen = false);
+        widget.onSwiped?.call(null);
+      }
+    }
+  }
+
+  void _close() {
+    animateSwipeTo(0);
+    if (mounted) setState(() => _isOpen = false);
+    widget.onSwiped?.call(null);
+  }
+
+  void _handleTap() {
+    if (_isOpen) {
+      _close();
+      return;
+    }
+    widget.onTap();
+  }
+
+  Widget _locLine(AppSkin skin, String text) => Text(
+        text,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        textAlign: TextAlign.right,
+        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: skin.surface(0.5), height: 1.25),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final skin = widget.skin;
+    final it = widget.item;
+    final fmt = DateFormat('HH:mm');
+    final loc = it.loc;
+    final raw = it.location.trim();
+    final name = (loc?.name ?? '').trim();
+
+    // Ort: nur der Name → sonst Straße + PLZ/Stadt → sonst Rohtext
+    Widget? locationWidget;
+    if (loc != null && loc.hasAddress) {
+      if (name.isNotEmpty) {
+        locationWidget = Text(name,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.right,
+            style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: skin.textPrimary, height: 1.25));
+      } else {
+        locationWidget = Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            if (loc.line1.isNotEmpty) _locLine(skin, loc.line1),
+            if (loc.line2.isNotEmpty) _locLine(skin, loc.line2),
+          ],
+        );
+      }
+    } else if (raw.isNotEmpty) {
+      locationWidget = Text(raw,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.right,
+          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: skin.surface(0.5), height: 1.25));
+    }
+    final canNavigate = locationWidget != null && MapsNavigator.canNavigate(loc, it.location);
+
+    final content = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: skin.isLight
+            ? Colors.white.withValues(alpha: skin.glassOpacity)
+            : skin.bgCard.withValues(alpha: skin.glassOpacity),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: skin.glassBorder, width: 1.0),
+      ),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+        // 1. Uhrzeit (immer gleich breit)
+        Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(fmt.format(it.start), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: skin.primary)),
+          const SizedBox(height: 2),
+          Text(fmt.format(it.end), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: skin.surface(0.42))),
+        ]),
+        const SizedBox(width: 10),
+        // 2. Titel
+        Expanded(
+          flex: 9,
+          child: Text(it.title,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: skin.textPrimary, height: 1.25)),
+        ),
+        // 3. Ort
+        if (locationWidget != null) ...[
+          const SizedBox(width: 8),
+          Expanded(
+            flex: 11,
+            child: Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+              Icon(Icons.place_outlined, size: 12, color: skin.surface(0.4)),
+              const SizedBox(width: 4),
+              Flexible(child: locationWidget),
+            ]),
+          ),
+        ],
+      ]),
+    );
+
+    return TapRegion(
+      // Jede Berührung außerhalb dieser Zeile (Scrollen, andere Zeile, daneben tippen) schließt sie
+      onTapOutside: (_) {
+        if (_isOpen) _close();
+      },
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 6),
+        child: GestureDetector(
+          onHorizontalDragStart: _onPanStart,
+          onHorizontalDragUpdate: _onPanUpdate,
+          onHorizontalDragEnd: _onPanEnd,
+          onTap: _handleTap,
+          // Gedrückt halten = Navigieren
+          onLongPress: canNavigate
+              ? () {
+                  if (_isOpen) return;
+                  HapticFeedback.mediumImpact();
+                  MapsNavigator.navigate(context, skin: skin, loc: loc, fallbackText: it.location);
+                }
+              : null,
+          behavior: HitTestBehavior.opaque,
+          child: ClipRect(
+            child: Stack(clipBehavior: Clip.hardEdge, children: [
+              Positioned(
+                right: 0,
+                top: 0,
+                bottom: 0,
+                width: _revealWidth,
+                child: GestureDetector(
+                  onTap: () {
+                    _close();
+                    HapticFeedback.mediumImpact();
+                    widget.onDelete();
+                  },
+                  child: Opacity(
+                    opacity: (swipeOffset.abs() / _revealWidth).clamp(0.0, 1.0),
+                    child: Container(
+                      margin: const EdgeInsets.only(left: 6),
+                      decoration: BoxDecoration(
+                        color: skin.deleteColor.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: skin.deleteColor.withValues(alpha: 0.28)),
+                      ),
+                      child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                        Icon(Icons.delete_outline, color: skin.deleteColor, size: 18),
+                        const SizedBox(height: 2),
+                        Text('Löschen', style: TextStyle(color: skin.deleteColor, fontSize: 9, fontWeight: FontWeight.w600)),
+                      ]),
+                    ),
+                  ),
+                ),
+              ),
+              Transform.translate(offset: Offset(swipeOffset, 0), child: content),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DIENSTPLAN UPLOAD SHEET
+// ─────────────────────────────────────────────────────────────────────────────
+
+class DienstplanUploadSheet extends StatefulWidget {
+  final AppSkin skin;
+  final DateTime initialMonth;
+  final DateTime selectedMonth;
+  final VoidCallback onImported;
+  final String? preloadedFilePath;
+  final String? preloadedFileName;
+  final List<int>? preloadedBytes;
+  final String? autoImportError;
+
+  const DienstplanUploadSheet({
+    super.key, required this.skin, required this.initialMonth, required this.selectedMonth,
+    required this.onImported, this.preloadedFilePath, this.preloadedFileName,
+    this.preloadedBytes, this.autoImportError,
+  });
+
+  @override
+  State<DienstplanUploadSheet> createState() => _DienstplanUploadSheetState();
+}
+
+class _DienstplanUploadSheetState extends State<DienstplanUploadSheet> {
+  String? _selectedFileName;
+  String? _selectedFilePath;
+  List<int>? _selectedFileBytes;
+  bool _isLoading = false;
+  String? _errorMessage;
+  bool _errorCopied = false;
+
+  bool get _hasFile => _selectedFilePath != null || _selectedFileBytes != null;
+  AppSkin get skin => widget.skin;
+
+  bool get _hasScheduleForSelectedMonth {
+    final monthKey = DateFormat('yyyy-MM').format(widget.selectedMonth);
+    final box = Hive.box('einstellungen');
+    final raw = box.get('schedule_$monthKey');
+    if (raw is Map) return raw.isNotEmpty;
+    return false;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.preloadedFilePath != null) {
+      _selectedFilePath = widget.preloadedFilePath;
+      _selectedFileName = widget.preloadedFileName ?? 'Geteilte PDF';
+      _selectedFileBytes = widget.preloadedBytes;
+    }
+    if (widget.autoImportError != null) _errorMessage = widget.autoImportError;
+  }
+
+  bool get _isDevMode {
+    final box = Hive.box('einstellungen');
+    return box.get('dienstplan_dev_placeholder', defaultValue: false) as bool;
+  }
+
+  Future<void> _pickFile() async {
+    setState(() { _errorMessage = null; _errorCopied = false; });
+    try {
+      final result = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['pdf'], allowMultiple: false, withData: kIsWeb);
+      if (result == null || result.files.isEmpty) return;
+      final picked = result.files.single;
+      List<int>? bytes;
+      if (kIsWeb) {
+        final raw = picked.bytes;
+        if (raw == null || raw.isEmpty) { setState(() => _errorMessage = 'Datei konnte nicht gelesen werden.'); return; }
+        bytes = raw.toList();
+      } else {
+        final path = picked.path;
+        if (path == null) { setState(() => _errorMessage = 'Datei konnte nicht gelesen werden.'); return; }
+        try { bytes = await dartio.File(path).readAsBytes(); } catch (_) { bytes = null; }
+        if (bytes == null || bytes.isEmpty) { setState(() => _errorMessage = 'Datei konnte nicht gelesen werden.'); return; }
+        setState(() => _selectedFilePath = path);
+      }
+      setState(() { _selectedFileName = picked.name; _selectedFileBytes = bytes; _errorMessage = null; });
+    } on Exception catch (e) {
+      setState(() => _errorMessage = 'Dateiauswahl konnte nicht geöffnet werden.\n\nDetail: $e');
+    }
+  }
+
+  void _clearFile() => setState(() { _selectedFileName = null; _selectedFilePath = null; _selectedFileBytes = null; _errorMessage = null; _errorCopied = false; });
+
+  Future<void> _importPdf() async {
+    if (!_hasFile) return;
+    setState(() { _isLoading = true; _errorMessage = null; _errorCopied = false; });
+    try {
+      final settingsBox = Hive.box('einstellungen');
+      final scheduleName = settingsBox.get('dienstplan_name', defaultValue: '') as String;
+      final mainName = settingsBox.get('name', defaultValue: '') as String;
+      final userName = scheduleName.isNotEmpty ? scheduleName : mainName;
+      List<int>? bytes = _selectedFileBytes;
+      if ((bytes == null || bytes.isEmpty) && _selectedFilePath != null) {
+        try { bytes = await dartio.File(_selectedFilePath!).readAsBytes(); } catch (_) { bytes = null; }
+      }
+      final result = await DienstplanParser.parse(
+        filePath: bytes != null ? null : _selectedFilePath,
+        fileBytes: bytes, userName: userName, fileName: _selectedFileName ?? '', devMode: _isDevMode);
+      final String? error = result['error'] as String?;
+      if (error != null && error.isNotEmpty) { setState(() { _errorMessage = error; _isLoading = false; }); return; }
+      DateTime? month = result['month'] as DateTime?;
+      final Map<String, String> newData = Map<String, String>.from(result['data'] as Map? ?? {});
+      if (newData.isEmpty) { setState(() { _errorMessage = 'Keine Dienste gefunden.'; _isLoading = false; }); return; }
+      if (month == null) { month = await _askForMonth(); if (month == null) { setState(() => _isLoading = false); return; } }
+      final monthKey = DateFormat('yyyy-MM').format(month);
+      final existingRaw = settingsBox.get('schedule_$monthKey');
+      final Map<String, String> oldData = {};
+      if (existingRaw is Map) { for (final e in existingRaw.entries) { oldData[e.key.toString()] = e.value.toString(); } }
+      if (oldData.isNotEmpty) {
+        final changed = _ChangedDays.diff(oldData, newData);
+        if (changed.isNotEmpty) { final existing = _ChangedDays.load(monthKey); _ChangedDays.save(monthKey, {...existing, ...changed}); }
+      }
+      settingsBox.put('schedule_$monthKey', newData);
+      SyncService.instance.pushScheduleMonth(monthKey);
+      try {
+        final List<int> bytesForColleagues = _selectedFileBytes ?? [];
+        if (bytesForColleagues.isNotEmpty) {
+          final sName = settingsBox.get('dienstplan_name', defaultValue: '') as String;
+          final mName = settingsBox.get('name', defaultValue: '') as String;
+          final uName = sName.isNotEmpty ? sName : mName;
+          final colleaguesLog = StringBuffer();
+          final colleagues = DienstplanParser.parseAllColleagues(
+            bytes: bytesForColleagues, fileName: _selectedFileName ?? '', ownUserName: uName,
+            devMode: _isDevMode, debugLog: colleaguesLog);
+          settingsBox.put('colleagues_debug_$monthKey', colleaguesLog.toString());
+          if (colleagues.isNotEmpty) {
+            final encoded = jsonEncode(colleagues.map((k, v) => MapEntry(k, v)));
+            settingsBox.put('colleagues_$monthKey', encoded);
+          }
+          final events = DienstplanParser.parseEvents(bytes: bytesForColleagues, fileName: _selectedFileName ?? '', devMode: _isDevMode);
+          if (events.isNotEmpty) { settingsBox.put('events_$monthKey', jsonEncode(events)); }
+        }
+      } catch (e, stack) {
+        if (_isDevMode) setState(() { _errorMessage = '⚠️ Fehler beim Kollegen-Import:\n$e\n\nStack:\n$stack'; });
+        debugPrint('[DEV] Kollegen-Import Fehler: $e');
+      }
+      await ScheduleScreenState.pushScheduleToWidget();
+      if (!mounted) return;
+      Navigator.pop(context);
+      showGlassSnackBar(
+        context,
+        'Dienstplan ${DateFormat('MMMM yyyy', 'de').format(month)} importiert (${newData.length} Tage)',
+        type: GlassSnackBarType.success,
+        duration: const Duration(seconds: 3),
+      );
+      widget.onImported();
+    } catch (e) {
+      setState(() => _errorMessage = 'Fehler beim Importieren: $e');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<DateTime?> _askForMonth() async {
+    int pickedYear = widget.initialMonth.year;
+    int pickedMonth = widget.initialMonth.month - 1;
+    final yearCount = DateTime.now().year - 2020 + 2;
+    final monthCtrl = FixedExtentScrollController(initialItem: 1000 * 12 + pickedMonth);
+    final yearCtrl = FixedExtentScrollController(initialItem: pickedYear - 2020);
+    FocusManager.instance.primaryFocus?.unfocus();
+    return await showModalBottomSheet<DateTime>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => StatefulBuilder(
+        builder: (ctx, setSheet) =>
+        // ── GlassSheet aus glass_kit.dart ──
+        GlassSheet(
+          skin: skin,
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(24, 24, 24, 24 + MediaQuery.paddingOf(ctx).bottom),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              SheetHandle(skin: skin),
+              const SizedBox(height: 20),
+              Text('Für welchen Monat gilt diese PDF?',
+                  style: TextStyle(color: skin.textPrimary, fontSize: 17, fontWeight: FontWeight.w600), textAlign: TextAlign.center),
+              const SizedBox(height: 8),
+              Text('Der Monat konnte nicht automatisch erkannt werden.',
+                  style: TextStyle(fontSize: 13, color: skin.textMuted), textAlign: TextAlign.center),
+              const SizedBox(height: 16),
+              SizedBox(
+                height: 180,
+                child: Row(children: [
+                  Expanded(flex: 2, child: CupertinoPicker(
+                    scrollController: monthCtrl, itemExtent: 44, looping: true, backgroundColor: Colors.transparent,
+                    onSelectedItemChanged: (i) => setSheet(() => pickedMonth = i % 12),
+                    children: List.generate(12, (i) => Center(child: Text(DateFormat('MMMM', 'de').format(DateTime(2024, i + 1)),
+                        style: TextStyle(fontSize: 16, color: skin.textPrimary)))))),
+                  Expanded(child: CupertinoPicker(
+                    scrollController: yearCtrl, itemExtent: 44, looping: false, backgroundColor: Colors.transparent,
+                    onSelectedItemChanged: (i) => setSheet(() => pickedYear = 2020 + i.clamp(0, yearCount - 1)),
+                    children: List.generate(yearCount, (i) => Center(child: Text('${2020 + i}',
+                        style: TextStyle(fontSize: 16, color: skin.textPrimary)))))),
+                ]),
+              ),
+              const SizedBox(height: 16),
+              Row(children: [
+                // ── GlassSecondaryButton aus glass_kit.dart ──
+                Expanded(child: GlassSecondaryButton(skin: skin, label: 'Abbrechen', onTap: () => Navigator.pop(ctx, null))),
+                const SizedBox(width: 12),
+                // ── GlassPrimaryButton aus glass_kit.dart ──
+                Expanded(child: GlassPrimaryButton(skin: skin, label: 'Übernehmen',
+                    onTap: () => Navigator.pop(ctx, DateTime(pickedYear, pickedMonth + 1)))),
+              ]),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _deleteSelectedMonth() async {
+    final displayMonth = DateFormat('MMMM yyyy', 'de').format(widget.selectedMonth);
+
+    // ── confirmDeleteDialog aus glass_dialogs.dart ──
+    final confirmed = await confirmDeleteDialog(
+      context: context, skin: skin,
+      title: 'Monat löschen',
+      message: 'Alle Dienstplan-Daten für diesen Monat werden unwiderruflich gelöscht.',
+    );
+    if (confirmed != true || !mounted) return;
+    final box = Hive.box('einstellungen');
+    final monthKey = DateFormat('yyyy-MM').format(widget.selectedMonth);
+    box.delete('schedule_$monthKey');
+    _ChangedDays.clear(monthKey);
+    await ScheduleScreenState.pushScheduleToWidget();
+    Navigator.pop(context);
+    widget.onImported();
+  }
+
+  void _copyError() {
+    if (_errorMessage == null) return;
+    Clipboard.setData(ClipboardData(text: _errorMessage!));
+    setState(() => _errorCopied = true);
+    Future.delayed(const Duration(seconds: 2), () { if (mounted) setState(() => _errorCopied = false); });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // ── GlassSheet-Aufbau direkt (kein wrapper nötig, da eigenes Styling) ──
+    return ClipRRect(
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+      child: PlatformBackdropFilter(
+        filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
+        child: Container(
+          decoration: BoxDecoration(
+            color: skin.isLight ? Colors.white.withValues(alpha: 0.92) : skin.bgSheet.withValues(alpha: 0.92),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+            border: Border.all(color: skin.glassBorder),
+          ),
+          padding: EdgeInsets.fromLTRB(24, 24, 24, 24 + MediaQuery.paddingOf(context).bottom),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // ── SheetHandle aus glass_kit.dart ──
+              SheetHandle(skin: skin),
+              const SizedBox(height: 20),
+              Row(children: [
+                ClipRRect(borderRadius: BorderRadius.circular(14),
+                  child: PlatformBackdropFilter(filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                    child: Container(width: 44, height: 44,
+                      decoration: BoxDecoration(color: skin.primaryWithAlpha(0.12), borderRadius: BorderRadius.circular(14)),
+                      child: Icon(Icons.upload_file_outlined, color: skin.primary, size: 22)))),
+                const SizedBox(width: 14),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('Dienstplan importieren', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: skin.textPrimary)),
+                  const SizedBox(height: 3),
+                  Text('PDF-Datei auswählen & importieren', style: TextStyle(fontSize: 12, color: skin.textMuted)),
+                ])),
+              ]),
+              const SizedBox(height: 20),
+              if (_hasFile) ...[
+                ClipRRect(borderRadius: BorderRadius.circular(12),
+                  child: PlatformBackdropFilter(filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: skin.statComplete.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: skin.statComplete.withValues(alpha: 0.3)),
+                      ),
+                      child: Row(children: [
+                        Icon(Icons.picture_as_pdf_outlined, color: skin.statComplete, size: 20),
+                        const SizedBox(width: 10),
+                        Expanded(child: Text(_selectedFileName ?? 'Datei ausgewählt',
+                            style: TextStyle(color: skin.textPrimary, fontSize: 13, fontWeight: FontWeight.w500),
+                            maxLines: 1, overflow: TextOverflow.ellipsis)),
+                        GestureDetector(onTap: _clearFile,
+                            child: Container(padding: const EdgeInsets.all(6),
+                                decoration: BoxDecoration(color: skin.deleteColor.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
+                                child: Icon(Icons.close, color: skin.deleteColor, size: 16))),
+                      ]),
+                    ),
+                  )),
+                const SizedBox(height: 12),
+              ],
+              if (_errorMessage != null) ...[
+                if (_isDevMode) ...[
+                  ClipRRect(borderRadius: BorderRadius.circular(10),
+                    child: PlatformBackdropFilter(filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                      child: Container(constraints: const BoxConstraints(maxHeight: 220),
+                        decoration: BoxDecoration(color: skin.deleteColor.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(10), border: Border.all(color: skin.deleteColor.withValues(alpha: 0.3))),
+                        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                          Padding(padding: const EdgeInsets.fromLTRB(12, 10, 10, 6),
+                            child: Row(children: [
+                              Icon(Icons.error_outline, color: skin.deleteColor, size: 18),
+                              const SizedBox(width: 6),
+                              Expanded(child: Text('Fehler', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: skin.deleteColor))),
+                              GestureDetector(onTap: _copyError,
+                                child: Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                  decoration: BoxDecoration(color: _errorCopied ? skin.statComplete.withValues(alpha: 0.15) : skin.deleteColor.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
+                                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                                    Icon(_errorCopied ? Icons.check_rounded : Icons.copy_outlined, size: 13, color: _errorCopied ? skin.statComplete : skin.deleteColor),
+                                    const SizedBox(width: 4),
+                                    Text(_errorCopied ? 'Kopiert' : 'Kopieren', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _errorCopied ? skin.statComplete : skin.deleteColor)),
+                                  ])),
+                              ),
+                            ])),
+                          Divider(height: 1, color: skin.deleteColor.withValues(alpha: 0.15)),
+                          Flexible(child: SingleChildScrollView(padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+                              child: Text(_errorMessage!, style: TextStyle(fontSize: 11, color: skin.deleteColor, height: 1.4)))),
+                        ]),
+                      ),
+                    )),
+                ] else ...[
+                  Padding(padding: const EdgeInsets.only(bottom: 4),
+                    child: Row(children: [
+                      Icon(Icons.error_outline, color: skin.deleteColor, size: 15),
+                      const SizedBox(width: 6),
+                      Expanded(child: Text(_errorMessage!, style: TextStyle(fontSize: 13, color: skin.deleteColor, fontWeight: FontWeight.w500))),
+                    ])),
+                ],
+                const SizedBox(height: 10),
+              ],
+              if (!_hasFile)
+              // ── GlassPrimaryButton aus glass_kit.dart ──
+                GlassPrimaryButton(skin: skin, label: 'Dokument auswählen', icon: Icons.folder_open_outlined, large: true, onTap: _isLoading ? () {} : _pickFile),
+              if (_hasFile) ...[
+                GlassPrimaryButton(skin: skin, label: 'Dokument importieren', icon: Icons.check_circle_outline, large: true, onTap: _isLoading ? () {} : _importPdf),
+                const SizedBox(height: 10),
+                // ── GlassSecondaryButton aus glass_kit.dart ──
+                GlassSecondaryButton(skin: skin, label: 'Andere Datei wählen', onTap: _isLoading ? () {} : _pickFile),
+              ],
+              if (_hasScheduleForSelectedMonth) ...[
+                const SizedBox(height: 16),
+                Divider(color: skin.glassBorder),
+                const SizedBox(height: 12),
+                GestureDetector(
+                  onTap: _deleteSelectedMonth,
+                  child: ClipRRect(borderRadius: BorderRadius.circular(14),
+                    child: PlatformBackdropFilter(filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                      child: Container(width: double.infinity, padding: const EdgeInsets.symmetric(vertical: 13),
+                        decoration: BoxDecoration(color: skin.deleteColor.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(14), border: Border.all(color: skin.deleteColor.withValues(alpha: 0.25))),
+                        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                          Icon(Icons.delete_outline, color: skin.deleteColor, size: 18),
+                          const SizedBox(width: 8),
+                          Text('Aktuellen Monat löschen', style: TextStyle(color: skin.deleteColor, fontSize: 14, fontWeight: FontWeight.w600)),
+                        ]),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 8),
+              Text('Unterstützt: PDF-Dateien mit maschinenlesbarem Text',
+                  style: TextStyle(fontSize: 11, color: skin.textHint), textAlign: TextAlign.center),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+// ─────────────────────────────────────────────────────────────────────────────
+// DAY CARD (aus Git wiederhergestellt)
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _DayCard extends StatefulWidget {
@@ -2429,6 +3210,7 @@ class _DayCard extends StatefulWidget {
   final String? eventText;
   final bool hasTask;
   final bool foreignMode;
+  final bool hasPlan;
   final bool readOnly;
 
   const _DayCard({
@@ -2438,6 +3220,7 @@ class _DayCard extends StatefulWidget {
     required this.onOpenColleagues, this.dayCardDragging, this.eventText,
     this.hasTask = false,
     this.foreignMode = false,
+    this.hasPlan = false,
     this.readOnly = false,
   });
 
@@ -2613,6 +3396,13 @@ class _DayCardState extends State<_DayCard> with TickerProviderStateMixin, Swipe
                     : skin.primary.withValues(alpha: 0.7)),
             const SizedBox(width: 5),
           ],
+          if (widget.hasPlan) ...[
+            Icon(Icons.event_note_outlined, size: 11,
+                color: widget.isChrome
+                    ? const Color(0xFFCCCCCC).withValues(alpha: 0.85)
+                    : skin.primary.withValues(alpha: 0.7)),
+            const SizedBox(width: 5),
+          ],
           if (hasEvent) ...[
             Icon(Icons.flag_rounded, size: 11,
                 color: widget.isChrome
@@ -2763,376 +3553,3 @@ Transform.translate(offset: Offset((widget.foreignMode || widget.readOnly) ? 0 :
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// DIENSTPLAN UPLOAD SHEET
-// ─────────────────────────────────────────────────────────────────────────────
-
-class DienstplanUploadSheet extends StatefulWidget {
-  final AppSkin skin;
-  final DateTime initialMonth;
-  final DateTime selectedMonth;
-  final VoidCallback onImported;
-  final String? preloadedFilePath;
-  final String? preloadedFileName;
-  final List<int>? preloadedBytes;
-  final String? autoImportError;
-
-  const DienstplanUploadSheet({
-    super.key, required this.skin, required this.initialMonth, required this.selectedMonth,
-    required this.onImported, this.preloadedFilePath, this.preloadedFileName,
-    this.preloadedBytes, this.autoImportError,
-  });
-
-  @override
-  State<DienstplanUploadSheet> createState() => _DienstplanUploadSheetState();
-}
-
-class _DienstplanUploadSheetState extends State<DienstplanUploadSheet> {
-  String? _selectedFileName;
-  String? _selectedFilePath;
-  List<int>? _selectedFileBytes;
-  bool _isLoading = false;
-  String? _errorMessage;
-  bool _errorCopied = false;
-
-  bool get _hasFile => _selectedFilePath != null || _selectedFileBytes != null;
-  AppSkin get skin => widget.skin;
-
-  bool get _hasScheduleForSelectedMonth {
-    final monthKey = DateFormat('yyyy-MM').format(widget.selectedMonth);
-    final box = Hive.box('einstellungen');
-    final raw = box.get('schedule_$monthKey');
-    if (raw is Map) return raw.isNotEmpty;
-    return false;
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    if (widget.preloadedFilePath != null) {
-      _selectedFilePath = widget.preloadedFilePath;
-      _selectedFileName = widget.preloadedFileName ?? 'Geteilte PDF';
-      _selectedFileBytes = widget.preloadedBytes;
-    }
-    if (widget.autoImportError != null) _errorMessage = widget.autoImportError;
-  }
-
-  bool get _isDevMode {
-    final box = Hive.box('einstellungen');
-    return box.get('dienstplan_dev_placeholder', defaultValue: false) as bool;
-  }
-
-  Future<void> _pickFile() async {
-    setState(() { _errorMessage = null; _errorCopied = false; });
-    try {
-      final result = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['pdf'], allowMultiple: false, withData: kIsWeb);
-      if (result == null || result.files.isEmpty) return;
-      final picked = result.files.single;
-      List<int>? bytes;
-      if (kIsWeb) {
-        final raw = picked.bytes;
-        if (raw == null || raw.isEmpty) { setState(() => _errorMessage = 'Datei konnte nicht gelesen werden.'); return; }
-        bytes = raw.toList();
-      } else {
-        final path = picked.path;
-        if (path == null) { setState(() => _errorMessage = 'Datei konnte nicht gelesen werden.'); return; }
-        try { bytes = await dartio.File(path).readAsBytes(); } catch (_) { bytes = null; }
-        if (bytes == null || bytes.isEmpty) { setState(() => _errorMessage = 'Datei konnte nicht gelesen werden.'); return; }
-        setState(() => _selectedFilePath = path);
-      }
-      setState(() { _selectedFileName = picked.name; _selectedFileBytes = bytes; _errorMessage = null; });
-    } on Exception catch (e) {
-      setState(() => _errorMessage = 'Dateiauswahl konnte nicht geöffnet werden.\n\nDetail: $e');
-    }
-  }
-
-  void _clearFile() => setState(() { _selectedFileName = null; _selectedFilePath = null; _selectedFileBytes = null; _errorMessage = null; _errorCopied = false; });
-
-  Future<void> _importPdf() async {
-    if (!_hasFile) return;
-    setState(() { _isLoading = true; _errorMessage = null; _errorCopied = false; });
-    try {
-      final settingsBox = Hive.box('einstellungen');
-      final scheduleName = settingsBox.get('dienstplan_name', defaultValue: '') as String;
-      final mainName = settingsBox.get('name', defaultValue: '') as String;
-      final userName = scheduleName.isNotEmpty ? scheduleName : mainName;
-      List<int>? bytes = _selectedFileBytes;
-      if ((bytes == null || bytes.isEmpty) && _selectedFilePath != null) {
-        try { bytes = await dartio.File(_selectedFilePath!).readAsBytes(); } catch (_) { bytes = null; }
-      }
-      final result = await DienstplanParser.parse(
-        filePath: bytes != null ? null : _selectedFilePath,
-        fileBytes: bytes, userName: userName, fileName: _selectedFileName ?? '', devMode: _isDevMode);
-      final String? error = result['error'] as String?;
-      if (error != null && error.isNotEmpty) { setState(() { _errorMessage = error; _isLoading = false; }); return; }
-      DateTime? month = result['month'] as DateTime?;
-      final Map<String, String> newData = Map<String, String>.from(result['data'] as Map? ?? {});
-      if (newData.isEmpty) { setState(() { _errorMessage = 'Keine Dienste gefunden.'; _isLoading = false; }); return; }
-      if (month == null) { month = await _askForMonth(); if (month == null) { setState(() => _isLoading = false); return; } }
-      final monthKey = DateFormat('yyyy-MM').format(month);
-      final existingRaw = settingsBox.get('schedule_$monthKey');
-      final Map<String, String> oldData = {};
-      if (existingRaw is Map) { for (final e in existingRaw.entries) { oldData[e.key.toString()] = e.value.toString(); } }
-      if (oldData.isNotEmpty) {
-        final changed = _ChangedDays.diff(oldData, newData);
-        if (changed.isNotEmpty) { final existing = _ChangedDays.load(monthKey); _ChangedDays.save(monthKey, {...existing, ...changed}); }
-      }
-      settingsBox.put('schedule_$monthKey', newData);
-      SyncService.instance.pushScheduleMonth(monthKey);
-      try {
-        final List<int> bytesForColleagues = _selectedFileBytes ?? [];
-        if (bytesForColleagues.isNotEmpty) {
-          final sName = settingsBox.get('dienstplan_name', defaultValue: '') as String;
-          final mName = settingsBox.get('name', defaultValue: '') as String;
-          final uName = sName.isNotEmpty ? sName : mName;
-          final colleaguesLog = StringBuffer();
-          final colleagues = DienstplanParser.parseAllColleagues(
-            bytes: bytesForColleagues, fileName: _selectedFileName ?? '', ownUserName: uName,
-            devMode: _isDevMode, debugLog: colleaguesLog);
-          settingsBox.put('colleagues_debug_$monthKey', colleaguesLog.toString());
-          if (colleagues.isNotEmpty) {
-            final encoded = jsonEncode(colleagues.map((k, v) => MapEntry(k, v)));
-            settingsBox.put('colleagues_$monthKey', encoded);
-          }
-          final events = DienstplanParser.parseEvents(bytes: bytesForColleagues, fileName: _selectedFileName ?? '', devMode: _isDevMode);
-          if (events.isNotEmpty) { settingsBox.put('events_$monthKey', jsonEncode(events)); }
-        }
-      } catch (e, stack) {
-        if (_isDevMode) setState(() { _errorMessage = '⚠️ Fehler beim Kollegen-Import:\n$e\n\nStack:\n$stack'; });
-        debugPrint('[DEV] Kollegen-Import Fehler: $e');
-      }
-      await ScheduleScreenState.pushScheduleToWidget();
-      if (!mounted) return;
-      Navigator.pop(context);
-      showGlassSnackBar(
-        context,
-        'Dienstplan ${DateFormat('MMMM yyyy', 'de').format(month)} importiert (${newData.length} Tage)',
-        type: GlassSnackBarType.success,
-        duration: const Duration(seconds: 3),
-      );
-      widget.onImported();
-    } catch (e) {
-      setState(() => _errorMessage = 'Fehler beim Importieren: $e');
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  Future<DateTime?> _askForMonth() async {
-    int pickedYear = widget.initialMonth.year;
-    int pickedMonth = widget.initialMonth.month - 1;
-    final yearCount = DateTime.now().year - 2020 + 2;
-    final monthCtrl = FixedExtentScrollController(initialItem: 1000 * 12 + pickedMonth);
-    final yearCtrl = FixedExtentScrollController(initialItem: pickedYear - 2020);
-    return await showModalBottomSheet<DateTime>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (_) => StatefulBuilder(
-        builder: (ctx, setSheet) =>
-        // ── GlassSheet aus glass_kit.dart ──
-        GlassSheet(
-          skin: skin,
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(24, 24, 24, 24 + MediaQuery.of(ctx).padding.bottom),
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              SheetHandle(skin: skin),
-              const SizedBox(height: 20),
-              Text('Für welchen Monat gilt diese PDF?',
-                  style: TextStyle(color: skin.textPrimary, fontSize: 17, fontWeight: FontWeight.w600), textAlign: TextAlign.center),
-              const SizedBox(height: 8),
-              Text('Der Monat konnte nicht automatisch erkannt werden.',
-                  style: TextStyle(fontSize: 13, color: skin.textMuted), textAlign: TextAlign.center),
-              const SizedBox(height: 16),
-              SizedBox(
-                height: 180,
-                child: Row(children: [
-                  Expanded(flex: 2, child: CupertinoPicker(
-                    scrollController: monthCtrl, itemExtent: 44, looping: true, backgroundColor: Colors.transparent,
-                    onSelectedItemChanged: (i) => setSheet(() => pickedMonth = i % 12),
-                    children: List.generate(12, (i) => Center(child: Text(DateFormat('MMMM', 'de').format(DateTime(2024, i + 1)),
-                        style: TextStyle(fontSize: 16, color: skin.textPrimary)))))),
-                  Expanded(child: CupertinoPicker(
-                    scrollController: yearCtrl, itemExtent: 44, looping: false, backgroundColor: Colors.transparent,
-                    onSelectedItemChanged: (i) => setSheet(() => pickedYear = 2020 + i.clamp(0, yearCount - 1)),
-                    children: List.generate(yearCount, (i) => Center(child: Text('${2020 + i}',
-                        style: TextStyle(fontSize: 16, color: skin.textPrimary)))))),
-                ]),
-              ),
-              const SizedBox(height: 16),
-              Row(children: [
-                // ── GlassSecondaryButton aus glass_kit.dart ──
-                Expanded(child: GlassSecondaryButton(skin: skin, label: 'Abbrechen', onTap: () => Navigator.pop(ctx, null))),
-                const SizedBox(width: 12),
-                // ── GlassPrimaryButton aus glass_kit.dart ──
-                Expanded(child: GlassPrimaryButton(skin: skin, label: 'Übernehmen',
-                    onTap: () => Navigator.pop(ctx, DateTime(pickedYear, pickedMonth + 1)))),
-              ]),
-            ]),
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _deleteSelectedMonth() async {
-    final displayMonth = DateFormat('MMMM yyyy', 'de').format(widget.selectedMonth);
-
-    // ── confirmDeleteDialog aus glass_dialogs.dart ──
-    final confirmed = await confirmDeleteDialog(
-      context: context, skin: skin,
-      title: 'Monat löschen',
-      message: 'Alle Dienstplan-Daten für diesen Monat werden unwiderruflich gelöscht.',
-    );
-    if (confirmed != true || !mounted) return;
-    final box = Hive.box('einstellungen');
-    final monthKey = DateFormat('yyyy-MM').format(widget.selectedMonth);
-    box.delete('schedule_$monthKey');
-    _ChangedDays.clear(monthKey);
-    await ScheduleScreenState.pushScheduleToWidget();
-    Navigator.pop(context);
-    widget.onImported();
-  }
-
-  void _copyError() {
-    if (_errorMessage == null) return;
-    Clipboard.setData(ClipboardData(text: _errorMessage!));
-    setState(() => _errorCopied = true);
-    Future.delayed(const Duration(seconds: 2), () { if (mounted) setState(() => _errorCopied = false); });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    // ── GlassSheet-Aufbau direkt (kein wrapper nötig, da eigenes Styling) ──
-    return ClipRRect(
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-      child: PlatformBackdropFilter(
-        filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
-        child: Container(
-          decoration: BoxDecoration(
-            color: skin.isLight ? Colors.white.withValues(alpha: 0.92) : skin.bgSheet.withValues(alpha: 0.92),
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-            border: Border.all(color: skin.glassBorder),
-          ),
-          padding: EdgeInsets.fromLTRB(24, 24, 24, 24 + MediaQuery.of(context).padding.bottom),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // ── SheetHandle aus glass_kit.dart ──
-              SheetHandle(skin: skin),
-              const SizedBox(height: 20),
-              Row(children: [
-                ClipRRect(borderRadius: BorderRadius.circular(14),
-                  child: PlatformBackdropFilter(filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                    child: Container(width: 44, height: 44,
-                      decoration: BoxDecoration(color: skin.primaryWithAlpha(0.12), borderRadius: BorderRadius.circular(14)),
-                      child: Icon(Icons.upload_file_outlined, color: skin.primary, size: 22)))),
-                const SizedBox(width: 14),
-                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('Dienstplan importieren', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: skin.textPrimary)),
-                  const SizedBox(height: 3),
-                  Text('PDF-Datei auswählen & importieren', style: TextStyle(fontSize: 12, color: skin.textMuted)),
-                ])),
-              ]),
-              const SizedBox(height: 20),
-              if (_hasFile) ...[
-                ClipRRect(borderRadius: BorderRadius.circular(12),
-                  child: PlatformBackdropFilter(filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                      decoration: BoxDecoration(
-                        color: skin.statComplete.withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: skin.statComplete.withValues(alpha: 0.3)),
-                      ),
-                      child: Row(children: [
-                        Icon(Icons.picture_as_pdf_outlined, color: skin.statComplete, size: 20),
-                        const SizedBox(width: 10),
-                        Expanded(child: Text(_selectedFileName ?? 'Datei ausgewählt',
-                            style: TextStyle(color: skin.textPrimary, fontSize: 13, fontWeight: FontWeight.w500),
-                            maxLines: 1, overflow: TextOverflow.ellipsis)),
-                        GestureDetector(onTap: _clearFile,
-                            child: Container(padding: const EdgeInsets.all(6),
-                                decoration: BoxDecoration(color: skin.deleteColor.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
-                                child: Icon(Icons.close, color: skin.deleteColor, size: 16))),
-                      ]),
-                    ),
-                  )),
-                const SizedBox(height: 12),
-              ],
-              if (_errorMessage != null) ...[
-                if (_isDevMode) ...[
-                  ClipRRect(borderRadius: BorderRadius.circular(10),
-                    child: PlatformBackdropFilter(filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-                      child: Container(constraints: const BoxConstraints(maxHeight: 220),
-                        decoration: BoxDecoration(color: skin.deleteColor.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(10), border: Border.all(color: skin.deleteColor.withValues(alpha: 0.3))),
-                        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                          Padding(padding: const EdgeInsets.fromLTRB(12, 10, 10, 6),
-                            child: Row(children: [
-                              Icon(Icons.error_outline, color: skin.deleteColor, size: 18),
-                              const SizedBox(width: 6),
-                              Expanded(child: Text('Fehler', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: skin.deleteColor))),
-                              GestureDetector(onTap: _copyError,
-                                child: Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                                  decoration: BoxDecoration(color: _errorCopied ? skin.statComplete.withValues(alpha: 0.15) : skin.deleteColor.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
-                                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                                    Icon(_errorCopied ? Icons.check_rounded : Icons.copy_outlined, size: 13, color: _errorCopied ? skin.statComplete : skin.deleteColor),
-                                    const SizedBox(width: 4),
-                                    Text(_errorCopied ? 'Kopiert' : 'Kopieren', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _errorCopied ? skin.statComplete : skin.deleteColor)),
-                                  ])),
-                              ),
-                            ])),
-                          Divider(height: 1, color: skin.deleteColor.withValues(alpha: 0.15)),
-                          Flexible(child: SingleChildScrollView(padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-                              child: Text(_errorMessage!, style: TextStyle(fontSize: 11, color: skin.deleteColor, height: 1.4)))),
-                        ]),
-                      ),
-                    )),
-                ] else ...[
-                  Padding(padding: const EdgeInsets.only(bottom: 4),
-                    child: Row(children: [
-                      Icon(Icons.error_outline, color: skin.deleteColor, size: 15),
-                      const SizedBox(width: 6),
-                      Expanded(child: Text(_errorMessage!, style: TextStyle(fontSize: 13, color: skin.deleteColor, fontWeight: FontWeight.w500))),
-                    ])),
-                ],
-                const SizedBox(height: 10),
-              ],
-              if (!_hasFile)
-              // ── GlassPrimaryButton aus glass_kit.dart ──
-                GlassPrimaryButton(skin: skin, label: 'Dokument auswählen', icon: Icons.folder_open_outlined, large: true, onTap: _isLoading ? () {} : _pickFile),
-              if (_hasFile) ...[
-                GlassPrimaryButton(skin: skin, label: 'Dokument importieren', icon: Icons.check_circle_outline, large: true, onTap: _isLoading ? () {} : _importPdf),
-                const SizedBox(height: 10),
-                // ── GlassSecondaryButton aus glass_kit.dart ──
-                GlassSecondaryButton(skin: skin, label: 'Andere Datei wählen', onTap: _isLoading ? () {} : _pickFile),
-              ],
-              if (_hasScheduleForSelectedMonth) ...[
-                const SizedBox(height: 16),
-                Divider(color: skin.glassBorder),
-                const SizedBox(height: 12),
-                GestureDetector(
-                  onTap: _deleteSelectedMonth,
-                  child: ClipRRect(borderRadius: BorderRadius.circular(14),
-                    child: PlatformBackdropFilter(filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-                      child: Container(width: double.infinity, padding: const EdgeInsets.symmetric(vertical: 13),
-                        decoration: BoxDecoration(color: skin.deleteColor.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(14), border: Border.all(color: skin.deleteColor.withValues(alpha: 0.25))),
-                        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                          Icon(Icons.delete_outline, color: skin.deleteColor, size: 18),
-                          const SizedBox(width: 8),
-                          Text('Aktuellen Monat löschen', style: TextStyle(color: skin.deleteColor, fontSize: 14, fontWeight: FontWeight.w600)),
-                        ]),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-              const SizedBox(height: 8),
-              Text('Unterstützt: PDF-Dateien mit maschinenlesbarem Text',
-                  style: TextStyle(fontSize: 11, color: skin.textHint), textAlign: TextAlign.center),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}

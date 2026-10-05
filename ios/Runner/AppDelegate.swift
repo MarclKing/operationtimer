@@ -159,6 +159,35 @@ import workmanager_apple     // NEU
         }
     }
 
+    // ── Geteilter Text / Link aus Share Extension (Maps → Tagesplan) ───────
+    //
+    // Die Extension schreibt den Text VOR dem open()-Aufruf in die App Group,
+    // er liegt also schon bereit, wenn die URL ankommt. Der Key wird sofort
+    // gelöscht: AppDelegate und SceneDelegate können beide aufgerufen werden,
+    // nur der erste Aufruf liefert den Text aus.
+    func checkAndSendPendingText(navChannel: FlutterMethodChannel) {
+        let defaults = UserDefaults(suiteName: AppGroup.id)
+        guard let text = defaults?.string(forKey: "PendingSharedText"),
+              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return
+        }
+        defaults?.removeObject(forKey: "PendingSharedText")
+        defaults?.synchronize()
+        sendSharedText(text, navChannel: navChannel, retriesLeft: 8)
+    }
+
+    private func sendSharedText(_ text: String, navChannel: FlutterMethodChannel, retriesLeft: Int) {
+        navChannel.invokeMethod("openSharedText", arguments: ["text": text]) { result in
+            // Beim Kaltstart ist der Dart-Handler evtl. noch nicht registriert
+            // → Flutter antwortet mit "NotImplemented", dann kurz erneut versuchen.
+            if let r = result as? NSObject, r === FlutterMethodNotImplemented, retriesLeft > 0 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    self.sendSharedText(text, navChannel: navChannel, retriesLeft: retriesLeft - 1)
+                }
+            }
+        }
+    }
+
     // ── PDF aus Dokument-Inbox ("Öffnen mit" / direkt geteilt) ─────────────
     private func handleInboxPdf(url: URL) {
         guard let controller = window?.rootViewController as? FlutterViewController else { return }
@@ -198,10 +227,18 @@ import workmanager_apple     // NEU
                 )
                 let urlString = url.absoluteString
 
-                // PDF aus Share Extension
+                                // PDF aus Share Extension
                 if urlString == "optimes://shared-pdf" {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
                         self.checkAndSendPendingPdf(navChannel: navChannel)
+                    }
+                    return true
+                }
+
+                // NEU: Text / Link aus Share Extension (Maps → Tagesplan)
+                if urlString == "optimes://shared-text" {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                        self.checkAndSendPendingText(navChannel: navChannel)
                     }
                     return true
                 }

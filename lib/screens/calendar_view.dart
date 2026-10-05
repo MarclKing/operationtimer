@@ -239,7 +239,7 @@ class CalendarViewState extends State<CalendarView> with TickerProviderStateMixi
 
   @override
   Widget build(BuildContext context) {
-    final calendarAreaHeight = MediaQuery.of(context).size.height * _monthTopFraction;
+    final calendarAreaHeight = MediaQuery.sizeOf(context).height * _monthTopFraction;
 
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 340),
@@ -266,7 +266,7 @@ class CalendarViewState extends State<CalendarView> with TickerProviderStateMixi
               // Anteil-Höhe wird die TATSÄCHLICH benötigte Höhe berechnet
               // (Titel + 4 Grid-Zeilen inkl. Abstände + Bottom-Padding) —
               // dadurch kein Abschneiden mehr, aber kompakter als 100%.
-              final screenWidth = MediaQuery.of(context).size.width;
+              final screenWidth = MediaQuery.sizeOf(context).width;
               const horizontalPadding = 40.0; // 20 links + 20 rechts
               const crossSpacing = 8.0;
               const mainSpacing = 10.0;
@@ -860,7 +860,7 @@ Widget build(BuildContext context) {
 
     // NEU: Fade-out unten, analog zu schedule_screen.dart — bisher fehlte
     // hier der komplette FadingListView-Wrapper.
-    final bottomNavHeight = 70.0 + MediaQuery.of(context).padding.bottom;
+    final bottomNavHeight = 70.0 + MediaQuery.paddingOf(context).bottom;
 
     return ClipRect(
       child: PlatformBackdropFilter(
@@ -1238,12 +1238,13 @@ bool get _isForeignOwnedSync {
     final e = _event;
     if (e == null) return;
     final skin = widget.skin;
+    FocusManager.instance.primaryFocus?.unfocus();
     await showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       useSafeArea: false,
-      constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.92),
+      constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.92),
       builder: (_) => EntrySheet(
         skin: skin,
         draft: EntryDraft(),

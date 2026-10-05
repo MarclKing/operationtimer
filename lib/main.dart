@@ -44,6 +44,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'widgets/notification_center.dart';
 import 'models/calendar_event.dart'; // NEU
 import 'services/feature_flags.dart';
+import 'models/location_info.dart';
+import 'services/location_resolver.dart';
+import 'widgets/share_location_sheet.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TAB-DEFINITION — steuert Reihenfolge & Sichtbarkeit der Haupt-Tabs.
@@ -275,7 +278,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder(
-      valueListenable: Hive.box('einstellungen').listenable(),
+      valueListenable: Hive.box('einstellungen').listenable(keys: [AppTheme.hiveKey]),
       builder: (context, box, _) {
         final skinKey = box.get(AppTheme.hiveKey, defaultValue: 'shield') as String;
         final skin = AppTheme.fromKey(skinKey);
@@ -358,6 +361,11 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin, 
 
   StreamSubscription? _intentSub;
   Timer? _cleanupTimer;
+
+  // Geteilter Text (Maps → Tagesplan): Doppelauslieferung vermeiden
+  String _lastSharedText = '';
+  DateTime _lastSharedAt = DateTime.fromMillisecondsSinceEpoch(0);
+  bool _sharedTextBusy = false;
   final _homeKey = GlobalKey<HomeScreenState>();
   final _scheduleKey = GlobalKey<ScheduleScreenState>();
   final _monthKey = GlobalKey<MonthScreenState>();
@@ -442,6 +450,8 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin, 
 
     if (!kIsWeb) {
       ReceiveSharingIntent.instance.getInitialMedia().then((files) {
+        // NEU: geteilter Text / Link (z. B. aus Google Maps)
+        if (_tryHandleSharedTextMedia(files)) return;
         if (files.isNotEmpty) {
           final path = files.first.path;
           if (path != null && path.toLowerCase().endsWith('.pdf')) {
@@ -463,6 +473,8 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin, 
       });
 
       _intentSub = ReceiveSharingIntent.instance.getMediaStream().listen((files) {
+        // NEU: geteilter Text / Link (z. B. aus Google Maps)
+        if (_tryHandleSharedTextMedia(files)) return;
         if (files.isNotEmpty) {
           final path = files.first.path;
           if (path != null && path.toLowerCase().endsWith('.pdf')) {
@@ -509,6 +521,13 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin, 
         } else if (path == 'dienstplan') {
           await _animateToPage(_indexOfTab(_Tab.schedule));
         }
+      } else if (call.method == 'openSharedText') {
+        final args = Map<String, dynamic>.from(call.arguments as Map);
+        final text = (args['text'] as String?) ?? '';
+        if (text.trim().isEmpty) return;
+        await Future.delayed(const Duration(milliseconds: 150));
+        if (!mounted) return;
+        _handleSharedText(text);
       } else if (call.method == 'openSharedPdf') {
         final args = Map<String, dynamic>.from(call.arguments as Map);
         final path = args['path'] as String;
@@ -653,6 +672,101 @@ void didChangeAppLifecycleState(AppLifecycleState state) {
     await Future.delayed(const Duration(milliseconds: 400));
     if (!mounted) return;
     _tasksKey.currentState?.jumpCalendarToToday();
+  }
+
+  // ── Geteilter Text / Link (Maps → Tagesplan) ────────────────────────────
+
+  /// Android: erkennt Text/Link in den Share-Intent-Einträgen. true = verarbeitet.
+  bool _tryHandleSharedTextMedia(List<SharedMediaFile> files) {
+    debugPrint('[SHARE] ${files.length} Eintraege: ${files.map((f) => "${f.type}:${f.path}").join(" | ")}');
+    for (final f in files) {
+      if (f.type == SharedMediaType.text || f.type == SharedMediaType.url) {
+        final text = f.path;
+        // Intent als verarbeitet markieren, sonst kommt er beim nächsten Start erneut
+        ReceiveSharingIntent.instance.reset();
+        _handleSharedText(text);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /// Kurzer Text ohne Link, der wie eine Adresse aussieht (enthält eine Ziffer, max. 3 Zeilen).
+  bool _looksLikeShortAddress(String text) {
+    if (text.contains('://') || text.length > 200) return false;
+    final lines = text.split(RegExp(r'[\r\n]+')).where((l) => l.trim().isNotEmpty).toList();
+    return lines.length <= 3 && RegExp(r'\d').hasMatch(text);
+  }
+
+  Future<void> _handleSharedText(String? rawText) async {
+    final text = (rawText ?? '').trim();
+    debugPrint('[SHARE] handleSharedText mounted=$mounted busy=$_sharedTextBusy readOnly=$_readOnlyMode text=${text.replaceAll("\n", " | ")}');
+    if (text.isEmpty || !mounted || _sharedTextBusy) return;
+
+    // Derselbe Share kann doppelt ankommen (Initial + Stream)
+    final now = DateTime.now();
+    if (text == _lastSharedText && now.difference(_lastSharedAt) < const Duration(seconds: 8)) return;
+    _lastSharedText = text;
+    _lastSharedAt = now;
+
+    if (_readOnlyMode) {
+      showGlassSnackBar(context, 'Im Lesemodus kann kein Ort übernommen werden.',
+          type: GlassSnackBarType.info);
+      return;
+    }
+
+    // Nur Maps-Links oder kurze Adress-Texte auswerten — beliebiger geteilter
+    // Text geht nicht ans Geocoding.
+    final isMapsLink = LocationResolver.containsMapsLink(text);
+    if (!isMapsLink && !_looksLikeShortAddress(text)) {
+      showGlassSnackBar(context, 'Im geteilten Text wurde kein Ort erkannt.',
+          type: GlassSnackBarType.warning);
+      return;
+    }
+
+    LocationInfo? info;
+    _sharedTextBusy = true;
+    try {
+      _closeMenu();
+      _homeKey.currentState?.closeOverlays();
+      _scheduleKey.currentState?.closeOverlays();
+      await Future.delayed(const Duration(milliseconds: 250));
+      if (!mounted) return;
+
+      showGlassSnackBar(context, 'Ort wird gesucht …',
+          type: GlassSnackBarType.info, duration: const Duration(seconds: 3));
+      final input = isMapsLink
+          ? text
+          : text.split(RegExp(r'[\r\n]+')).map((e) => e.trim()).where((e) => e.isNotEmpty).join(', ');
+      info = await LocationResolver.resolve(input)
+          .timeout(const Duration(seconds: 15), onTimeout: () => null);
+    } finally {
+      _sharedTextBusy = false;
+      if (mounted) hideGlassSnackBar(context);
+    }
+
+    // Zweites Ausblenden: fing die Snackbar noch an einzufahren, lief das erste hide ins Leere
+    if (info != null) {
+      Future.delayed(const Duration(milliseconds: 400), () {
+        if (mounted) hideGlassSnackBar(context);
+      });
+    }
+
+    if (!mounted) return;
+    if (info == null) {
+      showGlassSnackBar(context, 'Der Ort konnte nicht erkannt werden.',
+          type: GlassSnackBarType.warning);
+      return;
+    }
+
+    await _animateToPage(_indexOfTab(_Tab.schedule));
+    if (!mounted) return;
+    await showShareLocationSheet(
+      context,
+      skin: AppTheme.of(context),
+      loc: info,
+      onChanged: () => _scheduleKey.currentState?.refreshTaskMarkers(),
+    );
   }
 
   void _handleSharedPdfWithBytesAndName(String path, List<int> bytes, String fileName) async {
@@ -972,7 +1086,7 @@ void didChangeAppLifecycleState(AppLifecycleState state) {
     if (!_isDragging) return;
     if (_dayCardDragging.value) return;
     if (_currentPage == (_pageCount - 1) && d.delta.dx < 0) return;
-    final screenW = MediaQuery.of(context).size.width;
+    final screenW = MediaQuery.sizeOf(context).width;
     final delta = -d.delta.dx / screenW;
     final newVal = (_slideCtrl.value + delta).clamp(0.0, (_pageCount - 1).toDouble());
     _slideCtrl.value = newVal;
@@ -1140,9 +1254,9 @@ void didChangeAppLifecycleState(AppLifecycleState state) {
   @override
   Widget build(BuildContext context) {
     final skin = AppTheme.of(context);
-    final screenWidth = MediaQuery.of(context).size.width;
-    final topPad = MediaQuery.of(context).padding.top;
-    final bottomPad = MediaQuery.of(context).padding.bottom;
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final topPad = MediaQuery.paddingOf(context).top;
+    final bottomPad = MediaQuery.paddingOf(context).bottom;
     final readOnly = _readOnlyMode;
 
     return ValueListenableBuilder(
@@ -1618,7 +1732,7 @@ class _KfzVerwaltungSheetState extends State<_KfzVerwaltungSheet> {
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (_) => Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+        padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
         child: GlassSheet(
           skin: skin,
           child: Padding(
@@ -1670,7 +1784,7 @@ class _KfzVerwaltungSheetState extends State<_KfzVerwaltungSheet> {
   Widget build(BuildContext context) {
     final skin = AppTheme.of(context);
     return ConstrainedBox(
-      constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.75),
+      constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.75),
       child: GlassSheet(
         skin: skin,
         child: Column(

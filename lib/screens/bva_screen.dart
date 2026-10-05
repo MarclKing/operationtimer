@@ -155,7 +155,7 @@ class _BvaScreenState extends State<BvaScreen> {
                           label: 'Von',
                           icon: Icons.trip_origin,
                           displayBuilder: (v) => bvaOrtLabel(v),
-                          maxPopupHeight: MediaQuery.of(context).size.height * 0.5,
+                          maxPopupHeight: MediaQuery.sizeOf(context).height * 0.5,
                         ),
                         GlassDropdownButton<String>(
                           value: _config.ortAn,
@@ -170,7 +170,7 @@ class _BvaScreenState extends State<BvaScreen> {
                           label: 'An',
                           icon: Icons.flag_outlined,
                           displayBuilder: (v) => bvaOrtLabel(v),
-                          maxPopupHeight: MediaQuery.of(context).size.height * 0.5,
+                          maxPopupHeight: MediaQuery.sizeOf(context).height * 0.5,
                           isLast: true,
                         ),
                       ],

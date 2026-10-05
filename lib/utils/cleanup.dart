@@ -159,6 +159,16 @@ class DataRetention {
         continue;
       }
 
+      // Tagesplan: gleiche Regel wie Notizen (nur wenn der ganze Monat vor dem Stichtag liegt)
+      if (k.startsWith('dayplan_')) {
+        final day = _dayFromKey(k.substring('dayplan_'.length));
+        if (day != null) {
+          final monthEnd = DateTime(day.year, day.month + 1, 0);
+          if (monthEnd.isBefore(cutoff)) plan.deleteKeys.add(key);
+        }
+        continue;
+      }
+
       // Abgeleitete Daten: nur weg, wenn der ganze Monat vor dem Stichtag liegt
       final dm = derivedRe.firstMatch(k);
       if (dm != null) {

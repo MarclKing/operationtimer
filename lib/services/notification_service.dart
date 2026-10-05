@@ -42,6 +42,15 @@ import 'package:flutter_timezone/flutter_timezone.dart';
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Liest/schreibt alle Einstellungen rund um die Tagesvorschau aus Hive.
+/// Android: ohne diese Details wirft das Plugin beim Anzeigen/Planen eine NPE.
+const AndroidNotificationDetails _androidDetails = AndroidNotificationDetails(
+  'optimes_default',
+  'OpTimes Erinnerungen',
+  channelDescription: 'Erinnerungen, Aufgaben und Termine',
+  importance: Importance.high,
+  priority: Priority.high,
+);
+
 class DailyOverviewSettings {
   static const _kEnabled = 'daily_overview_enabled';
   static const _kMode = 'daily_overview_mode'; // 'fixed_time' | 'app_start'
@@ -137,7 +146,8 @@ class NotificationService {
       requestSoundPermission: false,
     );
 
-    const initSettings = InitializationSettings(iOS: iosSettings);
+    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const initSettings = InitializationSettings(android: androidSettings, iOS: iosSettings);
 
     await _plugin.initialize(
       initSettings,
@@ -146,6 +156,7 @@ class NotificationService {
       },
     );
 
+    await _refreshScheduleMode();
     _initialized = true;
 
     // Badge beim Start IMMER auf den korrekten, aktuellen Stand bringen.
@@ -172,7 +183,37 @@ class NotificationService {
     }
   }
 
+  /// Exakt nur, wenn Android es erlaubt. Sonst ungefähr, damit nichts abbricht.
+  AndroidScheduleMode _scheduleMode = AndroidScheduleMode.inexactAllowWhileIdle;
+
+  Future<void> _refreshScheduleMode() async {
+    final android = _plugin.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+    if (android == null) {
+      _scheduleMode = AndroidScheduleMode.exactAllowWhileIdle;
+      return;
+    }
+    final canExact = await android.canScheduleExactNotifications();
+    _scheduleMode = canExact == true
+        ? AndroidScheduleMode.exactAllowWhileIdle
+        : AndroidScheduleMode.inexactAllowWhileIdle;
+  }
+
   Future<bool> requestPermissions() async {
+    // Android: Benachrichtigungen (13+) und exakte Alarme (14+) anfragen.
+    // Auf iOS ist android == null, dort läuft der bisherige Code weiter.
+    final android = _plugin.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+    if (android != null) {
+      final notifOk = await android.requestNotificationsPermission();
+      final canExact = await android.canScheduleExactNotifications();
+      if (canExact != true) {
+        await android.requestExactAlarmsPermission();
+      }
+      await _refreshScheduleMode();
+      return notifOk ?? false;
+    }
+
     if (_permissionsRequested) return true;
     _permissionsRequested = true;
 
@@ -197,6 +238,7 @@ class NotificationService {
 
   NotificationDetails _detailsFor(NotificationCopy copy, {required int badgeNumber, bool active = true}) {
     return NotificationDetails(
+      android: _androidDetails,
       iOS: DarwinNotificationDetails(
         subtitle: copy.subtitle,
         sound: 'default',
@@ -221,6 +263,7 @@ class NotificationService {
         null,
         null,
         const NotificationDetails(
+          android: _androidDetails,
           iOS: DarwinNotificationDetails(
             presentAlert: false,
             presentBadge: true,
@@ -300,7 +343,7 @@ class NotificationService {
       copy.body,
       tz.TZDateTime.from(reminderAt, tz.local),
       _detailsFor(copy, badgeNumber: _countOverdueOpenTasks() + 1),
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      androidScheduleMode: _scheduleMode,
       uiLocalNotificationDateInterpretation:
           UILocalNotificationDateInterpretation.absoluteTime,
       payload: taskId,
@@ -325,7 +368,7 @@ class NotificationService {
       copy.body,
       tz.TZDateTime.from(fireAt, tz.local),
       _detailsFor(copy, badgeNumber: _countOverdueOpenTasks()),
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      androidScheduleMode: _scheduleMode,
       uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
       payload: taskId,
     );
@@ -407,7 +450,7 @@ class NotificationService {
       copy.body,
       tz.TZDateTime.from(fireAt, tz.local),
       _detailsFor(copy, badgeNumber: _countOverdueOpenTasks()),
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      androidScheduleMode: _scheduleMode,
       uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
       payload: 'urgent:$taskId',
     );
@@ -460,7 +503,7 @@ class NotificationService {
       copy.body,
       tz.TZDateTime.from(fireAt, tz.local),
       _detailsFor(copy, badgeNumber: _countOverdueOpenTasks() + 1),
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      androidScheduleMode: _scheduleMode,
       uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
       payload: taskId,
     );
@@ -497,9 +540,10 @@ class NotificationService {
       eventReminderBody(eventTitle, timeLabel),
       tz.TZDateTime.from(reminderAt, tz.local),
       const NotificationDetails(
+        android: _androidDetails,
         iOS: DarwinNotificationDetails(sound: 'default', interruptionLevel: InterruptionLevel.active),
       ),
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      androidScheduleMode: _scheduleMode,
       uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
       payload: 'event:$eventId',
     );
@@ -533,9 +577,10 @@ class NotificationService {
       eventReminderBody(eventTitle, DateFormat('HH:mm').format(eventStart)),
       tz.TZDateTime.from(eventStart, tz.local),
       const NotificationDetails(
+        android: _androidDetails,
         iOS: DarwinNotificationDetails(sound: 'default', interruptionLevel: InterruptionLevel.active),
       ),
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      androidScheduleMode: _scheduleMode,
       uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
       payload: 'event:$eventId',
     );
@@ -724,7 +769,7 @@ class NotificationService {
   copy.body,
   tz.TZDateTime.from(fireTime, tz.local),
   _detailsFor(copy, badgeNumber: _countOverdueOpenTasks()),
-  androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+  androidScheduleMode: _scheduleMode,
   uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
   // matchDateTimeComponents entfernt — jede Vorschau wird jetzt einzeln
   // mit frischem Inhalt geplant, statt für immer denselben Text zu wiederholen.
@@ -749,7 +794,7 @@ class NotificationService {
   copy.body,
   tz.TZDateTime.from(fireTime, tz.local),
   _detailsFor(copy, badgeNumber: _countOverdueOpenTasks()),
-  androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+  androidScheduleMode: _scheduleMode,
   uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
   // matchDateTimeComponents entfernt — jede Vorschau wird jetzt einzeln
   // mit frischem Inhalt geplant, statt für immer denselben Text zu wiederholen.

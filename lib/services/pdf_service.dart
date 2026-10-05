@@ -1,3 +1,4 @@
+import '../widgets/glass_kit.dart';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
@@ -411,7 +412,7 @@ class PdfService {
                 padding: const EdgeInsets.symmetric(horizontal: 32),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(28),
-                  child: BackdropFilter(
+                  child: PlatformBackdropFilter(
                     filter: ImageFilter.blur(
                         sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
                     child: Container(
@@ -454,7 +455,7 @@ class PdfService {
                           // ── Monats-Navigation ──
                           ClipRRect(
                             borderRadius: BorderRadius.circular(20),
-                            child: BackdropFilter(
+                            child: PlatformBackdropFilter(
                               filter: ImageFilter.blur(
                                   sigmaX: skin.glassBlur,
                                   sigmaY: skin.glassBlur),

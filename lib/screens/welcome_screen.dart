@@ -110,7 +110,7 @@ class _WelcomeSheetState extends State<_WelcomeSheet> {
     return PopScope(
       canPop: false,
       child: Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+        padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
         child: GlassSheet(
           skin: skin,
           child: Padding(

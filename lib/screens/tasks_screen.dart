@@ -467,7 +467,7 @@ class TasksScreenState extends State<TasksScreen> with TickerProviderStateMixin 
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       useSafeArea: false,
-      constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.92),
+      constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.92),
       builder: (_) => EntrySheet(
         skin: skin,
         initialMode: mode,
@@ -524,7 +524,7 @@ class TasksScreenState extends State<TasksScreen> with TickerProviderStateMixin 
       isScrollControlled: true,
       useSafeArea: false,
       constraints: BoxConstraints(
-        maxHeight: MediaQuery.of(context).size.height * 0.92,
+        maxHeight: MediaQuery.sizeOf(context).height * 0.92,
       ),
       builder: (_) => EntrySheet(
         skin: skin,
@@ -656,7 +656,7 @@ class TasksScreenState extends State<TasksScreen> with TickerProviderStateMixin 
       isScrollControlled: true,
       useSafeArea: false,
       constraints: BoxConstraints(
-        maxHeight: MediaQuery.of(context).size.height * 0.92,
+        maxHeight: MediaQuery.sizeOf(context).height * 0.92,
       ),
       builder: (_) => EntrySheet(
         skin: skin,
@@ -747,7 +747,7 @@ class TasksScreenState extends State<TasksScreen> with TickerProviderStateMixin 
   @override
   Widget build(BuildContext context) {
     final skin = AppTheme.of(context);
-    final bottomNavHeight = 70.0 + MediaQuery.of(context).padding.bottom;
+    final bottomNavHeight = 70.0 + MediaQuery.paddingOf(context).bottom;
     final hasAnyOpen = _deadlineTasks.isNotEmpty || _generalTasks.isNotEmpty;
 
     return Scaffold(

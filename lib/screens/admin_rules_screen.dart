@@ -194,7 +194,7 @@ class _AdminRulesScreenState extends State<AdminRulesScreen>
                 return Positioned(
                   left: 20,
                   right: 20,
-                  bottom: MediaQuery.of(context).padding.bottom + 16,
+                  bottom: MediaQuery.paddingOf(context).bottom + 16,
                   child: _SelectionBar(
                     skin: skin,
                     animation: _selectionBarAnim,
@@ -434,7 +434,7 @@ class _AdminRulesScreenState extends State<AdminRulesScreen>
       isScrollControlled: true,
       builder: (sheetContext) => Padding(
         padding: EdgeInsets.only(
-            bottom: MediaQuery.of(sheetContext).viewInsets.bottom),
+            bottom: MediaQuery.viewInsetsOf(sheetContext).bottom),
         child: GlassSheet(
           skin: skin,
           child: Padding(
@@ -548,7 +548,7 @@ class _AdminRulesScreenState extends State<AdminRulesScreen>
           return Container(
             constraints: BoxConstraints(
                 maxHeight:
-                    MediaQuery.of(sheetContext).size.height * 0.85),
+                    MediaQuery.sizeOf(sheetContext).height * 0.85),
             child: GlassSheet(
               skin: skin,
               child: Padding(

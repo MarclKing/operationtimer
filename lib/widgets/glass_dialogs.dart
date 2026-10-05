@@ -58,7 +58,7 @@ Future<bool?> confirmDeleteDialog({
         color: Colors.transparent,
         child: ClipRRect(
           borderRadius: BorderRadius.circular(22),
-          child: BackdropFilter(
+          child: PlatformBackdropFilter(
             filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
             child: Container(
               margin: const EdgeInsets.symmetric(horizontal: 32),
@@ -153,7 +153,7 @@ Future<bool?> confirmActionDialog({
         color: Colors.transparent,
         child: ClipRRect(
           borderRadius: BorderRadius.circular(22),
-          child: BackdropFilter(
+          child: PlatformBackdropFilter(
             filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
             child: Container(
               margin: const EdgeInsets.symmetric(horizontal: 32),
@@ -191,7 +191,25 @@ Future<bool?> confirmActionDialog({
                   Row(children: [
                     Expanded(child: GlassSecondaryButton(skin: skin, label: cancelLabel, onTap: () => Navigator.pop(ctx, false))),
                     const SizedBox(width: 10),
-                    Expanded(child: GlassPrimaryButton(skin: skin, label: confirmLabel, onTap: () => Navigator.pop(ctx, true))),
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () => Navigator.pop(ctx, true),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          decoration: BoxDecoration(
+                            color: skin.primary,
+                            borderRadius: BorderRadius.circular(14),
+                            boxShadow: [
+                              BoxShadow(color: skin.primary.withValues(alpha: 0.45), blurRadius: 12, offset: const Offset(0, 4))
+                            ],
+                          ),
+                          child: Center(
+                            child: Text(confirmLabel,
+                                style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w700)),
+                          ),
+                        ),
+                      ),
+                    ),
                   ]),
                 ],
               ),
@@ -248,7 +266,7 @@ Future<void> infoDialog({
         color: Colors.transparent,
         child: ClipRRect(
           borderRadius: BorderRadius.circular(22),
-          child: BackdropFilter(
+          child: PlatformBackdropFilter(
             filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
             child: Container(
               margin: const EdgeInsets.symmetric(horizontal: 32),

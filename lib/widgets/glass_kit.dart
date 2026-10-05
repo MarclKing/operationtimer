@@ -1,12 +1,12 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
 import '../theme/app_theme.dart';
 import 'swipe_animation_mixin.dart';
 
-/// Blur nur auf iOS/Desktop. Auf Android ist BackdropFilter in Listen zu teuer.
-final bool kGlassBlurEnabled = defaultTargetPlatform != TargetPlatform.android;
+/// Blur global aus (Android: Performance, iOS: Wärmeentwicklung).
+/// Zum Testen auf true setzen.
+final bool kGlassBlurEnabled = false;
 
 class GlassBlur extends StatelessWidget {
   final double sigma;
@@ -579,7 +579,8 @@ class _GlassDropdownButtonState<T> extends State<GlassDropdownButton<T>>
     final overlay = Overlay.of(context);
     final size = box.size;
     final offset = box.localToGlobal(Offset.zero);
-    final screenHeight = MediaQuery.of(context).size.height;
+    final screenHeight =
+        MediaQuery.sizeOf(context).height - MediaQuery.viewInsetsOf(context).bottom;
 
     const popupMaxWidth = 260.0;
     const popupMinWidth = 160.0;
@@ -615,7 +616,7 @@ class _GlassDropdownButtonState<T> extends State<GlassDropdownButton<T>>
           widget.onChanged(val);
           _close();
         },
-        maxHeight: widget.maxPopupHeight,
+        maxHeight: _popupCap(widget.maxPopupHeight, rawHeight, screenHeight),
         onDismiss: _close,
       ),
     );
@@ -1006,7 +1007,8 @@ class _GlassMultiDropdownButtonState<T> extends State<GlassMultiDropdownButton<T
     final overlay = Overlay.of(context);
     final size = box.size;
     final offset = box.localToGlobal(Offset.zero);
-    final screenHeight = MediaQuery.of(context).size.height;
+    final screenHeight =
+        MediaQuery.sizeOf(context).height - MediaQuery.viewInsetsOf(context).bottom;
 
     const popupMaxWidth = 260.0;
     const popupMinWidth = 200.0;
@@ -1039,7 +1041,7 @@ class _GlassMultiDropdownButtonState<T> extends State<GlassMultiDropdownButton<T
         top: popupTop,
         maxWidth: popupMaxWidth,
         minWidth: popupMinWidth,
-        maxHeight: widget.maxPopupHeight,
+        maxHeight: _popupCap(widget.maxPopupHeight, rawHeight, screenHeight),
         onToggle: (val) {
           if (widget.lockedValues.contains(val)) {
             HapticFeedback.heavyImpact();
@@ -2454,7 +2456,15 @@ class PlatformBackdropFilter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (defaultTargetPlatform == TargetPlatform.android) return child;
+    if (!kGlassBlurEnabled) return child;
     return BackdropFilter(filter: filter, child: child);
   }
+}
+
+/// Begrenzt die Popup-Höhe auf den sichtbaren Bereich über der Tastatur.
+/// Gibt den konfigurierten Wert unverändert zurück, wenn das Popup passt.
+double? _popupCap(double? configured, double rawHeight, double visibleHeight) {
+  final avail = visibleHeight - 60 - 32;
+  final want = configured != null && configured < rawHeight ? configured : rawHeight;
+  return want <= avail ? configured : avail;
 }

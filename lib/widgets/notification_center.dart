@@ -301,7 +301,7 @@ class NotificationBellButtonState extends State<NotificationBellButton>
     final overlay = Overlay.of(context);
     final offset = box.localToGlobal(Offset.zero);
     final size = box.size;
-    final screenWidth = MediaQuery.of(context).size.width;
+    final screenWidth = MediaQuery.sizeOf(context).width;
 
     final popupWidth = math.min(340.0, screenWidth - 24.0);
     double popupRight = screenWidth - (offset.dx + size.width);
@@ -417,7 +417,7 @@ class _NotificationsOverlay extends StatelessWidget {
     final skin = AppTheme.of(context);
     final scaleAnim = CurvedAnimation(parent: animCtrl, curve: Curves.easeOutBack, reverseCurve: Curves.easeInCubic);
     final fadeAnim = CurvedAnimation(parent: animCtrl, curve: Curves.easeOut, reverseCurve: Curves.easeIn);
-    final screenHeight = MediaQuery.of(context).size.height;
+    final screenHeight = MediaQuery.sizeOf(context).height;
     final maxHeight = (screenHeight * 0.6).clamp(320.0, 520.0);
 
     return Stack(
@@ -450,7 +450,7 @@ class _NotificationsOverlay extends StatelessWidget {
                 constraints: BoxConstraints(maxWidth: width, maxHeight: maxHeight),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(22),
-                  child: BackdropFilter(
+                  child: PlatformBackdropFilter(
                     filter: ImageFilter.blur(sigmaX: 26, sigmaY: 26),
                     child: Container(
                       width: width,

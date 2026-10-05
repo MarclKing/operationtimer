@@ -149,6 +149,7 @@ class _EntrySheetState extends State<EntrySheet> {
   bool get _modeLocked => _isEditing;
 
   final _titleFocus = FocusNode();
+  bool _focusScheduled = false;
   late TextEditingController _titleCtrl;
 
   @override
@@ -168,6 +169,34 @@ class _EntrySheetState extends State<EntrySheet> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_focusScheduled || _isEditing) return;
+    _focusScheduled = true;
+    void focusNow() {
+      if (mounted) _titleFocus.requestFocus();
+    }
+    // Android: Tastatur erst starten, wenn das Sheet oben ist (sonst laufen
+    // beide Animationen gleichzeitig und ruckeln). iOS bleibt unverändert.
+    if (Theme.of(context).platform != TargetPlatform.android) {
+      focusNow();
+      return;
+    }
+    final anim = ModalRoute.of(context)?.animation;
+    if (anim == null || anim.isCompleted) {
+      focusNow();
+      return;
+    }
+    void listener(AnimationStatus st) {
+      if (st == AnimationStatus.completed) {
+        anim.removeStatusListener(listener);
+        focusNow();
+      }
+    }
+    anim.addStatusListener(listener);
+  }
+
+  @override
   void dispose() {
     _titleFocus.dispose();
     _titleCtrl.dispose();
@@ -182,11 +211,8 @@ class _EntrySheetState extends State<EntrySheet> {
   @override
   Widget build(BuildContext context) {
     final skin = widget.skin;
-    return Padding(
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom,
-        top: MediaQuery.of(context).padding.top + 12,
-      ),
+    return _KeyboardInset(
+      top: MediaQuery.paddingOf(context).top + 12,
       child: GlassSheet(
         skin: skin,
         child: NotificationListener<ScrollNotification>(
@@ -206,7 +232,7 @@ class _EntrySheetState extends State<EntrySheet> {
               physics: const BouncingScrollPhysics(),
               child: Padding(
                 padding: EdgeInsets.fromLTRB(
-                    20, 4, 20, 20 + MediaQuery.of(context).padding.bottom),
+                    20, 4, 20, 20 + MediaQuery.paddingOf(context).bottom),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -241,7 +267,7 @@ class _EntrySheetState extends State<EntrySheet> {
                     TextField(
                       controller: _titleCtrl,
                       focusNode: _titleFocus,
-                      autofocus: !_isEditing,
+                      autofocus: false,
                       maxLines: 3,
                       minLines: 1,
                       textCapitalization: TextCapitalization.sentences,
@@ -1328,5 +1354,21 @@ class _EventFieldsState extends State<_EventFields> {
     event.reminderOptionIds = List<String>.from(_selectedReminderIds);
 
     widget.onSave([event]);
+  }
+}
+
+/// Kapselt nur die Tastatur-abhängige Polsterung. Das Kind wird beim Hochfahren
+/// der Tastatur nicht neu gebaut, nur neu positioniert.
+class _KeyboardInset extends StatelessWidget {
+  final double top;
+  final Widget child;
+  const _KeyboardInset({required this.top, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(top: top, bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: RepaintBoundary(child: child),
+    );
   }
 }

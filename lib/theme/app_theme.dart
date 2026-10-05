@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/glass_kit.dart' show kGlassBlurEnabled;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // AppSkin
@@ -85,7 +86,10 @@ class AppSkin {
       : Colors.white.withValues(alpha: 0.14);
   Color get glassShadow => Colors.black.withValues(alpha: isLight ? 0.08 : 0.30);
   Color get glassHighlight => Colors.white.withValues(alpha: isLight ? 0.60 : 0.10);
-  double get glassOpacity => isLight ? 0.82 : 0.55;
+  /// Ohne Blur braucht es deckendere Flächen, sonst scheint der Hintergrund durch.
+  double get glassOpacity => kGlassBlurEnabled
+      ? (isLight ? 0.82 : 0.55)
+      : 0.96;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

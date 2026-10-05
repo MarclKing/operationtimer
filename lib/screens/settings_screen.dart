@@ -1568,7 +1568,7 @@ class _WorkTimeSettingsScreenState
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (_) => Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+        padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
         child: GlassSheet(
           skin: skin,
           child: StatefulBuilder(
@@ -2148,7 +2148,7 @@ class _SyncTokenAndReadOnlySectionState extends State<_SyncTokenAndReadOnlySecti
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
         builder: (sheetCtx) => Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.of(sheetCtx).viewInsets.bottom),
+        padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(sheetCtx).bottom),
         child: GlassSheet(
           skin: skin,
           child: StatefulBuilder(
@@ -3738,7 +3738,7 @@ class _HomescreenSettingsScreenState extends State<_HomescreenSettingsScreen> {
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (_) => Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+        padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
         child: GlassSheet(
           skin: skin,
           child: StatefulBuilder(
@@ -4119,7 +4119,7 @@ class _EventGroupSettingsScreenState extends State<_EventGroupSettingsScreen> {
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (_) => Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+        padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
         child: GlassSheet(
           skin: skin,
           child: StatefulBuilder(
