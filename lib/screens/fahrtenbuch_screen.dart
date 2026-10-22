@@ -78,46 +78,52 @@ class Fahrt {
       fahrtZiel.trim().isNotEmpty;
 
   Map<String, dynamic> toMap() => {
-        'id': id,
-        'datum': datum.toIso8601String(),
-        'kmStart': kmStart,
-        'kmEnd': kmEnd,
-        'kennzeichen': kennzeichen,
-        'getanktLiter': getanktLiter,
-        'fotoStartPath': fotoStartPath,
-        'fotoEndPath': fotoEndPath,
-        'uebertragen': uebertragen,
-        'abfahrtZeit': abfahrtZeit?.toIso8601String(),
-        'ankunftDatum': ankunftDatum?.toIso8601String(),
-        'ankunftZeit': ankunftZeit?.toIso8601String(),
-        'fahrtTyp': fahrtTyp,
-        'sonderWegerecht': sonderWegerecht,
-        'autoGewaschen': autoGewaschen,
-        'stromKwh': stromKwh,
-        'adblueKwh': adblueKwh,
-        'fahrtZiel': fahrtZiel,
-      };
+    'id': id,
+    'datum': datum.toIso8601String(),
+    'kmStart': kmStart,
+    'kmEnd': kmEnd,
+    'kennzeichen': kennzeichen,
+    'getanktLiter': getanktLiter,
+    'fotoStartPath': fotoStartPath,
+    'fotoEndPath': fotoEndPath,
+    'uebertragen': uebertragen,
+    'abfahrtZeit': abfahrtZeit?.toIso8601String(),
+    'ankunftDatum': ankunftDatum?.toIso8601String(),
+    'ankunftZeit': ankunftZeit?.toIso8601String(),
+    'fahrtTyp': fahrtTyp,
+    'sonderWegerecht': sonderWegerecht,
+    'autoGewaschen': autoGewaschen,
+    'stromKwh': stromKwh,
+    'adblueKwh': adblueKwh,
+    'fahrtZiel': fahrtZiel,
+  };
 
   factory Fahrt.fromMap(Map<String, dynamic> map) => Fahrt(
-        id: map['id'] as String,
-        datum: DateTime.parse(map['datum'] as String),
-        kmStart: map['kmStart'] as int,
-        kmEnd: map['kmEnd'] as int,
-        kennzeichen: map['kennzeichen'] as String? ?? '',
-        getanktLiter: (map['getanktLiter'] as num?)?.toDouble(),
-        fotoStartPath: map['fotoStartPath'] as String?,
-        fotoEndPath: map['fotoEndPath'] as String?,
-        uebertragen: map['uebertragen'] as bool? ?? false,
-        abfahrtZeit: map['abfahrtZeit'] != null ? DateTime.tryParse(map['abfahrtZeit'] as String) : null,
-        ankunftDatum: map['ankunftDatum'] != null ? DateTime.tryParse(map['ankunftDatum'] as String) : null,
-        ankunftZeit: map['ankunftZeit'] != null ? DateTime.tryParse(map['ankunftZeit'] as String) : null,
-        fahrtTyp: map['fahrtTyp'] as String? ?? '',
-        sonderWegerecht: map['sonderWegerecht'] as bool? ?? false,
-        autoGewaschen: map['autoGewaschen'] as bool? ?? false,
-        stromKwh: (map['stromKwh'] as num?)?.toDouble(),
-        adblueKwh: (map['adblueKwh'] as num?)?.toDouble(),
-        fahrtZiel: map['fahrtZiel'] as String? ?? '',
-      );
+    id: map['id'] as String,
+    datum: DateTime.parse(map['datum'] as String),
+    kmStart: map['kmStart'] as int,
+    kmEnd: map['kmEnd'] as int,
+    kennzeichen: map['kennzeichen'] as String? ?? '',
+    getanktLiter: (map['getanktLiter'] as num?)?.toDouble(),
+    fotoStartPath: map['fotoStartPath'] as String?,
+    fotoEndPath: map['fotoEndPath'] as String?,
+    uebertragen: map['uebertragen'] as bool? ?? false,
+    abfahrtZeit: map['abfahrtZeit'] != null
+        ? DateTime.tryParse(map['abfahrtZeit'] as String)
+        : null,
+    ankunftDatum: map['ankunftDatum'] != null
+        ? DateTime.tryParse(map['ankunftDatum'] as String)
+        : null,
+    ankunftZeit: map['ankunftZeit'] != null
+        ? DateTime.tryParse(map['ankunftZeit'] as String)
+        : null,
+    fahrtTyp: map['fahrtTyp'] as String? ?? '',
+    sonderWegerecht: map['sonderWegerecht'] as bool? ?? false,
+    autoGewaschen: map['autoGewaschen'] as bool? ?? false,
+    stromKwh: (map['stromKwh'] as num?)?.toDouble(),
+    adblueKwh: (map['adblueKwh'] as num?)?.toDouble(),
+    fahrtZiel: map['fahrtZiel'] as String? ?? '',
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -130,7 +136,8 @@ class FahrtTyp {
 
   const FahrtTyp(this.code, this.label);
 
-  String get displayShort => label.length > 22 ? '${label.substring(0, 20)}…' : label;
+  String get displayShort =>
+      label.length > 22 ? '${label.substring(0, 20)}…' : label;
   String get fullLabel => '$code – $label';
 }
 
@@ -138,7 +145,7 @@ class FahrtTypManager {
   static const _mruKey = 'fahrttyp_mru';
 
   static const List<FahrtTyp> allTypes = [
-    FahrtTyp('2190',  'Ermittlung/Einsatz (Sonst.)'),
+    FahrtTyp('2190', 'Ermittlung/Einsatz (Sonst.)'),
     FahrtTyp('1111', 'Besprechung/Tagung/Workshop'),
     FahrtTyp('1112', 'Aus- und Fortbildung'),
     FahrtTyp('1113', 'Dienstsport, Schießen'),
@@ -224,44 +231,54 @@ class KmMemory {
     final result = <String, Map<String, dynamic>>{};
     for (final entry in raw.entries) {
       try {
-        result[entry.key.toString()] = Map<String, dynamic>.from(entry.value as Map);
+        result[entry.key.toString()] = Map<String, dynamic>.from(
+          entry.value as Map,
+        );
       } catch (_) {}
     }
     return result;
   }
 
   static Map<String, dynamic>? getEntry(String kennzeichen) =>
-    _loadAll()[kennzeichen.toUpperCase()];
+      _loadAll()[kennzeichen.toUpperCase()];
 
-static void delete(String kennzeichen) {
-  final box = Hive.box('einstellungen');
-  final all = _loadAll();
-  final key = kennzeichen.toUpperCase();
-  all.remove(key);
-  box.put(_hiveKey, all);
-  SyncService.instance.pushVehicleMemory(key);
-}
-
-static void save(String kennzeichen, int kmEnd) {
-  if (kennzeichen.trim().isEmpty || kmEnd <= 0) return;
-  final box = Hive.box('einstellungen');
-  final all = _loadAll();
-  final key = kennzeichen.toUpperCase();
-  all[key] = {'kmEnd': kmEnd, 'datum': DateTime.now().toIso8601String(), 'kennzeichen': key};
-  if (all.length > 30) {
-    final sorted = all.entries.toList()
-      ..sort((a, b) {
-        final da = DateTime.tryParse(a.value['datum'] as String? ?? '') ?? DateTime(2000);
-        final db = DateTime.tryParse(b.value['datum'] as String? ?? '') ?? DateTime(2000);
-        return da.compareTo(db);
-      });
-    for (final entry in sorted.take(all.length - 30)) {
-      all.remove(entry.key);
-    }
+  static void delete(String kennzeichen) {
+    final box = Hive.box('einstellungen');
+    final all = _loadAll();
+    final key = kennzeichen.toUpperCase();
+    all.remove(key);
+    box.put(_hiveKey, all);
+    SyncService.instance.pushVehicleMemory(key);
   }
-  box.put(_hiveKey, all);
-  SyncService.instance.pushVehicleMemory(key);
-}
+
+  static void save(String kennzeichen, int kmEnd) {
+    if (kennzeichen.trim().isEmpty || kmEnd <= 0) return;
+    final box = Hive.box('einstellungen');
+    final all = _loadAll();
+    final key = kennzeichen.toUpperCase();
+    all[key] = {
+      'kmEnd': kmEnd,
+      'datum': DateTime.now().toIso8601String(),
+      'kennzeichen': key,
+    };
+    if (all.length > 30) {
+      final sorted = all.entries.toList()
+        ..sort((a, b) {
+          final da =
+              DateTime.tryParse(a.value['datum'] as String? ?? '') ??
+              DateTime(2000);
+          final db =
+              DateTime.tryParse(b.value['datum'] as String? ?? '') ??
+              DateTime(2000);
+          return da.compareTo(db);
+        });
+      for (final entry in sorted.take(all.length - 30)) {
+        all.remove(entry.key);
+      }
+    }
+    box.put(_hiveKey, all);
+    SyncService.instance.pushVehicleMemory(key);
+  }
 
   static List<Map<String, dynamic>> getAll() {
     return _loadAll().values.toList();
@@ -290,7 +307,9 @@ static void save(String kennzeichen, int kmEnd) {
         candidates.add({...entry, 'kmDiff': kmDiff, 'daysDiff': daysDiff});
       }
     }
-    candidates.sort((a, b) => (a['kmDiff'] as int).compareTo(b['kmDiff'] as int));
+    candidates.sort(
+      (a, b) => (a['kmDiff'] as int).compareTo(b['kmDiff'] as int),
+    );
     return candidates;
   }
 
@@ -317,15 +336,20 @@ static void save(String kennzeichen, int kmEnd) {
     if (all.isEmpty) return [];
     final sorted = all.values.toList()
       ..sort((a, b) {
-        final da = DateTime.tryParse(a['datum'] as String? ?? '') ?? DateTime(2000);
-        final db = DateTime.tryParse(b['datum'] as String? ?? '') ?? DateTime(2000);
+        final da =
+            DateTime.tryParse(a['datum'] as String? ?? '') ?? DateTime(2000);
+        final db =
+            DateTime.tryParse(b['datum'] as String? ?? '') ?? DateTime(2000);
         return db.compareTo(da);
       });
-    return sorted.map((e) {
-      final km = e['kmEnd'] as int? ?? 0;
-      final kz = e['kennzeichen'] as String? ?? '';
-      return '$kz: ${_formatKm(km)} km';
-    }).take(3).toList();
+    return sorted
+        .map((e) {
+          final km = e['kmEnd'] as int? ?? 0;
+          final kz = e['kennzeichen'] as String? ?? '';
+          return '$kz: ${_formatKm(km)} km';
+        })
+        .take(3)
+        .toList();
   }
 
   static String _formatKm(int km) {
@@ -351,7 +375,9 @@ class KennzeichenHelper {
       if (raw is! List) continue;
       for (final e in raw) {
         try {
-          final kz = (Map<String, dynamic>.from(e as Map)['kennzeichen'] as String?)?.trim();
+          final kz =
+              (Map<String, dynamic>.from(e as Map)['kennzeichen'] as String?)
+                  ?.trim();
           if (kz != null && kz.isNotEmpty) result.add(kz.toUpperCase());
         } catch (_) {}
       }
@@ -370,7 +396,7 @@ class KennzeichenHelper {
       r'^([A-ZÄÖÜ]{1,3})'
       r'([A-ZÄÖÜ]{1,2})'
       r'(\d{1,4})'
-      r'([EH]?)$'
+      r'([EH]?)$',
     ).firstMatch(rawInput);
     if (m != null) {
       final ort = m.group(1)!;
@@ -385,7 +411,9 @@ class KennzeichenHelper {
   static List<String> suggestions(String input, List<String> known) {
     if (input.trim().isEmpty) return known;
     final raw = input.trim().toUpperCase().replaceAll(RegExp(r'[\s\-]'), '');
-    return known.where((k) => k.replaceAll(RegExp(r'[\s\-]'), '').contains(raw)).toList();
+    return known
+        .where((k) => k.replaceAll(RegExp(r'[\s\-]'), '').contains(raw))
+        .toList();
   }
 }
 
@@ -404,7 +432,9 @@ class FahrtZielHelper {
       if (raw is! List) continue;
       for (final e in raw) {
         try {
-          final ziel = (Map<String, dynamic>.from(e as Map)['fahrtZiel'] as String?)?.trim();
+          final ziel =
+              (Map<String, dynamic>.from(e as Map)['fahrtZiel'] as String?)
+                  ?.trim();
           if (ziel != null && ziel.isNotEmpty) result.add(ziel);
         } catch (_) {}
       }
@@ -415,10 +445,7 @@ class FahrtZielHelper {
   static List<String> suggestions(String input, List<String> known) {
     if (input.trim().isEmpty) return known.take(5).toList();
     final lower = input.trim().toLowerCase();
-    return known
-        .where((z) => z.toLowerCase().contains(lower))
-        .take(5)
-        .toList();
+    return known.where((z) => z.toLowerCase().contains(lower)).take(5).toList();
   }
 }
 
@@ -506,22 +533,24 @@ class _MonthSectionHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(top: 18, bottom: 10),
-      child: Row(children: [
-        Expanded(child: Container(height: 0.6, color: skin.surface(0.10))),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10),
-          child: Text(
-            label.toUpperCase(),
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
-              color: skin.surface(0.4),
-              letterSpacing: 1.0,
+      child: Row(
+        children: [
+          Expanded(child: Container(height: 0.6, color: skin.surface(0.10))),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            child: Text(
+              label.toUpperCase(),
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                color: skin.surface(0.4),
+                letterSpacing: 1.0,
+              ),
             ),
           ),
-        ),
-        Expanded(child: Container(height: 0.6, color: skin.surface(0.10))),
-      ]),
+          Expanded(child: Container(height: 0.6, color: skin.surface(0.10))),
+        ],
+      ),
     );
   }
 }
@@ -538,7 +567,8 @@ class FahrtenbuchScreen extends StatefulWidget {
   State<FahrtenbuchScreen> createState() => FahrtenbuchScreenState();
 }
 
-class FahrtenbuchScreenState extends State<FahrtenbuchScreen> with TickerProviderStateMixin {
+class FahrtenbuchScreenState extends State<FahrtenbuchScreen>
+    with TickerProviderStateMixin {
   final FahrtDraft _draft = FahrtDraft();
 
   bool _draftVisible = false;
@@ -569,14 +599,14 @@ class FahrtenbuchScreenState extends State<FahrtenbuchScreen> with TickerProvide
       reverseCurve: Curves.easeIn,
     );
     _selectionBarCtrl = AnimationController(
-  vsync: this,
-  duration: const Duration(milliseconds: 320),
-);
-_selectionBarAnim = CurvedAnimation(
-  parent: _selectionBarCtrl,
-  curve: Curves.easeOutCubic,
-  reverseCurve: Curves.easeInCubic,
-);
+      vsync: this,
+      duration: const Duration(milliseconds: 320),
+    );
+    _selectionBarAnim = CurvedAnimation(
+      parent: _selectionBarCtrl,
+      curve: Curves.easeOutCubic,
+      reverseCurve: Curves.easeInCubic,
+    );
     SyncService.instance.scheduleDataChanged.addListener(_onSyncDataChanged);
   }
 
@@ -611,14 +641,14 @@ _selectionBarAnim = CurvedAnimation(
   // ── Mehrfachauswahl-Logik ─────────────────────────────────────────────────
 
   void _enterSelectionMode(String id) {
-  HapticFeedback.mediumImpact();
-  setState(() {
-    _selectionMode = true;
-    _selectedIds.add(id);
-    _openSwipedFahrtId = null;
-  });
-  _selectionBarCtrl.forward();
-}
+    HapticFeedback.mediumImpact();
+    setState(() {
+      _selectionMode = true;
+      _selectedIds.add(id);
+      _openSwipedFahrtId = null;
+    });
+    _selectionBarCtrl.forward();
+  }
 
   void _toggleSelection(String id) {
     HapticFeedback.selectionClick();
@@ -634,39 +664,57 @@ _selectionBarAnim = CurvedAnimation(
       _exitSelectionMode();
     }
   }
+
   void _exitSelectionMode() {
-  _selectionBarCtrl.reverse().then((_) {
-    if (mounted) {
-      setState(() {
-        _selectionMode = false;
-        _selectedIds.clear();
-      });
-    }
-  });
-}
+    _selectionBarCtrl.reverse().then((_) {
+      if (mounted) {
+        setState(() {
+          _selectionMode = false;
+          _selectedIds.clear();
+        });
+      }
+    });
+  }
 
   Future<void> _exportSelected() async {
-  final fahrten = _getAllFahrten().where((f) => _selectedIds.contains(f.id)).toList();
-  if (fahrten.isEmpty) return;
-  _exitSelectionMode();
-  final success = await FahrtExportService.exportFahrten(fahrten);
-  if (success == true) {
-    for (final f in fahrten) {
-      _saveFahrt(Fahrt(
-        id: f.id, datum: f.datum, kmStart: f.kmStart, kmEnd: f.kmEnd,
-        kennzeichen: f.kennzeichen, getanktLiter: f.getanktLiter,
-        fotoStartPath: f.fotoStartPath, fotoEndPath: f.fotoEndPath,
-        uebertragen: true,  // ← automatisch eingetragen
-        abfahrtZeit: f.abfahrtZeit, ankunftDatum: f.ankunftDatum,
-        ankunftZeit: f.ankunftZeit, fahrtTyp: f.fahrtTyp,
-        sonderWegerecht: f.sonderWegerecht, autoGewaschen: f.autoGewaschen,
-        stromKwh: f.stromKwh, adblueKwh: f.adblueKwh, fahrtZiel: f.fahrtZiel,
-      ));
+    final fahrten = _getAllFahrten()
+        .where((f) => _selectedIds.contains(f.id))
+        .toList();
+    if (fahrten.isEmpty) return;
+    _exitSelectionMode();
+    final success = await FahrtExportService.exportFahrten(fahrten);
+    if (success == true) {
+      for (final f in fahrten) {
+        _saveFahrt(
+          Fahrt(
+            id: f.id,
+            datum: f.datum,
+            kmStart: f.kmStart,
+            kmEnd: f.kmEnd,
+            kennzeichen: f.kennzeichen,
+            getanktLiter: f.getanktLiter,
+            fotoStartPath: f.fotoStartPath,
+            fotoEndPath: f.fotoEndPath,
+            uebertragen: true, // ← automatisch eingetragen
+            abfahrtZeit: f.abfahrtZeit,
+            ankunftDatum: f.ankunftDatum,
+            ankunftZeit: f.ankunftZeit,
+            fahrtTyp: f.fahrtTyp,
+            sonderWegerecht: f.sonderWegerecht,
+            autoGewaschen: f.autoGewaschen,
+            stromKwh: f.stromKwh,
+            adblueKwh: f.adblueKwh,
+            fahrtZiel: f.fahrtZiel,
+          ),
+        );
+      }
     }
   }
-}
+
   bool? get _selectedUebertragenState {
-    final selected = _getAllFahrten().where((f) => _selectedIds.contains(f.id)).toList();
+    final selected = _getAllFahrten()
+        .where((f) => _selectedIds.contains(f.id))
+        .toList();
     if (selected.isEmpty) return false;
     final allTrue = selected.every((f) => f.uebertragen);
     final allFalse = selected.every((f) => !f.uebertragen);
@@ -676,7 +724,9 @@ _selectionBarAnim = CurvedAnimation(
   }
 
   void _toggleSelectedUebertragen() {
-    final selected = _getAllFahrten().where((f) => _selectedIds.contains(f.id)).toList();
+    final selected = _getAllFahrten()
+        .where((f) => _selectedIds.contains(f.id))
+        .toList();
     if (selected.isEmpty) return;
     final allTrue = selected.every((f) => f.uebertragen);
     final allFalse = selected.every((f) => !f.uebertragen);
@@ -685,67 +735,105 @@ _selectionBarAnim = CurvedAnimation(
     final bool newValue = allFalse ? true : (allTrue ? false : false);
     HapticFeedback.mediumImpact();
     for (final f in selected) {
-      _saveFahrt(Fahrt(
-        id: f.id, datum: f.datum, kmStart: f.kmStart, kmEnd: f.kmEnd,
-        kennzeichen: f.kennzeichen, getanktLiter: f.getanktLiter,
-        fotoStartPath: f.fotoStartPath, fotoEndPath: f.fotoEndPath,
-        uebertragen: newValue,
-        abfahrtZeit: f.abfahrtZeit, ankunftDatum: f.ankunftDatum,
-        ankunftZeit: f.ankunftZeit, fahrtTyp: f.fahrtTyp,
-        sonderWegerecht: f.sonderWegerecht, autoGewaschen: f.autoGewaschen,
-        stromKwh: f.stromKwh, adblueKwh: f.adblueKwh, fahrtZiel: f.fahrtZiel,
-      ));
+      _saveFahrt(
+        Fahrt(
+          id: f.id,
+          datum: f.datum,
+          kmStart: f.kmStart,
+          kmEnd: f.kmEnd,
+          kennzeichen: f.kennzeichen,
+          getanktLiter: f.getanktLiter,
+          fotoStartPath: f.fotoStartPath,
+          fotoEndPath: f.fotoEndPath,
+          uebertragen: newValue,
+          abfahrtZeit: f.abfahrtZeit,
+          ankunftDatum: f.ankunftDatum,
+          ankunftZeit: f.ankunftZeit,
+          fahrtTyp: f.fahrtTyp,
+          sonderWegerecht: f.sonderWegerecht,
+          autoGewaschen: f.autoGewaschen,
+          stromKwh: f.stromKwh,
+          adblueKwh: f.adblueKwh,
+          fahrtZiel: f.fahrtZiel,
+        ),
+      );
     }
   }
-
 
   Future<void> _exportSingle(Fahrt fahrt) async {
     final success = await FahrtExportService.exportFahrten([fahrt]);
     if (success == true) {
-      _saveFahrt(Fahrt(
-        id: fahrt.id, datum: fahrt.datum, kmStart: fahrt.kmStart, kmEnd: fahrt.kmEnd,
-        kennzeichen: fahrt.kennzeichen, getanktLiter: fahrt.getanktLiter,
-        fotoStartPath: fahrt.fotoStartPath, fotoEndPath: fahrt.fotoEndPath,
-        uebertragen: true,
-        abfahrtZeit: fahrt.abfahrtZeit, ankunftDatum: fahrt.ankunftDatum,
-        ankunftZeit: fahrt.ankunftZeit, fahrtTyp: fahrt.fahrtTyp,
-        sonderWegerecht: fahrt.sonderWegerecht, autoGewaschen: fahrt.autoGewaschen,
-        stromKwh: fahrt.stromKwh, adblueKwh: fahrt.adblueKwh, fahrtZiel: fahrt.fahrtZiel,
-      ));
+      _saveFahrt(
+        Fahrt(
+          id: fahrt.id,
+          datum: fahrt.datum,
+          kmStart: fahrt.kmStart,
+          kmEnd: fahrt.kmEnd,
+          kennzeichen: fahrt.kennzeichen,
+          getanktLiter: fahrt.getanktLiter,
+          fotoStartPath: fahrt.fotoStartPath,
+          fotoEndPath: fahrt.fotoEndPath,
+          uebertragen: true,
+          abfahrtZeit: fahrt.abfahrtZeit,
+          ankunftDatum: fahrt.ankunftDatum,
+          ankunftZeit: fahrt.ankunftZeit,
+          fahrtTyp: fahrt.fahrtTyp,
+          sonderWegerecht: fahrt.sonderWegerecht,
+          autoGewaschen: fahrt.autoGewaschen,
+          stromKwh: fahrt.stromKwh,
+          adblueKwh: fahrt.adblueKwh,
+          fahrtZiel: fahrt.fahrtZiel,
+        ),
+      );
     }
   }
 
   Future<void> _exportAll() async {
-  final fahrten = _getAllFahrten();
-  if (fahrten.isEmpty) return;
-  final success = await FahrtExportService.exportFahrten(fahrten);
-  if (success == true) {
-    for (final f in fahrten) {
-      _saveFahrt(Fahrt(
-        id: f.id, datum: f.datum, kmStart: f.kmStart, kmEnd: f.kmEnd,
-        kennzeichen: f.kennzeichen, getanktLiter: f.getanktLiter,
-        fotoStartPath: f.fotoStartPath, fotoEndPath: f.fotoEndPath,
-        uebertragen: true,
-        abfahrtZeit: f.abfahrtZeit, ankunftDatum: f.ankunftDatum,
-        ankunftZeit: f.ankunftZeit, fahrtTyp: f.fahrtTyp,
-        sonderWegerecht: f.sonderWegerecht, autoGewaschen: f.autoGewaschen,
-        stromKwh: f.stromKwh, adblueKwh: f.adblueKwh, fahrtZiel: f.fahrtZiel,
-      ));
+    final fahrten = _getAllFahrten();
+    if (fahrten.isEmpty) return;
+    final success = await FahrtExportService.exportFahrten(fahrten);
+    if (success == true) {
+      for (final f in fahrten) {
+        _saveFahrt(
+          Fahrt(
+            id: f.id,
+            datum: f.datum,
+            kmStart: f.kmStart,
+            kmEnd: f.kmEnd,
+            kennzeichen: f.kennzeichen,
+            getanktLiter: f.getanktLiter,
+            fotoStartPath: f.fotoStartPath,
+            fotoEndPath: f.fotoEndPath,
+            uebertragen: true,
+            abfahrtZeit: f.abfahrtZeit,
+            ankunftDatum: f.ankunftDatum,
+            ankunftZeit: f.ankunftZeit,
+            fahrtTyp: f.fahrtTyp,
+            sonderWegerecht: f.sonderWegerecht,
+            autoGewaschen: f.autoGewaschen,
+            stromKwh: f.stromKwh,
+            adblueKwh: f.adblueKwh,
+            fahrtZiel: f.fahrtZiel,
+          ),
+        );
+      }
     }
   }
-}
 
   void closeOverlays() {
-  if (_openSwipedFahrtId != null) {
-    setState(() => _openSwipedFahrtId = null);
+    if (_openSwipedFahrtId != null) {
+      setState(() => _openSwipedFahrtId = null);
+    }
+    if (_selectionMode) _exitSelectionMode();
   }
-  if (_selectionMode) _exitSelectionMode();
-}
 
   void reopenDraft() {
     if (_sheetOpen) return;
     final skin = AppTheme.of(context);
-    setState(() { _sheetOpen = true; _draftVisible = false; });
+    setState(() {
+      _sheetOpen = true;
+      _draftVisible = false;
+    });
     widget.onDraftChanged?.call();
     _draftBannerCtrl.reverse();
 
@@ -759,26 +847,40 @@ _selectionBarAnim = CurvedAnimation(
       builder: (_) => Padding(
         padding: EdgeInsets.only(top: MediaQuery.sizeOf(context).height * 0.08),
         child: _FahrtEintragenSheet(
-          skin: skin, draft: _draft, isEdit: false,
+          skin: skin,
+          draft: _draft,
+          isEdit: false,
           onSave: (fahrt, {editingId}) {
             _saveFahrt(fahrt);
             _draft.reset();
-            setState(() { _sheetOpen = false; _draftVisible = false; });
+            setState(() {
+              _sheetOpen = false;
+              _draftVisible = false;
+            });
             _draftBannerCtrl.reverse();
           },
           onDiscard: () {
             _draft.reset();
-            setState(() { _sheetOpen = false; _draftVisible = false; });
+            setState(() {
+              _sheetOpen = false;
+              _draftVisible = false;
+            });
             _draftBannerCtrl.reverse();
           },
           onMinimize: () {
             Navigator.pop(context);
             if (_draft.hasAnyData) {
-              setState(() { _sheetOpen = false; _draftVisible = true; });
+              setState(() {
+                _sheetOpen = false;
+                _draftVisible = true;
+              });
               _draftBannerCtrl.forward();
               widget.onDraftChanged?.call();
             } else {
-              setState(() { _sheetOpen = false; _draftVisible = false; });
+              setState(() {
+                _sheetOpen = false;
+                _draftVisible = false;
+              });
               widget.onDraftChanged?.call();
             }
           },
@@ -787,11 +889,17 @@ _selectionBarAnim = CurvedAnimation(
     ).then((_) {
       if (_sheetOpen) {
         if (_draft.hasAnyData) {
-          setState(() { _sheetOpen = false; _draftVisible = true; });
+          setState(() {
+            _sheetOpen = false;
+            _draftVisible = true;
+          });
           _draftBannerCtrl.forward();
           widget.onDraftChanged?.call();
         } else {
-          setState(() { _sheetOpen = false; _draftVisible = false; });
+          setState(() {
+            _sheetOpen = false;
+            _draftVisible = false;
+          });
           widget.onDraftChanged?.call();
         }
       }
@@ -802,7 +910,10 @@ _selectionBarAnim = CurvedAnimation(
     if (_sheetOpen) return;
     if (_openSwipedFahrtId != null) setState(() => _openSwipedFahrtId = null);
     final skin = AppTheme.of(context);
-    setState(() { _sheetOpen = true; _draftVisible = false; });
+    setState(() {
+      _sheetOpen = true;
+      _draftVisible = false;
+    });
     widget.onDraftChanged?.call();
     _draftBannerCtrl.reverse();
 
@@ -823,22 +934,34 @@ _selectionBarAnim = CurvedAnimation(
           onSave: (fahrt, {editingId}) {
             _saveFahrt(fahrt);
             _draft.reset();
-            setState(() { _sheetOpen = false; _draftVisible = false; });
+            setState(() {
+              _sheetOpen = false;
+              _draftVisible = false;
+            });
             _draftBannerCtrl.reverse();
           },
           onDiscard: () {
             _draft.reset();
-            setState(() { _sheetOpen = false; _draftVisible = false; });
+            setState(() {
+              _sheetOpen = false;
+              _draftVisible = false;
+            });
             _draftBannerCtrl.reverse();
           },
           onMinimize: () {
             Navigator.pop(context);
             if (_draft.hasAnyData) {
-              setState(() { _sheetOpen = false; _draftVisible = true; });
+              setState(() {
+                _sheetOpen = false;
+                _draftVisible = true;
+              });
               _draftBannerCtrl.forward();
               widget.onDraftChanged?.call();
             } else {
-              setState(() { _sheetOpen = false; _draftVisible = false; });
+              setState(() {
+                _sheetOpen = false;
+                _draftVisible = false;
+              });
               widget.onDraftChanged?.call();
             }
           },
@@ -848,11 +971,17 @@ _selectionBarAnim = CurvedAnimation(
       _pendingKmStartScan = false;
       if (_sheetOpen) {
         if (_draft.hasAnyData) {
-          setState(() { _sheetOpen = false; _draftVisible = true; });
+          setState(() {
+            _sheetOpen = false;
+            _draftVisible = true;
+          });
           _draftBannerCtrl.forward();
           widget.onDraftChanged?.call();
         } else {
-          setState(() { _sheetOpen = false; _draftVisible = false; });
+          setState(() {
+            _sheetOpen = false;
+            _draftVisible = false;
+          });
           widget.onDraftChanged?.call();
         }
       }
@@ -873,9 +1002,13 @@ _selectionBarAnim = CurvedAnimation(
     final editDraft = FahrtDraft();
     editDraft.kennzeichen = fahrt.kennzeichen;
     editDraft.abfahrtDatum = fahrt.datum;
-    editDraft.abfahrtZeit = fahrt.abfahrtZeit != null ? TimeOfDay.fromDateTime(fahrt.abfahrtZeit!) : null;
+    editDraft.abfahrtZeit = fahrt.abfahrtZeit != null
+        ? TimeOfDay.fromDateTime(fahrt.abfahrtZeit!)
+        : null;
     editDraft.ankunftDatum = fahrt.ankunftDatum;
-    editDraft.ankunftZeit = fahrt.ankunftZeit != null ? TimeOfDay.fromDateTime(fahrt.ankunftZeit!) : null;
+    editDraft.ankunftZeit = fahrt.ankunftZeit != null
+        ? TimeOfDay.fromDateTime(fahrt.ankunftZeit!)
+        : null;
     editDraft.kmStart = fahrt.kmStart.toString();
     editDraft.kmEnd = fahrt.kmEnd.toString();
     editDraft.fotoStartPath = fahrt.fotoStartPath;
@@ -883,13 +1016,22 @@ _selectionBarAnim = CurvedAnimation(
     editDraft.fahrtTypCode = fahrt.fahrtTyp;
     editDraft.sonderWegerecht = fahrt.sonderWegerecht;
     editDraft.autoGewaschen = fahrt.autoGewaschen;
-    editDraft.kraftstoff = fahrt.getanktLiter != null ? fahrt.getanktLiter!.toString().replaceAll('.', ',') : '';
-    editDraft.strom = fahrt.stromKwh != null ? fahrt.stromKwh!.toString().replaceAll('.', ',') : '';
-    editDraft.adblue = fahrt.adblueKwh != null ? fahrt.adblueKwh!.toString().replaceAll('.', ',') : '';
+    editDraft.kraftstoff = fahrt.getanktLiter != null
+        ? fahrt.getanktLiter!.toString().replaceAll('.', ',')
+        : '';
+    editDraft.strom = fahrt.stromKwh != null
+        ? fahrt.stromKwh!.toString().replaceAll('.', ',')
+        : '';
+    editDraft.adblue = fahrt.adblueKwh != null
+        ? fahrt.adblueKwh!.toString().replaceAll('.', ',')
+        : '';
     editDraft.fahrtZiel = fahrt.fahrtZiel;
 
     final skin = AppTheme.of(context);
-    setState(() { _sheetOpen = true; _draftVisible = false; });
+    setState(() {
+      _sheetOpen = true;
+      _draftVisible = false;
+    });
     _draftBannerCtrl.reverse();
 
     showModalBottomSheet(
@@ -902,25 +1044,40 @@ _selectionBarAnim = CurvedAnimation(
       builder: (_) => Padding(
         padding: EdgeInsets.only(top: MediaQuery.sizeOf(context).height * 0.08),
         child: _FahrtEintragenSheet(
-          skin: skin, draft: editDraft, isEdit: true, editingId: fahrt.id,
+          skin: skin,
+          draft: editDraft,
+          isEdit: true,
+          editingId: fahrt.id,
           onSave: (updatedFahrt, {editingId}) {
             _saveFahrt(updatedFahrt);
-            setState(() { _sheetOpen = false; _draftVisible = false; });
+            setState(() {
+              _sheetOpen = false;
+              _draftVisible = false;
+            });
             _draftBannerCtrl.reverse();
           },
           onDiscard: () {
-            setState(() { _sheetOpen = false; _draftVisible = false; });
+            setState(() {
+              _sheetOpen = false;
+              _draftVisible = false;
+            });
             _draftBannerCtrl.reverse();
           },
           onMinimize: () {
             Navigator.pop(context);
-            setState(() { _sheetOpen = false; _draftVisible = false; });
+            setState(() {
+              _sheetOpen = false;
+              _draftVisible = false;
+            });
           },
           onDelete: () => _deleteFahrtWithAnimation(fahrt.id),
         ),
       ),
     ).then((_) {
-      setState(() { _sheetOpen = false; _draftVisible = false; });
+      setState(() {
+        _sheetOpen = false;
+        _draftVisible = false;
+      });
       widget.onDraftChanged?.call();
     });
   }
@@ -946,7 +1103,11 @@ _selectionBarAnim = CurvedAnimation(
       if (!k.startsWith('fahrten_')) continue;
       final monthKey = k.substring('fahrten_'.length);
       final rawStored = box.get(k);
-      final raw = SyncService.instance.visibleValueFor('fahrten', monthKey, rawStored);
+      final raw = SyncService.instance.visibleValueFor(
+        'fahrten',
+        monthKey,
+        rawStored,
+      );
       if (raw is! List) continue;
       for (final e in raw) {
         try {
@@ -965,7 +1126,9 @@ _selectionBarAnim = CurvedAnimation(
     for (final f in fahrten) {
       final monthKey = DateFormat('yyyy-MM').format(f.datum);
       if (monthKey != lastMonthKey) {
-        items.add(_FahrtListItem.header(DateFormat('MMMM yyyy', 'de').format(f.datum)));
+        items.add(
+          _FahrtListItem.header(DateFormat('MMMM yyyy', 'de').format(f.datum)),
+        );
         lastMonthKey = monthKey;
       }
       items.add(_FahrtListItem.fahrt(f));
@@ -978,7 +1141,9 @@ _selectionBarAnim = CurvedAnimation(
     final monthKey = DateFormat('yyyy-MM').format(fahrt.datum);
     final raw = box.get('fahrten_$monthKey');
     final existing = (raw is List)
-        ? raw.map((e) => Fahrt.fromMap(Map<String, dynamic>.from(e as Map))).toList()
+        ? raw
+              .map((e) => Fahrt.fromMap(Map<String, dynamic>.from(e as Map)))
+              .toList()
         : <Fahrt>[];
     final idx = existing.indexWhere((f) => f.id == fahrt.id);
     if (idx >= 0) {
@@ -1002,6 +1167,7 @@ _selectionBarAnim = CurvedAnimation(
 
     setState(() {});
   }
+
   void _deleteFahrt(String id) {
     final box = Hive.box('einstellungen');
     final fahrt = _getAllFahrten().where((f) => f.id == id).firstOrNull;
@@ -1009,16 +1175,22 @@ _selectionBarAnim = CurvedAnimation(
     final monthKey = DateFormat('yyyy-MM').format(fahrt.datum);
     final raw = box.get('fahrten_$monthKey');
     if (raw is! List) return;
-    final existing = raw.map((e) => Fahrt.fromMap(Map<String, dynamic>.from(e as Map))).toList();
+    final existing = raw
+        .map((e) => Fahrt.fromMap(Map<String, dynamic>.from(e as Map)))
+        .toList();
 
     // Foto-Dateien löschen bevor Eintrag entfernt wird
     final toDelete = existing.where((f) => f.id == id).firstOrNull;
     if (toDelete != null) {
       if (toDelete.fotoStartPath != null) {
-        try { dartio.File(toDelete.fotoStartPath!).deleteSync(); } catch (_) {}
+        try {
+          dartio.File(toDelete.fotoStartPath!).deleteSync();
+        } catch (_) {}
       }
       if (toDelete.fotoEndPath != null) {
-        try { dartio.File(toDelete.fotoEndPath!).deleteSync(); } catch (_) {}
+        try {
+          dartio.File(toDelete.fotoEndPath!).deleteSync();
+        } catch (_) {}
       }
     }
     existing.removeWhere((f) => f.id == id);
@@ -1035,262 +1207,348 @@ _selectionBarAnim = CurvedAnimation(
   void _deleteDraft() {
     HapticFeedback.mediumImpact();
     _draft.reset();
-    setState(() { _draftVisible = false; _sheetOpen = false; });
+    setState(() {
+      _draftVisible = false;
+      _sheetOpen = false;
+    });
     _draftBannerCtrl.reverse();
     widget.onDraftChanged?.call();
   }
 
   @override
-Widget build(BuildContext context) {
-  final skin = AppTheme.of(context);
-  final fahrten = _getAllFahrten();
-  final groupedItems = _buildGroupedItems(fahrten);
-  final bottomNavHeight = 70.0 + MediaQuery.paddingOf(context).bottom;
-  final draftBannerHeight = 56.0;
-  final extraBottomOffset = _draftVisible ? draftBannerHeight + 8 : 48.0;
+  Widget build(BuildContext context) {
+    final skin = AppTheme.of(context);
+    final fahrten = _getAllFahrten();
+    final groupedItems = _buildGroupedItems(fahrten);
+    final bottomNavHeight = 70.0 + MediaQuery.paddingOf(context).bottom;
+    final draftBannerHeight = 56.0;
+    final extraBottomOffset = _draftVisible ? draftBannerHeight + 8 : 48.0;
 
-  final totalFahrten = fahrten.length;
-  final uebertragenCount = fahrten.where((f) => f.uebertragen).length;
+    final totalFahrten = fahrten.length;
+    final uebertragenCount = fahrten.where((f) => f.uebertragen).length;
 
-  return Scaffold(
-    backgroundColor: skin.bgBase,
-    body: GestureDetector(
-      behavior: HitTestBehavior.translucent,
-      onTap: () {
-        if (_selectionMode) _exitSelectionMode();
-        if (_openSwipedFahrtId != null) setState(() => _openSwipedFahrtId = null);
-      },
-      child: Stack(
-        children: [
-          SafeArea(
-            bottom: false,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: 50),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(children: [
-                        Text('Fahrtenbuch', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w700, color: skin.textPrimary)),
-                        const SizedBox(width: 10),
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(6),
-                          child: PlatformBackdropFilter(
-                            filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFFFB347).withValues(alpha: 0.15),
-                                borderRadius: BorderRadius.circular(6),
-                                border: Border.all(color: const Color(0xFFFFB347).withValues(alpha: 0.4)),
-                              ),
-                              child: const Text('BETA', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFFFFB347), letterSpacing: 0.8)),
-                            ),
-                          ),
-                        ),
-                      ]),
-                      const SizedBox(height: 16),
-                      Row(children: [
-                        GlassStatCard(label: 'Fahrten', value: '$totalFahrten', color: skin.primary),
-                        const SizedBox(width: 10),
-                        GlassStatCard(label: 'Eingetragen', value: '$uebertragenCount', color: skin.statComplete),
-                      ]),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Wischen · Gedrückt Halten · Doppeltippen',
-                        style: TextStyle(fontSize: 11, color: skin.surface(0.3)),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Expanded(
-                  child: (fahrten.isEmpty)
-                      ? Center(
-                          child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                            const Text('🚗', style: TextStyle(fontSize: 48)),
-                            const SizedBox(height: 12),
-                            Text('Keine Fahrten eingetragen', style: TextStyle(color: skin.surface(0.3), fontSize: 15)),
-                            const SizedBox(height: 6),
+    return Scaffold(
+      backgroundColor: skin.bgBase,
+      body: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTap: () {
+          if (_selectionMode) _exitSelectionMode();
+          if (_openSwipedFahrtId != null)
+            setState(() => _openSwipedFahrtId = null);
+        },
+        child: Stack(
+          children: [
+            SafeArea(
+              bottom: false,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: 12),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
                             Text(
-                              'Tippe auf + um eine Fahrt einzutragen',
-                              style: TextStyle(color: skin.surface(0.2), fontSize: 12),
-                              textAlign: TextAlign.center,
-                            ),
-                          ]),
-                        )
-                      : ClipRect(
-                          child: PlatformBackdropFilter(
-                            filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
-                            child: FadingListView(
-                              fadeFromBottom: bottomNavHeight + extraBottomOffset + 20,
-                              child: ListView.builder(
-                              controller: _fahrtScrollController,
-                              padding: const EdgeInsets.fromLTRB(24, 4, 24, 0),
-                              itemCount: groupedItems.length + 1,
-                              itemBuilder: (context, index) {
-                                if (index == groupedItems.length) {
-  return Padding(
-    padding: EdgeInsets.fromLTRB(0, 8, 0, bottomNavHeight + extraBottomOffset + 32),
-        child: _ExportAllButton(skin: skin, onTap: _exportAll),
-  );
-}
-                                final item = groupedItems[index];
-                                if (item.sectionLabel != null) {
-                                  return _MonthSectionHeader(label: item.sectionLabel!, skin: skin);
-                                }
-                                final fahrt = item.fahrt!;
-                                _fahrtCardKeys.putIfAbsent(fahrt.id, () => GlobalKey<_FahrtCardState>());
-                               return Padding(
-                                  padding: const EdgeInsets.only(bottom: 10),
-                                  child: _FahrtCard(
-                                    key: _fahrtCardKeys[fahrt.id],
-                                    fahrt: fahrt, skin: skin,
-                                    selectionMode: _selectionMode,
-                                    isSelected: _selectedIds.contains(fahrt.id),
-                                    onLongPress: () => _enterSelectionMode(fahrt.id),
-                                    onSelectTap: () => _toggleSelection(fahrt.id),
-                                    onDelete: () => _deleteFahrtWithAnimation(fahrt.id),
-                                    onExport: () => _exportSingle(fahrt),
-                                    onToggleUebertragen: () {
-                                      _saveFahrt(Fahrt(
-                                        id: fahrt.id, datum: fahrt.datum,
-                                        kmStart: fahrt.kmStart, kmEnd: fahrt.kmEnd,
-                                        kennzeichen: fahrt.kennzeichen, getanktLiter: fahrt.getanktLiter,
-                                        fotoStartPath: fahrt.fotoStartPath, fotoEndPath: fahrt.fotoEndPath,
-                                        uebertragen: !fahrt.uebertragen,
-                                        abfahrtZeit: fahrt.abfahrtZeit, ankunftDatum: fahrt.ankunftDatum,
-                                        ankunftZeit: fahrt.ankunftZeit, fahrtTyp: fahrt.fahrtTyp,
-                                        sonderWegerecht: fahrt.sonderWegerecht, autoGewaschen: fahrt.autoGewaschen,
-                                        stromKwh: fahrt.stromKwh, adblueKwh: fahrt.adblueKwh, fahrtZiel: fahrt.fahrtZiel,
-                                      ));
-                                    },
-                                    onEdit: () => _editFahrt(fahrt),
-                                    externallyOpenKey: _openSwipedFahrtId,
-                                    onCardSwiped: (id) => setState(() => _openSwipedFahrtId = id),
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
-                        ),
-                      ),
-                ),
-              ],
-            ),
-          ),
-
-          // ── Entwurf-Banner + FAB in einer Reihe ──────────────────────────────
-          Positioned(
-            left: 16,
-            right: 16,
-            bottom: bottomNavHeight + 16,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Expanded(
-                  child: AnimatedBuilder(
-                    animation: _draftBannerAnim,
-                    builder: (context, child) {
-                      if (!_draftVisible && _draftBannerAnim.value == 0) return const SizedBox.shrink();
-                      return Opacity(opacity: _draftBannerAnim.value.clamp(0.0, 1.0), child: child);
-                    },
-                    child: _DraftBanner(
-                      skin: skin,
-                      onReopen: reopenDraft,
-                      onDelete: _deleteDraft,
-                      externallyOpen: _openSwipedFahrtId,
-                      onCardSwiped: (id) => setState(() => _openSwipedFahrtId = id),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                AnimatedBuilder(
-                  animation: _selectionBarAnim,
-                  builder: (context, child) => Opacity(
-                    opacity: (1 - _selectionBarAnim.value).clamp(0.0, 1.0),
-                    child: child,
-                  ),
-                  child: GestureDetector(
-                    onTap: () {
-                      if (_sheetOpen || _selectionMode) return;
-                      if (_draftVisible) {
-                        reopenDraft();
-                      } else {
-                        showAddFahrtOverlay();
-                      }
-                    },
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(20),
-                      child: PlatformBackdropFilter(
-                        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                        child: Container(
-                          width: 56,
-                          height: 56,
-                          decoration: BoxDecoration(
-                            color: skin.isLight
-                                ? Colors.white.withValues(alpha: 0.72)
-                                : Colors.black.withValues(alpha: 0.55),
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                              color: skin.isLight
-                                  ? Colors.white.withValues(alpha: 0.55)
-                                  : Colors.white.withValues(alpha: 0.12),
-                              width: 0.8,
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: skin.isLight ? 0.08 : 0.35),
-                                blurRadius: 24,
-                                offset: const Offset(0, 6),
+                              'Fahrtenbuch',
+                              style: TextStyle(
+                                fontSize: 26,
+                                fontWeight: FontWeight.w700,
+                                color: skin.textPrimary,
                               ),
-                            ],
-                          ),
-                          child: Icon(
-                            _draftVisible ? Icons.edit_note_rounded : Icons.add,
-                            color: skin.primary,
-                            size: 24,
+                            ),
+                            
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        Row(
+                          children: [
+                            GlassStatCard(
+                              label: 'Fahrten',
+                              value: '$totalFahrten',
+                              color: skin.primary,
+                            ),
+                            const SizedBox(width: 10),
+                            GlassStatCard(
+                              label: 'Eingetragen',
+                              value: '$uebertragenCount',
+                              color: skin.statComplete,
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Wischen · Gedrückt Halten · Doppeltippen',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: skin.surface(0.3),
                           ),
                         ),
-                      ),
+                      ],
                     ),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 12),
+                  Expanded(
+                    child: (fahrten.isEmpty)
+                        ? Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Text(
+                                  '🚗',
+                                  style: TextStyle(fontSize: 48),
+                                ),
+                                const SizedBox(height: 12),
+                                Text(
+                                  'Keine Fahrten eingetragen',
+                                  style: TextStyle(
+                                    color: skin.surface(0.3),
+                                    fontSize: 15,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  'Tippe auf + um eine Fahrt einzutragen',
+                                  style: TextStyle(
+                                    color: skin.surface(0.2),
+                                    fontSize: 12,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ],
+                            ),
+                          )
+                        : ClipRect(
+                            child: PlatformBackdropFilter(
+                              filter: ImageFilter.blur(
+                                sigmaX: skin.glassBlur,
+                                sigmaY: skin.glassBlur,
+                              ),
+                              child: FadingListView(
+                                fadeFromBottom:
+                                    bottomNavHeight + extraBottomOffset + 20,
+                                child: ListView.builder(
+                                  controller: _fahrtScrollController,
+                                  padding: const EdgeInsets.fromLTRB(
+                                    24,
+                                    4,
+                                    24,
+                                    0,
+                                  ),
+                                  itemCount: groupedItems.length + 1,
+                                  itemBuilder: (context, index) {
+                                    if (index == groupedItems.length) {
+                                      return Padding(
+                                        padding: EdgeInsets.fromLTRB(
+                                          0,
+                                          8,
+                                          0,
+                                          bottomNavHeight +
+                                              extraBottomOffset +
+                                              32,
+                                        ),
+                                        child: _ExportAllButton(
+                                          skin: skin,
+                                          onTap: _exportAll,
+                                        ),
+                                      );
+                                    }
+                                    final item = groupedItems[index];
+                                    if (item.sectionLabel != null) {
+                                      return _MonthSectionHeader(
+                                        label: item.sectionLabel!,
+                                        skin: skin,
+                                      );
+                                    }
+                                    final fahrt = item.fahrt!;
+                                    _fahrtCardKeys.putIfAbsent(
+                                      fahrt.id,
+                                      () => GlobalKey<_FahrtCardState>(),
+                                    );
+                                    return Padding(
+                                      padding: const EdgeInsets.only(
+                                        bottom: 10,
+                                      ),
+                                      child: _FahrtCard(
+                                        key: _fahrtCardKeys[fahrt.id],
+                                        fahrt: fahrt,
+                                        skin: skin,
+                                        selectionMode: _selectionMode,
+                                        isSelected: _selectedIds.contains(
+                                          fahrt.id,
+                                        ),
+                                        onLongPress: () =>
+                                            _enterSelectionMode(fahrt.id),
+                                        onSelectTap: () =>
+                                            _toggleSelection(fahrt.id),
+                                        onDelete: () =>
+                                            _deleteFahrtWithAnimation(fahrt.id),
+                                        onExport: () => _exportSingle(fahrt),
+                                        onToggleUebertragen: () {
+                                          _saveFahrt(
+                                            Fahrt(
+                                              id: fahrt.id,
+                                              datum: fahrt.datum,
+                                              kmStart: fahrt.kmStart,
+                                              kmEnd: fahrt.kmEnd,
+                                              kennzeichen: fahrt.kennzeichen,
+                                              getanktLiter: fahrt.getanktLiter,
+                                              fotoStartPath:
+                                                  fahrt.fotoStartPath,
+                                              fotoEndPath: fahrt.fotoEndPath,
+                                              uebertragen: !fahrt.uebertragen,
+                                              abfahrtZeit: fahrt.abfahrtZeit,
+                                              ankunftDatum: fahrt.ankunftDatum,
+                                              ankunftZeit: fahrt.ankunftZeit,
+                                              fahrtTyp: fahrt.fahrtTyp,
+                                              sonderWegerecht:
+                                                  fahrt.sonderWegerecht,
+                                              autoGewaschen:
+                                                  fahrt.autoGewaschen,
+                                              stromKwh: fahrt.stromKwh,
+                                              adblueKwh: fahrt.adblueKwh,
+                                              fahrtZiel: fahrt.fahrtZiel,
+                                            ),
+                                          );
+                                        },
+                                        onEdit: () => _editFahrt(fahrt),
+                                        externallyOpenKey: _openSwipedFahrtId,
+                                        onCardSwiped: (id) => setState(
+                                          () => _openSwipedFahrtId = id,
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                            ),
+                          ),
+                  ),
+                ],
+              ),
             ),
-          ),
 
-          // ── Auswahlleiste: schwebt über der Navbar, solange Auswahlmodus aktiv ──
-          if (_selectionMode)
+            // ── Entwurf-Banner + FAB in einer Reihe ──────────────────────────────
             Positioned(
               left: 16,
               right: 16,
               bottom: bottomNavHeight + 16,
-              child: SlideTransition(
-                position: Tween<Offset>(begin: const Offset(0, 0.5), end: Offset.zero)
-                    .animate(_selectionBarAnim),
-                child: FadeTransition(
-                  opacity: _selectionBarAnim,
-                  child: _ExportButtonAnimated(
-                    skin: skin,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Expanded(
+                    child: AnimatedBuilder(
+                      animation: _draftBannerAnim,
+                      builder: (context, child) {
+                        if (!_draftVisible && _draftBannerAnim.value == 0)
+                          return const SizedBox.shrink();
+                        return Opacity(
+                          opacity: _draftBannerAnim.value.clamp(0.0, 1.0),
+                          child: child,
+                        );
+                      },
+                      child: _DraftBanner(
+                        skin: skin,
+                        onReopen: reopenDraft,
+                        onDelete: _deleteDraft,
+                        externallyOpen: _openSwipedFahrtId,
+                        onCardSwiped: (id) =>
+                            setState(() => _openSwipedFahrtId = id),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  AnimatedBuilder(
                     animation: _selectionBarAnim,
-                    selectedCount: _selectedIds.length,
-                    uebertragenState: _selectedUebertragenState,
-                    onExportSelected: _exportSelected,
-                    onExitSelection: _exitSelectionMode,
-                    onToggleUebertragen: _toggleSelectedUebertragen,
+                    builder: (context, child) => Opacity(
+                      opacity: (1 - _selectionBarAnim.value).clamp(0.0, 1.0),
+                      child: child,
+                    ),
+                    child: GestureDetector(
+                      onTap: () {
+                        if (_sheetOpen || _selectionMode) return;
+                        if (_draftVisible) {
+                          reopenDraft();
+                        } else {
+                          showAddFahrtOverlay();
+                        }
+                      },
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(20),
+                        child: PlatformBackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                          child: Container(
+                            width: 56,
+                            height: 56,
+                            decoration: BoxDecoration(
+                              color: skin.isLight
+                                  ? Colors.white.withValues(alpha: 0.96)
+                                  : skin.bgCard.withValues(alpha: 0.97),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: skin.isLight
+                                    ? Colors.white.withValues(alpha: 0.55)
+                                    : Colors.white.withValues(alpha: 0.12),
+                                width: 0.8,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(
+                                    alpha: skin.isLight ? 0.08 : 0.35,
+                                  ),
+                                  blurRadius: 24,
+                                  offset: const Offset(0, 6),
+                                ),
+                              ],
+                            ),
+                            child: Icon(
+                              _draftVisible
+                                  ? Icons.edit_note_rounded
+                                  : Icons.add,
+                              color: skin.primary,
+                              size: 24,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // ── Auswahlleiste: schwebt über der Navbar, solange Auswahlmodus aktiv ──
+            if (_selectionMode)
+              Positioned(
+                left: 16,
+                right: 16,
+                bottom: bottomNavHeight + 16,
+                child: SlideTransition(
+                  position: Tween<Offset>(
+                    begin: const Offset(0, 0.5),
+                    end: Offset.zero,
+                  ).animate(_selectionBarAnim),
+                  child: FadeTransition(
+                    opacity: _selectionBarAnim,
+                    child: _ExportButtonAnimated(
+                      skin: skin,
+                      animation: _selectionBarAnim,
+                      selectedCount: _selectedIds.length,
+                      uebertragenState: _selectedUebertragenState,
+                      onExportSelected: _exportSelected,
+                      onExitSelection: _exitSelectionMode,
+                      onToggleUebertragen: _toggleSelectedUebertragen,
+                    ),
                   ),
                 ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
-    ),
-  );
-}
+    );
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1413,67 +1671,131 @@ class _DraftBannerState extends State<_DraftBanner>
       child: SizedBox(
         height: 52,
         child: ClipRect(
-          child: Stack(clipBehavior: Clip.hardEdge, children: [
-            Positioned(
-              right: 0, top: 0, bottom: 0, width: _revealWidth,
-              child: GestureDetector(
-                onTap: _onDeleteTap,
-                child: Opacity(
-                  opacity: (swipeOffset.abs() / _revealWidth).clamp(0.0, 1.0),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(22),
-                    child: PlatformBackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                      child: Container(
-                        margin: const EdgeInsets.only(left: 6),
-                        decoration: BoxDecoration(
-                          color: skin.deleteColor.withValues(alpha: 0.14),
-                          borderRadius: BorderRadius.circular(22),
-                          border: Border.all(color: skin.deleteColor.withValues(alpha: 0.30)),
-                        ),
-                        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                          Icon(Icons.delete_outline, color: skin.deleteColor, size: 20),
-                          const SizedBox(height: 2),
-                          Text('Löschen', style: TextStyle(color: skin.deleteColor, fontSize: 10, fontWeight: FontWeight.w600)),
-                        ]),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            Transform.translate(
-              offset: Offset(swipeOffset, 0),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(22),
-                child: PlatformBackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                  child: Container(
-                    height: 52,
-                    decoration: BoxDecoration(
-                      color: skin.isLight ? Colors.white.withValues(alpha: 0.72) : Colors.black.withValues(alpha: 0.55),
+          child: Stack(
+            clipBehavior: Clip.hardEdge,
+            children: [
+              Positioned(
+                right: 0,
+                top: 0,
+                bottom: 0,
+                width: _revealWidth,
+                child: GestureDetector(
+                  onTap: _onDeleteTap,
+                  child: Opacity(
+                    opacity: (swipeOffset.abs() / _revealWidth).clamp(0.0, 1.0),
+                    child: ClipRRect(
                       borderRadius: BorderRadius.circular(22),
-                      border: Border.all(
-                        color: skin.isLight ? Colors.white.withValues(alpha: 0.55) : Colors.white.withValues(alpha: 0.12),
-                        width: 0.8,
+                      child: PlatformBackdropFilter(
+                        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                        child: Container(
+                          margin: const EdgeInsets.only(left: 6),
+                          decoration: BoxDecoration(
+                            color: skin.deleteColor.withValues(alpha: 0.14),
+                            borderRadius: BorderRadius.circular(22),
+                            border: Border.all(
+                              color: skin.deleteColor.withValues(alpha: 0.30),
+                            ),
+                          ),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.delete_outline,
+                                color: skin.deleteColor,
+                                size: 20,
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'Löschen',
+                                style: TextStyle(
+                                  color: skin.deleteColor,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
-                      boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: skin.isLight ? 0.08 : 0.35), blurRadius: 24, offset: const Offset(0, 6))],
                     ),
-                    child: Stack(children: [
-                      Center(child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                        Icon(Icons.edit_note_rounded, size: 18, color: skin.primary),
-                        const SizedBox(width: 8),
-                        Text('Neue Fahrt – Entwurf', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: skin.textPrimary)),
-                      ])),
-                      Positioned(top: 6, left: 0, right: 0,
-                        child: Center(child: Container(width: 40, height: 4,
-                            decoration: BoxDecoration(color: skin.surface(0.18), borderRadius: BorderRadius.circular(2))))),
-                    ]),
                   ),
                 ),
               ),
-            ),
-          ]),
+              Transform.translate(
+                offset: Offset(swipeOffset, 0),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(22),
+                  child: PlatformBackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                    child: Container(
+                      height: 52,
+                      decoration: BoxDecoration(
+                        color: skin.isLight
+                            ? Colors.white.withValues(alpha: 0.72)
+                            : Colors.black.withValues(alpha: 0.55),
+                        borderRadius: BorderRadius.circular(22),
+                        border: Border.all(
+                          color: skin.isLight
+                              ? Colors.white.withValues(alpha: 0.55)
+                              : Colors.white.withValues(alpha: 0.12),
+                          width: 0.8,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(
+                              alpha: skin.isLight ? 0.08 : 0.35,
+                            ),
+                            blurRadius: 24,
+                            offset: const Offset(0, 6),
+                          ),
+                        ],
+                      ),
+                      child: Stack(
+                        children: [
+                          Center(
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.edit_note_rounded,
+                                  size: 18,
+                                  color: skin.primary,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Neue Fahrt – Entwurf',
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w600,
+                                    color: skin.textPrimary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Positioned(
+                            top: 6,
+                            left: 0,
+                            right: 0,
+                            child: Center(
+                              child: Container(
+                                width: 40,
+                                height: 4,
+                                decoration: BoxDecoration(
+                                  color: skin.surface(0.18),
+                                  borderRadius: BorderRadius.circular(2),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1522,16 +1844,30 @@ class _ExportButtonAnimated extends StatelessWidget {
             shape: BoxShape.circle,
             gradient: gradient,
             color: gradient == null
-                ? (filled ? color.withValues(alpha: 0.18) : color.withValues(alpha: 0.10))
+                ? (filled
+                      ? color.withValues(alpha: 0.18)
+                      : color.withValues(alpha: 0.10))
                 : null,
             border: gradient == null
-                ? Border.all(color: color.withValues(alpha: filled ? 0.5 : 0.28))
+                ? Border.all(
+                    color: color.withValues(alpha: filled ? 0.5 : 0.28),
+                  )
                 : null,
             boxShadow: gradient != null
-                ? [BoxShadow(color: color.withValues(alpha: 0.30), blurRadius: 8, offset: const Offset(0, 3))]
+                ? [
+                    BoxShadow(
+                      color: color.withValues(alpha: 0.30),
+                      blurRadius: 8,
+                      offset: const Offset(0, 3),
+                    ),
+                  ]
                 : null,
           ),
-          child: Icon(icon, size: 17, color: gradient != null ? skin.onGradient : color),
+          child: Icon(
+            icon,
+            size: 17,
+            color: gradient != null ? skin.onGradient : color,
+          ),
         ),
       ),
     );
@@ -1545,9 +1881,15 @@ class _ExportButtonAnimated extends StatelessWidget {
         final p = animation.value; // 0 = normal, 1 = selection
         const double buttonHeight = 50.0;
 
-        final closeScale = Curves.easeOutBack.transform(((p - 0.1) / 0.6).clamp(0.0, 1.0));
-        final countScale = Curves.easeOutBack.transform(((p - 0.2) / 0.6).clamp(0.0, 1.0));
-        final chipScale = Curves.easeOutBack.transform(((p - 0.3) / 0.6).clamp(0.0, 1.0));
+        final closeScale = Curves.easeOutBack.transform(
+          ((p - 0.1) / 0.6).clamp(0.0, 1.0),
+        );
+        final countScale = Curves.easeOutBack.transform(
+          ((p - 0.2) / 0.6).clamp(0.0, 1.0),
+        );
+        final chipScale = Curves.easeOutBack.transform(
+          ((p - 0.3) / 0.6).clamp(0.0, 1.0),
+        );
 
         Widget buildSelectionContent() {
           // Volle Breite, feste Icon-Buttons + flexibler Text -> passt immer.
@@ -1559,8 +1901,15 @@ class _ExportButtonAnimated extends StatelessWidget {
                   onTap: onExitSelection,
                   child: Container(
                     padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(color: skin.surface(0.08), borderRadius: BorderRadius.circular(10)),
-                    child: Icon(Icons.close_rounded, size: 16, color: skin.textMuted),
+                    decoration: BoxDecoration(
+                      color: skin.surface(0.08),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(
+                      Icons.close_rounded,
+                      size: 16,
+                      color: skin.textMuted,
+                    ),
                   ),
                 ),
               ),
@@ -1571,7 +1920,11 @@ class _ExportButtonAnimated extends StatelessWidget {
                   scale: countScale,
                   child: Text(
                     '$selectedCount ausgewählt',
-                    style: TextStyle(color: skin.textPrimary, fontSize: 13, fontWeight: FontWeight.w600),
+                    style: TextStyle(
+                      color: skin.textPrimary,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -1581,7 +1934,9 @@ class _ExportButtonAnimated extends StatelessWidget {
               _iconChip(
                 icon: uebertragenState == true
                     ? Icons.check_circle_rounded
-                    : (uebertragenState == null ? Icons.remove_circle_outline : Icons.check_circle_outline),
+                    : (uebertragenState == null
+                          ? Icons.remove_circle_outline
+                          : Icons.check_circle_outline),
                 color: skin.statComplete,
                 filled: uebertragenState == true,
                 onTap: onToggleUebertragen,
@@ -1610,23 +1965,38 @@ class _ExportButtonAnimated extends StatelessWidget {
               child: AnimatedContainer(
                 duration: Duration.zero,
                 height: buttonHeight,
-                padding: EdgeInsets.symmetric(horizontal: 16 + p * 4, vertical: 0),
+                padding: EdgeInsets.symmetric(
+                  horizontal: 16 + p * 4,
+                  vertical: 0,
+                ),
                 alignment: Alignment.centerLeft,
                 decoration: BoxDecoration(
                   color: Color.lerp(
                     skin.primary.withValues(alpha: 0.07),
                     skin.isLight
-                        ? Colors.white.withValues(alpha: kGlassBlurEnabled ? 0.88 : 0.97)
-                        : Colors.black.withValues(alpha: kGlassBlurEnabled ? 0.70 : 0.94),
+                        ? Colors.white.withValues(
+                            alpha: kGlassBlurEnabled ? 0.88 : 0.97,
+                          )
+                        : Colors.black.withValues(
+                            alpha: kGlassBlurEnabled ? 0.70 : 0.94,
+                          ),
                     p,
                   ),
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(
-                    color: Color.lerp(skin.primary.withValues(alpha: 0.22), skin.glassBorder, p)!,
+                    color: Color.lerp(
+                      skin.primary.withValues(alpha: 0.22),
+                      skin.glassBorder,
+                      p,
+                    )!,
                     width: 1.0 + p * 0.5,
                   ),
                   boxShadow: [
-                    BoxShadow(color: Colors.black.withValues(alpha: 0.08 + p * 0.10), blurRadius: 12 + p * 8, offset: const Offset(0, 4)),
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.08 + p * 0.10),
+                      blurRadius: 12 + p * 8,
+                      offset: const Offset(0, 4),
+                    ),
                   ],
                 ),
                 child: innerContent,
@@ -1659,8 +2029,14 @@ class _ExportAllButton extends StatelessWidget {
           children: [
             Icon(Icons.upload_outlined, color: skin.primary, size: 16),
             const SizedBox(width: 7),
-            Text('Alle Fahrten exportieren',
-                style: TextStyle(color: skin.primary, fontSize: 13, fontWeight: FontWeight.w600)),
+            Text(
+              'Alle Fahrten exportieren',
+              style: TextStyle(
+                color: skin.primary,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ],
         ),
       ),
@@ -1686,10 +2062,15 @@ class _FahrtCard extends StatefulWidget {
   final VoidCallback? onSelectTap;
 
   const _FahrtCard({
-    super.key, required this.fahrt, required this.skin,
-    required this.onDelete, required this.onToggleUebertragen, required this.onEdit,
+    super.key,
+    required this.fahrt,
+    required this.skin,
+    required this.onDelete,
+    required this.onToggleUebertragen,
+    required this.onEdit,
     required this.onExport,
-    this.externallyOpenKey, required this.onCardSwiped,
+    this.externallyOpenKey,
+    required this.onCardSwiped,
     this.selectionMode = false,
     this.isSelected = false,
     this.onLongPress,
@@ -1718,33 +2099,54 @@ class _FahrtCardState extends State<_FahrtCard>
     // SwipeAnimationMixin initialisieren (ersetzt altes Future.doWhile)
     initSwipeAnimation(vsync: this);
 
-    _deleteAnimController = AnimationController(vsync: this, duration: const Duration(milliseconds: 500));
+    _deleteAnimController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 500),
+    );
     _slideOutAnim = Tween<double>(begin: 0, end: -420).animate(
-        CurvedAnimation(parent: _deleteAnimController, curve: const Interval(0.0, 0.6, curve: Curves.easeInBack)));
+      CurvedAnimation(
+        parent: _deleteAnimController,
+        curve: const Interval(0.0, 0.6, curve: Curves.easeInBack),
+      ),
+    );
     _fadeOutAnim = Tween<double>(begin: 1, end: 0).animate(
-        CurvedAnimation(parent: _deleteAnimController, curve: const Interval(0.25, 0.7, curve: Curves.easeOut)));
+      CurvedAnimation(
+        parent: _deleteAnimController,
+        curve: const Interval(0.25, 0.7, curve: Curves.easeOut),
+      ),
+    );
     _heightCollapseAnim = Tween<double>(begin: 1, end: 0).animate(
-        CurvedAnimation(parent: _deleteAnimController, curve: const Interval(0.6, 1.0, curve: Curves.easeInOut)));
-    _deleteAnimController.addListener(() { if (mounted) setState(() {}); });
+      CurvedAnimation(
+        parent: _deleteAnimController,
+        curve: const Interval(0.6, 1.0, curve: Curves.easeInOut),
+      ),
+    );
+    _deleteAnimController.addListener(() {
+      if (mounted) setState(() {});
+    });
   }
 
-@override
-void didUpdateWidget(covariant _FahrtCard oldWidget) {
-  super.didUpdateWidget(oldWidget);
-  if (widget.externallyOpenKey != widget.fahrt.id &&
-      (_isOpenRight || _isOpenLeft)) {
-    _closeSilently();
+  @override
+  void didUpdateWidget(covariant _FahrtCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.externallyOpenKey != widget.fahrt.id &&
+        (_isOpenRight || _isOpenLeft)) {
+      _closeSilently();
+    }
   }
-}
 
-/// Programmatisches Schließen, ausgelöst weil eine ANDERE Karte
-/// geöffnet wurde. Ruft bewusst NICHT onCardSwiped(null) auf, sonst
-/// würde das den gerade gesetzten "offen"-Key der anderen Karte
-/// wieder überschreiben.
-void _closeSilently() {
-  animateSwipeTo(0);
-  if (mounted) setState(() { _isOpenRight = false; _isOpenLeft = false; });
-}
+  /// Programmatisches Schließen, ausgelöst weil eine ANDERE Karte
+  /// geöffnet wurde. Ruft bewusst NICHT onCardSwiped(null) auf, sonst
+  /// würde das den gerade gesetzten "offen"-Key der anderen Karte
+  /// wieder überschreiben.
+  void _closeSilently() {
+    animateSwipeTo(0);
+    if (mounted)
+      setState(() {
+        _isOpenRight = false;
+        _isOpenLeft = false;
+      });
+  }
 
   @override
   void dispose() {
@@ -1771,7 +2173,10 @@ void _closeSilently() {
       if (totalDx.abs() < 8) return;
       _dragging = true;
     }
-    final newOffset = (swipeOffset + d.delta.dx).clamp(-_rightRevealWidth, _leftRevealWidth);
+    final newOffset = (swipeOffset + d.delta.dx).clamp(
+      -_rightRevealWidth,
+      _leftRevealWidth,
+    );
     setSwipeOffsetImmediate(newOffset);
   }
 
@@ -1781,22 +2186,35 @@ void _closeSilently() {
     final v = d.primaryVelocity ?? d.velocity.pixelsPerSecond.dx;
     if (swipeOffset < -_snapThreshold || v < -400) {
       animateSwipeTo(-_rightRevealWidth);
-      setState(() { _isOpenRight = true; _isOpenLeft = false; });
+      setState(() {
+        _isOpenRight = true;
+        _isOpenLeft = false;
+      });
       widget.onCardSwiped(widget.fahrt.id);
     } else if (swipeOffset > _snapThreshold || v > 400) {
       animateSwipeTo(_leftRevealWidth);
-      setState(() { _isOpenLeft = true; _isOpenRight = false; });
+      setState(() {
+        _isOpenLeft = true;
+        _isOpenRight = false;
+      });
       widget.onCardSwiped(widget.fahrt.id);
     } else {
       animateSwipeTo(0);
-      setState(() { _isOpenRight = false; _isOpenLeft = false; });
+      setState(() {
+        _isOpenRight = false;
+        _isOpenLeft = false;
+      });
       widget.onCardSwiped(null);
     }
   }
 
   void _close() {
     animateSwipeTo(0);
-    if (mounted) setState(() { _isOpenRight = false; _isOpenLeft = false; });
+    if (mounted)
+      setState(() {
+        _isOpenRight = false;
+        _isOpenLeft = false;
+      });
     widget.onCardSwiped(null);
   }
 
@@ -1808,9 +2226,15 @@ void _closeSilently() {
       barrierColor: Colors.black.withValues(alpha: 0.50),
       transitionDuration: const Duration(milliseconds: 250),
       transitionBuilder: (ctx, anim, _, child) {
-        final curved = CurvedAnimation(parent: anim, curve: Curves.easeOutBack, reverseCurve: Curves.easeInBack);
-        return ScaleTransition(scale: Tween<double>(begin: 0.88, end: 1.0).animate(curved),
-            child: FadeTransition(opacity: anim, child: child));
+        final curved = CurvedAnimation(
+          parent: anim,
+          curve: Curves.easeOutBack,
+          reverseCurve: Curves.easeInBack,
+        );
+        return ScaleTransition(
+          scale: Tween<double>(begin: 0.88, end: 1.0).animate(curved),
+          child: FadeTransition(opacity: anim, child: child),
+        );
       },
       pageBuilder: (ctx, _, __) => Center(
         child: Material(
@@ -1823,63 +2247,166 @@ void _closeSilently() {
                 margin: const EdgeInsets.symmetric(horizontal: 36),
                 padding: const EdgeInsets.all(22),
                 decoration: BoxDecoration(
-                  color: skin.isLight ? Colors.white.withValues(alpha: 0.94) : skin.bgCard.withValues(alpha: 0.94),
+                  color: skin.isLight
+                      ? Colors.white.withValues(alpha: 0.94)
+                      : skin.bgCard.withValues(alpha: 0.94),
                   borderRadius: BorderRadius.circular(22),
                   border: Border.all(color: skin.glassBorder),
-                  boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.30), blurRadius: 28, offset: const Offset(0, 8))],
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.30),
+                      blurRadius: 28,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
                 ),
-                child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Row(children: [
-                    Container(width: 38, height: 38,
-                        decoration: BoxDecoration(color: skin.primary.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
-                        child: Icon(Icons.ios_share_outlined, color: skin.primary, size: 20)),
-                    const SizedBox(width: 12),
-                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text('Fahrt teilen', style: TextStyle(color: skin.textPrimary, fontSize: 16, fontWeight: FontWeight.w700)),
-                      Text(DateFormat('dd.MM.yyyy', 'de').format(fahrt.datum), style: TextStyle(color: skin.textMuted, fontSize: 12)),
-                    ])),
-                  ]),
-                  const SizedBox(height: 18),
-                  Row(children: [
-                    Expanded(child: GestureDetector(
-                      onTap: () { Navigator.pop(ctx); HapticFeedback.selectionClick(); widget.onToggleUebertragen(); },
-                      child: AspectRatio(aspectRatio: 1, child: Container(
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: skin.statComplete.withValues(alpha: 0.10), borderRadius: BorderRadius.circular(18),
-                          border: Border.all(color: skin.statComplete.withValues(alpha: 0.30)),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 38,
+                          height: 38,
+                          decoration: BoxDecoration(
+                            color: skin.primary.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Icon(
+                            Icons.ios_share_outlined,
+                            color: skin.primary,
+                            size: 20,
+                          ),
                         ),
-                        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                          Icon(fahrt.uebertragen ? Icons.check_circle_rounded : Icons.check_circle_outline, color: skin.statComplete, size: 30),
-                          const SizedBox(height: 10),
-                          Text(fahrt.uebertragen ? 'Eingetragen' : 'Eintragen', textAlign: TextAlign.center,
-                              style: TextStyle(color: skin.statComplete, fontSize: 14, fontWeight: FontWeight.w600)),
-                        ]),
-                      )),
-                    )),
-                    const SizedBox(width: 12),
-                    Expanded(child: GestureDetector(
-                      onTap: () {
-                        Navigator.pop(ctx);
-                        HapticFeedback.selectionClick();
-                        widget.onExport();
-                      },
-                      child: AspectRatio(aspectRatio: 1, child: Container(
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: skin.primary.withValues(alpha: 0.07), borderRadius: BorderRadius.circular(18),
-                          border: Border.all(color: skin.primary.withValues(alpha: 0.20)),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Fahrt teilen',
+                                style: TextStyle(
+                                  color: skin.textPrimary,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              Text(
+                                DateFormat(
+                                  'dd.MM.yyyy',
+                                  'de',
+                                ).format(fahrt.datum),
+                                style: TextStyle(
+                                  color: skin.textMuted,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                          Icon(Icons.upload_file_outlined, color: skin.primary, size: 30),
-                          const SizedBox(height: 10),
-                          Text('Exportieren', textAlign: TextAlign.center,
-                              style: TextStyle(color: skin.primary, fontSize: 14, fontWeight: FontWeight.w600)),
-                        ]),
-                      )),
-                    )),
-                  ]),
-                ]),
+                      ],
+                    ),
+                    const SizedBox(height: 18),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () {
+                              Navigator.pop(ctx);
+                              HapticFeedback.selectionClick();
+                              widget.onToggleUebertragen();
+                            },
+                            child: AspectRatio(
+                              aspectRatio: 1,
+                              child: Container(
+                                padding: const EdgeInsets.all(14),
+                                decoration: BoxDecoration(
+                                  color: skin.statComplete.withValues(
+                                    alpha: 0.10,
+                                  ),
+                                  borderRadius: BorderRadius.circular(18),
+                                  border: Border.all(
+                                    color: skin.statComplete.withValues(
+                                      alpha: 0.30,
+                                    ),
+                                  ),
+                                ),
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      fahrt.uebertragen
+                                          ? Icons.check_circle_rounded
+                                          : Icons.check_circle_outline,
+                                      color: skin.statComplete,
+                                      size: 30,
+                                    ),
+                                    const SizedBox(height: 10),
+                                    Text(
+                                      fahrt.uebertragen
+                                          ? 'Eingetragen'
+                                          : 'Eintragen',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        color: skin.statComplete,
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () {
+                              Navigator.pop(ctx);
+                              HapticFeedback.selectionClick();
+                              widget.onExport();
+                            },
+                            child: AspectRatio(
+                              aspectRatio: 1,
+                              child: Container(
+                                padding: const EdgeInsets.all(14),
+                                decoration: BoxDecoration(
+                                  color: skin.primary.withValues(alpha: 0.07),
+                                  borderRadius: BorderRadius.circular(18),
+                                  border: Border.all(
+                                    color: skin.primary.withValues(alpha: 0.20),
+                                  ),
+                                ),
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.upload_file_outlined,
+                                      color: skin.primary,
+                                      size: 30,
+                                    ),
+                                    const SizedBox(height: 10),
+                                    Text(
+                                      'Exportieren',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        color: skin.primary,
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -1897,7 +2424,10 @@ void _closeSilently() {
     final monthAbbr = DateFormat('MMM', 'de').format(fahrt.datum);
     final hatGetankt = fahrt.getanktLiter != null && fahrt.getanktLiter! > 0;
 
-    final rightProgress = (swipeOffset.abs() / _rightRevealWidth).clamp(0.0, 1.0);
+    final rightProgress = (swipeOffset.abs() / _rightRevealWidth).clamp(
+      0.0,
+      1.0,
+    );
     final leftProgress = (swipeOffset / _leftRevealWidth).clamp(0.0, 1.0);
 
     final fahrtTypObj = FahrtTypManager.byCode(fahrt.fahrtTyp);
@@ -1905,9 +2435,15 @@ void _closeSilently() {
     return AnimatedBuilder(
       animation: _deleteAnimController,
       builder: (context, child) => SizeTransition(
-        sizeFactor: _heightCollapseAnim, axisAlignment: -1,
-        child: Opacity(opacity: _fadeOutAnim.value,
-            child: Transform.translate(offset: Offset(_slideOutAnim.value, 0), child: child!)),
+        sizeFactor: _heightCollapseAnim,
+        axisAlignment: -1,
+        child: Opacity(
+          opacity: _fadeOutAnim.value,
+          child: Transform.translate(
+            offset: Offset(_slideOutAnim.value, 0),
+            child: child!,
+          ),
+        ),
       ),
       child: GestureDetector(
         onHorizontalDragStart: widget.selectionMode ? null : _onPanStart,
@@ -1916,7 +2452,11 @@ void _closeSilently() {
         onTap: widget.selectionMode
             ? widget.onSelectTap
             : ((_isOpenRight || _isOpenLeft) ? _close : null),
-        onDoubleTap: widget.selectionMode ? null : () { if (!_isOpenRight && !_isOpenLeft) widget.onEdit(); },
+        onDoubleTap: widget.selectionMode
+            ? null
+            : () {
+                if (!_isOpenRight && !_isOpenLeft) widget.onEdit();
+              },
         onLongPress: widget.selectionMode ? null : widget.onLongPress,
         child: SizedBox(
           height: 90,
@@ -1926,93 +2466,218 @@ void _closeSilently() {
               clipBehavior: Clip.hardEdge,
               children: [
                 if (swipeOffset <= 0)
-  Positioned(
-    right: 0, top: 4, bottom: 4, width: _rightRevealWidth,
-    child: Opacity(opacity: rightProgress, child: Transform.scale(
-      scale: rightProgress, alignment: Alignment.centerLeft,
-      child: GestureDetector(
-        onTap: () { _close(); widget.onDelete(); },
-        child: Builder(builder: (context) {
-          final content = Container(
-            margin: const EdgeInsets.only(left: 5),
-            decoration: BoxDecoration(
-              color: skin.deleteColor.withValues(alpha: 0.10), borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: skin.deleteColor.withValues(alpha: 0.22)),
-            ),
-            child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-              Icon(Icons.delete_outline, color: skin.deleteColor, size: 22),
-              const SizedBox(height: 4),
-              Text('Löschen', style: TextStyle(color: skin.deleteColor, fontSize: 11, fontWeight: FontWeight.w600)),
-            ]),
-          );
-          return ClipRRect(
-            borderRadius: BorderRadius.circular(14),
-            child: rightProgress > 0
-                ? PlatformBackdropFilter(filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10), child: content)
-                : content,
-          );
-        }),
-      ),
-    )),
-  ),
+                  Positioned(
+                    right: 0,
+                    top: 4,
+                    bottom: 4,
+                    width: _rightRevealWidth,
+                    child: Opacity(
+                      opacity: rightProgress,
+                      child: Transform.scale(
+                        scale: rightProgress,
+                        alignment: Alignment.centerLeft,
+                        child: GestureDetector(
+                          onTap: () {
+                            _close();
+                            widget.onDelete();
+                          },
+                          child: Builder(
+                            builder: (context) {
+                              final content = Container(
+                                margin: const EdgeInsets.only(left: 5),
+                                decoration: BoxDecoration(
+                                  color: skin.deleteColor.withValues(
+                                    alpha: 0.10,
+                                  ),
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(
+                                    color: skin.deleteColor.withValues(
+                                      alpha: 0.22,
+                                    ),
+                                  ),
+                                ),
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.delete_outline,
+                                      color: skin.deleteColor,
+                                      size: 22,
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      'Löschen',
+                                      style: TextStyle(
+                                        color: skin.deleteColor,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                              return ClipRRect(
+                                borderRadius: BorderRadius.circular(14),
+                                child: rightProgress > 0
+                                    ? PlatformBackdropFilter(
+                                        filter: ImageFilter.blur(
+                                          sigmaX: 10,
+                                          sigmaY: 10,
+                                        ),
+                                        child: content,
+                                      )
+                                    : content,
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
 
                 if (swipeOffset >= 0)
                   Positioned(
-                    left: 0, top: 4, bottom: 4, width: _leftRevealWidth,
-                    child: Row(children: [
-                      Expanded(child: Opacity(opacity: leftProgress, child: Transform.scale(
-  scale: leftProgress, alignment: Alignment.centerRight,
-  child: GestureDetector(
-    onTap: () { _close(); widget.onEdit(); },
-    child: Builder(builder: (context) {
-      final content = Container(
-        margin: const EdgeInsets.only(left: 5, right: 5),
-        decoration: BoxDecoration(
-          color: skin.primary.withValues(alpha: 0.10), borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: skin.primary.withValues(alpha: 0.22)),
-        ),
-        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-          Icon(Icons.edit_outlined, color: skin.primary, size: 22),
-          const SizedBox(height: 4),
-          Text('Bearb.', style: TextStyle(color: skin.primary, fontSize: 11, fontWeight: FontWeight.w600)),
-        ]),
-      );
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(14),
-        child: leftProgress > 0
-            ? PlatformBackdropFilter(filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10), child: content)
-            : content,
-      );
-    }),
-  ),
-))),
-                     Expanded(child: Opacity(opacity: leftProgress, child: Transform.scale(
-  scale: leftProgress, alignment: Alignment.centerRight,
-  child: GestureDetector(
-    onTap: () { _close(); _showShareAlert(context, skin, fahrt); },
-    child: Builder(builder: (context) {
-      final content = Container(
-        margin: const EdgeInsets.only(right: 5),
-        decoration: BoxDecoration(
-          color: skin.statComplete.withValues(alpha: 0.10), borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: skin.statComplete.withValues(alpha: 0.22)),
-        ),
-        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-          Icon(Icons.ios_share_outlined, color: skin.statComplete, size: 22),
-          const SizedBox(height: 4),
-          Text('Teilen', style: TextStyle(color: skin.statComplete, fontSize: 11, fontWeight: FontWeight.w600)),
-        ]),
-      );
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(14),
-        child: leftProgress > 0
-            ? PlatformBackdropFilter(filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10), child: content)
-            : content,
-      );
-    }),
-  ),
-))),
-                    ]),
+                    left: 0,
+                    top: 4,
+                    bottom: 4,
+                    width: _leftRevealWidth,
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Opacity(
+                            opacity: leftProgress,
+                            child: Transform.scale(
+                              scale: leftProgress,
+                              alignment: Alignment.centerRight,
+                              child: GestureDetector(
+                                onTap: () {
+                                  _close();
+                                  widget.onEdit();
+                                },
+                                child: Builder(
+                                  builder: (context) {
+                                    final content = Container(
+                                      margin: const EdgeInsets.only(
+                                        left: 5,
+                                        right: 5,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: skin.primary.withValues(
+                                          alpha: 0.10,
+                                        ),
+                                        borderRadius: BorderRadius.circular(14),
+                                        border: Border.all(
+                                          color: skin.primary.withValues(
+                                            alpha: 0.22,
+                                          ),
+                                        ),
+                                      ),
+                                      child: Column(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          Icon(
+                                            Icons.edit_outlined,
+                                            color: skin.primary,
+                                            size: 22,
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            'Bearb.',
+                                            style: TextStyle(
+                                              color: skin.primary,
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                    return ClipRRect(
+                                      borderRadius: BorderRadius.circular(14),
+                                      child: leftProgress > 0
+                                          ? PlatformBackdropFilter(
+                                              filter: ImageFilter.blur(
+                                                sigmaX: 10,
+                                                sigmaY: 10,
+                                              ),
+                                              child: content,
+                                            )
+                                          : content,
+                                    );
+                                  },
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        Expanded(
+                          child: Opacity(
+                            opacity: leftProgress,
+                            child: Transform.scale(
+                              scale: leftProgress,
+                              alignment: Alignment.centerRight,
+                              child: GestureDetector(
+                                onTap: () {
+                                  _close();
+                                  _showShareAlert(context, skin, fahrt);
+                                },
+                                child: Builder(
+                                  builder: (context) {
+                                    final content = Container(
+                                      margin: const EdgeInsets.only(right: 5),
+                                      decoration: BoxDecoration(
+                                        color: skin.statComplete.withValues(
+                                          alpha: 0.10,
+                                        ),
+                                        borderRadius: BorderRadius.circular(14),
+                                        border: Border.all(
+                                          color: skin.statComplete.withValues(
+                                            alpha: 0.22,
+                                          ),
+                                        ),
+                                      ),
+                                      child: Column(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          Icon(
+                                            Icons.ios_share_outlined,
+                                            color: skin.statComplete,
+                                            size: 22,
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            'Teilen',
+                                            style: TextStyle(
+                                              color: skin.statComplete,
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                    return ClipRRect(
+                                      borderRadius: BorderRadius.circular(14),
+                                      child: leftProgress > 0
+                                          ? PlatformBackdropFilter(
+                                              filter: ImageFilter.blur(
+                                                sigmaX: 10,
+                                                sigmaY: 10,
+                                              ),
+                                              child: content,
+                                            )
+                                          : content,
+                                    );
+                                  },
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
 
                 Transform.translate(
@@ -2024,106 +2689,223 @@ void _closeSilently() {
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(14),
                           child: Container(
-                              decoration: BoxDecoration(
-                                color: skin.isLight ? Colors.white.withValues(alpha: skin.glassOpacity) : skin.bgCard.withValues(alpha: skin.glassOpacity),
-                                borderRadius: BorderRadius.circular(14),
-                                border: Border.all(
-                                  color: fahrt.uebertragen ? skin.statComplete.withValues(alpha: 0.35) : skin.glassBorder,
-                                  width: fahrt.uebertragen ? 1.5 : 1.0,
-                                ),
-                                boxShadow: [
-                                  BoxShadow(color: skin.glassShadow, blurRadius: 24, spreadRadius: 0, offset: const Offset(0, 6)),
-                                  BoxShadow(color: skin.glassHighlight, blurRadius: 0, spreadRadius: -1, offset: const Offset(0, 1)),
-                                ],
-                              ),
-                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.center,
-                                children: [
-                                  SizedBox(
-                                    width: 52,
-                                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
-                                      Text(dayName.toUpperCase(),
-                                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 0.8, color: skin.surface(0.38))),
-                                      const SizedBox(height: 2),
-                                      Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
-                                        Text(dayNum, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: skin.textPrimary, height: 1)),
-                                        const SizedBox(width: 3),
-                                        Text(monthAbbr, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w500, color: skin.surface(0.3))),
-                                      ]),
-                                    ]),
-                                  ),
-                                  Container(width: 1, height: 44, margin: const EdgeInsets.symmetric(horizontal: 12), color: skin.surface(0.07)),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      children: [
-                                        LayoutBuilder(
-                                          builder: (context, constraints) {
-                                            return _AdaptiveKmRow(
-                                              kmStart: fahrt.kmStart,
-                                              kmEnd: fahrt.kmEnd,
-                                              skin: skin,
-                                              maxWidth: constraints.maxWidth,
-                                            );
-                                          },
-                                        ),
-                                        if (fahrt.kennzeichen.isNotEmpty) ...[
-                                          const SizedBox(height: 4),
-                                          Row(children: [
-                                            Icon(Icons.directions_car_outlined, size: 13, color: skin.surface(0.35)),
-                                            const SizedBox(width: 4),
-                                            Flexible(child: Text(fahrt.kennzeichen,
-                                                style: TextStyle(fontSize: 12, color: skin.surface(0.42), fontWeight: FontWeight.w500),
-                                                maxLines: 1, overflow: TextOverflow.ellipsis)),
-                                            if (hatGetankt) ...[
-                                              const SizedBox(width: 8),
-                                              Icon(Icons.local_gas_station_outlined, size: 13, color: skin.primary.withValues(alpha: 0.55)),
-                                            ],
-                                            if (fahrt.sonderWegerecht) ...[
-                                              const SizedBox(width: 6),
-                                              Icon(Icons.emergency_outlined, size: 13, color: const Color(0xFF2962FF).withValues(alpha: 0.75)),
-                                            ],
-                                          ]),
-                                        ],
-                                      ],
+                            decoration: BoxDecoration(
+                              color: skin.isLight
+                                  ? Colors.white.withValues(
+                                      alpha: skin.glassOpacity,
+                                    )
+                                  : skin.bgCard.withValues(
+                                      alpha: skin.glassOpacity,
                                     ),
-                                  ),
-                                  Column(
-                                    crossAxisAlignment: CrossAxisAlignment.end,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: fahrt.uebertragen
+                                    ? skin.statComplete.withValues(alpha: 0.35)
+                                    : skin.glassBorder,
+                                width: fahrt.uebertragen ? 1.5 : 1.0,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: skin.glassShadow,
+                                  blurRadius: 24,
+                                  spreadRadius: 0,
+                                  offset: const Offset(0, 6),
+                                ),
+                                BoxShadow(
+                                  color: skin.glassHighlight,
+                                  blurRadius: 0,
+                                  spreadRadius: -1,
+                                  offset: const Offset(0, 1),
+                                ),
+                              ],
+                            ),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 12,
+                            ),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                SizedBox(
+                                  width: 52,
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
                                       Text(
-                                        fahrt.kmStart == 0 || fahrt.kmEnd == 0 ? '—' : '${fahrt.kmGefahren} km',
-                                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: skin.textPrimary),
+                                        dayName.toUpperCase(),
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w700,
+                                          letterSpacing: 0.8,
+                                          color: skin.surface(0.38),
+                                        ),
                                       ),
-                                      const SizedBox(height: 4),
-                                      SizedBox(
-                                        width: 100,
-                                        child: Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-                                          Icon(
-                                            fahrt.isComplete ? Icons.check_circle_rounded : Icons.radio_button_unchecked,
-                                            size: 12,
-                                            color: fahrt.isComplete ? skin.statComplete : skin.statOpen,
+                                      const SizedBox(height: 2),
+                                      Row(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.baseline,
+                                        textBaseline: TextBaseline.alphabetic,
+                                        children: [
+                                          Text(
+                                            dayNum,
+                                            style: TextStyle(
+                                              fontSize: 20,
+                                              fontWeight: FontWeight.w700,
+                                              color: skin.textPrimary,
+                                              height: 1,
+                                            ),
                                           ),
-                                          const SizedBox(width: 4),
-                                          Flexible(child: Text(
-                                            fahrt.fahrtTyp.isNotEmpty
-                                                ? (fahrtTypObj != null ? fahrtTypObj.label : fahrt.fahrtTyp)
-                                                : (fahrt.fahrtZiel.isNotEmpty ? fahrt.fahrtZiel : (fahrt.uebertragen ? 'Eingetr.' : 'Offen')),
-                                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: skin.textMuted),
-                                            maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.right,
-                                          )),
-                                        ]),
+                                          const SizedBox(width: 3),
+                                          Text(
+                                            monthAbbr,
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.w500,
+                                              color: skin.surface(0.3),
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                     ],
                                   ),
-                                ],
-                              ),
+                                ),
+                                Container(
+                                  width: 1,
+                                  height: 44,
+                                  margin: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                  ),
+                                  color: skin.surface(0.07),
+                                ),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      LayoutBuilder(
+                                        builder: (context, constraints) {
+                                          return _AdaptiveKmRow(
+                                            kmStart: fahrt.kmStart,
+                                            kmEnd: fahrt.kmEnd,
+                                            skin: skin,
+                                            maxWidth: constraints.maxWidth,
+                                          );
+                                        },
+                                      ),
+                                      if (fahrt.kennzeichen.isNotEmpty) ...[
+                                        const SizedBox(height: 4),
+                                        Row(
+                                          children: [
+                                            Icon(
+                                              Icons.directions_car_outlined,
+                                              size: 13,
+                                              color: skin.surface(0.35),
+                                            ),
+                                            const SizedBox(width: 4),
+                                            Flexible(
+                                              child: Text(
+                                                fahrt.kennzeichen,
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: skin.surface(0.42),
+                                                  fontWeight: FontWeight.w500,
+                                                ),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ),
+                                            if (hatGetankt) ...[
+                                              const SizedBox(width: 8),
+                                              Icon(
+                                                Icons
+                                                    .local_gas_station_outlined,
+                                                size: 13,
+                                                color: skin.primary.withValues(
+                                                  alpha: 0.55,
+                                                ),
+                                              ),
+                                            ],
+                                            if (fahrt.sonderWegerecht) ...[
+                                              const SizedBox(width: 6),
+                                              Icon(
+                                                Icons.emergency_outlined,
+                                                size: 13,
+                                                color: const Color(
+                                                  0xFF2962FF,
+                                                ).withValues(alpha: 0.75),
+                                              ),
+                                            ],
+                                          ],
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Text(
+                                      fahrt.kmStart == 0 || fahrt.kmEnd == 0
+                                          ? '—'
+                                          : '${fahrt.kmGefahren} km',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                        color: skin.textPrimary,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    SizedBox(
+                                      width: 100,
+                                      child: Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.end,
+                                        children: [
+                                          Icon(
+                                            fahrt.isComplete
+                                                ? Icons.check_circle_rounded
+                                                : Icons.radio_button_unchecked,
+                                            size: 12,
+                                            color: fahrt.isComplete
+                                                ? skin.statComplete
+                                                : skin.statOpen,
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Flexible(
+                                            child: Text(
+                                              fahrt.fahrtTyp.isNotEmpty
+                                                  ? (fahrtTypObj != null
+                                                        ? fahrtTypObj.label
+                                                        : fahrt.fahrtTyp)
+                                                  : (fahrt.fahrtZiel.isNotEmpty
+                                                        ? fahrt.fahrtZiel
+                                                        : (fahrt.uebertragen
+                                                              ? 'Eingetr.'
+                                                              : 'Offen')),
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w600,
+                                                color: skin.textMuted,
+                                              ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              textAlign: TextAlign.right,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
                             ),
                           ),
                         ),
+                      ),
                       // Auswahl-Overlay
                       if (widget.selectionMode)
                         Positioned.fill(
@@ -2153,7 +2935,11 @@ void _closeSilently() {
                                           color: widget.skin.primary,
                                           shape: BoxShape.circle,
                                         ),
-                                        child: const Icon(Icons.check_rounded, size: 14, color: Colors.white),
+                                        child: const Icon(
+                                          Icons.check_rounded,
+                                          size: 14,
+                                          color: Colors.white,
+                                        ),
                                       ),
                                     ),
                                   )
@@ -2166,7 +2952,10 @@ void _closeSilently() {
                                         height: 22,
                                         decoration: BoxDecoration(
                                           shape: BoxShape.circle,
-                                          border: Border.all(color: widget.skin.surface(0.3), width: 1.5),
+                                          border: Border.all(
+                                            color: widget.skin.surface(0.3),
+                                            width: 1.5,
+                                          ),
                                         ),
                                       ),
                                     ),
@@ -2195,8 +2984,10 @@ class _AdaptiveKmRow extends StatelessWidget {
   final double maxWidth;
 
   const _AdaptiveKmRow({
-    required this.kmStart, required this.kmEnd,
-    required this.skin, required this.maxWidth,
+    required this.kmStart,
+    required this.kmEnd,
+    required this.skin,
+    required this.maxWidth,
   });
 
   String _fmt(int km) {
@@ -2307,25 +3098,36 @@ class _ToggleKachel extends StatefulWidget {
   final bool policeLights;
 
   const _ToggleKachel({
-    required this.label, required this.icon, required this.active,
-    required this.activeColor, required this.skin, required this.onTap, this.policeLights = false,
+    required this.label,
+    required this.icon,
+    required this.active,
+    required this.activeColor,
+    required this.skin,
+    required this.onTap,
+    this.policeLights = false,
   });
 
   @override
   State<_ToggleKachel> createState() => _ToggleKachelState();
 }
 
-class _ToggleKachelState extends State<_ToggleKachel> with SingleTickerProviderStateMixin {
+class _ToggleKachelState extends State<_ToggleKachel>
+    with SingleTickerProviderStateMixin {
   late AnimationController _ctrl;
   late Animation<Color?> _sirenColor;
 
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 900));
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    );
     if (widget.active && widget.policeLights) _ctrl.repeat(reverse: true);
-    _sirenColor = ColorTween(begin: const Color(0xFF2962FF), end: const Color(0xFFD32F2F))
-        .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOutSine));
+    _sirenColor = ColorTween(
+      begin: const Color(0xFF2962FF),
+      end: const Color(0xFFD32F2F),
+    ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOutSine));
   }
 
   @override
@@ -2342,7 +3144,10 @@ class _ToggleKachelState extends State<_ToggleKachel> with SingleTickerProviderS
   }
 
   @override
-  void dispose() { _ctrl.dispose(); super.dispose(); }
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2351,46 +3156,96 @@ class _ToggleKachelState extends State<_ToggleKachel> with SingleTickerProviderS
     final activeColor = widget.activeColor;
 
     return GestureDetector(
-      onTap: () { HapticFeedback.selectionClick(); widget.onTap(); },
+      onTap: () {
+        HapticFeedback.selectionClick();
+        widget.onTap();
+      },
       child: AnimatedBuilder(
         animation: _ctrl,
         builder: (context, _) {
           final Color currentColor = (active && widget.policeLights)
-              ? (_sirenColor.value ?? const Color(0xFF2962FF)) : activeColor;
+              ? (_sirenColor.value ?? const Color(0xFF2962FF))
+              : activeColor;
           final Border border;
-          if (active && widget.policeLights) border = Border.all(color: currentColor.withValues(alpha: 0.55), width: 1.5);
-          else if (active) border = Border.all(color: activeColor.withValues(alpha: 0.45), width: 1.5);
-          else border = Border.all(color: skin.glassBorder, width: 1.0);
+          if (active && widget.policeLights)
+            border = Border.all(
+              color: currentColor.withValues(alpha: 0.55),
+              width: 1.5,
+            );
+          else if (active)
+            border = Border.all(
+              color: activeColor.withValues(alpha: 0.45),
+              width: 1.5,
+            );
+          else
+            border = Border.all(color: skin.glassBorder, width: 1.0);
 
           final Color fillColor;
-          if (active && widget.policeLights) fillColor = currentColor.withValues(alpha: skin.isLight ? 0.10 : 0.18);
-          else if (active) fillColor = activeColor.withValues(alpha: skin.isLight ? 0.13 : 0.18);
-          else fillColor = skin.isLight ? Colors.white.withValues(alpha: skin.glassOpacity) : skin.bgCard.withValues(alpha: skin.glassOpacity);
+          if (active && widget.policeLights)
+            fillColor = currentColor.withValues(
+              alpha: skin.isLight ? 0.10 : 0.18,
+            );
+          else if (active)
+            fillColor = activeColor.withValues(
+              alpha: skin.isLight ? 0.13 : 0.18,
+            );
+          else
+            fillColor = skin.isLight
+                ? Colors.white.withValues(alpha: skin.glassOpacity)
+                : skin.bgCard.withValues(alpha: skin.glassOpacity);
 
           return ClipRRect(
             borderRadius: BorderRadius.circular(16),
             child: PlatformBackdropFilter(
               filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
               child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200), curve: Curves.easeInOut,
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeInOut,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 13,
+                ),
                 decoration: BoxDecoration(
-                  color: fillColor, borderRadius: BorderRadius.circular(16), border: border,
+                  color: fillColor,
+                  borderRadius: BorderRadius.circular(16),
+                  border: border,
                   boxShadow: [
-                    BoxShadow(color: skin.glassShadow, blurRadius: 16, offset: const Offset(0, 4)),
+                    BoxShadow(
+                      color: skin.glassShadow,
+                      blurRadius: 16,
+                      offset: const Offset(0, 4),
+                    ),
                     if (active && widget.policeLights)
-                      BoxShadow(color: currentColor.withValues(alpha: 0.20), blurRadius: 12, spreadRadius: 1),
+                      BoxShadow(
+                        color: currentColor.withValues(alpha: 0.20),
+                        blurRadius: 12,
+                        spreadRadius: 1,
+                      ),
                   ],
                 ),
-                child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  Icon(active ? Icons.check_circle_rounded : widget.icon, size: 18,
-                      color: active ? currentColor : skin.surface(0.35)),
-                  const SizedBox(width: 8),
-                  Flexible(child: Text(widget.label,
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
-                          color: active ? currentColor : skin.surface(0.45)),
-                      maxLines: 2, overflow: TextOverflow.ellipsis)),
-                ]),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      active ? Icons.check_circle_rounded : widget.icon,
+                      size: 18,
+                      color: active ? currentColor : skin.surface(0.35),
+                    ),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        widget.label,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: active ? currentColor : skin.surface(0.45),
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           );
@@ -2469,6 +3324,7 @@ class _FahrtEintragenSheetState extends State<_FahrtEintragenSheet> {
   }
 
   final _scrollCtrl = ScrollController();
+  final _saveBtnKey = GlobalKey();
   AppSkin get skin => widget.skin;
   FahrtDraft get _d => widget.draft;
 
@@ -2539,7 +3395,10 @@ class _FahrtEintragenSheetState extends State<_FahrtEintragenSheet> {
     _d.fahrtZiel = _fahrtZielCtrl.text;
   }
 
-  void _set(VoidCallback fn) { setState(fn); _syncDraft(); }
+  void _set(VoidCallback fn) {
+    setState(fn);
+    _syncDraft();
+  }
 
   @override
   void dispose() {
@@ -2560,7 +3419,10 @@ class _FahrtEintragenSheetState extends State<_FahrtEintragenSheet> {
     final label = isStart ? 'ABFAHRT KM' : 'ANKUNFT KM';
 
     final result = await Navigator.of(context).push<Map<String, dynamic>?>(
-      MaterialPageRoute(fullscreenDialog: true, builder: (_) => KmScannerScreen(label: label, color: color)),
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => KmScannerScreen(label: label, color: color),
+      ),
     );
 
     if (result == null || !mounted) return;
@@ -2592,13 +3454,13 @@ class _FahrtEintragenSheetState extends State<_FahrtEintragenSheet> {
       }
 
       if (mounted) {
-  showGlassSnackBar(
-    context,
-    'KM-Stand übernommen: $km km',
-    type: GlassSnackBarType.success,
-    duration: const Duration(seconds: 2),
-  );
-}
+        showGlassSnackBar(
+          context,
+          'KM-Stand übernommen: $km km',
+          type: GlassSnackBarType.success,
+          duration: const Duration(seconds: 2),
+        );
+      }
     }
   }
 
@@ -2619,11 +3481,11 @@ class _FahrtEintragenSheetState extends State<_FahrtEintragenSheet> {
     if (liter != null) {
       _set(() => _kraftstoffCtrl.text = liter);
       showGlassSnackBar(
-  context,
-  'Liter übernommen: $liter L',
-  type: GlassSnackBarType.warning,
-  duration: const Duration(seconds: 2),
-);
+        context,
+        'Liter übernommen: $liter L',
+        type: GlassSnackBarType.warning,
+        duration: const Duration(seconds: 2),
+      );
     }
   }
 
@@ -2652,9 +3514,15 @@ class _FahrtEintragenSheetState extends State<_FahrtEintragenSheet> {
       barrierColor: Colors.black.withValues(alpha: 0.45),
       transitionDuration: const Duration(milliseconds: 260),
       transitionBuilder: (ctx, anim, _, child) {
-        final curved = CurvedAnimation(parent: anim, curve: Curves.easeOutBack, reverseCurve: Curves.easeInBack);
-        return ScaleTransition(scale: Tween<double>(begin: 0.85, end: 1.0).animate(curved),
-            child: FadeTransition(opacity: anim, child: child));
+        final curved = CurvedAnimation(
+          parent: anim,
+          curve: Curves.easeOutBack,
+          reverseCurve: Curves.easeInBack,
+        );
+        return ScaleTransition(
+          scale: Tween<double>(begin: 0.85, end: 1.0).animate(curved),
+          child: FadeTransition(opacity: anim, child: child),
+        );
       },
       pageBuilder: (ctx, _, __) => Center(
         child: Material(
@@ -2667,69 +3535,145 @@ class _FahrtEintragenSheetState extends State<_FahrtEintragenSheet> {
                 margin: const EdgeInsets.symmetric(horizontal: 32),
                 padding: const EdgeInsets.all(22),
                 decoration: BoxDecoration(
-                  color: skin.isLight ? Colors.white.withValues(alpha: 0.94) : skin.bgCard.withValues(alpha: 0.94),
+                  color: skin.isLight
+                      ? Colors.white.withValues(alpha: 0.94)
+                      : skin.bgCard.withValues(alpha: 0.94),
                   borderRadius: BorderRadius.circular(22),
                   border: Border.all(color: skin.glassBorder),
-                  boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 28, offset: const Offset(0, 8))],
-                ),
-                child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Row(children: [
-                    Container(width: 38, height: 38,
-                        decoration: BoxDecoration(color: skin.primary.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
-                        child: Icon(Icons.directions_car_outlined, color: skin.primary, size: 20)),
-                    const SizedBox(width: 12),
-                    Expanded(child: Text('Fahrzeug erkannt?',
-                        style: TextStyle(color: skin.textPrimary, fontSize: 16, fontWeight: FontWeight.w700))),
-                  ]),
-                  const SizedBox(height: 10),
-                  Text('Basierend auf dem KM-Stand könnte es sich um folgendes Fahrzeug handeln:',
-                      style: TextStyle(color: skin.textMuted, fontSize: 12, height: 1.4)),
-                  const SizedBox(height: 14),
-                  ...candidates.take(3).map((c) {
-                    final kz = c['kennzeichen'] as String;
-                    final lastKm = c['kmEnd'] as int;
-                    final diff = c['kmDiff'] as int;
-                    return GestureDetector(
-                      onTap: () {
-                        Navigator.pop(ctx);
-                        setState(() => _kennzeichenCtrl.text = kz);
-                        _syncDraft();
-                        _updateKmHint();
-                        HapticFeedback.selectionClick();
-                      },
-                      child: Container(
-                        margin: const EdgeInsets.only(bottom: 8),
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-                        decoration: BoxDecoration(
-                          color: skin.primary.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: skin.primary.withValues(alpha: 0.22)),
-                        ),
-                        child: Row(children: [
-                          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                            Text(kz, style: TextStyle(color: skin.textPrimary, fontSize: 15, fontWeight: FontWeight.w700)),
-                            Text('Letzter KM: ${_formatKm(lastKm)}  •  +$diff km',
-                                style: TextStyle(color: skin.textMuted, fontSize: 11)),
-                          ])),
-                          Icon(Icons.chevron_right, color: skin.primary, size: 20),
-                        ]),
-                      ),
-                    );
-                  }),
-                  const SizedBox(height: 6),
-                  GestureDetector(
-                    onTap: () => Navigator.pop(ctx),
-                    child: Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      decoration: BoxDecoration(
-                        color: skin.surface(0.06), borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: skin.glassBorder),
-                      ),
-                      child: Center(child: Text('Keines davon',
-                          style: TextStyle(color: skin.textMuted, fontSize: 14, fontWeight: FontWeight.w600))),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.3),
+                      blurRadius: 28,
+                      offset: const Offset(0, 8),
                     ),
-                  ),
-                ]),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 38,
+                          height: 38,
+                          decoration: BoxDecoration(
+                            color: skin.primary.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Icon(
+                            Icons.directions_car_outlined,
+                            color: skin.primary,
+                            size: 20,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            'Fahrzeug erkannt?',
+                            style: TextStyle(
+                              color: skin.textPrimary,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      'Basierend auf dem KM-Stand könnte es sich um folgendes Fahrzeug handeln:',
+                      style: TextStyle(
+                        color: skin.textMuted,
+                        fontSize: 12,
+                        height: 1.4,
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    ...candidates.take(3).map((c) {
+                      final kz = c['kennzeichen'] as String;
+                      final lastKm = c['kmEnd'] as int;
+                      final diff = c['kmDiff'] as int;
+                      return GestureDetector(
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          setState(() => _kennzeichenCtrl.text = kz);
+                          _syncDraft();
+                          _updateKmHint();
+                          HapticFeedback.selectionClick();
+                        },
+                        child: Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 11,
+                          ),
+                          decoration: BoxDecoration(
+                            color: skin.primary.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: skin.primary.withValues(alpha: 0.22),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      kz,
+                                      style: TextStyle(
+                                        color: skin.textPrimary,
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                    Text(
+                                      'Letzter KM: ${_formatKm(lastKm)}  •  +$diff km',
+                                      style: TextStyle(
+                                        color: skin.textMuted,
+                                        fontSize: 11,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Icon(
+                                Icons.chevron_right,
+                                color: skin.primary,
+                                size: 20,
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }),
+                    const SizedBox(height: 6),
+                    GestureDetector(
+                      onTap: () => Navigator.pop(ctx),
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        decoration: BoxDecoration(
+                          color: skin.surface(0.06),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: skin.glassBorder),
+                        ),
+                        child: Center(
+                          child: Text(
+                            'Keines davon',
+                            style: TextStyle(
+                              color: skin.textMuted,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -2739,11 +3683,16 @@ class _FahrtEintragenSheetState extends State<_FahrtEintragenSheet> {
   }
 
   String _formatKm(int km) {
-    if (km >= 1000) return '${km ~/ 1000}.${(km % 1000).toString().padLeft(3, '0')}';
+    if (km >= 1000)
+      return '${km ~/ 1000}.${(km % 1000).toString().padLeft(3, '0')}';
     return km.toString();
   }
 
-  void _openKmInput(TextEditingController ctrl, String label, {bool isStart = false}) {
+  void _openKmInput(
+    TextEditingController ctrl,
+    String label, {
+    bool isStart = false,
+  }) {
     FocusScope.of(context).unfocus();
     final skin = AppTheme.of(context);
     if (ctrl.text == '0') {
@@ -2754,53 +3703,97 @@ class _FahrtEintragenSheetState extends State<_FahrtEintragenSheet> {
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (_) => Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.viewInsetsOf(context).bottom,
+        ),
         // ── GlassSheet aus glass_kit.dart ──
         child: GlassSheet(
           skin: skin,
           child: Padding(
             padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
-            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-              GestureDetector(
-                onTap: () => Navigator.pop(context),
-                child: Center(child: SheetHandle(skin: skin)),
-              ),
-              const SizedBox(height: 16),
-              Text(label, style: TextStyle(color: skin.textPrimary, fontSize: 17, fontWeight: FontWeight.w600)),
-              const SizedBox(height: 16),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(14),
-                child: PlatformBackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: skin.isLight ? Colors.white.withValues(alpha: 0.65) : Colors.white.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: skin.glassBorder),
-                    ),
-                    child: TextField(
-                      controller: ctrl, autofocus: true,
-                      keyboardType: TextInputType.number,
-                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                      enableInteractiveSelection: false,
-                      style: TextStyle(color: skin.textPrimary, fontSize: 28, fontWeight: FontWeight.w700, letterSpacing: -0.5),
-                      decoration: InputDecoration(
-                        hintText: '0', hintStyle: TextStyle(color: skin.surface(0.2), fontSize: 28),
-                        border: InputBorder.none, isDense: true,
-                        suffix: Text(' km', style: TextStyle(color: skin.surface(0.4), fontSize: 16, fontWeight: FontWeight.w500)),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                GestureDetector(
+                  onTap: () => Navigator.pop(context),
+                  child: Center(child: SheetHandle(skin: skin)),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: skin.textPrimary,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(14),
+                  child: PlatformBackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 4,
                       ),
-                      onSubmitted: (_) => Navigator.pop(context),
+                      decoration: BoxDecoration(
+                        color: skin.isLight
+                            ? Colors.white.withValues(alpha: 0.65)
+                            : Colors.white.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: skin.glassBorder),
+                      ),
+                      child: TextField(
+                        controller: ctrl,
+                        autofocus: true,
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                        ],
+                        enableInteractiveSelection: false,
+                        style: TextStyle(
+                          color: skin.textPrimary,
+                          fontSize: 28,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -0.5,
+                        ),
+                        decoration: InputDecoration(
+                          hintText: '0',
+                          hintStyle: TextStyle(
+                            color: skin.surface(0.2),
+                            fontSize: 28,
+                          ),
+                          border: InputBorder.none,
+                          isDense: true,
+                          suffix: Text(
+                            ' km',
+                            style: TextStyle(
+                              color: skin.surface(0.4),
+                              fontSize: 16,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                        onSubmitted: (_) => Navigator.pop(context),
+                      ),
                     ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 16),
-              // ── GlassPrimaryButton aus glass_kit.dart ──
-              GlassPrimaryButton(skin: skin, label: 'Übernehmen', onTap: () {
-                _syncDraft(); setState(() {}); Navigator.pop(context);
-              }),
-            ]),
+                const SizedBox(height: 16),
+                // ── GlassPrimaryButton aus glass_kit.dart ──
+                GlassPrimaryButton(
+                  skin: skin,
+                  label: 'Übernehmen',
+                  onTap: () {
+                    _syncDraft();
+                    setState(() {});
+                    Navigator.pop(context);
+                  },
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -2808,7 +3801,8 @@ class _FahrtEintragenSheetState extends State<_FahrtEintragenSheet> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         FocusManager.instance.primaryFocus?.unfocus();
       });
-      _syncDraft(); setState(() {});
+      _syncDraft();
+      setState(() {});
       if (isStart) {
         final km = int.tryParse(_kmStartCtrl.text);
         if (km != null && km > 0) _checkKmCandidates(km);
@@ -2848,7 +3842,9 @@ class _FahrtEintragenSheetState extends State<_FahrtEintragenSheet> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       FocusManager.instance.primaryFocus?.unfocus();
       if (_scrollCtrl.hasClients) {
-        _scrollCtrl.jumpTo(savedOffset.clamp(0.0, _scrollCtrl.position.maxScrollExtent));
+        _scrollCtrl.jumpTo(
+          savedOffset.clamp(0.0, _scrollCtrl.position.maxScrollExtent),
+        );
       }
     });
   }
@@ -2879,8 +3875,12 @@ class _FahrtEintragenSheetState extends State<_FahrtEintragenSheet> {
     FocusManager.instance.primaryFocus?.unfocus();
     if (!mounted || selected == null) return;
     _set(() {
-      if (isAbfahrt) { _abfahrtZeit = selected!; }
-      else { _ankunftZeit = selected!; _ankunftDatum ??= _abfahrtDatum; }
+      if (isAbfahrt) {
+        _abfahrtZeit = selected!;
+      } else {
+        _ankunftZeit = selected!;
+        _ankunftDatum ??= _abfahrtDatum;
+      }
     });
   }
 
@@ -2894,22 +3894,28 @@ class _FahrtEintragenSheetState extends State<_FahrtEintragenSheet> {
 
     if (_abfahrtZeit != null && _ankunftZeit != null && _ankunftDatum != null) {
       final abfahrt = DateTime(
-        _abfahrtDatum.year, _abfahrtDatum.month, _abfahrtDatum.day,
-        _abfahrtZeit!.hour, _abfahrtZeit!.minute,
+        _abfahrtDatum.year,
+        _abfahrtDatum.month,
+        _abfahrtDatum.day,
+        _abfahrtZeit!.hour,
+        _abfahrtZeit!.minute,
       );
       final ankunft = DateTime(
-        _ankunftDatum!.year, _ankunftDatum!.month, _ankunftDatum!.day,
-        _ankunftZeit!.hour, _ankunftZeit!.minute,
+        _ankunftDatum!.year,
+        _ankunftDatum!.month,
+        _ankunftDatum!.day,
+        _ankunftZeit!.hour,
+        _ankunftZeit!.minute,
       );
       if (!ankunft.isAfter(abfahrt)) {
         _finalized = false;
         HapticFeedback.heavyImpact();
         if (_canShowAlert('zeit_reihenfolge'))
-  showGlassSnackBar(
-    context,
-    'Ankunftszeit muss nach der Abfahrtszeit liegen.',
-    type: GlassSnackBarType.error,
-  );
+          showGlassSnackBar(
+            context,
+            'Ankunftszeit muss nach der Abfahrtszeit liegen.',
+            type: GlassSnackBarType.error,
+          );
         return;
       }
     }
@@ -2918,11 +3924,11 @@ class _FahrtEintragenSheetState extends State<_FahrtEintragenSheet> {
       _finalized = false;
       HapticFeedback.heavyImpact();
       if (_canShowAlert('km_reihenfolge'))
-  showGlassSnackBar(
-    context,
-    'Ankunft-KM muss größer als Abfahrt-KM sein.',
-    type: GlassSnackBarType.error,
-  );
+        showGlassSnackBar(
+          context,
+          'Ankunft-KM muss größer als Abfahrt-KM sein.',
+          type: GlassSnackBarType.error,
+        );
       return;
     }
 
@@ -2931,26 +3937,28 @@ class _FahrtEintragenSheetState extends State<_FahrtEintragenSheet> {
       _finalized = false;
       HapticFeedback.heavyImpact();
       if (_canShowAlert('kz_leer'))
-  showGlassSnackBar(
-    context,
-    'Bitte ein Kennzeichen eintragen (z.B. B-UX 157)',
-    type: GlassSnackBarType.error,
-    duration: const Duration(seconds: 3),
-  );
+        showGlassSnackBar(
+          context,
+          'Bitte ein Kennzeichen eintragen (z.B. B-UX 157)',
+          type: GlassSnackBarType.error,
+          duration: const Duration(seconds: 3),
+        );
       return;
     }
 
-    final kzValid = RegExp(r'^[A-ZÄÖÜ]{1,3}-[A-ZÄÖÜ]{1,2} \d{1,4}[EH]?$').hasMatch(kennzeichen);
+    final kzValid = RegExp(
+      r'^[A-ZÄÖÜ]{1,3}-[A-ZÄÖÜ]{1,2} \d{1,4}[EH]?$',
+    ).hasMatch(kennzeichen);
     if (!kzValid) {
       _finalized = false;
       HapticFeedback.heavyImpact();
       if (_canShowAlert('kz_ungueltig'))
-  showGlassSnackBar(
-    context,
-    'Kennzeichen unvollständig (z.B. B-UX 157)',
-    type: GlassSnackBarType.error,
-    duration: const Duration(seconds: 3),
-  );
+        showGlassSnackBar(
+          context,
+          'Kennzeichen unvollständig (z.B. B-UX 157)',
+          type: GlassSnackBarType.error,
+          duration: const Duration(seconds: 3),
+        );
       return;
     }
 
@@ -2960,23 +3968,42 @@ class _FahrtEintragenSheetState extends State<_FahrtEintragenSheet> {
 
     DateTime? abfahrtZeit;
     if (_abfahrtZeit != null) {
-      abfahrtZeit = DateTime(_abfahrtDatum.year, _abfahrtDatum.month, _abfahrtDatum.day,
-          _abfahrtZeit!.hour, _abfahrtZeit!.minute);
+      abfahrtZeit = DateTime(
+        _abfahrtDatum.year,
+        _abfahrtDatum.month,
+        _abfahrtDatum.day,
+        _abfahrtZeit!.hour,
+        _abfahrtZeit!.minute,
+      );
     }
     DateTime? ankunftZeit;
     if (_ankunftZeit != null && _ankunftDatum != null) {
-      ankunftZeit = DateTime(_ankunftDatum!.year, _ankunftDatum!.month, _ankunftDatum!.day,
-          _ankunftZeit!.hour, _ankunftZeit!.minute);
+      ankunftZeit = DateTime(
+        _ankunftDatum!.year,
+        _ankunftDatum!.month,
+        _ankunftDatum!.day,
+        _ankunftZeit!.hour,
+        _ankunftZeit!.minute,
+      );
     }
 
     final fahrt = Fahrt(
-      id: widget.isEdit && widget.editingId != null ? widget.editingId! : DateTime.now().millisecondsSinceEpoch.toString(),
-      datum: _abfahrtDatum, kmStart: kmStart, kmEnd: kmEnd, kennzeichen: kennzeichen,
+      id: widget.isEdit && widget.editingId != null
+          ? widget.editingId!
+          : DateTime.now().millisecondsSinceEpoch.toString(),
+      datum: _abfahrtDatum,
+      kmStart: kmStart,
+      kmEnd: kmEnd,
+      kennzeichen: kennzeichen,
       getanktLiter: double.tryParse(_kraftstoffCtrl.text.replaceAll(',', '.')),
-      fotoStartPath: _fotoStartPath, fotoEndPath: _fotoEndPath,
-      abfahrtZeit: abfahrtZeit, ankunftDatum: _ankunftDatum, ankunftZeit: ankunftZeit,
+      fotoStartPath: _fotoStartPath,
+      fotoEndPath: _fotoEndPath,
+      abfahrtZeit: abfahrtZeit,
+      ankunftDatum: _ankunftDatum,
+      ankunftZeit: ankunftZeit,
       fahrtTyp: _fahrtTypCode,
-      sonderWegerecht: _sonderWegerecht, autoGewaschen: _autoGewaschen,
+      sonderWegerecht: _sonderWegerecht,
+      autoGewaschen: _autoGewaschen,
       stromKwh: double.tryParse(_stromCtrl.text.replaceAll(',', '.')),
       adblueKwh: double.tryParse(_adblueCtrl.text.replaceAll(',', '.')),
       fahrtZiel: _fahrtZielCtrl.text.trim(),
@@ -3022,13 +4049,34 @@ class _FahrtEintragenSheetState extends State<_FahrtEintragenSheet> {
       context: context,
       skin: skin,
       title: 'Fahrt löschen',
-      message: 'Diese Fahrt wird unwiderruflich gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.',
+      message:
+          'Diese Fahrt wird unwiderruflich gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.',
     );
 
     if (confirmed == true && mounted) {
       widget.onDelete?.call();
       Navigator.pop(context);
     }
+  }
+
+  bool _followKeyboard = false;
+  int _followToken = 0;
+
+  /// Fahrtziel ist das letzte Feld: sofort ganz nach unten und der Tastatur-
+  /// Animation folgen (build() hält den Scroll-Stand am Ende, solange aktiv).
+  void _revealSaveButton() {
+    _followKeyboard = true;
+    final token = ++_followToken;
+    Future.delayed(const Duration(milliseconds: 700), () {
+      if (token == _followToken) _followKeyboard = false;
+    });
+    _jumpToBottom();
+  }
+
+  void _jumpToBottom() {
+    if (!mounted || !_scrollCtrl.hasClients) return;
+    final max = _scrollCtrl.position.maxScrollExtent;
+    if ((max - _scrollCtrl.offset).abs() > 0.5) _scrollCtrl.jumpTo(max);
   }
 
   void _showFahrtTypPicker() {
@@ -3062,360 +4110,735 @@ class _FahrtEintragenSheetState extends State<_FahrtEintragenSheet> {
 
   @override
   Widget build(BuildContext context) {
+    if (_followKeyboard) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _jumpToBottom());
+    }
     final kmStart = int.tryParse(_kmStartCtrl.text);
     final kmEnd = int.tryParse(_kmEndCtrl.text);
-    final selectedTyp = _fahrtTypCode.isNotEmpty ? FahrtTypManager.byCode(_fahrtTypCode) : null;
+    final selectedTyp = _fahrtTypCode.isNotEmpty
+        ? FahrtTypManager.byCode(_fahrtTypCode)
+        : null;
 
     return NotificationListener<ScrollNotification>(
       onNotification: (notification) {
         if (notification is ScrollUpdateNotification) {
-          if (notification.scrollDelta != null && notification.scrollDelta! < -5) {
+          if (notification.scrollDelta != null &&
+              notification.scrollDelta! < -5) {
             FocusScope.of(context).unfocus();
           }
         }
         return false;
       },
       child: GestureDetector(
-        onVerticalDragUpdate: (d) { if (d.delta.dy > 15) FocusScope.of(context).unfocus(); },
+        onVerticalDragUpdate: (d) {
+          if (d.delta.dy > 15) FocusScope.of(context).unfocus();
+        },
         child: Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.viewInsetsOf(context).bottom,
+          ),
           child: ClipRRect(
             borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
             child: PlatformBackdropFilter(
-              filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
+              filter: ImageFilter.blur(
+                sigmaX: skin.glassBlur,
+                sigmaY: skin.glassBlur,
+              ),
               child: Container(
                 decoration: BoxDecoration(
-                  color: skin.isLight ? Colors.white.withValues(alpha: 0.92) : skin.bgSheet.withValues(alpha: 0.92),
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+                  color: skin.isLight
+                      ? Colors.white.withValues(alpha: 0.92)
+                      : skin.bgSheet.withValues(alpha: 0.92),
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(28),
+                  ),
                   border: Border.all(color: skin.glassBorder),
                 ),
                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
-                child: SingleChildScrollView(
-                  controller: _scrollCtrl,
-                  physics: const BouncingScrollPhysics(),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: widget.onMinimize,
-                        onVerticalDragEnd: (d) { if ((d.primaryVelocity ?? 0) > 100) widget.onMinimize(); },
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          child: Center(child: Container(width: 44, height: 5,
-                              decoration: BoxDecoration(color: skin.surface(0.22), borderRadius: BorderRadius.circular(3)))),
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Row(children: [
-                        Container(width: 36, height: 36,
-                            decoration: BoxDecoration(color: skin.primary.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
-                            child: Icon(Icons.directions_car_outlined, size: 18, color: skin.primary)),
-                        const SizedBox(width: 12),
-                        Text(widget.isEdit ? 'Fahrt bearbeiten' : 'Fahrt eintragen',
-                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: skin.textPrimary)),
-                      ]),
-                      const SizedBox(height: 20),
-
-                      _SectionLabel(label: 'FAHRZEUG', skin: skin),
-                      const SizedBox(height: 8),
-                      _KennzeichenInputRow(skin: skin, ctrl: _kennzeichenCtrl),
-                      _hint('Doppeltipp'),
-                      const SizedBox(height: 20),
-
-                      _SectionLabel(label: 'KILOMETERSTAND', skin: skin),
-                      const SizedBox(height: 8),
-                      Row(children: [
-                        Expanded(child: _KmInputCard(
-                          label: 'ABFAHRT KM', ctrl: _kmStartCtrl, skin: skin, color: skin.kommenColor,
-                          fotoPath: _fotoStartPath, hintKm: _lastKmHint,
-                          onTap: () => _openKmInput(_kmStartCtrl, 'Abfahrtkilometer', isStart: true),
-                          onCameraPressed: () => _pickPhoto(true),
-                          onDoubleTap: () {
-                            HapticFeedback.lightImpact();
-                            if (_kmStartCtrl.text.isEmpty && _lastKmHint != null) {
-                              _set(() => _kmStartCtrl.text = _lastKmHint.toString());
-                            } else {
-                              _set(() { _kmStartCtrl.clear(); _fotoStartPath = null; _d.fotoStartPath = null; });
-                            }
-                          },
-                        )),
-                        const SizedBox(width: 12),
-                        Expanded(child: _KmInputCard(
-                          label: 'ANKUNFT KM', ctrl: _kmEndCtrl, skin: skin, color: skin.gehenColor,
-                          fotoPath: _fotoEndPath,
-                          onTap: () => _openKmInput(_kmEndCtrl, 'Ankunftkilometer'),
-                          onCameraPressed: () => _pickPhoto(false),
-                          onDoubleTap: () {
-                            HapticFeedback.lightImpact();
-                            _set(() { _kmEndCtrl.clear(); _fotoEndPath = null; _d.fotoEndPath = null; });
-                          },
-                        )),
-                      ]),
-                      if (kmStart != null && kmEnd != null && kmEnd >= kmStart) ...[
-                        const SizedBox(height: 8),
-                        Center(child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
-                          decoration: BoxDecoration(
-                            color: skin.primary.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: skin.primary.withValues(alpha: 0.2)),
-                          ),
-                          child: Text('${kmEnd - kmStart} km gefahren',
-                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: skin.primary.withValues(alpha: 0.8))),
-                        )),
-                      ],
-                      _hint('Tippen · Doppeltipp · Scannen'),
-                      const SizedBox(height: 20),
-
-                      _SectionLabel(label: 'ZEITRAUM', skin: skin),
-                      const SizedBox(height: 8),
-                      Row(children: [
-                        Expanded(child: _ZeitBlock(
-                          skin: skin, label: 'ABFAHRT', color: skin.kommenColor,
-                          datum: _abfahrtDatum, zeit: _abfahrtZeit,
-                          datumText: _formatDate(_abfahrtDatum), zeitText: _formatTime(_abfahrtZeit),
-                          onDateTap: () => _pickDate(true), onTimeTap: () => _pickTime(true),
-                          onDateDoubleTap: () => _set(() {
-                            final today = DateTime.now();
-                            _abfahrtDatum = DateTime(today.year, today.month, today.day);
-                            if (_ankunftDatum != null && _ankunftDatum!.isBefore(_abfahrtDatum)) _ankunftDatum = _abfahrtDatum;
-                          }),
-                          onTimeDoubleTap: () => _set(() => _abfahrtZeit = TimeOfDay.now()),
-                          onSwipeDay: (delta) => _set(() {
-                            _abfahrtDatum = _abfahrtDatum.add(Duration(days: delta));
-                            if (_ankunftDatum != null && _ankunftDatum!.isBefore(_abfahrtDatum)) _ankunftDatum = _abfahrtDatum;
-                          }),
-                          onSwipeMinute: (delta) => _set(() {
-                            final current = _abfahrtZeit ?? TimeOfDay.now();
-                            final total = (current.hour * 60 + current.minute + delta).clamp(0, 23 * 60 + 59);
-                            _abfahrtZeit = TimeOfDay(hour: total ~/ 60, minute: total % 60);
-                          }),
-                        )),
-                        const SizedBox(width: 10),
-                        Expanded(child: _ZeitBlock(
-                          skin: skin, label: 'ANKUNFT', color: skin.gehenColor,
-                          datum: _ankunftDatum, zeit: _ankunftZeit,
-                          datumText: _ankunftDatum != null ? _formatDate(_ankunftDatum!) : '—',
-                          zeitText: _formatTime(_ankunftZeit),
-                          onDateTap: () => _pickDate(false), onTimeTap: () => _pickTime(false),
-                          onDateDoubleTap: () => _set(() { final today = DateTime.now(); _ankunftDatum = DateTime(today.year, today.month, today.day); }),
-                          onTimeDoubleTap: () => _set(() { _ankunftZeit = TimeOfDay.now(); _ankunftDatum ??= _abfahrtDatum; }),
-                          onSwipeDay: (delta) => _set(() { final base = _ankunftDatum ?? _abfahrtDatum; _ankunftDatum = base.add(Duration(days: delta)); }),
-                          onSwipeMinute: (delta) => _set(() {
-                            final current = _ankunftZeit ?? TimeOfDay.now();
-                            final total = (current.hour * 60 + current.minute + delta).clamp(0, 23 * 60 + 59);
-                            _ankunftZeit = TimeOfDay(hour: total ~/ 60, minute: total % 60);
-                            _ankunftDatum ??= _abfahrtDatum;
-                          }),
-                        )),
-                      ]),
-                      _hint('Tippen · Doppeltipp · Wischen'),
-                      const SizedBox(height: 20),
-
-                      _SectionLabel(label: 'FAHRTTYP', skin: skin),
-                      const SizedBox(height: 8),
-                      GestureDetector(
-                        onTap: _showFahrtTypPicker,
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(16),
-                          child: PlatformBackdropFilter(
-                            filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-                              decoration: BoxDecoration(
-                                color: selectedTyp != null
-                                    ? skin.primary.withValues(alpha: skin.isLight ? 0.08 : 0.14)
-                                    : (skin.isLight ? Colors.white.withValues(alpha: skin.glassOpacity) : skin.bgCard.withValues(alpha: skin.glassOpacity)),
-                                borderRadius: BorderRadius.circular(16),
-                                border: Border.all(
-                                  color: selectedTyp != null ? skin.primary.withValues(alpha: 0.35) : skin.glassBorder,
-                                  width: selectedTyp != null ? 1.5 : 1.0,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Flexible(
+                      child: SingleChildScrollView(
+                        controller: _scrollCtrl,
+                        physics: const BouncingScrollPhysics(),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: widget.onMinimize,
+                              onVerticalDragEnd: (d) {
+                                if ((d.primaryVelocity ?? 0) > 100)
+                                  widget.onMinimize();
+                              },
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 14,
                                 ),
-                                boxShadow: [BoxShadow(color: skin.glassShadow, blurRadius: 16, offset: const Offset(0, 4))],
+                                child: Center(
+                                  child: Container(
+                                    width: 44,
+                                    height: 5,
+                                    decoration: BoxDecoration(
+                                      color: skin.surface(0.22),
+                                      borderRadius: BorderRadius.circular(3),
+                                    ),
+                                  ),
+                                ),
                               ),
-                              child: Row(children: [
+                            ),
+                            const SizedBox(height: 4),
+                            Row(
+                              children: [
                                 Container(
-                                  width: 32, height: 32,
+                                  width: 36,
+                                  height: 36,
                                   decoration: BoxDecoration(
-                                    color: selectedTyp != null
-                                        ? skin.primary.withValues(alpha: 0.15)
-                                        : skin.surface(0.08),
-                                    borderRadius: BorderRadius.circular(8),
+                                    color: skin.primary.withValues(alpha: 0.12),
+                                    borderRadius: BorderRadius.circular(10),
                                   ),
                                   child: Icon(
-                                    selectedTyp != null ? Icons.check_rounded : Icons.list_alt_outlined,
-                                    size: 16,
-                                    color: selectedTyp != null ? skin.primary : skin.surface(0.4),
+                                    Icons.directions_car_outlined,
+                                    size: 18,
+                                    color: skin.primary,
                                   ),
                                 ),
                                 const SizedBox(width: 12),
-                                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                  Text('FAHRTTYP', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700,
-                                      color: selectedTyp != null ? skin.primary : skin.surface(0.38), letterSpacing: 1.0)),
-                                  const SizedBox(height: 3),
-                                  Text(
-                                    selectedTyp != null ? '${selectedTyp.code} – ${selectedTyp.label}' : 'Typ auswählen…',
-                                    style: TextStyle(
-                                      fontSize: 14, fontWeight: FontWeight.w600,
-                                      color: selectedTyp != null ? skin.textPrimary : skin.surface(0.3),
-                                    ),
-                                    maxLines: 1, overflow: TextOverflow.ellipsis,
+                                Text(
+                                  widget.isEdit
+                                      ? 'Fahrt bearbeiten'
+                                      : 'Fahrt eintragen',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w700,
+                                    color: skin.textPrimary,
                                   ),
-                                ])),
-                                Icon(Icons.chevron_right, size: 18, color: skin.surface(0.3)),
-                              ]),
+                                ),
+                              ],
                             ),
-                          ),
-                        ),
-                      ),
-                      if (_sortedTypes.isNotEmpty) ...[
-                        const SizedBox(height: 8),
-                        SizedBox(
-                          height: 32,
-                          child: ListView.separated(
-                            scrollDirection: Axis.horizontal,
-                            physics: const BouncingScrollPhysics(),
-                            itemCount: _sortedTypes.take(6).length,
-                            separatorBuilder: (_, __) => const SizedBox(width: 6),
-                            itemBuilder: (_, i) {
-                              final typ = _sortedTypes[i];
-                              final selected = _fahrtTypCode == typ.code;
-                              return GestureDetector(
-                                onTap: () {
-                                  HapticFeedback.selectionClick();
-                                  _set(() => _fahrtTypCode = selected ? '' : typ.code);
-                                },
-                                child: AnimatedContainer(
-                                  duration: const Duration(milliseconds: 150),
-                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            const SizedBox(height: 20),
+
+                            _SectionLabel(label: 'FAHRZEUG', skin: skin),
+                            const SizedBox(height: 8),
+                            _KennzeichenInputRow(
+                              skin: skin,
+                              ctrl: _kennzeichenCtrl,
+                            ),
+                            _hint('Doppeltipp'),
+                            const SizedBox(height: 20),
+
+                            _SectionLabel(label: 'KILOMETERSTAND', skin: skin),
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _KmInputCard(
+                                    label: 'ABFAHRT KM',
+                                    ctrl: _kmStartCtrl,
+                                    skin: skin,
+                                    color: skin.kommenColor,
+                                    fotoPath: _fotoStartPath,
+                                    hintKm: _lastKmHint,
+                                    onTap: () => _openKmInput(
+                                      _kmStartCtrl,
+                                      'Abfahrtkilometer',
+                                      isStart: true,
+                                    ),
+                                    onCameraPressed: () => _pickPhoto(true),
+                                    onDoubleTap: () {
+                                      HapticFeedback.lightImpact();
+                                      if (_kmStartCtrl.text.isEmpty &&
+                                          _lastKmHint != null) {
+                                        _set(
+                                          () => _kmStartCtrl.text = _lastKmHint
+                                              .toString(),
+                                        );
+                                      } else {
+                                        _set(() {
+                                          _kmStartCtrl.clear();
+                                          _fotoStartPath = null;
+                                          _d.fotoStartPath = null;
+                                        });
+                                      }
+                                    },
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: _KmInputCard(
+                                    label: 'ANKUNFT KM',
+                                    ctrl: _kmEndCtrl,
+                                    skin: skin,
+                                    color: skin.gehenColor,
+                                    fotoPath: _fotoEndPath,
+                                    onTap: () => _openKmInput(
+                                      _kmEndCtrl,
+                                      'Ankunftkilometer',
+                                    ),
+                                    onCameraPressed: () => _pickPhoto(false),
+                                    onDoubleTap: () {
+                                      HapticFeedback.lightImpact();
+                                      _set(() {
+                                        _kmEndCtrl.clear();
+                                        _fotoEndPath = null;
+                                        _d.fotoEndPath = null;
+                                      });
+                                    },
+                                  ),
+                                ),
+                              ],
+                            ),
+                            if (kmStart != null &&
+                                kmEnd != null &&
+                                kmEnd >= kmStart) ...[
+                              const SizedBox(height: 8),
+                              Center(
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 14,
+                                    vertical: 5,
+                                  ),
                                   decoration: BoxDecoration(
-                                    color: selected ? skin.primary.withValues(alpha: 0.15) : skin.surface(0.06),
+                                    color: skin.primary.withValues(alpha: 0.08),
                                     borderRadius: BorderRadius.circular(20),
                                     border: Border.all(
-                                      color: selected ? skin.primary.withValues(alpha: 0.45) : skin.glassBorder,
-                                      width: selected ? 1.5 : 1.0,
+                                      color: skin.primary.withValues(
+                                        alpha: 0.2,
+                                      ),
                                     ),
                                   ),
                                   child: Text(
-                                    typ.label,
+                                    '${kmEnd - kmStart} km gefahren',
                                     style: TextStyle(
                                       fontSize: 12,
                                       fontWeight: FontWeight.w600,
-                                      color: selected ? skin.primary : skin.surface(0.5),
+                                      color: skin.primary.withValues(
+                                        alpha: 0.8,
+                                      ),
                                     ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
-                              );
-                            },
-                          ),
+                              ),
+                            ],
+                            _hint('Tippen · Doppeltipp · Scannen'),
+                            const SizedBox(height: 20),
+
+                            _SectionLabel(label: 'ZEITRAUM', skin: skin),
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _ZeitBlock(
+                                    skin: skin,
+                                    label: 'ABFAHRT',
+                                    color: skin.kommenColor,
+                                    datum: _abfahrtDatum,
+                                    zeit: _abfahrtZeit,
+                                    datumText: _formatDate(_abfahrtDatum),
+                                    zeitText: _formatTime(_abfahrtZeit),
+                                    onDateTap: () => _pickDate(true),
+                                    onTimeTap: () => _pickTime(true),
+                                    onDateDoubleTap: () => _set(() {
+                                      final today = DateTime.now();
+                                      _abfahrtDatum = DateTime(
+                                        today.year,
+                                        today.month,
+                                        today.day,
+                                      );
+                                      if (_ankunftDatum != null &&
+                                          _ankunftDatum!.isBefore(
+                                            _abfahrtDatum,
+                                          ))
+                                        _ankunftDatum = _abfahrtDatum;
+                                    }),
+                                    onTimeDoubleTap: () => _set(
+                                      () => _abfahrtZeit = TimeOfDay.now(),
+                                    ),
+                                    onSwipeDay: (delta) => _set(() {
+                                      _abfahrtDatum = _abfahrtDatum.add(
+                                        Duration(days: delta),
+                                      );
+                                      if (_ankunftDatum != null &&
+                                          _ankunftDatum!.isBefore(
+                                            _abfahrtDatum,
+                                          ))
+                                        _ankunftDatum = _abfahrtDatum;
+                                    }),
+                                    onSwipeMinute: (delta) => _set(() {
+                                      final current =
+                                          _abfahrtZeit ?? TimeOfDay.now();
+                                      final total =
+                                          (current.hour * 60 +
+                                                  current.minute +
+                                                  delta)
+                                              .clamp(0, 23 * 60 + 59);
+                                      _abfahrtZeit = TimeOfDay(
+                                        hour: total ~/ 60,
+                                        minute: total % 60,
+                                      );
+                                    }),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: _ZeitBlock(
+                                    skin: skin,
+                                    label: 'ANKUNFT',
+                                    color: skin.gehenColor,
+                                    datum: _ankunftDatum,
+                                    zeit: _ankunftZeit,
+                                    datumText: _ankunftDatum != null
+                                        ? _formatDate(_ankunftDatum!)
+                                        : '—',
+                                    zeitText: _formatTime(_ankunftZeit),
+                                    onDateTap: () => _pickDate(false),
+                                    onTimeTap: () => _pickTime(false),
+                                    onDateDoubleTap: () => _set(() {
+                                      final today = DateTime.now();
+                                      _ankunftDatum = DateTime(
+                                        today.year,
+                                        today.month,
+                                        today.day,
+                                      );
+                                    }),
+                                    onTimeDoubleTap: () => _set(() {
+                                      _ankunftZeit = TimeOfDay.now();
+                                      _ankunftDatum ??= _abfahrtDatum;
+                                    }),
+                                    onSwipeDay: (delta) => _set(() {
+                                      final base =
+                                          _ankunftDatum ?? _abfahrtDatum;
+                                      _ankunftDatum = base.add(
+                                        Duration(days: delta),
+                                      );
+                                    }),
+                                    onSwipeMinute: (delta) => _set(() {
+                                      final current =
+                                          _ankunftZeit ?? TimeOfDay.now();
+                                      final total =
+                                          (current.hour * 60 +
+                                                  current.minute +
+                                                  delta)
+                                              .clamp(0, 23 * 60 + 59);
+                                      _ankunftZeit = TimeOfDay(
+                                        hour: total ~/ 60,
+                                        minute: total % 60,
+                                      );
+                                      _ankunftDatum ??= _abfahrtDatum;
+                                    }),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            _hint('Tippen · Doppeltipp · Wischen'),
+                            const SizedBox(height: 20),
+
+                            _SectionLabel(label: 'FAHRTTYP', skin: skin),
+                            const SizedBox(height: 8),
+                            GestureDetector(
+                              onTap: _showFahrtTypPicker,
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(16),
+                                child: PlatformBackdropFilter(
+                                  filter: ImageFilter.blur(
+                                    sigmaX: 8,
+                                    sigmaY: 8,
+                                  ),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 14,
+                                      vertical: 14,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: selectedTyp != null
+                                          ? skin.primary.withValues(
+                                              alpha: skin.isLight ? 0.08 : 0.14,
+                                            )
+                                          : (skin.isLight
+                                                ? Colors.white.withValues(
+                                                    alpha: skin.glassOpacity,
+                                                  )
+                                                : skin.bgCard.withValues(
+                                                    alpha: skin.glassOpacity,
+                                                  )),
+                                      borderRadius: BorderRadius.circular(16),
+                                      border: Border.all(
+                                        color: selectedTyp != null
+                                            ? skin.primary.withValues(
+                                                alpha: 0.35,
+                                              )
+                                            : skin.glassBorder,
+                                        width: selectedTyp != null ? 1.5 : 1.0,
+                                      ),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: skin.glassShadow,
+                                          blurRadius: 16,
+                                          offset: const Offset(0, 4),
+                                        ),
+                                      ],
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Container(
+                                          width: 32,
+                                          height: 32,
+                                          decoration: BoxDecoration(
+                                            color: selectedTyp != null
+                                                ? skin.primary.withValues(
+                                                    alpha: 0.15,
+                                                  )
+                                                : skin.surface(0.08),
+                                            borderRadius: BorderRadius.circular(
+                                              8,
+                                            ),
+                                          ),
+                                          child: Icon(
+                                            selectedTyp != null
+                                                ? Icons.check_rounded
+                                                : Icons.list_alt_outlined,
+                                            size: 16,
+                                            color: selectedTyp != null
+                                                ? skin.primary
+                                                : skin.surface(0.4),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                'FAHRTTYP',
+                                                style: TextStyle(
+                                                  fontSize: 9,
+                                                  fontWeight: FontWeight.w700,
+                                                  color: selectedTyp != null
+                                                      ? skin.primary
+                                                      : skin.surface(0.38),
+                                                  letterSpacing: 1.0,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 3),
+                                              Text(
+                                                selectedTyp != null
+                                                    ? '${selectedTyp.code} – ${selectedTyp.label}'
+                                                    : 'Typ auswählen…',
+                                                style: TextStyle(
+                                                  fontSize: 14,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: selectedTyp != null
+                                                      ? skin.textPrimary
+                                                      : skin.surface(0.3),
+                                                ),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        Icon(
+                                          Icons.chevron_right,
+                                          size: 18,
+                                          color: skin.surface(0.3),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            if (_sortedTypes.isNotEmpty) ...[
+                              const SizedBox(height: 8),
+                              SizedBox(
+                                height: 32,
+                                child: ListView.separated(
+                                  scrollDirection: Axis.horizontal,
+                                  physics: const BouncingScrollPhysics(),
+                                  itemCount: _sortedTypes.take(6).length,
+                                  separatorBuilder: (_, __) =>
+                                      const SizedBox(width: 6),
+                                  itemBuilder: (_, i) {
+                                    final typ = _sortedTypes[i];
+                                    final selected = _fahrtTypCode == typ.code;
+                                    return GestureDetector(
+                                      onTap: () {
+                                        HapticFeedback.selectionClick();
+                                        _set(
+                                          () => _fahrtTypCode = selected
+                                              ? ''
+                                              : typ.code,
+                                        );
+                                      },
+                                      child: AnimatedContainer(
+                                        duration: const Duration(
+                                          milliseconds: 150,
+                                        ),
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 6,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: selected
+                                              ? skin.primary.withValues(
+                                                  alpha: 0.15,
+                                                )
+                                              : skin.surface(0.06),
+                                          borderRadius: BorderRadius.circular(
+                                            20,
+                                          ),
+                                          border: Border.all(
+                                            color: selected
+                                                ? skin.primary.withValues(
+                                                    alpha: 0.45,
+                                                  )
+                                                : skin.glassBorder,
+                                            width: selected ? 1.5 : 1.0,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          typ.label,
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w600,
+                                            color: selected
+                                                ? skin.primary
+                                                : skin.surface(0.5),
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                            ],
+                            const SizedBox(height: 20),
+
+                            _SectionLabel(label: 'STATUS', skin: skin),
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _ToggleKachel(
+                                    label: 'Sonder-/Wegerecht',
+                                    icon: Icons.emergency_outlined,
+                                    active: _sonderWegerecht,
+                                    activeColor: const Color(0xFF2962FF),
+                                    skin: skin,
+                                    policeLights: true,
+                                    onTap: () => _set(
+                                      () =>
+                                          _sonderWegerecht = !_sonderWegerecht,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: _ToggleKachel(
+                                    label: 'Auto gewaschen',
+                                    icon: Icons.local_car_wash_outlined,
+                                    active: _autoGewaschen,
+                                    activeColor: const Color(0xFF4FC3F7),
+                                    skin: skin,
+                                    onTap: () => _set(
+                                      () => _autoGewaschen = !_autoGewaschen,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 20),
+
+                            _SectionLabel(label: 'BETRIEBSSTOFFE', skin: skin),
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _BetriebsstoffCard(
+                                    skin: skin,
+                                    icon: Icons.local_gas_station_outlined,
+                                    label: 'KRAFTSTOFF',
+                                    unit: 'Liter',
+                                    ctrl: _kraftstoffCtrl,
+                                    color: const Color(0xFFFFB347),
+                                    onChanged: _syncDraft,
+                                    onCameraPressed: _pickFuelPhoto,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: _BetriebsstoffCard(
+                                    skin: skin,
+                                    icon: Icons.bolt_outlined,
+                                    label: 'STROM',
+                                    unit: 'kWh',
+                                    ctrl: _stromCtrl,
+                                    color: const Color(0xFF66BB6A),
+                                    onChanged: _syncDraft,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: _BetriebsstoffCard(
+                                    skin: skin,
+                                    icon: Icons.water_drop_outlined,
+                                    label: 'ADBLUE',
+                                    unit: 'Liter',
+                                    ctrl: _adblueCtrl,
+                                    color: const Color(0xFF42A5F5),
+                                    onChanged: _syncDraft,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            _hint('TIppen · Doppeltippen · Scannen'),
+                            const SizedBox(height: 20),
+
+                            _SectionLabel(label: 'ZIEL & STRECKE', skin: skin),
+                            const SizedBox(height: 8),
+                            _FahrtZielInputField(
+                              skin: skin,
+                              ctrl: _fahrtZielCtrl,
+                              knownZiele: _knownZiele,
+                              onChanged: _syncDraft,
+                              onRevealNeeded: _revealSaveButton,
+                            ),
+                            _hint('Häufig genutzte Ziele werden vorgeschlagen'),
+                            const SizedBox(height: 28),
+
+                            if (widget.isEdit) ...[
+                              // ── GlassPrimaryButton aus glass_kit.dart ──
+                              KeyedSubtree(key: _saveBtnKey, child: GlassPrimaryButton(
+                                skin: skin,
+                                label: 'Änderungen übernehmen',
+                                icon: Icons.check_rounded,
+                                onTap: _save,
+                              )),
+                              const SizedBox(height: 8),
+                              Center(
+                                child: GestureDetector(
+                                  onTap: _confirmDelete,
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: PlatformBackdropFilter(
+                                      filter: ImageFilter.blur(
+                                        sigmaX: 10,
+                                        sigmaY: 10,
+                                      ),
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          vertical: 11,
+                                          horizontal: 20,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: skin.deleteColor.withValues(
+                                            alpha: 0.07,
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                          border: Border.all(
+                                            color: skin.deleteColor.withValues(
+                                              alpha: 0.22,
+                                            ),
+                                          ),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(
+                                              Icons.delete_outline,
+                                              color: skin.deleteColor,
+                                              size: 15,
+                                            ),
+                                            const SizedBox(width: 7),
+                                            Text(
+                                              'Fahrt löschen',
+                                              style: TextStyle(
+                                                color: skin.deleteColor,
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ] else ...[
+                              KeyedSubtree(key: _saveBtnKey, child: GlassPrimaryButton(
+                                skin: skin,
+                                label: 'Fahrt anlegen',
+                                icon: Icons.save_rounded,
+                                onTap: _save,
+                                large: true,
+                              )),
+                              const SizedBox(height: 10),
+                              Center(
+                                child: GestureDetector(
+                                  onTap: _confirmDiscard,
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: PlatformBackdropFilter(
+                                      filter: ImageFilter.blur(
+                                        sigmaX: 10,
+                                        sigmaY: 10,
+                                      ),
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          vertical: 11,
+                                          horizontal: 20,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: skin.deleteColor.withValues(
+                                            alpha: 0.07,
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                          border: Border.all(
+                                            color: skin.deleteColor.withValues(
+                                              alpha: 0.22,
+                                            ),
+                                          ),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(
+                                              Icons.delete_outline,
+                                              color: skin.deleteColor,
+                                              size: 15,
+                                            ),
+                                            const SizedBox(width: 7),
+                                            Text(
+                                              'Abbrechen & verwerfen',
+                                              style: TextStyle(
+                                                color: skin.deleteColor,
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
-                      ],
-                      const SizedBox(height: 20),
-
-                      _SectionLabel(label: 'STATUS', skin: skin),
-                      const SizedBox(height: 8),
-                      Row(children: [
-                        Expanded(child: _ToggleKachel(
-                          label: 'Sonder-/Wegerecht', icon: Icons.emergency_outlined,
-                          active: _sonderWegerecht, activeColor: const Color(0xFF2962FF),
-                          skin: skin, policeLights: true,
-                          onTap: () => _set(() => _sonderWegerecht = !_sonderWegerecht),
-                        )),
-                        const SizedBox(width: 10),
-                        Expanded(child: _ToggleKachel(
-                          label: 'Auto gewaschen', icon: Icons.local_car_wash_outlined,
-                          active: _autoGewaschen, activeColor: const Color(0xFF4FC3F7),
-                          skin: skin,
-                          onTap: () => _set(() => _autoGewaschen = !_autoGewaschen),
-                        )),
-                      ]),
-                      const SizedBox(height: 20),
-
-                      _SectionLabel(label: 'BETRIEBSSTOFFE', skin: skin),
-                      const SizedBox(height: 8),
-                      Row(children: [
-                        Expanded(child: _BetriebsstoffCard(
-                          skin: skin, icon: Icons.local_gas_station_outlined, label: 'KRAFTSTOFF',
-                          unit: 'Liter', ctrl: _kraftstoffCtrl, color: const Color(0xFFFFB347),
-                          onChanged: _syncDraft,
-                          onCameraPressed: _pickFuelPhoto,
-                        )),
-                        const SizedBox(width: 8),
-                        Expanded(child: _BetriebsstoffCard(
-                          skin: skin, icon: Icons.bolt_outlined, label: 'STROM',
-                          unit: 'kWh', ctrl: _stromCtrl, color: const Color(0xFF66BB6A), onChanged: _syncDraft,
-                        )),
-                        const SizedBox(width: 8),
-                        Expanded(child: _BetriebsstoffCard(
-                          skin: skin, icon: Icons.water_drop_outlined, label: 'ADBLUE',
-                          unit: 'Liter', ctrl: _adblueCtrl, color: const Color(0xFF42A5F5), onChanged: _syncDraft,
-                        )),
-                      ]),
-                      _hint('TIppen · Doppeltippen · Scannen'),
-                      const SizedBox(height: 20),
-
-                      _SectionLabel(label: 'ZIEL & STRECKE', skin: skin),
-                      const SizedBox(height: 8),
-                      _FahrtZielInputField(
-                        skin: skin,
-                        ctrl: _fahrtZielCtrl,
-                        knownZiele: _knownZiele,
-                        onChanged: _syncDraft,
                       ),
-                      _hint('Häufig genutzte Ziele werden vorgeschlagen'),
-                      const SizedBox(height: 28),
-
-                      if (widget.isEdit) ...[
-                        // ── GlassPrimaryButton aus glass_kit.dart ──
-                        GlassPrimaryButton(skin: skin, label: 'Änderungen übernehmen', icon: Icons.check_rounded, onTap: _save),
-                        const SizedBox(height: 8),
-                        Center(child: GestureDetector(
-                          onTap: _confirmDelete,
-                          child: ClipRRect(borderRadius: BorderRadius.circular(12),
-                            child: PlatformBackdropFilter(filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 20),
-                                decoration: BoxDecoration(
-                                  color: skin.deleteColor.withValues(alpha: 0.07), borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(color: skin.deleteColor.withValues(alpha: 0.22)),
-                                ),
-                                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                                  Icon(Icons.delete_outline, color: skin.deleteColor, size: 15),
-                                  const SizedBox(width: 7),
-                                  Text('Fahrt löschen', style: TextStyle(color: skin.deleteColor, fontSize: 13, fontWeight: FontWeight.w600)),
-                                ]),
-                              ),
-                            ),
-                          ),
-                        )),
-                      ] else ...[
-                        GlassPrimaryButton(skin: skin, label: 'Fahrt anlegen', icon: Icons.save_rounded, onTap: _save, large: true),
-                        const SizedBox(height: 10),
-                        Center(child: GestureDetector(
-                          onTap: _confirmDiscard,
-                          child: ClipRRect(borderRadius: BorderRadius.circular(12),
-                            child: PlatformBackdropFilter(filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 20),
-                                decoration: BoxDecoration(
-                                  color: skin.deleteColor.withValues(alpha: 0.07), borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(color: skin.deleteColor.withValues(alpha: 0.22)),
-                                ),
-                                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                                  Icon(Icons.delete_outline, color: skin.deleteColor, size: 15),
-                                  const SizedBox(width: 7),
-                                  Text('Abbrechen & verwerfen', style: TextStyle(color: skin.deleteColor, fontSize: 13, fontWeight: FontWeight.w600)),
-                                ]),
-                              ),
-                            ),
-                          ),
-                        )),
-                      ],
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -3427,7 +4850,10 @@ class _FahrtEintragenSheetState extends State<_FahrtEintragenSheet> {
 
   Widget _hint(String text) => Padding(
     padding: const EdgeInsets.only(top: 4),
-    child: Text(text, style: TextStyle(fontSize: 10, color: skin.surface(0.28))),
+    child: Text(
+      text,
+      style: TextStyle(fontSize: 10, color: skin.surface(0.28)),
+    ),
   );
 }
 
@@ -3441,7 +4867,9 @@ class _FahrtTypPickerSheet extends StatefulWidget {
   final void Function(String code) onSelected;
 
   const _FahrtTypPickerSheet({
-    required this.skin, required this.currentCode, required this.onSelected,
+    required this.skin,
+    required this.currentCode,
+    required this.onSelected,
   });
 
   @override
@@ -3460,13 +4888,21 @@ class _FahrtTypPickerSheetState extends State<_FahrtTypPickerSheet> {
   }
 
   @override
-  void dispose() { _searchCtrl.dispose(); super.dispose(); }
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
 
   List<FahrtTyp> get _filtered {
     if (_query.isEmpty) return _allSorted;
     final q = _query.toLowerCase();
-    return _allSorted.where((t) =>
-        t.code.toLowerCase().contains(q) || t.label.toLowerCase().contains(q)).toList();
+    return _allSorted
+        .where(
+          (t) =>
+              t.code.toLowerCase().contains(q) ||
+              t.label.toLowerCase().contains(q),
+        )
+        .toList();
   }
 
   @override
@@ -3477,151 +4913,270 @@ class _FahrtTypPickerSheetState extends State<_FahrtTypPickerSheet> {
     return ClipRRect(
       borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
       child: PlatformBackdropFilter(
-        filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
+        filter: ImageFilter.blur(
+          sigmaX: skin.glassBlur,
+          sigmaY: skin.glassBlur,
+        ),
         child: Container(
           decoration: BoxDecoration(
-            color: skin.isLight ? Colors.white.withValues(alpha: 0.95) : skin.bgSheet.withValues(alpha: 0.95),
+            color: skin.isLight
+                ? Colors.white.withValues(alpha: 0.95)
+                : skin.bgSheet.withValues(alpha: 0.95),
             borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
             border: Border.all(color: skin.glassBorder),
           ),
-          child: Column(children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-              child: Column(children: [
-                GestureDetector(
-                  onTap: () => Navigator.pop(context),
-                  behavior: HitTestBehavior.opaque,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
-                    child: Center(
-                      child: Container(
-                        width: 44, height: 5,
-                        decoration: BoxDecoration(
-                          color: skin.surface(0.22),
-                          borderRadius: BorderRadius.circular(3),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Row(children: [
-                  Expanded(child: Text('Fahrttyp wählen',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: skin.textPrimary))),
-                  if (widget.currentCode.isNotEmpty)
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                child: Column(
+                  children: [
                     GestureDetector(
-                      onTap: () { widget.onSelected(''); Navigator.pop(context); },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                        decoration: BoxDecoration(
-                          color: skin.deleteColor.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: skin.deleteColor.withValues(alpha: 0.2)),
+                      onTap: () => Navigator.pop(context),
+                      behavior: HitTestBehavior.opaque,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          vertical: 16,
+                          horizontal: 20,
                         ),
-                        child: Text('Löschen', style: TextStyle(color: skin.deleteColor, fontSize: 12, fontWeight: FontWeight.w600)),
-                      ),
-                    ),
-                ]),
-                const SizedBox(height: 12),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(14),
-                  child: PlatformBackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: skin.isLight ? Colors.white.withValues(alpha: 0.7) : skin.bgCard.withValues(alpha: 0.6),
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: skin.glassBorder),
-                      ),
-                      child: Row(children: [
-                        Icon(Icons.search, size: 18, color: skin.surface(0.4)),
-                        const SizedBox(width: 8),
-                        Expanded(child: TextField(
-                          controller: _searchCtrl,
-                          onChanged: (v) => setState(() => _query = v),
-                          style: TextStyle(color: skin.textPrimary, fontSize: 15),
-                          decoration: InputDecoration(
-                            hintText: 'Code oder Bezeichnung suchen…',
-                            hintStyle: TextStyle(color: skin.surface(0.3), fontSize: 14),
-                            border: InputBorder.none, isDense: true, contentPadding: EdgeInsets.zero,
-                          ),
-                        )),
-                        if (_query.isNotEmpty)
-                          GestureDetector(
-                            onTap: () { _searchCtrl.clear(); setState(() => _query = ''); },
-                            child: Icon(Icons.close, size: 16, color: skin.surface(0.4)),
-                          ),
-                      ]),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 8),
-              ]),
-            ),
-            Expanded(
-              child: ListView.builder(
-                padding: const EdgeInsets.fromLTRB(20, 4, 20, 40),
-                itemCount: filtered.length,
-                itemBuilder: (context, i) {
-                  final typ = filtered[i];
-                  final isSelected = widget.currentCode == typ.code;
-                  final mruList = FahrtTypManager._loadMru();
-                  final isMru = mruList.contains(typ.code);
-
-                  return GestureDetector(
-                    onTap: () {
-                      HapticFeedback.selectionClick();
-                      FahrtTypManager.recordUsage(typ.code);
-                      widget.onSelected(typ.code);
-                      Navigator.pop(context);
-                    },
-                    child: Container(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                      decoration: BoxDecoration(
-                        color: isSelected
-                            ? skin.primary.withValues(alpha: skin.isLight ? 0.10 : 0.18)
-                            : (skin.isLight ? Colors.white.withValues(alpha: 0.6) : skin.bgCard.withValues(alpha: 0.5)),
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(
-                          color: isSelected ? skin.primary.withValues(alpha: 0.4) : skin.glassBorder,
-                          width: isSelected ? 1.5 : 1.0,
-                        ),
-                      ),
-                      child: Row(children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: isSelected ? skin.primary.withValues(alpha: 0.15) : skin.surface(0.07),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(typ.code,
-                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800,
-                                  color: isSelected ? skin.primary : skin.surface(0.5), letterSpacing: 0.3)),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(child: Text(typ.label,
-                            style: TextStyle(fontSize: 14, fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                                color: isSelected ? skin.textPrimary : skin.textPrimary.withValues(alpha: 0.8)))),
-                        if (isMru && !isSelected)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        child: Center(
+                          child: Container(
+                            width: 44,
+                            height: 5,
                             decoration: BoxDecoration(
-                              color: skin.primary.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(4),
+                              color: skin.surface(0.22),
+                              borderRadius: BorderRadius.circular(3),
                             ),
-                            child: Text('zuletzt', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: skin.primary.withValues(alpha: 0.6))),
                           ),
-                        if (isSelected) ...[
-                          const SizedBox(width: 8),
-                          Icon(Icons.check_circle_rounded, color: skin.primary, size: 18),
-                        ],
-                      ]),
+                        ),
+                      ),
                     ),
-                  );
-                },
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Fahrttyp wählen',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                              color: skin.textPrimary,
+                            ),
+                          ),
+                        ),
+                        if (widget.currentCode.isNotEmpty)
+                          GestureDetector(
+                            onTap: () {
+                              widget.onSelected('');
+                              Navigator.pop(context);
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 5,
+                              ),
+                              decoration: BoxDecoration(
+                                color: skin.deleteColor.withValues(alpha: 0.08),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: skin.deleteColor.withValues(
+                                    alpha: 0.2,
+                                  ),
+                                ),
+                              ),
+                              child: Text(
+                                'Löschen',
+                                style: TextStyle(
+                                  color: skin.deleteColor,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(14),
+                      child: PlatformBackdropFilter(
+                        filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: skin.isLight
+                                ? Colors.white.withValues(alpha: 0.7)
+                                : skin.bgCard.withValues(alpha: 0.6),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: skin.glassBorder),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.search,
+                                size: 18,
+                                color: skin.surface(0.4),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: TextField(
+                                  controller: _searchCtrl,
+                                  onChanged: (v) => setState(() => _query = v),
+                                  style: TextStyle(
+                                    color: skin.textPrimary,
+                                    fontSize: 15,
+                                  ),
+                                  decoration: InputDecoration(
+                                    hintText: 'Code oder Bezeichnung suchen…',
+                                    hintStyle: TextStyle(
+                                      color: skin.surface(0.3),
+                                      fontSize: 14,
+                                    ),
+                                    border: InputBorder.none,
+                                    isDense: true,
+                                    contentPadding: EdgeInsets.zero,
+                                  ),
+                                ),
+                              ),
+                              if (_query.isNotEmpty)
+                                GestureDetector(
+                                  onTap: () {
+                                    _searchCtrl.clear();
+                                    setState(() => _query = '');
+                                  },
+                                  child: Icon(
+                                    Icons.close,
+                                    size: 16,
+                                    color: skin.surface(0.4),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                ),
               ),
-            ),
-          ]),
+              Expanded(
+                child: ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 40),
+                  itemCount: filtered.length,
+                  itemBuilder: (context, i) {
+                    final typ = filtered[i];
+                    final isSelected = widget.currentCode == typ.code;
+                    final mruList = FahrtTypManager._loadMru();
+                    final isMru = mruList.contains(typ.code);
+
+                    return GestureDetector(
+                      onTap: () {
+                        HapticFeedback.selectionClick();
+                        FahrtTypManager.recordUsage(typ.code);
+                        widget.onSelected(typ.code);
+                        Navigator.pop(context);
+                      },
+                      child: Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 12,
+                        ),
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? skin.primary.withValues(
+                                  alpha: skin.isLight ? 0.10 : 0.18,
+                                )
+                              : (skin.isLight
+                                    ? Colors.white.withValues(alpha: 0.6)
+                                    : skin.bgCard.withValues(alpha: 0.5)),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: isSelected
+                                ? skin.primary.withValues(alpha: 0.4)
+                                : skin.glassBorder,
+                            width: isSelected ? 1.5 : 1.0,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: isSelected
+                                    ? skin.primary.withValues(alpha: 0.15)
+                                    : skin.surface(0.07),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                typ.code,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w800,
+                                  color: isSelected
+                                      ? skin.primary
+                                      : skin.surface(0.5),
+                                  letterSpacing: 0.3,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                typ.label,
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: isSelected
+                                      ? FontWeight.w600
+                                      : FontWeight.w500,
+                                  color: isSelected
+                                      ? skin.textPrimary
+                                      : skin.textPrimary.withValues(alpha: 0.8),
+                                ),
+                              ),
+                            ),
+                            if (isMru && !isSelected)
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: skin.primary.withValues(alpha: 0.08),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  'zuletzt',
+                                  style: TextStyle(
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.w600,
+                                    color: skin.primary.withValues(alpha: 0.6),
+                                  ),
+                                ),
+                              ),
+                            if (isSelected) ...[
+                              const SizedBox(width: 8),
+                              Icon(
+                                Icons.check_circle_rounded,
+                                color: skin.primary,
+                                size: 18,
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -3636,7 +5191,11 @@ class _KmCandidate {
   final int value;
   final double yPosition;
   final int digitCount;
-  _KmCandidate({required this.value, required this.yPosition, required this.digitCount});
+  _KmCandidate({
+    required this.value,
+    required this.yPosition,
+    required this.digitCount,
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -3655,11 +5214,11 @@ class _KennzeichenInputRow extends StatefulWidget {
 class _KennzeichenInputRowState extends State<_KennzeichenInputRow> {
   final _ortCtrl = TextEditingController();
   final _buchCtrl = TextEditingController();
-  final _numCtrl  = TextEditingController();
+  final _numCtrl = TextEditingController();
 
-  final _ortFocus  = FocusNode();
+  final _ortFocus = FocusNode();
   final _buchFocus = FocusNode();
-  final _numFocus  = FocusNode();
+  final _numFocus = FocusNode();
 
   List<String> _known = [];
 
@@ -3693,9 +5252,9 @@ class _KennzeichenInputRowState extends State<_KennzeichenInputRow> {
   /// Zerlegt "B-UX 157" oder "BUX157" in die drei Felder
   void _splitIntoFields(String raw) {
     if (raw.isEmpty) {
-      _ortCtrl.text  = '';
+      _ortCtrl.text = '';
       _buchCtrl.text = '';
-      _numCtrl.text  = '';
+      _numCtrl.text = '';
       return;
     }
 
@@ -3707,9 +5266,9 @@ class _KennzeichenInputRowState extends State<_KennzeichenInputRow> {
       r'^([A-ZÄÖÜ]{1,3})\-([A-ZÄÖÜ]{1,2})\s*(\d{1,4}[EH]?)$',
     ).firstMatch(upper);
     if (dashMatch != null) {
-      _ortCtrl.text  = dashMatch.group(1)!;
+      _ortCtrl.text = dashMatch.group(1)!;
       _buchCtrl.text = dashMatch.group(2)!;
-      _numCtrl.text  = dashMatch.group(3)!;
+      _numCtrl.text = dashMatch.group(3)!;
       return;
     }
 
@@ -3718,9 +5277,9 @@ class _KennzeichenInputRowState extends State<_KennzeichenInputRow> {
       r'^([A-ZÄÖÜ]{1,3})\-([A-ZÄÖÜ]{1,2})$',
     ).firstMatch(upper);
     if (dashNoNumMatch != null) {
-      _ortCtrl.text  = dashNoNumMatch.group(1)!;
+      _ortCtrl.text = dashNoNumMatch.group(1)!;
       _buchCtrl.text = dashNoNumMatch.group(2)!;
-      _numCtrl.text  = '';
+      _numCtrl.text = '';
       return;
     }
 
@@ -3732,26 +5291,34 @@ class _KennzeichenInputRowState extends State<_KennzeichenInputRow> {
       r'^([A-ZÄÖÜ]{1,3})([A-ZÄÖÜ]{1,2})(\d{1,4}[EH]?)$',
     ).firstMatch(cleaned);
     if (noSepMatch != null) {
-      _ortCtrl.text  = noSepMatch.group(1)!;
+      _ortCtrl.text = noSepMatch.group(1)!;
       _buchCtrl.text = noSepMatch.group(2)!;
-      _numCtrl.text  = noSepMatch.group(3)!;
+      _numCtrl.text = noSepMatch.group(3)!;
       return;
     }
 
     // ── Fallback: nur Buchstaben, kein Muster erkannt ──
-    _ortCtrl.text  = cleaned.length >= 1
-        ? cleaned.replaceAll(RegExp(r'\d'), '').substring(
-            0, cleaned.replaceAll(RegExp(r'\d'), '').length.clamp(0, 3))
+    _ortCtrl.text = cleaned.length >= 1
+        ? cleaned
+              .replaceAll(RegExp(r'\d'), '')
+              .substring(
+                0,
+                cleaned.replaceAll(RegExp(r'\d'), '').length.clamp(0, 3),
+              )
         : '';
     _buchCtrl.text = '';
-    _numCtrl.text  = cleaned.replaceAll(RegExp(r'[^\d]'), '').substring(
-        0, cleaned.replaceAll(RegExp(r'[^\d]'), '').length.clamp(0, 4));
+    _numCtrl.text = cleaned
+        .replaceAll(RegExp(r'[^\d]'), '')
+        .substring(
+          0,
+          cleaned.replaceAll(RegExp(r'[^\d]'), '').length.clamp(0, 4),
+        );
   }
 
   String _assemble() {
-    final ort  = _ortCtrl.text.trim().toUpperCase();
+    final ort = _ortCtrl.text.trim().toUpperCase();
     final buch = _buchCtrl.text.trim().toUpperCase();
-    final num  = _numCtrl.text.trim();
+    final num = _numCtrl.text.trim();
     if (ort.isEmpty && buch.isEmpty && num.isEmpty) return '';
     if (ort.isNotEmpty && buch.isEmpty && num.isEmpty) return ort;
     if (ort.isNotEmpty && buch.isNotEmpty && num.isEmpty) return '$ort-$buch';
@@ -3813,31 +5380,46 @@ class _KennzeichenInputRowState extends State<_KennzeichenInputRow> {
             child: PlatformBackdropFilter(
               filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 12,
+                ),
                 decoration: BoxDecoration(
                   color: skin.isLight
                       ? Colors.white.withValues(alpha: skin.glassOpacity)
                       : skin.bgCard.withValues(alpha: skin.glassOpacity),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(color: skin.glassBorder),
-                  boxShadow: [BoxShadow(color: skin.glassShadow, blurRadius: 16, offset: const Offset(0, 4))],
+                  boxShadow: [
+                    BoxShadow(
+                      color: skin.glassShadow,
+                      blurRadius: 16,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(children: [
-                      Icon(Icons.directions_car_outlined, size: 18, color: skin.primary),
-                      const SizedBox(width: 10),
-                      Text(
-                        'KENNZEICHEN',
-                        style: TextStyle(
-                          fontSize: 9,
-                          fontWeight: FontWeight.w700,
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.directions_car_outlined,
+                          size: 18,
                           color: skin.primary,
-                          letterSpacing: 1.0,
                         ),
-                      ),
-                    ]),
+                        const SizedBox(width: 10),
+                        Text(
+                          'KENNZEICHEN',
+                          style: TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700,
+                            color: skin.primary,
+                            letterSpacing: 1.0,
+                          ),
+                        ),
+                      ],
+                    ),
                     const SizedBox(height: 10),
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.center,
@@ -3937,7 +5519,10 @@ class _KennzeichenInputRowState extends State<_KennzeichenInputRow> {
                   onTap: () => _applyKennzeichen(kz),
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 150),
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 5,
+                    ),
                     decoration: BoxDecoration(
                       color: isActive
                           ? skin.primary.withValues(alpha: 0.14)
@@ -4023,7 +5608,9 @@ class _KzField extends StatelessWidget {
                 : TextInputType.number,
             inputFormatters: lettersOnly
                 ? [
-                    FilteringTextInputFormatter.allow(RegExp(r'[A-ZÄÖÜa-zäöü]')),
+                    FilteringTextInputFormatter.allow(
+                      RegExp(r'[A-ZÄÖÜa-zäöü]'),
+                    ),
                     TextInputFormatter.withFunction((old, nw) {
                       return nw.copyWith(text: nw.text.toUpperCase());
                     }),
@@ -4065,10 +5652,16 @@ class _KzField extends StatelessWidget {
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(10),
-                borderSide: BorderSide(color: skin.primary.withValues(alpha: 0.6), width: 1.5),
+                borderSide: BorderSide(
+                  color: skin.primary.withValues(alpha: 0.6),
+                  width: 1.5,
+                ),
               ),
               isDense: true,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 8,
+                vertical: 10,
+              ),
               filled: true,
               fillColor: skin.isLight
                   ? Colors.white.withValues(alpha: 0.5)
@@ -4096,12 +5689,19 @@ class _ZeitBlock extends StatefulWidget {
   final ValueChanged<int> onSwipeDay, onSwipeMinute;
 
   const _ZeitBlock({
-    required this.skin, required this.label, required this.color,
-    required this.datum, required this.zeit,
-    required this.datumText, required this.zeitText,
-    required this.onDateTap, required this.onTimeTap,
-    required this.onDateDoubleTap, required this.onTimeDoubleTap,
-    required this.onSwipeDay, required this.onSwipeMinute,
+    required this.skin,
+    required this.label,
+    required this.color,
+    required this.datum,
+    required this.zeit,
+    required this.datumText,
+    required this.zeitText,
+    required this.onDateTap,
+    required this.onTimeTap,
+    required this.onDateDoubleTap,
+    required this.onTimeDoubleTap,
+    required this.onSwipeDay,
+    required this.onSwipeMinute,
   });
 
   @override
@@ -4121,14 +5721,30 @@ class _ZeitBlockState extends State<_ZeitBlock> {
       onHorizontalDragStart: (_) => _hAccum = 0,
       onHorizontalDragUpdate: (d) {
         _hAccum += d.delta.dx;
-        while (_hAccum >= _pxPerDay) { _hAccum -= _pxPerDay; widget.onSwipeDay(1); HapticFeedback.selectionClick(); }
-        while (_hAccum <= -_pxPerDay) { _hAccum += _pxPerDay; widget.onSwipeDay(-1); HapticFeedback.selectionClick(); }
+        while (_hAccum >= _pxPerDay) {
+          _hAccum -= _pxPerDay;
+          widget.onSwipeDay(1);
+          HapticFeedback.selectionClick();
+        }
+        while (_hAccum <= -_pxPerDay) {
+          _hAccum += _pxPerDay;
+          widget.onSwipeDay(-1);
+          HapticFeedback.selectionClick();
+        }
       },
       onVerticalDragStart: (_) => _vAccum = 0,
       onVerticalDragUpdate: (d) {
         _vAccum += -d.delta.dy;
-        while (_vAccum >= _pxPerMin) { _vAccum -= _pxPerMin; widget.onSwipeMinute(1); HapticFeedback.selectionClick(); }
-        while (_vAccum <= -_pxPerMin) { _vAccum += _pxPerMin; widget.onSwipeMinute(-1); HapticFeedback.selectionClick(); }
+        while (_vAccum >= _pxPerMin) {
+          _vAccum -= _pxPerMin;
+          widget.onSwipeMinute(1);
+          HapticFeedback.selectionClick();
+        }
+        while (_vAccum <= -_pxPerMin) {
+          _vAccum += _pxPerMin;
+          widget.onSwipeMinute(-1);
+          HapticFeedback.selectionClick();
+        }
       },
       child: ClipRRect(
         borderRadius: BorderRadius.circular(16),
@@ -4137,50 +5753,126 @@ class _ZeitBlockState extends State<_ZeitBlock> {
           child: Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: skin.isLight ? Colors.white.withValues(alpha: skin.glassOpacity) : skin.bgCard.withValues(alpha: skin.glassOpacity),
+              color: skin.isLight
+                  ? Colors.white.withValues(alpha: skin.glassOpacity)
+                  : skin.bgCard.withValues(alpha: skin.glassOpacity),
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: color.withValues(alpha: 0.30), width: 1.0),
-              boxShadow: [BoxShadow(color: skin.glassShadow, blurRadius: 16, offset: const Offset(0, 4))],
+              border: Border.all(
+                color: color.withValues(alpha: 0.30),
+                width: 1.0,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: skin.glassShadow,
+                  blurRadius: 16,
+                  offset: const Offset(0, 4),
+                ),
+              ],
             ),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                Text(widget.label, style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: color, letterSpacing: 1.2)),
-                const Spacer(),
-                Icon(Icons.unfold_more_rounded, size: 13, color: skin.surface(0.3)),
-              ]),
-              const SizedBox(height: 8),
-              GestureDetector(
-                onTap: widget.onDateTap,
-                onDoubleTap: () { HapticFeedback.selectionClick(); widget.onDateDoubleTap(); },
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                  decoration: BoxDecoration(color: color.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(10), border: Border.all(color: color.withValues(alpha: 0.2))),
-                  child: Row(children: [
-                    Icon(Icons.calendar_today_outlined, size: 12, color: color),
-                    const SizedBox(width: 6),
-                    Text(widget.datumText, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600,
-                        color: widget.datumText == '—' ? skin.surface(0.3) : skin.textPrimary)),
-                  ]),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      widget.label,
+                      style: TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w700,
+                        color: color,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                    const Spacer(),
+                    Icon(
+                      Icons.unfold_more_rounded,
+                      size: 13,
+                      color: skin.surface(0.3),
+                    ),
+                  ],
                 ),
-              ),
-              const SizedBox(height: 6),
-              GestureDetector(
-                onTap: widget.onTimeTap,
-                onDoubleTap: () { HapticFeedback.selectionClick(); widget.onTimeDoubleTap(); },
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                  decoration: BoxDecoration(color: color.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(10), border: Border.all(color: color.withValues(alpha: 0.2))),
-                  child: Row(children: [
-                    Icon(Icons.access_time_outlined, size: 12, color: color),
-                    const SizedBox(width: 6),
-                    Text(widget.zeitText, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600,
-                        color: widget.zeitText == '—' ? skin.surface(0.3) : skin.textPrimary)),
-                  ]),
+                const SizedBox(height: 8),
+                GestureDetector(
+                  onTap: widget.onDateTap,
+                  onDoubleTap: () {
+                    HapticFeedback.selectionClick();
+                    widget.onDateDoubleTap();
+                  },
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 7,
+                    ),
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: color.withValues(alpha: 0.2)),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.calendar_today_outlined,
+                          size: 12,
+                          color: color,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          widget.datumText,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: widget.datumText == '—'
+                                ? skin.surface(0.3)
+                                : skin.textPrimary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
-              ),
-            ]),
+                const SizedBox(height: 6),
+                GestureDetector(
+                  onTap: widget.onTimeTap,
+                  onDoubleTap: () {
+                    HapticFeedback.selectionClick();
+                    widget.onTimeDoubleTap();
+                  },
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 7,
+                    ),
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: color.withValues(alpha: 0.2)),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.access_time_outlined,
+                          size: 12,
+                          color: color,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          widget.zeitText,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: widget.zeitText == '—'
+                                ? skin.surface(0.3)
+                                : skin.textPrimary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -4202,8 +5894,13 @@ class _BetriebsstoffCard extends StatelessWidget {
   final VoidCallback? onCameraPressed;
 
   const _BetriebsstoffCard({
-    required this.skin, required this.icon, required this.label, required this.unit,
-    required this.ctrl, required this.color, this.onChanged,
+    required this.skin,
+    required this.icon,
+    required this.label,
+    required this.unit,
+    required this.ctrl,
+    required this.color,
+    this.onChanged,
     this.onCameraPressed,
   });
 
@@ -4216,55 +5913,103 @@ class _BetriebsstoffCard extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
-            color: skin.isLight ? Colors.white.withValues(alpha: skin.glassOpacity) : skin.bgCard.withValues(alpha: skin.glassOpacity),
+            color: skin.isLight
+                ? Colors.white.withValues(alpha: skin.glassOpacity)
+                : skin.bgCard.withValues(alpha: skin.glassOpacity),
             borderRadius: BorderRadius.circular(14),
             border: Border.all(color: skin.glassBorder),
-            boxShadow: [BoxShadow(color: skin.glassShadow, blurRadius: 12, offset: const Offset(0, 3))],
+            boxShadow: [
+              BoxShadow(
+                color: skin.glassShadow,
+                blurRadius: 12,
+                offset: const Offset(0, 3),
+              ),
+            ],
           ),
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
-            onDoubleTap: () { HapticFeedback.lightImpact(); ctrl.clear(); onChanged?.call(); },
+            onDoubleTap: () {
+              HapticFeedback.lightImpact();
+              ctrl.clear();
+              onChanged?.call();
+            },
             onLongPress: ctrl.text.isEmpty && onCameraPressed != null
                 ? onCameraPressed
                 : null,
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Icon(icon, size: 16, color: color),
-                  if (onCameraPressed != null)
-                    GestureDetector(
-                      onTap: onCameraPressed,
-                      child: Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: BoxDecoration(
-                          color: skin.surface(0.06),
-                          borderRadius: BorderRadius.circular(6),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Icon(icon, size: 16, color: color),
+                    if (onCameraPressed != null)
+                      GestureDetector(
+                        onTap: onCameraPressed,
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: skin.surface(0.06),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Icon(
+                            Icons.camera_alt_outlined,
+                            size: 11,
+                            color: skin.surface(0.4),
+                          ),
                         ),
-                        child: Icon(Icons.camera_alt_outlined, size: 11, color: skin.surface(0.4)),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 8,
+                    fontWeight: FontWeight.w700,
+                    color: color,
+                    letterSpacing: 0.8,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                AnimatedBuilder(
+                  animation: ctrl,
+                  builder: (_, __) => TextField(
+                    controller: ctrl,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(RegExp(r'[0-9,.]')),
+                    ],
+                    style: TextStyle(
+                      color: skin.textPrimary,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                    ),
+                    decoration: InputDecoration(
+                      hintText: '—',
+                      hintStyle: TextStyle(
+                        color: skin.surface(0.25),
+                        fontSize: 15,
+                      ),
+                      border: InputBorder.none,
+                      isDense: true,
+                      contentPadding: EdgeInsets.zero,
+                      suffix: Text(
+                        unit,
+                        style: TextStyle(
+                          color: skin.surface(0.35),
+                          fontSize: 9,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
                     ),
-                ],
-              ),
-              const SizedBox(height: 6),
-              Text(label, style: TextStyle(fontSize: 8, fontWeight: FontWeight.w700, color: color, letterSpacing: 0.8)),
-              const SizedBox(height: 4),
-              AnimatedBuilder(
-                animation: ctrl,
-                builder: (_, __) => TextField(
-                  controller: ctrl,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9,.]'))],
-                  style: TextStyle(color: skin.textPrimary, fontSize: 15, fontWeight: FontWeight.w700),
-                  decoration: InputDecoration(
-                    hintText: '—', hintStyle: TextStyle(color: skin.surface(0.25), fontSize: 15),
-                    border: InputBorder.none, isDense: true, contentPadding: EdgeInsets.zero,
-                    suffix: Text(unit, style: TextStyle(color: skin.surface(0.35), fontSize: 9, fontWeight: FontWeight.w500)),
+                    onChanged: (_) => onChanged?.call(),
                   ),
-                  onChanged: (_) => onChanged?.call(),
                 ),
-              ),
-            ]),
+              ],
+            ),
           ),
         ),
       ),
@@ -4283,11 +6028,21 @@ class _SectionLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(children: [
-      Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: skin.surface(0.38), letterSpacing: 1.2)),
-      const SizedBox(width: 8),
-      Expanded(child: Container(height: 0.5, color: skin.surface(0.12))),
-    ]);
+    return Row(
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+            color: skin.surface(0.38),
+            letterSpacing: 1.2,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(child: Container(height: 0.5, color: skin.surface(0.12))),
+      ],
+    );
   }
 }
 
@@ -4306,8 +6061,15 @@ class _KmInputCard extends StatefulWidget {
   final int? hintKm;
 
   const _KmInputCard({
-    required this.label, required this.ctrl, required this.skin, required this.color,
-    required this.onTap, required this.onCameraPressed, this.onDoubleTap, this.fotoPath, this.hintKm,
+    required this.label,
+    required this.ctrl,
+    required this.skin,
+    required this.color,
+    required this.onTap,
+    required this.onCameraPressed,
+    this.onDoubleTap,
+    this.fotoPath,
+    this.hintKm,
   });
 
   @override
@@ -4315,7 +6077,6 @@ class _KmInputCard extends StatefulWidget {
 }
 
 class _KmInputCardState extends State<_KmInputCard> {
-
   void _showFotoPreview(BuildContext context) {
     HapticFeedback.mediumImpact();
     showGeneralDialog<void>(
@@ -4327,9 +6088,10 @@ class _KmInputCardState extends State<_KmInputCard> {
       transitionBuilder: (ctx, anim, _, child) => FadeTransition(
         opacity: anim,
         child: ScaleTransition(
-          scale: Tween<double>(begin: 0.92, end: 1.0).animate(
-            CurvedAnimation(parent: anim, curve: Curves.easeOut),
-          ),
+          scale: Tween<double>(
+            begin: 0.92,
+            end: 1.0,
+          ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOut)),
           child: child,
         ),
       ),
@@ -4345,9 +6107,10 @@ class _KmInputCardState extends State<_KmInputCard> {
                   dartio.File(widget.fotoPath!),
                   fit: BoxFit.contain,
                   errorBuilder: (_, __, ___) => const Icon(
-                      Icons.broken_image_outlined,
-                      color: Colors.white,
-                      size: 60),
+                    Icons.broken_image_outlined,
+                    color: Colors.white,
+                    size: 60,
+                  ),
                 ),
               ),
               const SizedBox(height: 20),
@@ -4376,14 +6139,19 @@ class _KmInputCardState extends State<_KmInputCard> {
                         decoration: BoxDecoration(
                           color: widget.color.withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: widget.color.withValues(alpha: 0.4)),
+                          border: Border.all(
+                            color: widget.color.withValues(alpha: 0.4),
+                          ),
                         ),
                         child: Center(
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.camera_alt_outlined,
-                                  color: widget.color, size: 16),
+                              Icon(
+                                Icons.camera_alt_outlined,
+                                color: widget.color,
+                                size: 16,
+                              ),
                               const SizedBox(width: 8),
                               Text(
                                 'Neu scannen',
@@ -4405,18 +6173,22 @@ class _KmInputCardState extends State<_KmInputCard> {
                     onTap: () => Navigator.pop(ctx),
                     child: Container(
                       padding: const EdgeInsets.symmetric(
-                          vertical: 14, horizontal: 20),
+                        vertical: 14,
+                        horizontal: 20,
+                      ),
                       decoration: BoxDecoration(
                         color: widget.skin.surface(0.08),
-borderRadius: BorderRadius.circular(14),
-border: Border.all(color: widget.skin.glassBorder),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: widget.skin.glassBorder),
                       ),
-                      child: Text('Schließen', style: TextStyle(
-  color: widget.skin.textPrimary,
-  fontSize: 14,
-  fontWeight: FontWeight.w600,
-  decoration: TextDecoration.none,
-),
+                      child: Text(
+                        'Schließen',
+                        style: TextStyle(
+                          color: widget.skin.textPrimary,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          decoration: TextDecoration.none,
+                        ),
                       ),
                     ),
                   ),
@@ -4430,7 +6202,8 @@ border: Border.all(color: widget.skin.glassBorder),
   }
 
   String _formatKm(int km) {
-    if (km >= 1000) return '${km ~/ 1000}.${(km % 1000).toString().padLeft(3, '0')}';
+    if (km >= 1000)
+      return '${km ~/ 1000}.${(km % 1000).toString().padLeft(3, '0')}';
     return km.toString();
   }
 
@@ -4448,73 +6221,159 @@ border: Border.all(color: widget.skin.glassBorder),
           try {
             fotoWidget = ClipRRect(
               borderRadius: BorderRadius.circular(8),
-              child: Image.file(dartio.File(widget.fotoPath!), width: 36, height: 36, fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Icon(Icons.broken_image_outlined, size: 18, color: widget.color.withValues(alpha: 0.5))),
+              child: Image.file(
+                dartio.File(widget.fotoPath!),
+                width: 36,
+                height: 36,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => Icon(
+                  Icons.broken_image_outlined,
+                  size: 18,
+                  color: widget.color.withValues(alpha: 0.5),
+                ),
+              ),
             );
-          } catch (_) { fotoWidget = null; }
+          } catch (_) {
+            fotoWidget = null;
+          }
         }
 
         return SelectionContainer.disabled(
           child: GestureDetector(
             onTap: widget.onTap,
             onDoubleTap: widget.onDoubleTap,
-            onLongPress: widget.fotoPath != null ? () => _showFotoPreview(context) : null,
+            onLongPress: widget.fotoPath != null
+                ? () => _showFotoPreview(context)
+                : null,
             child: ClipRRect(
               borderRadius: br,
               child: Container(
                 width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 14,
+                ),
                 decoration: BoxDecoration(
                   color: widget.skin.isLight
                       ? Colors.white.withValues(alpha: widget.skin.glassOpacity)
-                      : widget.skin.bgCard.withValues(alpha: widget.skin.glassOpacity),
+                      : widget.skin.bgCard.withValues(
+                          alpha: widget.skin.glassOpacity,
+                        ),
                   borderRadius: br,
                   border: Border.all(
-                    color: isEmpty ? widget.skin.glassBorder : widget.color.withValues(alpha: 0.38),
+                    color: isEmpty
+                        ? widget.skin.glassBorder
+                        : widget.color.withValues(alpha: 0.38),
                     width: isEmpty ? 1.0 : 1.5,
                   ),
                   boxShadow: [
-                    BoxShadow(color: widget.skin.glassShadow, blurRadius: 24, offset: const Offset(0, 6)),
-                    BoxShadow(color: widget.skin.glassHighlight, blurRadius: 0, spreadRadius: -1, offset: const Offset(0, 1)),
+                    BoxShadow(
+                      color: widget.skin.glassShadow,
+                      blurRadius: 24,
+                      offset: const Offset(0, 6),
+                    ),
+                    BoxShadow(
+                      color: widget.skin.glassHighlight,
+                      blurRadius: 0,
+                      spreadRadius: -1,
+                      offset: const Offset(0, 1),
+                    ),
                   ],
                 ),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                    Text(widget.label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: widget.color, letterSpacing: 1.2)),
-                    GestureDetector(
-                      onTap: widget.onCameraPressed,
-                      child: hasFoto && fotoWidget != null
-                          ? Stack(children: [
-                              fotoWidget,
-                              Positioned(right: 0, bottom: 0, child: Container(
-                                width: 14, height: 14,
-                                decoration: BoxDecoration(color: widget.color, shape: BoxShape.circle),
-                                child: const Icon(Icons.check, size: 9, color: Colors.white),
-                              )),
-                            ])
-                          : Container(
-                              padding: const EdgeInsets.all(6),
-                              decoration: BoxDecoration(color: widget.skin.surface(0.06), borderRadius: BorderRadius.circular(8)),
-                              child: Icon(Icons.camera_alt_outlined, size: 14, color: widget.skin.surface(0.4)),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          widget.label,
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            color: widget.color,
+                            letterSpacing: 1.2,
+                          ),
+                        ),
+                        GestureDetector(
+                          onTap: widget.onCameraPressed,
+                          child: hasFoto && fotoWidget != null
+                              ? Stack(
+                                  children: [
+                                    fotoWidget,
+                                    Positioned(
+                                      right: 0,
+                                      bottom: 0,
+                                      child: Container(
+                                        width: 14,
+                                        height: 14,
+                                        decoration: BoxDecoration(
+                                          color: widget.color,
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: const Icon(
+                                          Icons.check,
+                                          size: 9,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                )
+                              : Container(
+                                  padding: const EdgeInsets.all(6),
+                                  decoration: BoxDecoration(
+                                    color: widget.skin.surface(0.06),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Icon(
+                                    Icons.camera_alt_outlined,
+                                    size: 14,
+                                    color: widget.skin.surface(0.4),
+                                  ),
+                                ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    if (isEmpty && widget.hintKm != null && widget.hintKm! > 0)
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '${_formatKm(widget.hintKm!)} km',
+                            style: TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.w700,
+                              color: widget.skin.surface(0.18),
+                              letterSpacing: -0.5,
                             ),
-                    ),
-                  ]),
-                  const SizedBox(height: 8),
-                  if (isEmpty && widget.hintKm != null && widget.hintKm! > 0)
-                    Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text('${_formatKm(widget.hintKm!)} km',
-                          style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: widget.skin.surface(0.18), letterSpacing: -0.5)),
-                      const SizedBox(height: 2),
-                      Text('↑ Doppeltipp zum Übernehmen',
-                          style: TextStyle(fontSize: 9, color: widget.skin.surface(0.25), fontWeight: FontWeight.w500)),
-                    ])
-                  else
-                    Text(
-                      isEmpty ? '—' : '${widget.ctrl.text} km',
-                      style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700,
-                          color: isEmpty ? widget.skin.surface(0.2) : widget.skin.textPrimary, letterSpacing: -0.5),
-                    ),
-                ]),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            '↑ Doppeltipp zum Übernehmen',
+                            style: TextStyle(
+                              fontSize: 9,
+                              color: widget.skin.surface(0.25),
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      )
+                    else
+                      Text(
+                        isEmpty ? '—' : '${widget.ctrl.text} km',
+                        style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w700,
+                          color: isEmpty
+                              ? widget.skin.surface(0.2)
+                              : widget.skin.textPrimary,
+                          letterSpacing: -0.5,
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -4537,14 +6396,22 @@ class _InputRow extends StatelessWidget {
   final TextInputType? keyboardType;
 
   const _InputRow({
-    required this.skin, required this.icon, required this.label, required this.ctrl, required this.hint,
-    this.capitalize = TextCapitalization.none, this.keyboardType,
+    required this.skin,
+    required this.icon,
+    required this.label,
+    required this.ctrl,
+    required this.hint,
+    this.capitalize = TextCapitalization.none,
+    this.keyboardType,
   });
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onDoubleTap: () { HapticFeedback.lightImpact(); ctrl.clear(); },
+      onDoubleTap: () {
+        HapticFeedback.lightImpact();
+        ctrl.clear();
+      },
       child: ClipRRect(
         borderRadius: BorderRadius.circular(16),
         child: PlatformBackdropFilter(
@@ -4552,30 +6419,65 @@ class _InputRow extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             decoration: BoxDecoration(
-              color: skin.isLight ? Colors.white.withValues(alpha: skin.glassOpacity) : skin.bgCard.withValues(alpha: skin.glassOpacity),
+              color: skin.isLight
+                  ? Colors.white.withValues(alpha: skin.glassOpacity)
+                  : skin.bgCard.withValues(alpha: skin.glassOpacity),
               borderRadius: BorderRadius.circular(16),
               border: Border.all(color: skin.glassBorder),
-              boxShadow: [BoxShadow(color: skin.glassShadow, blurRadius: 16, offset: const Offset(0, 4))],
+              boxShadow: [
+                BoxShadow(
+                  color: skin.glassShadow,
+                  blurRadius: 16,
+                  offset: const Offset(0, 4),
+                ),
+              ],
             ),
-            child: Row(children: [
-              Icon(icon, size: 18, color: skin.primary),
-              const SizedBox(width: 12),
-              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(label, style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: skin.primary, letterSpacing: 1.0)),
-                const SizedBox(height: 4),
-                AnimatedBuilder(
-                  animation: ctrl,
-                  builder: (_, __) => TextField(
-                    controller: ctrl, keyboardType: keyboardType, textCapitalization: capitalize,
-                    style: TextStyle(color: skin.textPrimary, fontSize: 15, fontWeight: FontWeight.w600),
-                    decoration: InputDecoration(
-                      hintText: hint, hintStyle: TextStyle(color: skin.surface(0.3), fontSize: 15),
-                      border: InputBorder.none, isDense: true, contentPadding: EdgeInsets.zero,
-                    ),
+            child: Row(
+              children: [
+                Icon(icon, size: 18, color: skin.primary),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        label,
+                        style: TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w700,
+                          color: skin.primary,
+                          letterSpacing: 1.0,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      AnimatedBuilder(
+                        animation: ctrl,
+                        builder: (_, __) => TextField(
+                          controller: ctrl,
+                          keyboardType: keyboardType,
+                          textCapitalization: capitalize,
+                          style: TextStyle(
+                            color: skin.textPrimary,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          decoration: InputDecoration(
+                            hintText: hint,
+                            hintStyle: TextStyle(
+                              color: skin.surface(0.3),
+                              fontSize: 15,
+                            ),
+                            border: InputBorder.none,
+                            isDense: true,
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ])),
-            ]),
+              ],
+            ),
           ),
         ),
       ),
@@ -4592,12 +6494,14 @@ class _FahrtZielInputField extends StatefulWidget {
   final TextEditingController ctrl;
   final List<String> knownZiele;
   final VoidCallback? onChanged;
+  final VoidCallback? onRevealNeeded;
 
   const _FahrtZielInputField({
     required this.skin,
     required this.ctrl,
     required this.knownZiele,
     this.onChanged,
+    this.onRevealNeeded,
   });
 
   @override
@@ -4616,6 +6520,8 @@ class _FahrtZielInputFieldState extends State<_FahrtZielInputField> {
       if (_focusNode.hasFocus) {
         _updateSuggestions(widget.ctrl.text);
         setState(() => _showSuggestions = true);
+        // nach der Tastatur-Animation ausrichten
+        widget.onRevealNeeded?.call();
       } else {
         setState(() => _showSuggestions = false);
       }
@@ -4634,9 +6540,15 @@ class _FahrtZielInputFieldState extends State<_FahrtZielInputField> {
   }
 
   void _updateSuggestions(String input) {
+    final before = _suggestions.length;
     setState(() {
       _suggestions = FahrtZielHelper.suggestions(input, widget.knownZiele);
     });
+    if (_suggestions.length != before) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) widget.onRevealNeeded?.call();
+      });
+    }
   }
 
   void _selectSuggestion(String ziel) {
@@ -4673,55 +6585,73 @@ class _FahrtZielInputFieldState extends State<_FahrtZielInputField> {
                   width: _focusNode.hasFocus ? 1.5 : 1.0,
                 ),
                 boxShadow: [
-                  BoxShadow(color: skin.glassShadow, blurRadius: 16, offset: const Offset(0, 4)),
+                  BoxShadow(
+                    color: skin.glassShadow,
+                    blurRadius: 16,
+                    offset: const Offset(0, 4),
+                  ),
                 ],
               ),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Row(children: [
-                  Icon(Icons.map_outlined, size: 16, color: skin.primary),
-                  const SizedBox(width: 8),
-                  Text('FAHRTZIEL & WEG',
-                      style: TextStyle(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.map_outlined, size: 16, color: skin.primary),
+                      const SizedBox(width: 8),
+                      Text(
+                        'FAHRTZIEL & WEG',
+                        style: TextStyle(
                           fontSize: 9,
                           fontWeight: FontWeight.w700,
                           color: skin.primary,
-                          letterSpacing: 1.0)),
-                  const Spacer(),
-                  if (widget.ctrl.text.isNotEmpty)
-                    GestureDetector(
-                      onTap: () {
-                        widget.ctrl.clear();
-                        widget.onChanged?.call();
-                        setState(() {});
-                      },
-                      child: Icon(Icons.close, size: 14, color: skin.surface(0.35)),
-                    ),
-                ]),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: widget.ctrl,
-                  focusNode: _focusNode,
-                  maxLines: 3,
-                  minLines: 2,
-                  textCapitalization: TextCapitalization.sentences,
-                  style: TextStyle(
+                          letterSpacing: 1.0,
+                        ),
+                      ),
+                      const Spacer(),
+                      if (widget.ctrl.text.isNotEmpty)
+                        GestureDetector(
+                          onTap: () {
+                            widget.ctrl.clear();
+                            widget.onChanged?.call();
+                            setState(() {});
+                          },
+                          child: Icon(
+                            Icons.close,
+                            size: 14,
+                            color: skin.surface(0.35),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: widget.ctrl,
+                    focusNode: _focusNode,
+                    maxLines: 3,
+                    minLines: 2,
+                    textCapitalization: TextCapitalization.sentences,
+                    style: TextStyle(
                       color: skin.textPrimary,
                       fontSize: 14,
                       fontWeight: FontWeight.w500,
-                      height: 1.5),
-                  decoration: InputDecoration(
-                    hintText: 'z.B. Hauptbahnhof → Krankenhaus Mitte...',
-                    hintStyle: TextStyle(
+                      height: 1.5,
+                    ),
+                    decoration: InputDecoration(
+                      hintText: 'z.B. Hauptbahnhof → Krankenhaus Mitte...',
+                      hintStyle: TextStyle(
                         color: skin.surface(0.3),
                         fontSize: 13,
-                        fontWeight: FontWeight.w400),
-                    border: InputBorder.none,
-                    isDense: true,
-                    contentPadding: EdgeInsets.zero,
+                        fontWeight: FontWeight.w400,
+                      ),
+                      border: InputBorder.none,
+                      isDense: true,
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                    onChanged: (_) => widget.onChanged?.call(),
                   ),
-                  onChanged: (_) => widget.onChanged?.call(),
-                ),
-              ]),
+                ],
+              ),
             ),
           ),
         ),
@@ -4731,7 +6661,10 @@ class _FahrtZielInputFieldState extends State<_FahrtZielInputField> {
           ClipRRect(
             borderRadius: BorderRadius.circular(14),
             child: PlatformBackdropFilter(
-              filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
+              filter: ImageFilter.blur(
+                sigmaX: skin.glassBlur,
+                sigmaY: skin.glassBlur,
+              ),
               child: Container(
                 decoration: BoxDecoration(
                   color: skin.isLight
@@ -4740,7 +6673,11 @@ class _FahrtZielInputFieldState extends State<_FahrtZielInputField> {
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(color: skin.glassBorder),
                   boxShadow: [
-                    BoxShadow(color: skin.glassShadow, blurRadius: 16, offset: const Offset(0, 4)),
+                    BoxShadow(
+                      color: skin.glassShadow,
+                      blurRadius: 16,
+                      offset: const Offset(0, 4),
+                    ),
                   ],
                 ),
                 child: Column(
@@ -4751,7 +6688,10 @@ class _FahrtZielInputFieldState extends State<_FahrtZielInputField> {
                       behavior: HitTestBehavior.opaque,
                       child: Container(
                         width: double.infinity,
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 11,
+                        ),
                         decoration: BoxDecoration(
                           border: Border(
                             bottom: BorderSide(
@@ -4762,25 +6702,34 @@ class _FahrtZielInputFieldState extends State<_FahrtZielInputField> {
                             ),
                           ),
                         ),
-                        child: Row(children: [
-                          Icon(Icons.history_rounded,
-                              size: 14, color: skin.surface(0.35)),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              ziel,
-                              style: TextStyle(
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.history_rounded,
+                              size: 14,
+                              color: skin.surface(0.35),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                ziel,
+                                style: TextStyle(
                                   fontSize: 13,
                                   fontWeight: FontWeight.w500,
-                                  color: skin.textPrimary),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
+                                  color: skin.textPrimary,
+                                ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
-                          ),
-                          const SizedBox(width: 8),
-                          Icon(Icons.north_west_rounded,
-                              size: 12, color: skin.surface(0.3)),
-                        ]),
+                            const SizedBox(width: 8),
+                            Icon(
+                              Icons.north_west_rounded,
+                              size: 12,
+                              color: skin.surface(0.3),
+                            ),
+                          ],
+                        ),
                       ),
                     );
                   }).toList(),

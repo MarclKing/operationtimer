@@ -29,113 +29,7 @@ import '../utils/time_rounding.dart';
 enum _OverlayField { none, tkf, notiz }
 enum _MonthTab { zeit, monat }
 
-class _GlassSegmentSwitcher extends StatelessWidget {
-  final AppSkin skin;
-  final _MonthTab active;
-  final ValueChanged<_MonthTab> onChanged;
 
-  const _GlassSegmentSwitcher({
-    required this.skin,
-    required this.active,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(18),
-        child: PlatformBackdropFilter(
-          filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
-          child: Container(
-            padding: const EdgeInsets.all(4),
-            decoration: BoxDecoration(
-              color: skin.isLight
-                  ? Colors.white.withValues(alpha: skin.glassOpacity)
-                  : skin.bgCard.withValues(alpha: skin.glassOpacity),
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: skin.glassBorder, width: 1.0),
-              boxShadow: [
-                BoxShadow(
-                    color: skin.glassShadow,
-                    blurRadius: 24,
-                    offset: const Offset(0, 6)),
-                BoxShadow(
-                    color: skin.glassHighlight,
-                    blurRadius: 0,
-                    spreadRadius: -1,
-                    offset: const Offset(0, 1)),
-              ],
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _segment(
-                  label: 'Zeiterfassung',
-                  icon: Icons.access_time_rounded,
-                  tab: _MonthTab.zeit,
-                ),
-                _segment(
-                  label: 'Monatsübersicht',
-                  icon: Icons.calendar_month_rounded,
-                  tab: _MonthTab.monat,
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _segment({
-    required String label,
-    required IconData icon,
-    required _MonthTab tab,
-  }) {
-    final isActive = active == tab;
-    return GestureDetector(
-      onTap: () {
-        if (!isActive) {
-          HapticFeedback.selectionClick();
-          onChanged(tab);
-        }
-      },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOutCubic,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        decoration: BoxDecoration(
-          color: isActive ? skin.primary.withValues(alpha: 0.22) : Colors.transparent,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: isActive ? skin.primary.withValues(alpha: 0.45) : Colors.transparent,
-            width: 1.5,
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              size: 15,
-              color: isActive ? skin.primary : skin.surface(0.4),
-            ),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 12.5,
-                fontWeight: isActive ? FontWeight.w700 : FontWeight.w600,
-                color: isActive ? skin.primary : skin.surface(0.4),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 class MonthScreen extends StatefulWidget {
   final VoidCallback onNavigateToHome;
@@ -951,7 +845,7 @@ void _editEntry(Map<String, dynamic> entry) {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const SizedBox(height: 50),
+                        const SizedBox(height: 12),
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 24),
                           child: Row(
@@ -971,14 +865,17 @@ void _editEntry(Map<String, dynamic> entry) {
                         const SizedBox(height: 16),
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 24),
-                          child: _GlassSegmentSwitcher(
-                            skin: skin,
-                            active: _activeTab,
-                            onChanged: (tab) {
+                          child: GlassTabSwitcher(
+                            index: _activeTab == _MonthTab.zeit ? 0 : 1,
+                            items: const [
+                              GlassTabItem(label: 'Zeiterfassung', icon: Icons.access_time_rounded),
+                              GlassTabItem(label: 'Monatsübersicht', icon: Icons.calendar_month_rounded),
+                            ],
+                            onChanged: (i) {
                               FocusScope.of(context).unfocus();
                               closeAllRows();
                               setState(() {
-                                _activeTab = tab;
+                                _activeTab = i == 0 ? _MonthTab.zeit : _MonthTab.monat;
                                 _openSwipedEntryId = null;
                               });
                             },
@@ -988,6 +885,49 @@ void _editEntry(Map<String, dynamic> entry) {
                       ],
                     ),
                   ),
+
+                  // ── Fester Picker (scrollt nicht mit) ──
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    child: GlassNavCard(
+                      onPrevious: () {
+                        if (_activeTab == _MonthTab.zeit) { _changeDate(-1); } else { _changeMonth(-1); }
+                      },
+                      onNext: () {
+                        if (_activeTab == _MonthTab.zeit) { _changeDate(1); } else { _changeMonth(1); }
+                      },
+                      onTap: _activeTab == _MonthTab.zeit ? _selectDateWithPicker : _showMonthPicker,
+                      onDoubleTap: () {
+                        HapticFeedback.selectionClick();
+                        if (_activeTab == _MonthTab.zeit) {
+                          _setDate(DateTime.now());
+                        } else {
+                          final now = DateTime.now();
+                          _setMonth(DateTime(now.year, now.month));
+                        }
+                      },
+                      onSwipe: (v) {
+                        final z = _activeTab == _MonthTab.zeit;
+                        if (v < -300) { if (z) { _changeDate(1); } else { _changeMonth(1); } }
+                        if (v > 300) { if (z) { _changeDate(-1); } else { _changeMonth(-1); } }
+                      },
+                      highlighted: _activeTab == _MonthTab.zeit &&
+                          DateFormat('yyyy-MM-dd').format(DateTime.now()) == _dateKey,
+                      child: GlassMonthDayLabel(
+                        skin: skin,
+                        isDay: _activeTab == _MonthTab.zeit,
+                        prefix: DateFormat('EEEE, d. ', 'de').format(_selectedDate),
+                        suffix: _activeTab == _MonthTab.zeit
+                            ? DateFormat('MMMM yyyy', 'de').format(_selectedDate)
+                            : monthName,
+                        topLabel: DateFormat('yyyy-MM-dd').format(DateTime.now()) == _dateKey ? 'HEUTE' : 'DATUM',
+                        topColor: DateFormat('yyyy-MM-dd').format(DateTime.now()) == _dateKey
+                            ? skin.primary
+                            : skin.surface(0.35),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
 
                   // ── Inhalt je aktivem Tab ──
                   Expanded(
@@ -1061,44 +1001,7 @@ void _editEntry(Map<String, dynamic> entry) {
             const SizedBox(height: 8),
 
             // Datumskarte
-GlassNavCard(
-  onPrevious: () => _changeDate(-1),
-  onNext: () => _changeDate(1),
-  onTap: _selectDateWithPicker,
-  onDoubleTap: () {
-    HapticFeedback.selectionClick();
-    _setDate(DateTime.now());
-  },
-  onSwipe: (v) {
-    if (v < -300) _changeDate(1);
-    if (v > 300) _changeDate(-1);
-  },
-  highlighted: DateFormat('yyyy-MM-dd').format(DateTime.now()) == _dateKey,
-  child: Column(
-    mainAxisAlignment: MainAxisAlignment.center,
-    children: [
-      Text(
-        DateFormat('yyyy-MM-dd').format(DateTime.now()) == _dateKey
-            ? 'HEUTE' : 'DATUM',
-        style: TextStyle(
-          fontSize: 9,
-          fontWeight: FontWeight.w700,
-          color: DateFormat('yyyy-MM-dd').format(DateTime.now()) == _dateKey
-              ? skin.primary : skin.surface(0.35),
-          letterSpacing: 1.2,
-        ),
-      ),
-      const SizedBox(height: 2),
-      Text(
-        DateFormat('EEEE, d. MMMM yyyy', 'de').format(_selectedDate),
-        style: TextStyle(fontSize: 13, color: skin.textPrimary, fontWeight: FontWeight.w600),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        textAlign: TextAlign.center,
-      ),
-    ],
-  ),
-),
+
             const SizedBox(height: 16),
 
             Row(children: [
@@ -1239,32 +1142,7 @@ GlassNavCard(
                   const SizedBox(height: 8),
 
                   // Monats-Navigation
-GlassNavCard(
-  onPrevious: () => _changeMonth(-1),
-  onNext: () => _changeMonth(1),
-  onTap: _showMonthPicker,
-  onDoubleTap: () {
-    HapticFeedback.selectionClick();
-    final now = DateTime.now();
-    _setMonth(DateTime(now.year, now.month));
-  },
-  onSwipe: (v) {
-    if (v < -300) _changeMonth(1);
-    if (v > 300) _changeMonth(-1);
-  },
-  child: Row(
-    mainAxisAlignment: MainAxisAlignment.center,
-    children: [
-      Text(monthName,
-          style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: skin.textPrimary)),
-      const SizedBox(width: 6),
-      Icon(Icons.expand_more, color: skin.surface(0.4), size: 18),
-    ],
-  ),
-),
+
 
                   const SizedBox(height: 12),
                   Row(children: [

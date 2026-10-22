@@ -36,6 +36,13 @@
 <category android:name="android.intent.category.DEFAULT" />
 <data android:mimeType="text/plain" />
 </intent-filter>
+            <!-- PDF per "Öffnen mit" -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:mimeType="application/pdf" />
+            </intent-filter>
             <!-- Deep-Link-Scheme für Widget-Taps (optimes://...) -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />

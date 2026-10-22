@@ -543,29 +543,70 @@ class _MonthTopSectionState extends State<_MonthTopSection> {
         Container(height: 0.6, margin: const EdgeInsets.symmetric(horizontal: 24), color: skin.surface(0.10)),
         const SizedBox(height: 8),
 
-        Builder(builder: (context) {
-          final code = _cachedShiftCode;
-          if (code == null || code.isEmpty) return const SizedBox.shrink();
-          return Padding(
-            padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: _ShiftBadge(skin: skin, code: code),
-            ),
-          );
-        }),
-
-        if (_cachedUrgentTasks.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                for (final task in _cachedUrgentTasks) _UrgentInlineCard(skin: skin, task: task),
-              ],
-            ),
-          ),
+        _ShiftUrgentRow(skin: skin, code: _cachedShiftCode, urgent: _cachedUrgentTasks),
       ],
+    );
+  }
+}
+
+/// Dienst-Badge und dringende Aufgaben (ohne Datum) in einer Zeile.
+class _ShiftUrgentRow extends StatelessWidget {
+  final AppSkin skin;
+  final String? code;
+  final List<Task> urgent;
+  const _ShiftUrgentRow({required this.skin, required this.code, required this.urgent});
+
+  static const _urgentColor = Color(0xFFEF5B5B);
+
+  Widget _chip(Task t) {
+    return Container(
+      margin: const EdgeInsets.only(top: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: _urgentColor.withValues(alpha: skin.isLight ? 0.04 : 0.07),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: _urgentColor.withValues(alpha: 0.35)),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        const Icon(Icons.priority_high_rounded, size: 13, color: _urgentColor),
+        const SizedBox(width: 5),
+        Flexible(
+          child: Text(t.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: skin.textPrimary)),
+        ),
+      ]),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hasCode = code != null && code!.isNotEmpty;
+    if (!hasCode && urgent.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (hasCode) _ShiftBadge(skin: skin, code: code!),
+          if (hasCode && urgent.isNotEmpty) const SizedBox(width: 8),
+          if (urgent.isNotEmpty)
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, cons) => Wrap(
+                  spacing: 8,
+                  runSpacing: 2,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    for (final t in urgent)
+                      ConstrainedBox(constraints: BoxConstraints(maxWidth: cons.maxWidth), child: _chip(t)),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }

@@ -8,11 +8,15 @@ import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../services/user_position.dart';
+import '../services/recent_places.dart';
 import '../models/location_info.dart';
 import '../services/location_resolver.dart';
 import '../theme/app_theme.dart';
 import 'glass_kit.dart';
 import 'glass_snackbar.dart';
+import '../services/favorite_place_store.dart';
+import 'favorite_name_sheet.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // NAVIGIEREN
@@ -299,6 +303,8 @@ class _OsmMap extends StatelessWidget {
   final bool showMarker;
   final void Function(LatLng center)? onCenterChanged;
   final VoidCallback? onPointerDown;
+  final List<Marker> extraMarkers;
+  final LatLng? userPoint;
   const _OsmMap({
     required this.loc,
     required this.zoom,
@@ -307,6 +313,8 @@ class _OsmMap extends StatelessWidget {
     this.showMarker = true,
     this.onCenterChanged,
     this.onPointerDown,
+    this.extraMarkers = const [],
+    this.userPoint,
   });
 
   @override
@@ -316,6 +324,8 @@ class _OsmMap extends StatelessWidget {
       behavior: HitTestBehavior.translucent,
       onPointerDown: (_) => onPointerDown?.call(),
       child: FlutterMap(
+      // Neue Koordinaten -> Karte neu aufbauen, sonst bleibt die Kamera am alten Ort
+      key: ValueKey('${loc.lat},${loc.lng}'),
       mapController: controller,
       options: MapOptions(
         initialCenter: point,
@@ -332,6 +342,23 @@ class _OsmMap extends StatelessWidget {
           urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
           userAgentPackageName: 'de.marcel.optimes',
         ),
+        if (userPoint != null)
+          MarkerLayer(markers: [
+            Marker(
+              point: userPoint!,
+              width: 24,
+              height: 24,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: const Color(0xFF4285F4),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 3),
+                  boxShadow: const [BoxShadow(color: Color(0x55000000), blurRadius: 6)],
+                ),
+              ),
+            ),
+          ]),
+        if (extraMarkers.isNotEmpty) MarkerLayer(markers: extraMarkers),
         if (showMarker)
           MarkerLayer(markers: [
             Marker(
@@ -405,16 +432,24 @@ class LocationMapCard extends StatelessWidget {
 
   /// Wird aufgerufen, wenn im Vollbild eine neue Position übernommen wurde.
   final ValueChanged<LocationInfo>? onLocationChanged;
+
+  /// false = kein Favoriten-Stern im Vollbild (z. B. beim Bearbeiten eines Favoriten).
+  final bool allowFavorite;
+
+  /// false = kein Navigieren-Button in der Vorschau und im Vollbild.
+  final bool allowNavigate;
   const LocationMapCard({
     super.key,
     required this.skin,
     required this.loc,
     required this.onNavigate,
     this.onLocationChanged,
+    this.allowFavorite = true,
+    this.allowNavigate = true,
   });
 
   Future<void> _openFullscreen(BuildContext context) async {
-    final result = await showLocationFullscreen(context, skin: skin, loc: loc);
+    final result = await showLocationFullscreen(context, skin: skin, loc: loc, allowFavorite: allowFavorite, allowNavigate: allowNavigate);
     if (result != null) onLocationChanged?.call(result);
   }
 
@@ -446,12 +481,13 @@ class LocationMapCard extends StatelessWidget {
             ),
           ),
         ),
-        Positioned(
-          left: 0,
-          right: 0,
-          bottom: 10,
-          child: Center(child: _MapNavButton(skin: skin, onTap: onNavigate)),
-        ),
+        if (allowNavigate)
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 10,
+            child: Center(child: _MapNavButton(skin: skin, onTap: onNavigate)),
+          ),
       ]),
     );
   }
@@ -463,9 +499,11 @@ Future<LocationInfo?> showLocationFullscreen(
   BuildContext context, {
   required AppSkin skin,
   required LocationInfo loc,
+  bool allowFavorite = true,
+  bool allowNavigate = true,
 }) {
   if (!loc.hasCoords) return Future.value(null);
-  return _showMapSheet(context, skin, loc);
+  return _showMapSheet(context, skin, loc, allowFavorite: allowFavorite, allowNavigate: allowNavigate);
 }
 
 /// Öffnet die Karte zur Neuauswahl eines Ortes (mit Suchfeld).
@@ -475,7 +513,8 @@ Future<LocationInfo?> showLocationPicker(
 }) =>
     _showMapSheet(context, skin, null);
 
-Future<LocationInfo?> _showMapSheet(BuildContext context, AppSkin skin, LocationInfo? loc) {
+Future<LocationInfo?> _showMapSheet(BuildContext context, AppSkin skin, LocationInfo? loc,
+    {bool allowFavorite = true, bool allowNavigate = true}) {
   FocusManager.instance.primaryFocus?.unfocus();
   return showModalBottomSheet<LocationInfo>(
     context: context,
@@ -484,7 +523,8 @@ Future<LocationInfo?> _showMapSheet(BuildContext context, AppSkin skin, Location
     useSafeArea: false,
     // Karte soll ungestört verschiebbar sein: geschlossen wird über Handle/X
     enableDrag: false,
-    builder: (_) => LocationFullscreenSheet(skin: skin, loc: loc),
+    builder: (_) => LocationFullscreenSheet(
+        skin: skin, loc: loc, allowFavorite: allowFavorite, allowNavigate: allowNavigate),
   );
 }
 
@@ -493,7 +533,10 @@ class LocationFullscreenSheet extends StatefulWidget {
 
   /// null = Auswahlmodus (neuer Ort, mit Suchfeld)
   final LocationInfo? loc;
-  const LocationFullscreenSheet({super.key, required this.skin, this.loc});
+  final bool allowFavorite;
+  final bool allowNavigate;
+  const LocationFullscreenSheet(
+      {super.key, required this.skin, this.loc, this.allowFavorite = true, this.allowNavigate = true});
 
   @override
   State<LocationFullscreenSheet> createState() => _LocationFullscreenSheetState();
@@ -501,7 +544,7 @@ class LocationFullscreenSheet extends StatefulWidget {
 
 class _LocationFullscreenSheetState extends State<LocationFullscreenSheet> {
   final MapController _mapCtrl = MapController();
-  late final LocationInfo _start;
+  late LocationInfo _start;
   bool _adjusting = false;
   bool _moved = false;
   bool _resolving = false;
@@ -509,6 +552,13 @@ class _LocationFullscreenSheetState extends State<LocationFullscreenSheet> {
   late LocationInfo _picked;
   Timer? _debounce;
   int _seq = 0;
+  bool _userStart = false;
+  bool _favChanged = false;
+  DateTime _ignoreUntil = DateTime.fromMillisecondsSinceEpoch(0);
+  LatLng? _userLatLng;
+  List<PlaceSuggestion> _pins = [];
+  String _pinQuery = '';
+  bool _pinsStale = false;
 
   // Suche (nur Auswahlmodus)
   final _searchCtrl = TextEditingController();
@@ -518,6 +568,9 @@ class _LocationFullscreenSheetState extends State<LocationFullscreenSheet> {
   bool _searching = false;
   List<PlaceSuggestion> _results = [];
 
+  // Favoriten: gerade gewählter bzw. eben gespeicherter Favorit (Name + Adresse bleiben erhalten)
+  FavoritePlace? _selectedFav;
+
   AppSkin get skin => widget.skin;
   bool get _pickMode => widget.loc == null;
 
@@ -525,10 +578,26 @@ class _LocationFullscreenSheetState extends State<LocationFullscreenSheet> {
   void initState() {
     super.initState();
     // Ohne Startort: Deutschland-Übersicht, dann per Suche oder Verschieben
-    _start = widget.loc ?? const LocationInfo(rawInput: '', lat: 51.1657, lng: 10.4515);
+    final upc = UserPosition.cached;
+    if (widget.loc == null && upc != null) _userStart = true;
+    _userLatLng = upc == null ? null : LatLng(upc.lat, upc.lng);
+    _start = widget.loc ?? LocationInfo(rawInput: '', lat: upc?.lat ?? 51.1657, lng: upc?.lng ?? 10.4515);
     _picked = _start;
     _center = LatLng(_start.lat!, _start.lng!);
     _adjusting = _pickMode;
+    _searchFocus.addListener(() {
+      if (!mounted) return;
+      if (_searchFocus.hasFocus && _pickMode && _searchCtrl.text.trim().isEmpty) {
+        final rec = RecentPlaces.all();
+        setState(() => _results = rec);
+      } else {
+        setState(() {
+          // Zuletzt benutzte schließen, sobald das Feld den Fokus verliert
+          if (!_searchFocus.hasFocus && _searchCtrl.text.trim().isEmpty) _results = [];
+        });
+      }
+    });
+    _centerOnUser();
   }
 
   @override
@@ -541,6 +610,245 @@ class _LocationFullscreenSheetState extends State<LocationFullscreenSheet> {
   }
 
   // ── Position verschieben ────────────────────────────────────────────────
+
+  /// Standort holen: blauen Punkt zeigen und – solange nichts gewählt wurde – die Karte darauf zentrieren.
+  Future<void> _centerOnUser() async {
+    final pos = await UserPosition.get();
+    if (pos == null || !mounted) return;
+    final ll = LatLng(pos.lat, pos.lng);
+    final untouched = _pickMode && !_moved && !_userStart && _pins.isEmpty && _searchCtrl.text.isEmpty;
+    setState(() {
+      _userLatLng = ll;
+      if (untouched) {
+        _userStart = true;
+        _start = LocationInfo(rawInput: '', lat: pos.lat, lng: pos.lng);
+        _picked = _start;
+        _center = ll;
+      }
+    });
+  }
+
+  void _programmatic(VoidCallback f) {
+    _ignoreUntil = DateTime.now().add(const Duration(milliseconds: 600));
+    f();
+  }
+
+  /// "Mein Standort": Karte dorthin, Position wird wie beim Verschieben übernommen.
+  Future<void> _goToMe() async {
+    HapticFeedback.selectionClick();
+    FocusManager.instance.primaryFocus?.unfocus();
+    final p = await UserPosition.get();
+    if (!mounted) return;
+    if (p == null) {
+      showGlassSnackBar(context, 'Standort nicht verfügbar. Bitte in den iOS-Einstellungen erlauben.',
+          type: GlassSnackBarType.info);
+      return;
+    }
+    final ll = LatLng(p.lat, p.lng);
+    setState(() => _userLatLng = ll);
+    try {
+      _mapCtrl.move(ll, 16);
+    } catch (_) {}
+  }
+
+  /// Suchmitte wie bei Google: sichtbarer Kartenausschnitt (wenn hineingezoomt), sonst echter Standort.
+  Future<(double?, double?)> _searchBias() async {
+    try {
+      final cam = _mapCtrl.camera;
+      if (cam.zoom >= 10) return (cam.center.latitude, cam.center.longitude);
+    } catch (_) {}
+    final p = await UserPosition.quick();
+    return (p?.lat, p?.lng);
+  }
+
+  /// Ort aus Treffer/Markierung/Leiste wählen: Nadel dorthin, "Position übernehmen" sofort aktiv.
+  void _applyPlace(PlaceSuggestion s, {bool setText = false}) {
+    HapticFeedback.selectionClick();
+    FocusManager.instance.primaryFocus?.unfocus();
+    final c = LatLng(s.lat, s.lng);
+    _debounce?.cancel();
+    _searchDebounce?.cancel();
+    _searchSeq++;
+    _seq++;
+    _selectedFav = null;
+    setState(() {
+      _results = [];
+      _searching = false;
+      _resolving = false;
+      _moved = true;
+      _center = c;
+      _picked = s.toLocationInfo();
+    });
+    if (setText) _searchCtrl.text = s.title;
+    _programmatic(() => _mapCtrl.move(c, s.zoom));
+  }
+
+  /// Suchtaste: alle Treffer in der Nähe als Markierungen zeigen (wie Google Maps).
+  Future<void> _submitSearch(String q) async {
+    if (q.length < 2) return;
+    _searchDebounce?.cancel();
+    FocusManager.instance.primaryFocus?.unfocus();
+    final seq = ++_searchSeq;
+    setState(() {
+      _results = [];
+      _searching = true;
+    });
+    final bias = await _searchBias();
+    if (!mounted || seq != _searchSeq) return;
+    final r = await LocationResolver.searchPlaces(q,
+        biasLat: bias.$1, biasLng: bias.$2, max: 12, nearOnly: true);
+    if (!mounted || seq != _searchSeq) return;
+    setState(() {
+      _searching = false;
+      _pins = r;
+      _pinQuery = q;
+      _pinsStale = false;
+    });
+    if (r.isEmpty) {
+      showGlassSnackBar(context, 'Keine Treffer für „$q“', type: GlassSnackBarType.info);
+      return;
+    }
+    _fitPins(r);
+  }
+
+  void _fitPins(List<PlaceSuggestion> r) {
+    try {
+      _programmatic(() {
+        if (r.length == 1) {
+          _mapCtrl.move(LatLng(r.first.lat, r.first.lng), 16);
+        } else {
+          _mapCtrl.fitCamera(CameraFit.coordinates(
+            coordinates: r.map((e) => LatLng(e.lat, e.lng)).toList(),
+            padding: const EdgeInsets.fromLTRB(48, 160, 48, 220),
+            maxZoom: 16,
+          ));
+        }
+      });
+    } catch (_) {}
+  }
+
+  bool _isPicked(PlaceSuggestion p) =>
+      _moved && _picked.hasCoords && (_picked.lat! - p.lat).abs() < 1e-5 && (_picked.lng! - p.lng).abs() < 1e-5;
+
+  List<Marker> _pinMarkers() => [
+        for (final p in _pins)
+          if (!_isPicked(p))
+            Marker(
+              point: LatLng(p.lat, p.lng),
+              width: 40,
+              height: 40,
+              alignment: Alignment.topCenter,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _applyPlace(p),
+                child: Icon(Icons.location_on, size: 40, color: skin.primary),
+              ),
+            ),
+      ];
+
+  Widget _pinStrip() {
+    return Positioned(
+      top: 70,
+      left: 0,
+      right: 0,
+      height: 64,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.fromLTRB(14, 0, 62, 0),
+        itemCount: _pins.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (_, i) {
+          final p = _pins[i];
+          final sel = _isPicked(p);
+          return GestureDetector(
+            onTap: () => _applyPlace(p),
+            child: Container(
+              width: 190,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: skin.bgCard.withValues(alpha: 0.94),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: sel ? skin.primary : skin.glassBorder, width: sel ? 1.6 : 1.0),
+                boxShadow: [BoxShadow(color: skin.glassShadow, blurRadius: 10, offset: const Offset(0, 3))],
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(p.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: skin.textPrimary)),
+                  if ((_withDistance(p) ?? '').isNotEmpty)
+                    Text(_withDistance(p)!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 11.5, color: skin.textMuted)),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _searchAreaPill() {
+    return Positioned(
+      top: 142,
+      left: 0,
+      right: 0,
+      child: Center(
+        child: GestureDetector(
+          onTap: () => _submitSearch(_pinQuery),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            decoration: BoxDecoration(
+              color: skin.bgCard.withValues(alpha: 0.95),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: skin.primary.withValues(alpha: 0.5)),
+              boxShadow: [BoxShadow(color: skin.glassShadow, blurRadius: 10, offset: const Offset(0, 3))],
+            ),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(Icons.refresh_rounded, size: 16, color: skin.primary),
+              const SizedBox(width: 6),
+              Text('In diesem Gebiet suchen',
+                  style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: skin.primary)),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _locateButton() {
+    return Positioned(
+      top: 70,
+      right: 14,
+      child: GestureDetector(
+        onTap: _goToMe,
+        child: Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            color: skin.bgCard.withValues(alpha: 0.92),
+            shape: BoxShape.circle,
+            border: Border.all(color: skin.glassBorder),
+            boxShadow: [BoxShadow(color: skin.glassShadow, blurRadius: 12, offset: const Offset(0, 3))],
+          ),
+          child: const Icon(Icons.my_location_rounded, size: 19, color: Color(0xFF4285F4)),
+        ),
+      ),
+    );
+  }
+
+  String? _withDistance(PlaceSuggestion s) {
+    final base = (s.subtitle ?? '').trim();
+    final p = UserPosition.cached;
+    if (p == null) return base.isEmpty ? null : base;
+    final d = UserPosition.formatDistance(UserPosition.distanceM(p.lat, p.lng, s.lat, s.lng));
+    return base.isEmpty ? d : '$d · $base';
+  }
 
   void _startAdjust() {
     setState(() {
@@ -556,12 +864,25 @@ class _LocationFullscreenSheetState extends State<LocationFullscreenSheet> {
 
   void _onCenter(LatLng c) {
     if (!_adjusting || !mounted) return;
+    // Kamerabewegungen, die wir selbst ausgelöst haben (Treffer wählen, auf Treffer zoomen), nicht als Verschieben werten
+    if (DateTime.now().isBefore(_ignoreUntil)) {
+      _center = c;
+      return;
+    }
+    if (_pins.isNotEmpty) _pinsStale = true;
     final last = _center;
     if (last != null &&
         (last.latitude - c.latitude).abs() < 1e-7 &&
         (last.longitude - c.longitude).abs() < 1e-7) {
       return;
     }
+    final sf = _selectedFav;
+    if (sf != null &&
+        (sf.loc.lat! - c.latitude).abs() < 1e-6 &&
+        (sf.loc.lng! - c.longitude).abs() < 1e-6) {
+      return; // Kamera steht nur auf dem Favoriten
+    }
+    _selectedFav = null;
     _center = c;
     _moved = true;
     _debounce?.cancel();
@@ -592,7 +913,11 @@ class _LocationFullscreenSheetState extends State<LocationFullscreenSheet> {
     });
   }
 
-  void _apply() => Navigator.of(context).pop(_moved ? _picked : null);
+  void _apply() {
+    final f = _selectedFav;
+    if (f != null) FavoritePlaceStore.touch(f.id);
+    Navigator.of(context).pop((_moved || _favChanged) ? _currentInfo : null);
+  }
 
   // ── Suche ───────────────────────────────────────────────────────────────
 
@@ -608,13 +933,15 @@ class _LocationFullscreenSheetState extends State<LocationFullscreenSheet> {
       return;
     }
     setState(() {});
-    _searchDebounce = Timer(const Duration(milliseconds: 600), () => _runSearch(q));
+    _searchDebounce = Timer(const Duration(milliseconds: 400), () => _runSearch(q));
   }
 
   Future<void> _runSearch(String q) async {
     final seq = ++_searchSeq;
     setState(() => _searching = true);
-    final r = await LocationResolver.searchPlaces(q);
+    final bias = await _searchBias();
+    if (!mounted || seq != _searchSeq) return;
+    final r = await LocationResolver.searchPlaces(q, biasLat: bias.$1, biasLng: bias.$2);
     if (!mounted || seq != _searchSeq) return;
     setState(() {
       _results = r;
@@ -623,18 +950,24 @@ class _LocationFullscreenSheetState extends State<LocationFullscreenSheet> {
   }
 
   void _selectSuggestion(PlaceSuggestion s) {
+    RecentPlaces.add(s);
+    if (_pins.isNotEmpty) setState(() => _pins = []);
+    _applyPlace(s, setText: true);
+  }
+
+  Future<void> _removeRecent(PlaceSuggestion p) async {
     HapticFeedback.selectionClick();
-    FocusManager.instance.primaryFocus?.unfocus();
-    _searchSeq++;
+    await RecentPlaces.remove(p);
+    if (!mounted) return;
     setState(() {
-      _results = [];
-      _searching = false;
+      _results = _results
+          .where((e) => !((e.lat - p.lat).abs() < 1e-4 && (e.lng - p.lng).abs() < 1e-4))
+          .toList();
     });
-    _searchCtrl.text = s.title;
-    _mapCtrl.move(LatLng(s.lat, s.lng), s.zoom);
   }
 
   void _clearSearch() {
+    if (_pins.isNotEmpty) setState(() => _pins = []);
     _searchDebounce?.cancel();
     _searchSeq++;
     _searchCtrl.clear();
@@ -658,6 +991,84 @@ class _LocationFullscreenSheetState extends State<LocationFullscreenSheet> {
 
   // ── Bausteine ───────────────────────────────────────────────────────────
 
+  // ── Favoriten ───────────────────────────────────────────────────────────
+
+  LocationInfo get _currentInfo => _adjusting ? _picked : _start;
+
+  bool get _currentIsFavorite {
+    final id = _currentInfo.favoriteId;
+    return id != null && FavoritePlaceStore.byId(id) != null;
+  }
+
+  bool get _canSaveFavorite {
+    if (!widget.allowFavorite) return false;
+    if (!_currentInfo.hasCoords || _resolving) return false;
+    if (_pickMode && !_moved) return false;
+    return true;
+  }
+
+  Future<void> _saveFavorite() async {
+    if (_currentIsFavorite) {
+      showGlassSnackBar(context, 'Dieser Ort ist bereits ein Favorit', type: GlassSnackBarType.info);
+      return;
+    }
+    if (!_canSaveFavorite) {
+      showGlassSnackBar(
+        context,
+        _resolving ? 'Adresse wird noch gesucht …' : 'Wähle zuerst einen Ort auf der Karte',
+        type: GlassSnackBarType.info,
+      );
+      return;
+    }
+    final info = _currentInfo;
+    final nm = (info.name ?? '').trim();
+    final name = await showFavoriteNameSheet(context, skin: skin, initial: nm.isNotEmpty ? nm : info.line1);
+    if (name == null || !mounted) return;
+    final saved = await FavoritePlaceStore.add(name, info);
+    if (!mounted) return;
+    HapticFeedback.mediumImpact();
+    final li = saved.toLocationInfo();
+    setState(() {
+      _selectedFav = saved;
+      _favChanged = true;
+      if (_adjusting) {
+        _picked = li;
+      } else {
+        _start = li;
+      }
+    });
+    showGlassSnackBar(context, 'Als Favorit gespeichert', type: GlassSnackBarType.success);
+  }
+
+  /// Favoriten als Vorschläge: leeres Feld = zuletzt benutzte, sonst passende Treffer.
+  List<FavoritePlace> get _favSuggestions {
+    if (!_pickMode || !_searchFocus.hasFocus) return const [];
+    final q = _searchCtrl.text.trim();
+    return FavoritePlaceStore.search(q, limit: q.isEmpty ? 8 : 4);
+  }
+
+  bool get _hasSuggestions => _results.isNotEmpty || _favSuggestions.isNotEmpty;
+
+  void _selectFavorite(FavoritePlace f) {
+    HapticFeedback.selectionClick();
+    FocusManager.instance.primaryFocus?.unfocus();
+    _searchSeq++;
+    _seq++; // laufende Adress-Auswertung verwerfen
+    _debounce?.cancel();
+    final c = LatLng(f.loc.lat!, f.loc.lng!);
+    setState(() {
+      _results = [];
+      _searching = false;
+      _resolving = false;
+      _moved = true;
+      _selectedFav = f;
+      _center = c;
+      _picked = f.toLocationInfo();
+    });
+    _searchCtrl.text = f.name;
+    _mapCtrl.move(c, 17);
+  }
+
   Widget _searchField() {
     return GlassSurface(
       borderRadius: 14,
@@ -673,13 +1084,7 @@ class _LocationFullscreenSheetState extends State<LocationFullscreenSheet> {
               focusNode: _searchFocus,
               textInputAction: TextInputAction.search,
               onChanged: _onSearchChanged,
-              onSubmitted: (v) {
-                final q = v.trim();
-                if (q.length >= 2) {
-                  _searchDebounce?.cancel();
-                  _runSearch(q);
-                }
-              },
+              onSubmitted: (v) => _submitSearch(v.trim()),
               style: TextStyle(color: skin.textPrimary, fontSize: 14.5, fontWeight: FontWeight.w500),
               decoration: InputDecoration(
                 hintText: 'Ort suchen, z. B. Berlin',
@@ -708,19 +1113,55 @@ class _LocationFullscreenSheetState extends State<LocationFullscreenSheet> {
   }
 
   Widget _suggestionList() {
+    final favs = _favSuggestions;
+    final total = favs.length + _results.length;
+    final recentMode = _searchCtrl.text.trim().isEmpty;
+    final maxH = MediaQuery.sizeOf(context).height * 0.38;
     return GlassSurface(
       borderRadius: 14,
       padding: EdgeInsets.zero,
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        for (int i = 0; i < _results.length; i++)
-          GlassListItem(
-            title: _results[i].title,
-            subtitle: _results[i].subtitle,
-            isLast: i == _results.length - 1,
-            leading: Icon(Icons.place_outlined, size: 22, color: skin.primary),
-            onTap: () => _selectSuggestion(_results[i]),
-          ),
-      ]),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: maxH),
+        child: SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            if (_searchCtrl.text.trim().length >= 3)
+              GlassListItem(
+                title: 'Alle Treffer für „${_searchCtrl.text.trim()}“ auf der Karte',
+                leading: Icon(Icons.search_rounded, size: 22, color: skin.primary),
+                onTap: () => _submitSearch(_searchCtrl.text.trim()),
+              ),
+            for (int i = 0; i < favs.length; i++)
+              GlassListItem(
+                title: favs[i].name,
+                subtitle: favs[i].addressLine.isEmpty ? null : favs[i].addressLine,
+                isLast: i == total - 1,
+                leading: Icon(Icons.place_outlined, size: 22, color: skin.primary),
+                trailing: const Icon(Icons.star_rounded, size: 20, color: Color(0xFFFFB347)),
+                onTap: () => _selectFavorite(favs[i]),
+              ),
+            for (int i = 0; i < _results.length; i++)
+              GlassListItem(
+                title: _results[i].title,
+                subtitle: _withDistance(_results[i]),
+                isLast: favs.length + i == total - 1,
+                leading: Icon(recentMode ? Icons.history_rounded : Icons.place_outlined,
+                    size: 22, color: recentMode ? skin.surface(0.45) : skin.primary),
+                trailing: recentMode
+                    ? GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => _removeRecent(_results[i]),
+                        child: Padding(
+                          padding: const EdgeInsets.all(6),
+                          child: Icon(Icons.close_rounded, size: 18, color: skin.surface(0.4)),
+                        ),
+                      )
+                    : null,
+                onTap: () => _selectSuggestion(_results[i]),
+              ),
+          ]),
+        ),
+      ),
     );
   }
 
@@ -731,10 +1172,18 @@ class _LocationFullscreenSheetState extends State<LocationFullscreenSheet> {
       mainAxisSize: MainAxisSize.min,
       children: [
         if (name.isNotEmpty)
-          Text(name,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: skin.textPrimary)),
+          Row(mainAxisSize: MainAxisSize.min, children: [
+            Flexible(
+              child: Text(name,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: skin.textPrimary)),
+            ),
+            if (info.favoriteId != null) ...[
+              const SizedBox(width: 6),
+              const Icon(Icons.star_rounded, size: 16, color: Color(0xFFFFB347)),
+            ],
+          ]),
         if (info.line1.isNotEmpty) Text(info.line1, style: TextStyle(fontSize: 13.5, color: skin.textPrimary)),
         if (info.line2.isNotEmpty) Text(info.line2, style: TextStyle(fontSize: 13.5, color: skin.surface(0.6))),
         if (name.isEmpty && !info.hasAddress)
@@ -793,7 +1242,7 @@ class _LocationFullscreenSheetState extends State<LocationFullscreenSheet> {
     final bottomSafe = MediaQuery.paddingOf(context).bottom;
     // Modal-Sheets entfernen intern den oberen Safe-Area-Wert → direkt vom Fenster lesen
     final topInset = MediaQueryData.fromView(View.of(context)).padding.top;
-    void close() => Navigator.of(context).pop();
+    void close() => Navigator.of(context).pop(_favChanged ? _currentInfo : null);
 
     return SizedBox(
       height: MediaQuery.sizeOf(context).height - topInset - 16,
@@ -804,12 +1253,14 @@ class _LocationFullscreenSheetState extends State<LocationFullscreenSheet> {
           Positioned.fill(
             child: _OsmMap(
               loc: _start,
-              zoom: _pickMode ? 6 : 16,
+              zoom: _pickMode ? (_userStart ? 14 : 6) : 16,
               interactive: true,
               controller: _mapCtrl,
               showMarker: !_adjusting,
               onCenterChanged: _onCenter,
               onPointerDown: _dismissSuggestions,
+              extraMarkers: _pinMarkers(),
+              userPoint: _userLatLng,
             ),
           ),
 
@@ -865,7 +1316,7 @@ class _LocationFullscreenSheetState extends State<LocationFullscreenSheet> {
           if (_adjusting && !_pickMode)
             Positioned(
               top: 24,
-              left: 14,
+              left: widget.allowFavorite ? 60 : 14,
               child: IgnorePointer(
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -880,19 +1331,51 @@ class _LocationFullscreenSheetState extends State<LocationFullscreenSheet> {
               ),
             ),
 
+          if (_pickMode && _pins.isNotEmpty) _pinStrip(),
+          if (_pickMode && _pins.isNotEmpty && _pinsStale && !_searching) _searchAreaPill(),
+          _locateButton(),
+
           // Suchfeld oben + Vorschläge (nur Auswahlmodus)
           if (_pickMode)
             Positioned(
               top: 22,
-              left: 14,
+              left: widget.allowFavorite ? 60 : 14,
               right: 62,
               child: Column(mainAxisSize: MainAxisSize.min, children: [
                 _searchField(),
-                if (_results.isNotEmpty) ...[
+                if (_hasSuggestions) ...[
                   const SizedBox(height: 6),
                   _suggestionList(),
                 ],
               ]),
+            ),
+
+          // Favoriten-Stern oben links (speichert die aktuelle Position)
+          if (widget.allowFavorite)
+            Positioned(
+              top: 22,
+              left: 14,
+              child: GestureDetector(
+                onTap: _saveFavorite,
+                child: Opacity(
+                  opacity: (_canSaveFavorite || _currentIsFavorite) ? 1.0 : 0.5,
+                  child: Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: skin.bgCard.withValues(alpha: 0.92),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: skin.glassBorder),
+                      boxShadow: [BoxShadow(color: skin.glassShadow, blurRadius: 12, offset: const Offset(0, 3))],
+                    ),
+                    child: Icon(
+                      _currentIsFavorite ? Icons.star_rounded : Icons.star_outline_rounded,
+                      size: 21,
+                      color: const Color(0xFFFFB347),
+                    ),
+                  ),
+                ),
+              ),
             ),
 
           // X rechts oben (schließt und verwirft)
@@ -926,7 +1409,7 @@ class _LocationFullscreenSheetState extends State<LocationFullscreenSheet> {
               child: Row(children: [
                 Expanded(
                   child: (_pickMode && !_moved)
-                      ? Text('Karte verschieben oder oben nach einem Ort suchen',
+                      ? Text(_pins.isNotEmpty ? 'Markierung antippen, um den Ort zu wählen' : 'Karte verschieben oder oben nach einem Ort suchen',
                           style: TextStyle(fontSize: 13.5, color: skin.surface(0.6)))
                       : Opacity(
                           opacity: _adjusting && _resolving ? 0.55 : 1.0,
@@ -937,12 +1420,14 @@ class _LocationFullscreenSheetState extends State<LocationFullscreenSheet> {
                 if (_adjusting)
                   _applyButton()
                 else ...[
-                  _circleButton(
-                    icon: Icons.navigation_outlined,
-                    color: skin.primary,
-                    onTap: () => MapsNavigator.navigate(context, skin: skin, loc: _start),
-                  ),
-                  const SizedBox(width: 8),
+                  if (widget.allowNavigate) ...[
+                    _circleButton(
+                      icon: Icons.navigation_outlined,
+                      color: skin.primary,
+                      onTap: () => MapsNavigator.navigate(context, skin: skin, loc: _start),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
                   _circleButton(
                     icon: Icons.location_on_outlined,
                     color: skin.deleteColor,

@@ -2,6 +2,9 @@
 // Wandelt Adresse, Ortsname, Maps-Link oder geteilten Maps-Text in ein
 // LocationInfo um. Wirft nie, alles mit Timeout, Ergebnis wird gecacht.
 
+import 'user_position.dart';
+import 'dart:io' as io;
+import 'dart:convert' as conv;
 import 'dart:async';
 import 'dart:math' as math;
 import 'dart:convert';
@@ -17,13 +20,33 @@ class PlaceSuggestion {
   final double lat;
   final double lng;
   final double zoom;
+  final String? street;
+  final String? postalCode;
+  final String? city;
+
+  /// true = konkreter Ort mit Namen (Geschäft, Sehenswürdigkeit), false = Adresse/Straße/Stadt
+  final bool named;
   const PlaceSuggestion({
     required this.title,
     this.subtitle,
     required this.lat,
     required this.lng,
     required this.zoom,
+    this.street,
+    this.postalCode,
+    this.city,
+    this.named = false,
   });
+
+  LocationInfo toLocationInfo() => LocationInfo(
+        rawInput: [title, subtitle].whereType<String>().where((e) => e.trim().isNotEmpty).join(', '),
+        name: named ? title : null,
+        street: street,
+        postalCode: postalCode,
+        city: city,
+        lat: lat,
+        lng: lng,
+      );
 }
 
 typedef _Addr = ({String? street, String? plz, String? city, double? lat, double? lng});
@@ -644,7 +667,191 @@ class LocationResolver {
   }
 
   /// Freitextsuche für die Kartenauswahl ("Berlin", "Hauptbahnhof Potsdam" …).
-  static Future<List<PlaceSuggestion>> searchPlaces(String query) async {
+  static Future<List<PlaceSuggestion>> searchPlaces(
+    String query, {
+    double? biasLat,
+    double? biasLng,
+    int max = 8,
+    bool nearOnly = false,
+  }) async {
+    final q = query.trim();
+    if (q.length < 2) return const [];
+    final bLat = biasLat ?? 52.4009;
+    final bLng = biasLng ?? 13.0592;
+    final key = '${q.toLowerCase()}|${bLat.toStringAsFixed(2)}|${bLng.toStringAsFixed(2)}|$max|$nearOnly';
+    final hit = _searchCache[key];
+    if (hit != null) return hit;
+
+    // Zwei Anfragen parallel: normal (Photon-Relevanz) + nur im Umkreis (~40 km)
+    const dLat = 0.35;
+    const dLng = 0.55;
+    final bbox = '${(bLng - dLng).toStringAsFixed(4)},${(bLat - dLat).toStringAsFixed(4)},'
+        '${(bLng + dLng).toStringAsFixed(4)},${(bLat + dLat).toStringAsFixed(4)}';
+    final parts = await Future.wait([
+      _photonSafe(q, bLat, bLng),
+      _photonSafe(q, bLat, bLng, bbox: bbox),
+    ]);
+
+    final toks = q.toLowerCase().split(RegExp(r'\s+')).where((t) => t.length >= 2).toList();
+    final merged = <PlaceSuggestion>[];
+    final seen = <String>{};
+    void addAll(Iterable<PlaceSuggestion> l) {
+      for (final s in l) {
+        final k = '${s.title.toLowerCase()}|${(s.subtitle ?? '').toLowerCase()}';
+        if (seen.add(k)) merged.add(s);
+      }
+    }
+
+    addAll(parts[0]);
+    // Umkreis-Treffer nur, wenn sie alle Suchwörter enthalten ("kino berlin" bekommt keine Potsdamer Kinos)
+    addAll(parts[1].where((s) {
+      final hay = '${s.title} ${s.subtitle ?? ''}'.toLowerCase();
+      return toks.every(hay.contains);
+    }));
+
+    var out = merged;
+    if (out.isEmpty) {
+      try {
+        out = await _searchPlacesNominatim(query);
+      } catch (_) {}
+    }
+    final ranked = _rank(out, bLat, bLng, max, nearOnly);
+    if (ranked.isNotEmpty) {
+      if (_searchCache.length > 80) _searchCache.clear();
+      _searchCache[key] = ranked;
+    }
+    return ranked;
+  }
+
+  static final Map<String, List<PlaceSuggestion>> _searchCache = {};
+  static io.HttpClient? _httpClient;
+  static io.HttpClient get _client => _httpClient ??= (io.HttpClient()
+    ..connectionTimeout = const Duration(seconds: 4)
+    ..idleTimeout = const Duration(seconds: 60));
+
+  static const _areaTypes = {'street', 'city', 'district', 'state', 'county', 'country', 'locality'};
+
+  /// Treffer im Umkreis (40 km) zuerst; sind alle nahen Treffer konkrete Orte, nach Entfernung sortiert.
+  static List<PlaceSuggestion> _rank(List<PlaceSuggestion> l, double lat, double lng, int max, bool nearOnly) {
+    double d(PlaceSuggestion s) => UserPosition.distanceM(lat, lng, s.lat, s.lng);
+    final near = l.where((s) => d(s) <= 40000).toList();
+    final far = l.where((s) => d(s) > 40000).toList();
+    if (near.isNotEmpty && near.every((s) => s.named)) {
+      near.sort((a, b) => d(a).compareTo(d(b)));
+    }
+    final out = (nearOnly && near.length >= 3) ? near : [...near, ...far];
+    return out.take(max).toList();
+  }
+
+  static Future<List<PlaceSuggestion>> _photonSafe(String q, double lat, double lng, {String? bbox}) async {
+    try {
+      return await _searchPhoton(q, lat, lng, bbox: bbox);
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  static Future<List<PlaceSuggestion>> _searchPhoton(String q, double lat, double lng, {String? bbox}) async {
+    final params = <String, String>{
+      'q': q,
+      'lang': 'de',
+      'limit': bbox == null ? '15' : '20',
+      'lat': lat.toStringAsFixed(5),
+      'lon': lng.toStringAsFixed(5),
+      'location_bias_scale': '0.5',
+    };
+    if (bbox != null) params['bbox'] = bbox;
+    final req = await _client.getUrl(Uri.https('photon.komoot.io', '/api/', params));
+    req.headers.set('User-Agent', 'de.marcel.optimes');
+    final resp = await req.close().timeout(const Duration(seconds: 5));
+    if (resp.statusCode != 200) {
+      await resp.drain<void>();
+      return const [];
+    }
+    final body = await resp.transform(conv.utf8.decoder).join().timeout(const Duration(seconds: 5));
+    final json = conv.jsonDecode(body);
+    final features = (json is Map ? json['features'] : null);
+    if (features is! List) return const [];
+
+    String? s(dynamic v) {
+      if (v is! String) return null;
+      final t = v.trim();
+      return t.isEmpty ? null : t;
+    }
+
+    final seen = <String>{};
+    final out = <PlaceSuggestion>[];
+    for (final f in features) {
+      if (f is! Map) continue;
+      final coords = (f['geometry'] is Map) ? f['geometry']['coordinates'] : null;
+      final p = f['properties'];
+      if (coords is! List || coords.length < 2 || p is! Map) continue;
+      final pLng = (coords[0] as num).toDouble();
+      final pLat = (coords[1] as num).toDouble();
+
+      final street = s(p['street']);
+      final nr = s(p['housenumber']);
+      final streetLine = street == null ? null : (nr == null ? street : '$street $nr');
+      final plz = s(p['postcode']);
+      final city = s(p['city']) ?? s(p['town']) ?? s(p['village']) ?? s(p['county']);
+      final district = s(p['district']);
+      final state = s(p['state']);
+      final type = s(p['type']) ?? '';
+      final name = s(p['name']);
+
+      final title = name ?? streetLine ?? city ?? state ?? s(p['country']);
+      if (title == null) continue;
+      final named = name != null && !_areaTypes.contains(type);
+
+      final plzCity = [plz, city].whereType<String>().join(' ');
+      final subParts = <String>[
+        if (name != null && streetLine != null) streetLine,
+        if (plzCity.isNotEmpty) plzCity,
+        if (plzCity.isEmpty && district != null) district,
+        if (plzCity.isEmpty && state != null && state != title) state,
+      ];
+      final sub = subParts.join(', ');
+      final subtitle = (sub.isEmpty || sub == title) ? null : sub;
+
+      final key = '${title.toLowerCase()}|${(subtitle ?? '').toLowerCase()}';
+      if (!seen.add(key)) continue;
+
+      double zoom;
+      switch (type) {
+        case 'country':
+          zoom = 5;
+          break;
+        case 'state':
+          zoom = 8;
+          break;
+        case 'county':
+        case 'city':
+        case 'district':
+        case 'locality':
+          zoom = 12;
+          break;
+        case 'street':
+          zoom = 16;
+          break;
+        default:
+          zoom = 17;
+      }
+      out.add(PlaceSuggestion(
+        title: title,
+        subtitle: subtitle,
+        lat: pLat,
+        lng: pLng,
+        zoom: zoom,
+        street: streetLine ?? (type == 'street' ? name : null),
+        postalCode: plz,
+        city: city,
+        named: named,
+      ));
+    }
+    return out;
+  }
+
+  static Future<List<PlaceSuggestion>> _searchPlacesNominatim(String query) async {
     final q = query.trim();
     if (q.length < 2) return const [];
     try {

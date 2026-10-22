@@ -47,6 +47,7 @@ import 'services/feature_flags.dart';
 import 'models/location_info.dart';
 import 'services/location_resolver.dart';
 import 'widgets/share_location_sheet.dart';
+import 'widgets/favorites_sheet.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TAB-DEFINITION — steuert Reihenfolge & Sichtbarkeit der Haupt-Tabs.
@@ -427,6 +428,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin, 
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    scheduleShowsPlan.addListener(_onPlanTabChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) => _checkTravelModeTz());
 
     _slideCtrl = AnimationController(
@@ -455,6 +457,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin, 
         if (files.isNotEmpty) {
           final path = files.first.path;
           if (path != null && path.toLowerCase().endsWith('.pdf')) {
+            ReceiveSharingIntent.instance.reset();
             dartio.File(path).readAsBytes().then((bytes) {
               WidgetsBinding.instance.addPostFrameCallback((_) {
                 if (bytes.isNotEmpty) {
@@ -478,6 +481,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin, 
         if (files.isNotEmpty) {
           final path = files.first.path;
           if (path != null && path.toLowerCase().endsWith('.pdf')) {
+            ReceiveSharingIntent.instance.reset();
             dartio.File(path).readAsBytes().then((bytes) {
               if (bytes.isNotEmpty) {
                 _handleSharedPdfWithBytes(path, bytes);
@@ -606,6 +610,7 @@ void didChangeAppLifecycleState(AppLifecycleState state) {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    scheduleShowsPlan.removeListener(_onPlanTabChanged);
     _cleanupTimer?.cancel();
     _intentSub?.cancel();
     _slideCtrl.dispose();
@@ -617,6 +622,10 @@ void didChangeAppLifecycleState(AppLifecycleState state) {
     _scheduleForeignView.dispose();
     _tasksShowingYear.dispose();
     super.dispose();
+  }
+
+  void _onPlanTabChanged() {
+    if (mounted) setState(() {});
   }
 
   Future<void> _checkTravelModeTz() async {
@@ -1432,6 +1441,15 @@ void didChangeAppLifecycleState(AppLifecycleState state) {
                                       },
                                     ),
                                     _Divider(),
+                                    _DropdownItem(
+                                      icon: Icons.star_outline_rounded,
+                                      label: 'Favoriten',
+                                      onTap: () {
+                                        _closeMenu();
+                                        showFavoritesSheet(context, skin: skin);
+                                      },
+                                    ),
+                                    _Divider(),
                                   ],
                                   if (_currentPage == _indexOfTab(_Tab.month)) ...[
                                     _DropdownItem(
@@ -1576,7 +1594,7 @@ void didChangeAppLifecycleState(AppLifecycleState state) {
                                   ),
                                 ),
                               ),
-                            if (_isOnSchedulePage && !readOnly)
+                            if (_isOnSchedulePage && !readOnly && !scheduleShowsPlan.value)
                               ValueListenableBuilder<bool>(
                                 valueListenable: _scheduleForeignView,
                                 builder: (context, isForeign, _) => GestureDetector(

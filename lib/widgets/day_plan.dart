@@ -12,6 +12,10 @@ import '../services/sync_service.dart';
 import '../models/location_info.dart';
 import '../services/location_resolver.dart';
 import 'location_actions.dart';
+import '../services/favorite_place_store.dart';
+import '../services/user_position.dart';
+import '../services/recent_places.dart';
+import 'favorite_suggestions.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MODEL
@@ -224,6 +228,7 @@ class _DayPlanItemSheetState extends State<DayPlanItemSheet> {
        _debounce?.cancel();
     _locationCtrl.removeListener(_onLocationChanged);
     _locFocus.removeListener(_onLocFocusChanged);
+    _suggDebounce?.cancel();
     _locationCtrl.dispose();
     _locFocus.dispose();
     _titleFocus.dispose();
@@ -249,6 +254,11 @@ class _DayPlanItemSheetState extends State<DayPlanItemSheet> {
     final jump = text.length - _prevLocLength;
     _prevLocLength = text.length;
     final looksPasted = jump > 6 || text.contains('\n') || text.contains('http');
+    if (looksPasted && _looksLikeLink(trimmed)) {
+      _clearSuggestions();
+    } else {
+      _scheduleSuggestions(trimmed);
+    }
     if (looksPasted && trimmed.isNotEmpty) {
       _debounce?.cancel();
       _debounce = Timer(const Duration(milliseconds: 500), () {
@@ -258,11 +268,27 @@ class _DayPlanItemSheetState extends State<DayPlanItemSheet> {
   }
 
   void _onLocFocusChanged() {
+    if (!_locFocus.hasFocus) {
+      _clearSuggestions();
+    } else {
+      unawaited(UserPosition.get());
+      _scheduleSuggestions(_locationCtrl.text.trim());
+    }
     // Beim Verlassen des Feldes auswerten
     if (!_locFocus.hasFocus) {
       _debounce?.cancel();
       _pending = _resolveLocation();
     }
+  }
+
+  /// Nur eingefügte Maps-Links und Koordinaten werden automatisch ausgewertet.
+  /// Getippter Text wird NICHT mehr auf einen Ort festgelegt (dafür gibt es die Vorschläge).
+  bool _looksLikeLink(String t) {
+    final l = t.toLowerCase();
+    if (l.contains('http://') || l.contains('https://') || l.contains('goo.gl/maps') || l.contains('maps.apple.com')) {
+      return true;
+    }
+    return RegExp(r'^-?\d{1,3}\.\d+\s*[,;]\s*-?\d{1,3}\.\d+$').hasMatch(t.trim());
   }
 
   Future<void> _resolveLocation() async {
@@ -276,6 +302,14 @@ class _DayPlanItemSheetState extends State<DayPlanItemSheet> {
         _resolving = false;
         _resolveFailed = false;
         _resolvedText = '';
+      });
+      return;
+    }
+    if (!_looksLikeLink(text)) {
+      if (!mounted) return;
+      setState(() {
+        _resolving = false;
+        _resolveFailed = false;
       });
       return;
     }
@@ -312,6 +346,322 @@ class _DayPlanItemSheetState extends State<DayPlanItemSheet> {
         _resolvedText = clean.trim();
       }
     });
+  }
+
+  // ── Ort: Vorschläge (Favoriten, zuletzt benutzt, Freitext – nach Standort gewichtet) ──
+  List<PlaceSuggestion> _placeSuggestions = [];
+  List<PlaceSuggestion> _recentSugg = [];
+  List<FavoritePlace> _favSugg = [];
+  bool _searchingPlaces = false;
+  Timer? _suggDebounce;
+  int _suggSeq = 0;
+  final GlobalKey _suggKey = GlobalKey();
+
+  void _clearSuggestions() {
+    _suggDebounce?.cancel();
+    _suggSeq++;
+    if (!mounted) return;
+    if (_placeSuggestions.isNotEmpty || _favSugg.isNotEmpty || _recentSugg.isNotEmpty || _searchingPlaces) {
+      setState(() {
+        _placeSuggestions = [];
+        _favSugg = [];
+        _recentSugg = [];
+        _searchingPlaces = false;
+      });
+    }
+  }
+
+  /// Liste über die Tastatur scrollen.
+  void _revealSuggestions() {
+    Future.delayed(const Duration(milliseconds: 120), () {
+      final ctx = _suggKey.currentContext;
+      if (!mounted || ctx == null || Scrollable.maybeOf(ctx) == null) return;
+      Scrollable.ensureVisible(
+        ctx,
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+        alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+      );
+    });
+  }
+
+  void _scheduleSuggestions(String q) {
+    _suggDebounce?.cancel();
+    if (!mounted) return;
+    if (!_locFocus.hasFocus || (q.isNotEmpty && q == _resolvedText)) {
+      _clearSuggestions();
+      return;
+    }
+    // Sofort: Favoriten (solange sie zum Eingegebenen passen) + bei leerem Feld zuletzt benutzte
+    final favs = FavoritePlaceStore.search(q, limit: q.isEmpty ? 5 : 4);
+    final recents = q.isEmpty ? RecentPlaces.all().take(5).toList() : <PlaceSuggestion>[];
+    setState(() {
+      _favSugg = favs;
+      _recentSugg = recents;
+      if (q.length < 3) {
+        _placeSuggestions = [];
+        _searchingPlaces = false;
+      }
+    });
+    _revealSuggestions();
+    if (q.length < 3) {
+      _suggSeq++;
+      return;
+    }
+    final seq = ++_suggSeq;
+    _suggDebounce = Timer(const Duration(milliseconds: 250), () async {
+      if (!mounted || seq != _suggSeq) return;
+      setState(() => _searchingPlaces = true);
+      final pos = await UserPosition.quick();
+      if (!mounted || seq != _suggSeq) return;
+      final r = await LocationResolver.searchPlaces(
+        q,
+        biasLat: pos?.lat ?? _loc?.lat,
+        biasLng: pos?.lng ?? _loc?.lng,
+      );
+      if (!mounted || seq != _suggSeq || !_locFocus.hasFocus) return;
+      setState(() {
+        _placeSuggestions = r;
+        _searchingPlaces = false;
+      });
+      _revealSuggestions();
+    });
+  }
+
+  String? _distText(double lat, double lng) {
+    final p = UserPosition.cached;
+    if (p == null) return null;
+    return UserPosition.formatDistance(UserPosition.distanceM(p.lat, p.lng, lat, lng));
+  }
+
+  void _resetSuggestionState() {
+    _debounce?.cancel();
+    _suggDebounce?.cancel();
+    _suggSeq++;
+    _resolveSeq++;
+  }
+
+  /// Favorit übernehmen: Name im Feld, Titel (falls leer) befüllen, Tastatur zu.
+  void _pickFavorite(FavoritePlace f) {
+    HapticFeedback.selectionClick();
+    _resetSuggestionState();
+    _suppressLocListener = true;
+    _locationCtrl.value = TextEditingValue(
+      text: f.name,
+      selection: TextSelection.collapsed(offset: f.name.length),
+    );
+    _suppressLocListener = false;
+    if (_titleCtrl.text.trim().isEmpty) _titleCtrl.text = f.name;
+    setState(() {
+      _favSugg = [];
+      _recentSugg = [];
+      _placeSuggestions = [];
+      _searchingPlaces = false;
+      _loc = f.toLocationInfo();
+      _resolving = false;
+      _resolveFailed = false;
+      _resolvedText = f.name.trim();
+      _prevLocLength = f.name.length;
+    });
+    FocusManager.instance.primaryFocus?.unfocus();
+    FavoritePlaceStore.touch(f.id);
+  }
+
+  Future<void> _pickSuggestion(PlaceSuggestion s) async {
+    HapticFeedback.selectionClick();
+    _resetSuggestionState();
+    final seq = _resolveSeq;
+    RecentPlaces.add(s);
+    final sub = (s.subtitle ?? '').trim();
+    final text = sub.isEmpty ? s.title : '${s.title}, $sub';
+    _suppressLocListener = true;
+    _locationCtrl.value = TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
+    );
+    _suppressLocListener = false;
+    // Titel füllen, wenn leer und der Treffer ein benannter Ort ist (z. B. "Rossmann")
+    if (_titleCtrl.text.trim().isEmpty && s.named) _titleCtrl.text = s.title;
+    setState(() {
+      _favSugg = [];
+      _recentSugg = [];
+      _placeSuggestions = [];
+      _searchingPlaces = false;
+      _loc = s.toLocationInfo();
+      _resolving = false;
+      _resolveFailed = false;
+      _resolvedText = text.trim();
+      _prevLocLength = text.length;
+    });
+    FocusManager.instance.primaryFocus?.unfocus();
+
+    // Adresse nur nachladen, wenn der Treffer keine mitgebracht hat
+    if (s.street != null || s.city != null) return;
+    final info = await LocationResolver.resolve(
+        '${s.lat.toStringAsFixed(6)}, ${s.lng.toStringAsFixed(6)}');
+    if (!mounted || seq != _resolveSeq || info == null) return;
+    setState(() {
+      _loc = LocationInfo(
+        rawInput: text,
+        name: s.named ? s.title : null,
+        street: info.street,
+        postalCode: info.postalCode,
+        city: info.city,
+        lat: s.lat,
+        lng: s.lng,
+      );
+    });
+  }
+
+  Future<void> _removeRecent(PlaceSuggestion p) async {
+    HapticFeedback.selectionClick();
+    await RecentPlaces.remove(p);
+    if (!mounted) return;
+    setState(() {
+      _recentSugg = _recentSugg
+          .where((e) => !((e.lat - p.lat).abs() < 1e-4 && (e.lng - p.lng).abs() < 1e-4))
+          .toList();
+    });
+  }
+
+  Widget _suggTile(
+    AppSkin skin, {
+    required IconData icon,
+    Color? iconColor,
+    required String title,
+    String? subtitle,
+    Widget? trailing,
+    required VoidCallback onTap,
+    required bool last,
+  }) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        decoration: BoxDecoration(
+          border: Border(
+            bottom: BorderSide(color: last ? Colors.transparent : skin.glassBorder, width: 0.5),
+          ),
+        ),
+        child: Row(children: [
+          Icon(icon, size: 18, color: iconColor ?? skin.primary),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: skin.textPrimary)),
+                if ((subtitle ?? '').isNotEmpty)
+                  Text(subtitle!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 11.5, color: skin.textMuted)),
+              ],
+            ),
+          ),
+          if (trailing != null) ...[const SizedBox(width: 8), trailing],
+        ]),
+      ),
+    );
+  }
+
+  Widget _buildPlaceSuggestions(AppSkin skin) {
+    final favs = _favSugg;
+    final recents = _recentSugg;
+    bool isFav(PlaceSuggestion p) => favs.any((f) =>
+        f.loc.hasCoords && (f.loc.lat! - p.lat).abs() < 1e-4 && (f.loc.lng! - p.lng).abs() < 1e-4);
+    final places = _placeSuggestions.where((p) => !isFav(p)).toList();
+    final total = favs.length + recents.length + places.length;
+    final tail = _searchingPlaces && places.isEmpty;
+    if (total == 0 && !tail) return const SizedBox(width: double.infinity);
+
+    var i = 0;
+    bool last() => (i++) == total - 1 && !tail;
+    Widget dist(double lat, double lng) {
+      final d = _distText(lat, lng);
+      return d == null
+          ? const SizedBox.shrink()
+          : Text(d, style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w500, color: skin.surface(0.45)));
+    }
+
+    final rows = <Widget>[
+      for (final f in favs)
+        _suggTile(skin,
+            icon: Icons.place_outlined,
+            title: f.name,
+            subtitle: f.addressLine,
+            trailing: const Icon(Icons.star_rounded, size: 18, color: Color(0xFFFFB347)),
+            onTap: () => _pickFavorite(f),
+            last: last()),
+      for (final p in recents)
+        _suggTile(skin,
+            icon: Icons.history_rounded,
+            iconColor: skin.surface(0.45),
+            title: p.title,
+            subtitle: p.subtitle,
+            trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+              dist(p.lat, p.lng),
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _removeRecent(p),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(8, 4, 0, 4),
+                  child: Icon(Icons.close_rounded, size: 18, color: skin.surface(0.4)),
+                ),
+              ),
+            ]),
+            onTap: () => _pickSuggestion(p),
+            last: last()),
+      for (final p in places)
+        _suggTile(skin,
+            icon: Icons.place_outlined,
+            title: p.title,
+            subtitle: p.subtitle,
+            trailing: dist(p.lat, p.lng),
+            onTap: () => _pickSuggestion(p),
+            last: last()),
+      if (tail)
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+          child: Row(children: [
+            SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(strokeWidth: 2, color: skin.surface(0.5)),
+            ),
+            const SizedBox(width: 10),
+            Text('Suche …', style: TextStyle(fontSize: 13, color: skin.surface(0.5))),
+          ]),
+        ),
+    ];
+
+    return Padding(
+      key: _suggKey,
+      padding: const EdgeInsets.only(top: 8),
+      child: Container(
+        width: double.infinity,
+        constraints: const BoxConstraints(maxHeight: 260),
+        decoration: BoxDecoration(
+          color: skin.surface(0.04),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: skin.glassBorder),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: NotificationListener<ScrollNotification>(
+          onNotification: (_) => true,
+          child: ListView(
+            padding: EdgeInsets.zero,
+            shrinkWrap: true,
+            physics: const BouncingScrollPhysics(),
+            children: rows,
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _buildLocationStatus(AppSkin skin) {
@@ -410,11 +760,17 @@ class _DayPlanItemSheetState extends State<DayPlanItemSheet> {
   /// Neue Position aus dem Karten-Vollbild übernehmen (Adresse oder Koordinaten).
   void _applyPickedLocation(LocationInfo info) {
     if (!mounted) return;
-    final clean = info.singleLine.isNotEmpty
+    final nm = (info.name ?? '').trim();
+    if (nm.isNotEmpty && _titleCtrl.text.trim().isEmpty) _titleCtrl.text = nm;
+    final favName = (info.favoriteId != null && (info.name ?? '').trim().isNotEmpty)
+        ? info.name!.trim()
+        : null;
+    final cleanAuto = info.singleLine.isNotEmpty
         ? info.singleLine
         : ((info.name ?? '').trim().isNotEmpty
             ? info.name!.trim()
             : '${info.lat!.toStringAsFixed(6)}, ${info.lng!.toStringAsFixed(6)}');
+    final clean = favName ?? cleanAuto;
     _debounce?.cancel();
     _resolveSeq++;
     _suppressLocListener = true;
@@ -433,6 +789,7 @@ class _DayPlanItemSheetState extends State<DayPlanItemSheet> {
   }
 
   void _clearLocation() {
+    _clearSuggestions();
     HapticFeedback.selectionClick();
     _debounce?.cancel();
     _resolveSeq++; // laufende Auswertung verwerfen
@@ -688,7 +1045,10 @@ class _DayPlanItemSheetState extends State<DayPlanItemSheet> {
                       duration: const Duration(milliseconds: 180),
                       curve: Curves.easeOut,
                       alignment: Alignment.topCenter,
-                                            child: _buildLocationStatus(skin),
+                                            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        _buildPlaceSuggestions(skin),
+                        _buildLocationStatus(skin),
+                      ]),
                     ),
 
                     const SizedBox(height: 14),

@@ -46,7 +46,7 @@ class WeatherData {
       if (weatherCode == 0) return '🌙';
       if (weatherCode <= 2) return '🌙';
       if (weatherCode == 3) return '☁️';
-      if (weatherCode <= 49) return '🌫️';
+      if (weatherCode <= 49) return '☁️';
       if (weatherCode <= 59) return '🌦️';
       if (weatherCode <= 69) return '🌧️';
       if (weatherCode <= 79) return '❄️';
@@ -59,7 +59,7 @@ class WeatherData {
     if (weatherCode == 0) return '☀️';
     if (weatherCode <= 2) return '⛅';
     if (weatherCode == 3) return '☁️';
-    if (weatherCode <= 49) return '🌫️';
+    if (weatherCode <= 49) return '☁️';
     if (weatherCode <= 59) return '🌦️';
     if (weatherCode <= 69) return '🌧️';
     if (weatherCode <= 79) return '❄️';

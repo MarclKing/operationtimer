@@ -346,9 +346,14 @@ Future<void> _showDuplicateDialog(ParsedSpokenTask parsed, String logRef) async 
       if (b.dueDate == null) return -1;
       return a.dueDate!.compareTo(b.dueDate!);
     }
-    final urgent = open.where((t) => t.isUrgent).toList()..sort(byDue);
-    final rest = open.where((t) => !t.isUrgent).toList()..sort(byDue);
-    return [...urgent, ...rest].take(limit).toList();
+    int byCreated(Task a, Task b) => a.createdAt.compareTo(b.createdAt);
+    final urgent = open.where((t) => t.isUrgent).toList()
+      ..sort((a, b) => TaskStore.compareManual(a, b, byCreated));
+    final dated = open.where((t) => !t.isUrgent && t.dueDate != null).toList()
+      ..sort((a, b) => TaskStore.compareManual(a, b, byDue));
+    final general = open.where((t) => !t.isUrgent && t.dueDate == null).toList()
+      ..sort((a, b) => TaskStore.compareManual(a, b, byCreated));
+    return [...urgent, ...dated, ...general].take(limit).toList();
   }
 
   bool get _hasScheduleThisMonth {
@@ -560,7 +565,13 @@ final box = Hive.box('einstellungen');
         if (todayEvents.isNotEmpty)
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
-            child: _EventStackKachel(skin: skin, items: todayEvents, now: _now, depth: stackDepth),
+            child: _EventStackKachel(
+              skin: skin,
+              items: todayEvents,
+              now: _now,
+              depth: stackDepth,
+              onChanged: () { if (mounted) setState(() {}); },
+            ),
           ),
 
         // ── Aufgaben-Kachel: wächst bis max. zur Navbar, scrollt intern ──
@@ -2438,11 +2449,13 @@ class _EventStackKachel extends StatefulWidget {
   final List<DayPlanItem> items;
   final DateTime now;
   final int depth;
+  final VoidCallback? onChanged;
   const _EventStackKachel({
     required this.skin,
     required this.items,
     required this.now,
     required this.depth,
+    this.onChanged,
   });
 
   @override
@@ -2527,6 +2540,23 @@ class _EventStackKachelState extends State<_EventStackKachel> with SingleTickerP
     });
   }
 
+  /// Vorderstes Ereignis löschen (gleicher DayPlanStore wie der Tagesplan im Schedule-Screen).
+  Future<void> _confirmDelete() async {
+    if (widget.items.isEmpty || _sel >= widget.items.length) return;
+    final it = widget.items[_sel];
+    HapticFeedback.mediumImpact();
+    final ok = await confirmDeleteDialog(
+      context: context,
+      skin: widget.skin,
+      title: 'Ereignis löschen',
+      message: '„${it.title}“ wird aus dem Tagesplan gelöscht.',
+    );
+    if (ok != true || !mounted) return;
+    final key = DateFormat('yyyy-MM-dd').format(widget.now);
+    await DayPlanStore.delete(key, it.id);
+    widget.onChanged?.call();
+  }
+
   Widget _slot(DayPlanItem it, double p,
       {double opacity = 1, double dy = 0, double angle = 0, bool hl = false}) {
     return Positioned(
@@ -2591,6 +2621,7 @@ class _EventStackKachelState extends State<_EventStackKachel> with SingleTickerP
 
     final stack = GestureDetector(
       behavior: HitTestBehavior.opaque,
+      onLongPress: _confirmDelete,
       onVerticalDragEnd: (d) {
         final vy = d.primaryVelocity ?? 0;
         if (vy < -120) {

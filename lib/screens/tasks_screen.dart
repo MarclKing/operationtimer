@@ -51,6 +51,7 @@ class Task {
   List<String> reminderOptionIds;
   String notes;
   bool isUrgent;
+  int? sortOrder;
 
   Task({
     required this.id,
@@ -64,6 +65,7 @@ class Task {
     List<String>? reminderOptionIds,
     this.notes = '',
     this.isUrgent = false,
+    this.sortOrder,
   })  : reminderTimes = reminderTimes ?? [],
         reminderOptionIds = reminderOptionIds ?? [];
 
@@ -101,6 +103,7 @@ class Task {
     'reminderOptionIds': reminderOptionIds,
     'notes': notes,
     'isUrgent': isUrgent,
+    if (sortOrder != null) 'sortOrder': sortOrder,
   };
 
   factory Task.fromJson(Map<String, dynamic> j) => Task(
@@ -115,6 +118,7 @@ class Task {
     reminderOptionIds: (j['reminderOptionIds'] as List?)?.map((e) => e.toString()).toList() ?? [],
     notes: j['notes'] as String? ?? '',
     isUrgent: j['isUrgent'] as bool? ?? false,
+    sortOrder: (j['sortOrder'] as num?)?.toInt(),
   );
 }
 
@@ -197,6 +201,40 @@ class TaskStore {
     all.removeWhere((t) => t.id == id);
     saveAll(all);
     SyncService.instance.pushTask(id);
+    _notifyChanged();
+  }
+
+  /// Manuelle Reihenfolge zuerst (sortOrder), sonst [fallback].
+  static int compareManual(Task a, Task b, int Function(Task, Task) fallback) {
+    final ao = a.sortOrder, bo = b.sortOrder;
+    if (ao != null && bo != null) {
+      final c = ao.compareTo(bo);
+      if (c != 0) return c;
+    } else if (ao != null) {
+      return -1;
+    } else if (bo != null) {
+      return 1;
+    }
+    return fallback(a, b);
+  }
+
+  /// Speichert die neue Reihenfolge eines Abschnitts (Index = sortOrder).
+  static void reorder(List<Task> ordered) {
+    final all = loadAllRaw();
+    final changed = <String>[];
+    for (int i = 0; i < ordered.length; i++) {
+      final idx = all.indexWhere((t) => t.id == ordered[i].id);
+      if (idx == -1) continue;
+      if (all[idx].sortOrder != i) {
+        all[idx].sortOrder = i;
+        changed.add(all[idx].id);
+      }
+    }
+    if (changed.isEmpty) return;
+    saveAll(all);
+    for (final id in changed) {
+      SyncService.instance.pushTask(id);
+    }
     _notifyChanged();
   }
 
@@ -316,19 +354,19 @@ class TasksScreenState extends State<TasksScreen> with TickerProviderStateMixin 
 
   List<Task> get _urgentTasks {
     final list = _tasks.where((t) => t.isUrgent && !t.done).toList();
-    list.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    list.sort((a, b) => TaskStore.compareManual(a, b, (x, y) => x.createdAt.compareTo(y.createdAt)));
     return list;
   }
 
   List<Task> get _deadlineTasks {
     final list = _tasks.where((t) => t.hasDeadline && !t.done && !t.isUrgent).toList();
-    list.sort((a, b) => a.dueDate!.compareTo(b.dueDate!));
+    list.sort((a, b) => TaskStore.compareManual(a, b, (x, y) => x.dueDate!.compareTo(y.dueDate!)));
     return list;
   }
 
   List<Task> get _generalTasks {
     final list = _tasks.where((t) => !t.hasDeadline && !t.done && !t.isUrgent).toList();
-    list.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    list.sort((a, b) => TaskStore.compareManual(a, b, (x, y) => x.createdAt.compareTo(y.createdAt)));
     return list;
   }
 
@@ -683,61 +721,108 @@ class TasksScreenState extends State<TasksScreen> with TickerProviderStateMixin 
     );
   }
 
+  void _onReorder(List<Task> list, int oldIndex, int newIndex) {
+    if (newIndex > oldIndex) newIndex -= 1;
+    if (oldIndex == newIndex) return;
+    final moved = List<Task>.of(list);
+    final t = moved.removeAt(oldIndex);
+    moved.insert(newIndex, t);
+    setState(() {
+      for (int i = 0; i < moved.length; i++) {
+        moved[i].sortOrder = i;
+      }
+    });
+    TaskStore.reorder(moved);
+  }
+
   List<Widget> _buildListItems() {
     final items = <Widget>[];
+    final skin = AppTheme.of(context);
+    final urgent = _urgentTasks;
+    final deadline = _deadlineTasks;
+    final general = _generalTasks;
+    final done = _doneTasks;
 
-    void addTaskCard(Task t, {bool isUrgent = false}) {
-      _taskCardKeys.putIfAbsent(t.id, () => GlobalKey<_TaskCardState>());
-      items.add(Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        child: _TaskCard(
-          key: _taskCardKeys[t.id],
-          task: t,
-          skin: AppTheme.of(context),
-          externallyOpenKey: _openSwipedId,
-          onCardSwiped: _onCardSwiped,
-          onToggleDone: () => _toggleDone(t),
-          isInlineEditing: _inlineEditId == t.id,
-          onStartInlineEdit: () => _startInlineEdit(t.id),
-          onCommitInlineEdit: (v) => _commitInlineEdit(t, v),
-          onFullEdit: () => _editTaskFull(t),
-          onDelete: () => _deleteTaskWithAnimation(t),
-          isUrgent: isUrgent,
-        ),
-      ));
+    Widget cardFor(Task t, {bool isUrgent = false, bool keyed = true}) {
+      if (keyed) _taskCardKeys.putIfAbsent(t.id, () => GlobalKey<_TaskCardState>());
+      return _TaskCard(
+        key: keyed ? _taskCardKeys[t.id] : null,
+        task: t,
+        skin: skin,
+        externallyOpenKey: _openSwipedId,
+        onCardSwiped: _onCardSwiped,
+        onToggleDone: () => _toggleDone(t),
+        isInlineEditing: _inlineEditId == t.id,
+        onStartInlineEdit: () => _startInlineEdit(t.id),
+        onCommitInlineEdit: (v) => _commitInlineEdit(t, v),
+        onFullEdit: () => _editTaskFull(t),
+        onDelete: () => _deleteTaskWithAnimation(t),
+        isUrgent: isUrgent,
+      );
     }
 
-    final skin = AppTheme.of(context);
+    // Verschieben nur innerhalb eines Abschnitts: jeder Abschnitt ist eine eigene Liste.
+    Widget reorderableSection(List<Task> list, {bool isUrgent = false}) {
+      return ReorderableListView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        buildDefaultDragHandles: false,
+        clipBehavior: Clip.none,
+        padding: EdgeInsets.zero,
+        itemCount: list.length,
+        proxyDecorator: (child, index, animation) {
+          if (index < 0 || index >= list.length) return child;
+          return _WigglingLift(
+            animation: animation,
+            child: cardFor(list[index], isUrgent: isUrgent, keyed: false),
+          );
+        },
+        onReorderStart: (_) {
+          HapticFeedback.mediumImpact();
+          if (_openSwipedId != null) setState(() => _openSwipedId = null);
+        },
+        onReorderEnd: (_) => HapticFeedback.lightImpact(),
+        onReorder: (o, n) => _onReorder(list, o, n),
+        itemBuilder: (context, i) {
+          final t = list[i];
+          return ReorderableDelayedDragStartListener(
+            key: ValueKey('task_${t.id}'),
+            index: i,
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: cardFor(t, isUrgent: isUrgent),
+            ),
+          );
+        },
+      );
+    }
 
-    if (_urgentTasks.isNotEmpty) {
+    if (urgent.isNotEmpty) {
       items.add(_UrgentSectionHeader(skin: skin));
       items.add(const SizedBox(height: 10));
-      for (final t in _urgentTasks) {
-        addTaskCard(t, isUrgent: true);
-      }
+      items.add(reorderableSection(urgent, isUrgent: true));
       items.add(const SizedBox(height: 18));
     }
-    if (_deadlineTasks.isNotEmpty) {
+    if (deadline.isNotEmpty) {
       items.add(_SectionHeader(icon: Icons.event_outlined, label: 'MIT FRIST', skin: skin));
       items.add(const SizedBox(height: 10));
-      for (final t in _deadlineTasks) {
-        addTaskCard(t);
-      }
+      items.add(reorderableSection(deadline));
       items.add(const SizedBox(height: 18));
     }
-    if (_generalTasks.isNotEmpty) {
+    if (general.isNotEmpty) {
       items.add(_SectionHeader(icon: Icons.notes_outlined, label: 'ALLGEMEIN', skin: skin));
       items.add(const SizedBox(height: 10));
-      for (final t in _generalTasks) {
-        addTaskCard(t);
-      }
+      items.add(reorderableSection(general));
       items.add(const SizedBox(height: 18));
     }
-    if (_doneTasks.isNotEmpty) {
+    if (done.isNotEmpty) {
       items.add(_SectionHeader(icon: Icons.check_circle_outline, label: 'ERLEDIGT', skin: skin, muted: true));
       items.add(const SizedBox(height: 10));
-      for (final t in _doneTasks) {
-        addTaskCard(t);
+      for (final t in done) {
+        items.add(Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: cardFor(t),
+        ));
       }
     }
 
@@ -781,7 +866,7 @@ class TasksScreenState extends State<TasksScreen> with TickerProviderStateMixin 
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const SizedBox(height: 50),
+                    SizedBox(height: _calendarMode ? 50 : 12),
                     if (!(_calendarMode && _calendarShowingYear)) ...[
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -1701,6 +1786,67 @@ class _EntryDraftBannerState extends State<_EntryDraftBanner>
           ]),
         ),
       ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WACKELNDE, ANGEHOBENE KARTE (während des Verschiebens)
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _WigglingLift extends StatefulWidget {
+  final Animation<double> animation;
+  final Widget child;
+  const _WigglingLift({required this.animation, required this.child});
+
+  @override
+  State<_WigglingLift> createState() => _WigglingLiftState();
+}
+
+class _WigglingLiftState extends State<_WigglingLift> with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 120))
+      ..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: Listenable.merge([_ctrl, widget.animation]),
+      builder: (context, child) {
+        final lift = Curves.easeOut.transform(widget.animation.value.clamp(0.0, 1.0));
+        final wobble = (_ctrl.value * 2 - 1) * 0.011 * lift;
+        return Transform.scale(
+          scale: 1.0 + 0.03 * lift,
+          child: Transform.rotate(
+            angle: wobble,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: _kCardRadius,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.30 * lift),
+                    blurRadius: 20,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: child,
+            ),
+          ),
+        );
+      },
+      child: Material(type: MaterialType.transparency, child: widget.child),
     );
   }
 }

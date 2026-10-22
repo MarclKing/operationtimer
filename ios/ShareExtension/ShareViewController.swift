@@ -35,26 +35,9 @@ class ShareViewController: UIViewController {
     // MARK: - PDF (unverändert)
 
     func handleSharedPdf(attachment: NSItemProvider, typeIdentifier pdfType: String) {
-        // open() wird JETZT SOFORT ausgelöst, sobald klar ist, dass ein
-        // PDF geteilt wird — statt erst NACH dem asynchronen Laden+Speichern
-        // der Datei. Datei-Verarbeitung läuft PARALLEL dazu.
-        if let appURL = URL(string: "optimes://shared-pdf") {
-            DispatchQueue.main.async {
-                self.extensionContext?.open(appURL) { success in
-                    if success {
-                        print("✅ Share Extension: extensionContext.open() ERFOLGREICH (früh ausgelöst)")
-                    } else {
-                        print("❌ Share Extension: extensionContext.open() fehlgeschlagen")
-                    }
-                }
-            }
-        } else {
-            print("❌ Share Extension: Konnte optimes://shared-pdf URL nicht erstellen")
-        }
-
         attachment.loadItem(forTypeIdentifier: pdfType, options: nil) { data, error in
             var pdfData: Data?
-            var fileName: String = "dienstplan.pdf"
+            var fileName = "dienstplan.pdf"
 
             if let url = data as? URL {
                 fileName = url.lastPathComponent
@@ -63,32 +46,30 @@ class ShareViewController: UIViewController {
                 pdfData = rawData
             }
 
-            if let bytes = pdfData, !bytes.isEmpty {
-                let defaults = UserDefaults(suiteName: AppGroup.id)
-                let containerURL = FileManager.default
-                    .containerURL(forSecurityApplicationGroupIdentifier: AppGroup.id)
-
-                if let containerURL {
-                    let pendingURL = containerURL.appendingPathComponent("pending_dienstplan.pdf")
-                    do {
-                        try FileManager.default.createDirectory(
-                            at: containerURL,
-                            withIntermediateDirectories: true
-                        )
-                        try bytes.write(to: pendingURL, options: .atomic)
-                        defaults?.set(fileName, forKey: "PendingPdfName")
-                        defaults?.synchronize()
-                    } catch {
-                        print("❌ Share Extension: PDF konnte nicht im App-Group-Container gespeichert werden: \(error)")
-                    }
-                } else {
-                    print("❌ Share Extension: Kein App-Group-Container verfügbar")
+            var saved = false
+            if let bytes = pdfData, !bytes.isEmpty,
+               let containerURL = FileManager.default
+                   .containerURL(forSecurityApplicationGroupIdentifier: AppGroup.id) {
+                let pendingURL = containerURL.appendingPathComponent("pending_dienstplan.pdf")
+                do {
+                    try FileManager.default.createDirectory(at: containerURL, withIntermediateDirectories: true)
+                    try bytes.write(to: pendingURL, options: .atomic)
+                    let defaults = UserDefaults(suiteName: AppGroup.id)
+                    defaults?.set(fileName, forKey: "PendingPdfName")
+                    defaults?.synchronize()
+                    saved = true
+                } catch {
+                    print("❌ Share Extension: PDF speichern fehlgeschlagen: \(error)")
                 }
             }
 
-            // completeRequest() erst NACH dem Datei-Schreiben, damit die Extension
-            // nicht beendet wird, bevor die Datei im App-Group-Container liegt.
-            self.completeRequest()
+            DispatchQueue.main.async {
+                guard saved else { self.completeRequest(); return }
+                // Datei liegt bereit → App öffnen (mit Responder-Chain-Fallback), danach schließen
+                self.openMainApp(urlString: "optimes://shared-pdf") {
+                    self.completeRequest()
+                }
+            }
         }
     }
 

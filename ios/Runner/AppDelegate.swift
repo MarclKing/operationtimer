@@ -114,12 +114,9 @@ import workmanager_apple     // NEU
         return
     }
     let pdfURL = containerURL.appendingPathComponent("pending_dienstplan.pdf")
-    let workingURL = containerURL.appendingPathComponent("pending_dienstplan_processing.pdf")
+    let workingURL = containerURL.appendingPathComponent("pending_dienstplan_processing_\(UUID().uuidString).pdf")
 
     do {
-        if FileManager.default.fileExists(atPath: workingURL.path) {
-            try? FileManager.default.removeItem(at: workingURL)
-        }
         try FileManager.default.moveItem(at: pdfURL, to: workingURL)
     } catch {
         // NEU: Die Share Extension schreibt die Datei jetzt PARALLEL zum
@@ -145,12 +142,21 @@ import workmanager_apple     // NEU
             defaults?.synchronize()
         }
 
-        navChannel.invokeMethod("openSharedPdf", arguments: [
-            "path": workingURL.path,
-            "fileName": fileName
-        ]) { _ in
-            cleanup()
+        func sendPdf(_ left: Int) {
+            navChannel.invokeMethod("openSharedPdf", arguments: [
+                "path": workingURL.path,
+                "fileName": fileName
+            ]) { result in
+                // Kaltstart: Dart-Handler evtl. noch nicht registriert → erneut versuchen,
+                // Datei NICHT löschen.
+                if let r = result as? NSObject, r === FlutterMethodNotImplemented, left > 0 {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { sendPdf(left - 1) }
+                } else {
+                    cleanup()
+                }
+            }
         }
+        sendPdf(8)
 
         // Fallback: falls die Dart-Seite aus irgendeinem Grund nie antwortet
         // (z.B. Hot-Reload währenddessen), spätestens nach 10s aufräumen.

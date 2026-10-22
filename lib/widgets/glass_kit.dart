@@ -357,7 +357,7 @@ class GlassStatCard extends StatelessWidget {
         child: GlassBlur(
           sigma: 10,
           child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 9),
+            padding: const EdgeInsets.symmetric(vertical: 5),
             decoration: BoxDecoration(
               color: color.withValues(alpha: skin.isLight ? 0.10 : 0.08),
               borderRadius: BorderRadius.circular(12),
@@ -1831,29 +1831,17 @@ class GlassSwipeCardState extends State<GlassSwipeCard>
 //   )
 // ─────────────────────────────────────────────────────────────────────────────
 
-class GlassNavCard extends StatelessWidget {
-  /// Wird beim Tap auf den mittleren Bereich ausgelöst (z. B. Picker öffnen).
+class GlassNavCard extends StatefulWidget {
   final VoidCallback? onTap;
-
-  /// Wird beim Doppeltap ausgelöst (z. B. zurück zu Heute/aktuellem Monat).
   final VoidCallback? onDoubleTap;
-
-  /// Linker Chevron-Tap.
   final VoidCallback onPrevious;
-
-  /// Rechter Chevron-Tap.
   final VoidCallback onNext;
-
-  /// Wird beim horizontalen Wischen ausgelöst (positiv = rechts = zurück).
   final void Function(double velocity)? onSwipe;
 
-  /// Wenn true, wird der Border in primary-Farbe dargestellt (z. B. "Heute").
+  /// true = blaue Linie (z. B. "Heute"). Sie wandert beim Ein-/Ausblenden
+  /// von oben Mitte einmal rund um die Karte (wie eine Schlange).
   final bool highlighted;
-
-  /// Der zentrierte Inhalt zwischen den Chevrons.
   final Widget child;
-
-  /// Höhe der Card. Standard 52 passt für einzeiligen Text.
   final double height;
 
   const GlassNavCard({
@@ -1869,97 +1857,168 @@ class GlassNavCard extends StatelessWidget {
   });
 
   @override
+  State<GlassNavCard> createState() => _GlassNavCardState();
+}
+
+class _GlassNavCardState extends State<GlassNavCard> with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  late final Animation<double> _anim;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 480),
+      value: widget.highlighted ? 1.0 : 0.0,
+    );
+    _anim = CurvedAnimation(parent: _ctrl, curve: Curves.easeInOutCubic);
+  }
+
+  @override
+  void didUpdateWidget(covariant GlassNavCard old) {
+    super.didUpdateWidget(old);
+    if (old.highlighted != widget.highlighted) {
+      if (widget.highlighted) {
+        _ctrl.forward();
+      } else {
+        _ctrl.reverse();
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final skin = AppTheme.of(context);
     final br = BorderRadius.circular(20);
 
     return GestureDetector(
-      onHorizontalDragEnd: onSwipe == null
+      onHorizontalDragEnd: widget.onSwipe == null
           ? null
-          : (d) => onSwipe!(d.primaryVelocity ?? 0),
+          : (d) => widget.onSwipe!(d.primaryVelocity ?? 0),
       child: ClipRRect(
         borderRadius: br,
         child: GlassBlur(
           sigma: skin.glassBlur,
           child: Container(
-            height: height,
+            height: widget.height,
             decoration: BoxDecoration(
               color: skin.isLight
                   ? Colors.white.withValues(alpha: skin.glassOpacity)
                   : skin.bgCard.withValues(alpha: skin.glassOpacity),
               borderRadius: br,
-              border: Border.all(
-                color: highlighted
-                    ? skin.primary.withValues(alpha: 0.45)
-                    : skin.glassBorder,
-                width: highlighted ? 1.5 : 1.0,
-              ),
+              border: Border.all(color: skin.glassBorder, width: 1.0),
               boxShadow: [
+                BoxShadow(color: skin.glassShadow, blurRadius: 24, offset: const Offset(0, 6)),
                 BoxShadow(
-                    color: skin.glassShadow,
-                    blurRadius: 24,
-                    offset: const Offset(0, 6)),
-                BoxShadow(
-                    color: skin.glassHighlight,
-                    blurRadius: 0,
-                    spreadRadius: -1,
-                    offset: const Offset(0, 1)),
+                    color: skin.glassHighlight, blurRadius: 0, spreadRadius: -1, offset: const Offset(0, 1)),
               ],
             ),
-            child: Row(
-              children: [
-                // Linker Chevron
-                GestureDetector(
-                  onTap: onPrevious,
-                  child: SizedBox(
-                    width: 44,
-                    height: double.infinity,
-                    child: Center(
-                      child: Icon(
-                        Icons.chevron_left,
-                        size: 22,
-                        color: skin.surface(0.5),
-                      ),
-                    ),
-                  ),
-                ),
-
-                // Mittlerer Inhalt
-                Expanded(
-                  child: GestureDetector(
-                    onTap: onTap,
-                    onDoubleTap: onDoubleTap,
-                    behavior: HitTestBehavior.opaque,
-                    child: Container(
+            child: Stack(fit: StackFit.expand, children: [
+              Row(
+                children: [
+                  GestureDetector(
+                    onTap: widget.onPrevious,
+                    child: SizedBox(
+                      width: 44,
                       height: double.infinity,
-                      alignment: Alignment.center,
-                      child: child,
+                      child: Center(child: Icon(Icons.chevron_left, size: 22, color: skin.surface(0.5))),
                     ),
                   ),
-                ),
-
-                // Rechter Chevron
-                GestureDetector(
-                  onTap: onNext,
-                  child: SizedBox(
-                    width: 44,
-                    height: double.infinity,
-                    child: Center(
-                      child: Icon(
-                        Icons.chevron_right,
-                        size: 22,
-                        color: skin.surface(0.5),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: widget.onTap,
+                      onDoubleTap: widget.onDoubleTap,
+                      behavior: HitTestBehavior.opaque,
+                      child: Container(
+                        height: double.infinity,
+                        alignment: Alignment.center,
+                        child: widget.child,
                       ),
                     ),
                   ),
+                  GestureDetector(
+                    onTap: widget.onNext,
+                    child: SizedBox(
+                      width: 44,
+                      height: double.infinity,
+                      child: Center(child: Icon(Icons.chevron_right, size: 22, color: skin.surface(0.5))),
+                    ),
+                  ),
+                ],
+              ),
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: CustomPaint(
+                    painter: _SnakeRingPainter(anim: _anim, color: skin.primary, radius: 20),
+                  ),
                 ),
-              ],
-            ),
+              ),
+            ]),
           ),
         ),
       ),
     );
   }
+}
+
+/// Zeichnet die blaue Randlinie als "Schlange": Kopf wandert ab oben Mitte
+/// im Uhrzeigersinn, der Schwanz blendet aus; am Ende ist der Ring geschlossen.
+/// Rückwärts läuft derselbe Ablauf umgekehrt.
+class _SnakeRingPainter extends CustomPainter {
+  final Animation<double> anim;
+  final Color color;
+  final double radius;
+  _SnakeRingPainter({required this.anim, required this.color, required this.radius})
+      : super(repaint: anim);
+
+  Path _ring(Size s, double r, double inset) {
+    final l = inset, t = inset, rt = s.width - inset, b = s.height - inset;
+    return Path()
+      ..moveTo(s.width / 2, t)
+      ..lineTo(rt - r, t)
+      ..arcToPoint(Offset(rt, t + r), radius: Radius.circular(r))
+      ..lineTo(rt, b - r)
+      ..arcToPoint(Offset(rt - r, b), radius: Radius.circular(r))
+      ..lineTo(l + r, b)
+      ..arcToPoint(Offset(l, b - r), radius: Radius.circular(r))
+      ..lineTo(l, t + r)
+      ..arcToPoint(Offset(l + r, t), radius: Radius.circular(r))
+      ..lineTo(s.width / 2, t);
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final t = anim.value.clamp(0.0, 1.0);
+    if (t <= 0 || size.isEmpty) return;
+    final metric = _ring(size, radius, 0.75).computeMetrics().first;
+    final total = metric.length;
+    final head = t * total;
+    final len = total * (0.3 + 0.7 * t);
+    final start = (head - len).clamp(0.0, total);
+    const n = 48;
+    final fade = 1.0 - t * t; // am Ende gleichmäßig, mittendrin mit auslaufendem Schwanz
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5
+      ..strokeCap = StrokeCap.butt;
+    for (int i = 0; i < n; i++) {
+      final a = start + (head - start) * i / n;
+      final b = start + (head - start) * (i + 1) / n;
+      final frac = (i + 1) / n;
+      paint.color = color.withValues(alpha: 0.45 * (1 - (1 - frac) * fade));
+      canvas.drawPath(metric.extractPath(a, b), paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _SnakeRingPainter old) => old.color != color || old.radius != radius;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2467,4 +2526,263 @@ double? _popupCap(double? configured, double rawHeight, double visibleHeight) {
   final avail = visibleHeight - 60 - 32;
   final want = configured != null && configured < rawHeight ? configured : rawHeight;
   return want <= avail ? configured : avail;
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GLASS TAB SWITCHER — exakt der blaue Umschalter aus der Zeiterfassung
+// ─────────────────────────────────────────────────────────────────────────────
+
+class GlassTabItem {
+  final String label;
+  final IconData icon;
+  /// Optionales Overlay (z. B. schräger BETA-Sticker) an der oberen rechten Ecke.
+  final Widget? badge;
+  const GlassTabItem({required this.label, required this.icon, this.badge});
+}
+
+class GlassTabSwitcher extends StatefulWidget {
+  final int index;
+  final List<GlassTabItem> items;
+  final ValueChanged<int> onChanged;
+
+  /// Breite jeder Kachel — überall gleich (Arbeitszeit + Organisation).
+  final double segmentWidth;
+  const GlassTabSwitcher({
+    super.key,
+    required this.index,
+    required this.items,
+    required this.onChanged,
+    this.segmentWidth = 156,
+  });
+
+  @override
+  State<GlassTabSwitcher> createState() => _GlassTabSwitcherState();
+}
+
+class _GlassTabSwitcherState extends State<GlassTabSwitcher> with SingleTickerProviderStateMixin {
+  // Langsam los, schnell in der Mitte, sanft am Ende, kleiner Überschwinger (Apple-Feeling)
+  static const Curve _curve = Cubic(0.45, 0.0, 0.2, 1.25);
+  late final AnimationController _ctrl;
+  late double _from;
+  late double _to;
+
+  double get _pos => _from + (_to - _from) * _curve.transform(_ctrl.value);
+
+  @override
+  void initState() {
+    super.initState();
+    _from = _to = widget.index.toDouble();
+    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 430));
+  }
+
+  @override
+  void didUpdateWidget(covariant GlassTabSwitcher old) {
+    super.didUpdateWidget(old);
+    if (old.index != widget.index) {
+      _from = _pos;
+      _to = widget.index.toDouble();
+      _ctrl.forward(from: 0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final skin = AppTheme.of(context);
+    final w = widget.segmentWidth;
+    final n = widget.items.length;
+
+    final inner = SizedBox(
+      width: w * n,
+      height: 40,
+      child: AnimatedBuilder(
+        animation: _ctrl,
+        builder: (context, _) {
+          final pos = _pos;
+          return Stack(clipBehavior: Clip.none, children: [
+            Positioned(
+              left: pos * w,
+              top: 0,
+              bottom: 0,
+              width: w,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: skin.primary.withValues(alpha: 0.22),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: skin.primary.withValues(alpha: 0.45), width: 1.5),
+                ),
+                child: Align(
+                  alignment: Alignment.bottomCenter,
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Container(
+                      width: 26,
+                      height: 2,
+                      decoration: BoxDecoration(
+                        color: skin.primary,
+                        borderRadius: BorderRadius.circular(1),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            for (int i = 0; i < n; i++)
+              Positioned(left: i * w, top: 0, bottom: 0, width: w, child: _segment(skin, i)),
+          ]);
+        },
+      ),
+    );
+
+    final box = Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: skin.isLight
+            ? Colors.white.withValues(alpha: skin.glassOpacity)
+            : skin.bgCard.withValues(alpha: skin.glassOpacity),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: skin.glassBorder, width: 1.0),
+        boxShadow: [
+          BoxShadow(color: skin.glassShadow, blurRadius: 24, offset: const Offset(0, 6)),
+          BoxShadow(color: skin.glassHighlight, blurRadius: 0, spreadRadius: -1, offset: const Offset(0, 1)),
+        ],
+      ),
+      child: inner,
+    );
+    final core = kGlassBlurEnabled
+        ? ClipRRect(
+            borderRadius: BorderRadius.circular(18),
+            child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: skin.glassBlur, sigmaY: skin.glassBlur), child: box),
+          )
+        : box;
+    return Center(child: core);
+  }
+
+  Widget _segment(AppSkin skin, int i) {
+    final it = widget.items[i];
+    final isActive = i == widget.index;
+    final color = isActive ? skin.primary : skin.surface(0.4);
+    return Stack(clipBehavior: Clip.none, children: [
+      Positioned.fill(
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () {
+            if (!isActive) {
+              HapticFeedback.selectionClick();
+              widget.onChanged(i);
+            }
+          },
+          child: Center(
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(it.icon, size: 15, color: color),
+              const SizedBox(width: 6),
+              AnimatedDefaultTextStyle(
+                duration: const Duration(milliseconds: 220),
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: isActive ? FontWeight.w700 : FontWeight.w600,
+                  color: color,
+                ),
+                child: Text(it.label),
+              ),
+            ]),
+          ),
+        ),
+      ),
+      if (it.badge != null) Positioned(right: -6, top: -6, child: IgnorePointer(child: it.badge!)),
+    ]);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GLASS MONTH/DAY LABEL — Inhalt der Picker-Kachel, animiert Monat ⇄ Tag.
+// Der Rahmen (GlassNavCard) bleibt stehen, nur der Inhalt wechselt:
+// "Oktober 2026" schrumpft leicht und gleitet nach rechts, davor blendet
+// "Donnerstag, 22. " ein und darüber das kleine HEUTE/DATUM. Rückwärts genauso.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class GlassMonthDayLabel extends StatelessWidget {
+  final AppSkin skin;
+  final bool isDay;
+  final String prefix;
+  final String suffix;
+  final String topLabel;
+  final Color topColor;
+  final bool showChevron;
+  const GlassMonthDayLabel({
+    super.key,
+    required this.skin,
+    required this.isDay,
+    required this.prefix,
+    required this.suffix,
+    required this.topLabel,
+    required this.topColor,
+    this.showChevron = true,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(end: isDay ? 1.0 : 0.0),
+      duration: const Duration(milliseconds: 240),
+      curve: Curves.easeOutCubic,
+      builder: (context, t, _) {
+        final st = TextStyle(fontSize: 16.0 - 3.0 * t, fontWeight: FontWeight.w600, color: skin.textPrimary);
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            ClipRect(
+              child: Align(
+                heightFactor: t,
+                child: Opacity(
+                  opacity: t.clamp(0.0, 1.0),
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 2),
+                    child: Text(topLabel,
+                        style: TextStyle(
+                            fontSize: 9, fontWeight: FontWeight.w700, color: topColor, letterSpacing: 1.2)),
+                  ),
+                ),
+              ),
+            ),
+            Row(mainAxisSize: MainAxisSize.min, children: [
+              ClipRect(
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  widthFactor: t,
+                  child: Opacity(
+                    opacity: t.clamp(0.0, 1.0),
+                    child: Text(prefix, style: st, maxLines: 1, softWrap: false),
+                  ),
+                ),
+              ),
+              Flexible(child: Text(suffix, style: st, maxLines: 1, overflow: TextOverflow.ellipsis)),
+              if (showChevron)
+                ClipRect(
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    widthFactor: 1.0 - t,
+                    child: Opacity(
+                      opacity: (1.0 - t).clamp(0.0, 1.0),
+                      child: Padding(
+                        padding: const EdgeInsets.only(left: 6),
+                        child: Icon(Icons.expand_more, color: skin.surface(0.4), size: 18),
+                      ),
+                    ),
+                  ),
+                ),
+            ]),
+          ],
+        );
+      },
+    );
+  }
 }

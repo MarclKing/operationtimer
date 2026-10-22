@@ -15,6 +15,8 @@ import 'glass_snackbar.dart';
 
 /// Text, der als `location` im Ereignis gespeichert wird (wie im Ortsfeld).
 String locationDisplayText(LocationInfo loc) {
+  final fav = (loc.name ?? '').trim();
+  if (loc.favoriteId != null && fav.isNotEmpty) return fav; // Favorit: Name statt Adresse
   if (loc.singleLine.isNotEmpty) return loc.singleLine;
   final n = (loc.name ?? '').trim();
   if (n.isNotEmpty) return n;

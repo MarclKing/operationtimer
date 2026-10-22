@@ -5,7 +5,7 @@ class LocationInfo {
   /// Originaleingabe des Nutzers (Adresse, Link oder geteilter Text).
   final String rawInput;
 
-  /// Optionaler Ortsname, z. B. "Rathaus".
+  /// Optionaler Ortsname, z. B. "Rathaus". Bei Favoriten: der Favoriten-Name.
   final String? name;
 
   /// Straße + Hausnummer.
@@ -18,6 +18,9 @@ class LocationInfo {
   /// Ursprünglicher Maps-Link (falls vorhanden).
   final String? sourceUrl;
 
+  /// Gesetzt, wenn der Ort aus einem Favoriten stammt (dann ist [name] der Favoriten-Name).
+  final String? favoriteId;
+
   const LocationInfo({
     required this.rawInput,
     this.name,
@@ -27,6 +30,7 @@ class LocationInfo {
     this.lat,
     this.lng,
     this.sourceUrl,
+    this.favoriteId,
   });
 
   bool get hasCoords => lat != null && lng != null;
@@ -42,8 +46,41 @@ class LocationInfo {
 
   bool get hasAddress => line1.isNotEmpty || line2.isNotEmpty;
 
-  /// Einzeilige, saubere Adresse (wird ins Textfeld geschrieben).
+  /// Einzeilige, saubere Adresse.
   String get singleLine => [line1, line2].where((e) => e.isNotEmpty).join(', ');
+
+  /// Text für Felder/Listen: bei Favoriten der Name, sonst die Adresse.
+  String get displayText {
+    final n = (name ?? '').trim();
+    if (favoriteId != null && n.isNotEmpty) return n;
+    if (singleLine.isNotEmpty) return singleLine;
+    return n;
+  }
+
+  /// Kopie als Favorit: Name = Favoriten-Name, favoriteId gesetzt.
+  LocationInfo withFavorite(String id, String favName) => LocationInfo(
+        rawInput: rawInput,
+        name: favName,
+        street: street,
+        postalCode: postalCode,
+        city: city,
+        lat: lat,
+        lng: lng,
+        sourceUrl: sourceUrl,
+        favoriteId: id,
+      );
+
+  /// Kopie ohne Favoriten-Bezug (Name bleibt, wie er ist).
+  LocationInfo withoutFavorite() => LocationInfo(
+        rawInput: rawInput,
+        name: name,
+        street: street,
+        postalCode: postalCode,
+        city: city,
+        lat: lat,
+        lng: lng,
+        sourceUrl: sourceUrl,
+      );
 
   Map<String, dynamic> toJson() => {
         'rawInput': rawInput,
@@ -54,6 +91,7 @@ class LocationInfo {
         if (lat != null) 'lat': lat,
         if (lng != null) 'lng': lng,
         if (sourceUrl != null) 'sourceUrl': sourceUrl,
+        if (favoriteId != null) 'favoriteId': favoriteId,
       };
 
   /// Fehlertolerant: null bei fehlenden oder kaputten Daten.
@@ -76,6 +114,7 @@ class LocationInfo {
         lat: (j['lat'] as num?)?.toDouble(),
         lng: (j['lng'] as num?)?.toDouble(),
         sourceUrl: s('sourceUrl'),
+        favoriteId: s('favoriteId'),
       );
     } catch (_) {
       return null;
