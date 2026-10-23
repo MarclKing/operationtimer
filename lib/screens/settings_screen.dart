@@ -33,6 +33,7 @@ import '../services/calendar_sync_handshake.dart';
 import 'dart:convert';
 import '../services/apple_calendar_sync_service.dart';
 import '../services/feature_flags.dart';
+import '../services/route_time_service.dart';
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -157,7 +158,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                     builder: (_) => const _WorkTimeSettingsScreen()),
                                 ),
                               ),
-                            if (AuthService.instance.isAdmin)
+                            if (!readOnly || AuthService.instance.isAdmin)
                               GlassListItem(
                                 leading: Container(
                                   width: 32, height: 32,
@@ -168,7 +169,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   child: const Icon(Icons.calendar_month_rounded, color: Colors.white, size: 18),
                                 ),
                                 title: 'Dienstplan',
-                                subtitle: 'Entwickler-Modus',
+                                subtitle: AuthService.instance.isAdmin ? 'Routen-Zeit · Entwickler-Modus' : 'Routen-Zeit',
                                 trailing: Icon(Icons.chevron_right_rounded, size: 18, color: skin.surface(0.28)),
                                 onTap: () => Navigator.push(
                                   context,
@@ -1874,40 +1875,57 @@ class _ScheduleSettingsScreen extends StatefulWidget {
       _ScheduleSettingsScreenState();
 }
 
-class _ScheduleSettingsScreenState
-    extends State<_ScheduleSettingsScreen> {
+class _ScheduleSettingsScreenState extends State<_ScheduleSettingsScreen> {
   bool _dienstplanDevMode = false;
+  bool _routeTime = true;
 
   @override
   void initState() {
     super.initState();
     final box = Hive.box('einstellungen');
-    _dienstplanDevMode =
-        box.get('dienstplan_dev_placeholder', defaultValue: false) as bool;
+    _dienstplanDevMode = box.get('dienstplan_dev_placeholder', defaultValue: false) as bool;
+    _routeTime = RouteTimeService.enabled;
   }
 
   @override
   Widget build(BuildContext context) {
     final skin = AppTheme.of(context);
+    final isAdmin = AuthService.instance.isAdmin;
     return Scaffold(
       backgroundColor: skin.bgBase,
       body: SafeArea(
         child: Column(
           children: [
-            _SettingsHeader(
-                title: 'Dienstplan',
-                onBack: () => Navigator.pop(context)),
+            _SettingsHeader(title: 'Dienstplan', onBack: () => Navigator.pop(context)),
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (AuthService.instance.isAdmin) ...[
-                      GlassSurface(
-                        borderRadius: 18,
-                        padding: EdgeInsets.zero,
-                        child: Column(children: [
+                    GlassSurface(
+                      borderRadius: 18,
+                      padding: EdgeInsets.zero,
+                      child: Column(children: [
+                        GlassListItem(
+                          leading: Container(
+                            width: 32, height: 32,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF2D6CFF),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(Icons.directions_car_rounded, color: Colors.white, size: 18),
+                          ),
+                          title: 'Routen-Zeit vorberechnen',
+                          subtitle: 'Fahrzeit mit dem Auto zwischen Ereignissen im Tagesplan',
+                          isLast: !isAdmin,
+                          switchValue: _routeTime,
+                          onSwitchChanged: (v) {
+                            setState(() => _routeTime = v);
+                            RouteTimeService.enabled = v;
+                          },
+                        ),
+                        if (isAdmin)
                           GlassListItem(
                             leading: Container(
                               width: 32, height: 32,
@@ -1923,17 +1941,18 @@ class _ScheduleSettingsScreenState
                             switchValue: _dienstplanDevMode,
                             onSwitchChanged: (v) {
                               setState(() => _dienstplanDevMode = v);
-                              Hive.box('einstellungen')
-                                  .put('dienstplan_dev_placeholder', v);
+                              Hive.box('einstellungen').put('dienstplan_dev_placeholder', v);
                             },
                           ),
-                        ]),
-                      ),
-                      const SizedBox(height: 8),
-                    ],
+                      ]),
+                    ),
+                    const SizedBox(height: 8),
                     const _SectionFootnote(
-                      text:
-                          'Der Dienstplan-Import befindet sich noch in der Beta-Phase.',
+                      text: 'Zeigt im Tagesplan, wie lange du vom vorherigen Ereignis zum nächsten '
+                            'mit dem Auto brauchst (aktuelle Verkehrslage). Heute wird höchstens alle '
+                            '30 Minuten aktualisiert, andere Tage werden nur einmal berechnet. '
+                            'Es zählen nur Ereignisse mit erkanntem Ort (Kartenposition).\n\n'
+                            'Der Dienstplan-Import befindet sich noch in der Beta-Phase.',
                     ),
                   ],
                 ),
