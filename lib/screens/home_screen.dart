@@ -18,6 +18,7 @@ import '../services/spoken_task_parser.dart';
 import '../utils/time_rounding.dart';
 import '../widgets/day_plan.dart';
 import '../widgets/location_actions.dart';
+import '../services/route_time_service.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HOME SCREEN — News-App-Style Dashboard
@@ -2478,13 +2479,27 @@ class _EventStackKachelState extends State<_EventStackKachel> with SingleTickerP
   void initState() {
     super.initState();
     _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 320));
+    RouteTimeService.changed.addListener(_onRouteChanged);
+    unawaited(RouteTimeService.init().then((_) {
+      if (mounted) _ensureRoutes();
+    }));
     _syncSelection();
   }
 
   @override
   void dispose() {
+    RouteTimeService.changed.removeListener(_onRouteChanged);
     _ctrl.dispose();
     super.dispose();
+  }
+
+  void _onRouteChanged() {
+    if (mounted) setState(() {});
+  }
+
+  void _ensureRoutes() {
+    if (!RouteTimeService.enabled) return;
+    unawaited(RouteTimeService.ensureForDay(widget.now, widget.items));
   }
 
   String _sig(List<DayPlanItem> l) => l.map((e) => '${e.id}@${e.start.millisecondsSinceEpoch}').join('|');
@@ -2524,6 +2539,7 @@ class _EventStackKachelState extends State<_EventStackKachel> with SingleTickerP
   void didUpdateWidget(covariant _EventStackKachel old) {
     super.didUpdateWidget(old);
     _syncSelection();
+    _ensureRoutes();
   }
 
   Future<void> _advance(int dir) async {
@@ -2559,6 +2575,10 @@ class _EventStackKachelState extends State<_EventStackKachel> with SingleTickerP
 
   Widget _slot(DayPlanItem it, double p,
       {double opacity = 1, double dy = 0, double angle = 0, bool hl = false}) {
+    final idx = widget.items.indexWhere((e) => e.id == it.id);
+    final travel = (idx > 0 && RouteTimeService.enabled)
+        ? RouteTimeService.labelFor(widget.items[idx - 1], it)
+        : null;
     return Positioned(
       left: _inset * p,
       right: _inset * p,
@@ -2570,7 +2590,7 @@ class _EventStackKachelState extends State<_EventStackKachel> with SingleTickerP
           offset: Offset(0, dy),
           child: Transform.rotate(
             angle: angle,
-            child: _EventCard(skin: widget.skin, item: it, highlight: hl),
+            child: _EventCard(skin: widget.skin, item: it, highlight: hl, travelText: travel),
           ),
         ),
       ),
@@ -2686,7 +2706,8 @@ class _EventCard extends StatelessWidget {
   final AppSkin skin;
   final DayPlanItem item;
   final bool highlight;
-  const _EventCard({required this.skin, required this.item, this.highlight = false});
+  final String? travelText;
+  const _EventCard({required this.skin, required this.item, this.highlight = false, this.travelText});
 
   @override
   Widget build(BuildContext context) {
@@ -2749,6 +2770,17 @@ class _EventCard extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500, color: skin.textPrimary, height: 1.2)),
                   ),
+                ]),
+              ],
+              if (travelText != null) ...[
+                const SizedBox(height: 3),
+                Row(children: [
+                  Icon(Icons.directions_car_outlined, size: 12, color: skin.surface(0.42)),
+                  const SizedBox(width: 4),
+                  Text(travelText!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w400, color: skin.surface(0.45))),
                 ]),
               ],
             ],
