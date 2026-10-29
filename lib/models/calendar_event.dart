@@ -188,37 +188,44 @@ class CalendarEventStore {
     }
   }
 
+  /// Plant ALLE Termin-Benachrichtigungen neu (rollendes Fenster von 21
+  /// Tagen, Serientermine inklusive). [include] stellt sicher, dass ein
+  /// gerade gespeicherter Termin berücksichtigt wird.
+  static Future<void> rescheduleAllNotifications({CalendarEvent? include}) async {
+    try {
+      final now = DateTime.now();
+      final to = now.add(const Duration(days: 21));
+      final all = <CalendarEvent>[
+        for (final x in loadAll())
+          if (include == null || x.id != include.id) x,
+        if (include != null) include,
+      ];
+      final options = ReminderManager.optionsFor(ReminderMode.beforeDeadline);
+      final plans = <EventOccurrencePlan>[];
+      for (final o in occurrencesInRange(all, now, to)) {
+        if (o.allDay) continue; // ganztägig läuft über den Banner
+        final leads = <Duration>[];
+        for (final id in o.reminderOptionIds) {
+          for (final opt in options) {
+            if (opt.id == id) leads.add(opt.duration);
+          }
+        }
+        plans.add(EventOccurrencePlan(
+          eventId: o.id,
+          title: o.title,
+          start: o.start,
+          leads: leads,
+        ));
+      }
+      await NotificationService.instance.rescheduleAllEvents(plans);
+    } catch (e) {
+      print('rescheduleAllNotifications: $e');
+    }
+  }
+
   /// Zentrale Methode zum Planen von Benachrichtigungen für einen Termin
   static void _scheduleNotifications(CalendarEvent e) {
-    // Erst alle alten Benachrichtigungen für diesen Termin löschen
-    NotificationService.instance.cancelEventReminders(e.id);
-
-    // Ganztägige Termine bekommen keine Erinnerungs-Benachrichtigungen
-    // (laufen separat über den Banner, wie im Notification-Center)
-    if (e.allDay) return;
-
-    // Haupt-Erinnerung (garantierte Benachrichtigung)
-    NotificationService.instance.scheduleGuaranteedEventReminder(
-      eventId: e.id,
-      eventTitle: e.title,
-      eventStart: e.start,
-    );
-
-    // Benutzerdefinierte Erinnerungen basierend auf den reminderOptionIds
-    final options = ReminderManager.optionsFor(ReminderMode.beforeDeadline);
-    for (var i = 0; i < e.reminderOptionIds.length; i++) {
-      final opt = options.firstWhere(
-        (o) => o.id == e.reminderOptionIds[i],
-        orElse: () => options.first,
-      );
-      NotificationService.instance.scheduleEventReminder(
-        eventId: e.id,
-        reminderIndex: i,
-        eventTitle: e.title,
-        eventStart: e.start,
-        reminderAt: e.start.subtract(opt.duration),
-      );
-    }
+    rescheduleAllNotifications(include: e);
   }
 
   /// Rohdaten — ALLE lokal gespeicherten Ereignisse, unabhängig davon, ob
@@ -291,6 +298,11 @@ class CalendarEventStore {
         await AppleCalendarSyncService.instance.pushEvent(e);
       }
     }
+    final removedCount = previous.keys.where((id) => !newIds.contains(id)).length;
+    final massRemoval = removedCount >= 4 && removedCount * 2 > previous.length;
+    if (massRemoval) {
+      debugPrint('⚠️ saveAllExternal: $removedCount von ${previous.length} Terminen entfernt — Termine im echten Kalender bleiben unangetastet.');
+    }
     for (final old in previous.values) {
   if (!newIds.contains(old.id)) {
     // Bugfix: Termine aus der reinen Apple-Import-Sammelgruppe sind nur
@@ -298,10 +310,11 @@ class CalendarEventStore {
     // automatischen Abgleich (Reconciliation/Restore/Gruppen-Umschichtung),
     // darf das NIE den echten Apple-Termin löschen — nur ein explizites
     // Nutzer-Löschen über delete() (ruft deleteEvent() direkt auf) darf das.
-    if (old.groupKeys.contains(AppleCalendarSyncService.appleImportGroupKey)) {
+    if (old.groupKeys.contains(AppleCalendarSyncService.appleImportGroupKey) ||
+        AppleCalendarSyncService.isDeviceImported(old)) {
       continue;
     }
-    await AppleCalendarSyncService.instance.deleteEvent(old);
+    if (!massRemoval) await AppleCalendarSyncService.instance.deleteEvent(old);
   }
 }
     pushUpcomingEventsToWidget(); // NEU
@@ -328,6 +341,17 @@ class CalendarEventStore {
     _saveAll(all);
     _notifyChanged();
     _scheduleNotifications(e); // NEU — bisher gefehlt!
+    pushUpcomingEventsToWidget();
+  }
+
+  /// Mehrere externe Termine auf einmal übernehmen: EIN Speichern, EIN Signal,
+  /// EINE Neuplanung der Benachrichtigungen (wichtig beim ersten Import).
+  static void addAllExternal(List<CalendarEvent> events) {
+    if (events.isEmpty) return;
+    final all = loadAllRaw()..addAll(events);
+    _saveAll(all);
+    _notifyChanged();
+    rescheduleAllNotifications();
     pushUpcomingEventsToWidget();
   }
 
@@ -362,7 +386,7 @@ class CalendarEventStore {
     final all = loadAllRaw()..add(e);
     _saveAll(all);
     _notifyChanged();
-    SyncService.instance.pushCalendarEvent(e.id);
+    if (!AppleCalendarSyncService.isDeviceImported(e)) SyncService.instance.pushCalendarEvent(e.id);
     AppleCalendarSyncService.instance.pushEvent(e);
     _scheduleNotifications(e); // NEU — zentral geplant
     pushUpcomingEventsToWidget();
@@ -376,7 +400,7 @@ class CalendarEventStore {
       all[idx] = e;
       _saveAll(all);
       _notifyChanged();
-      SyncService.instance.pushCalendarEvent(e.id);
+      if (!AppleCalendarSyncService.isDeviceImported(e)) SyncService.instance.pushCalendarEvent(e.id);
       AppleCalendarSyncService.instance.pushEvent(e);
       _scheduleNotifications(e); // NEU — zentral geplant (überschreibt alte)
       pushUpcomingEventsToWidget();
@@ -394,7 +418,7 @@ class CalendarEventStore {
     final all = loadAllRaw()..removeWhere((e) => e.id == id);
     _saveAll(all);
     _notifyChanged();
-    SyncService.instance.pushCalendarEvent(id); // fehlt lokal -> Sync löscht remote
+    if (existing == null || !AppleCalendarSyncService.isDeviceImported(existing)) SyncService.instance.pushCalendarEvent(id); // fehlt lokal -> Sync löscht remote
     pushUpcomingEventsToWidget();
   }
 

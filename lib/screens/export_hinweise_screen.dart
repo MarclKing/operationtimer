@@ -117,7 +117,9 @@ class _ExportHinweiseScreenState extends State<ExportHinweiseScreen> {
                     const SizedBox(height: 12),
 
                     // ── Bookmarklet per Mail senden (GlassInfoCard) ──
-                    GlassInfoCard(
+                    _HighlightFrame(
+                      skin: skin,
+                      child: GlassInfoCard(
                       icon: Icons.share_outlined,
                       iconColor: skin.primary,
                       title: 'Bookmarklet per Mail senden',
@@ -149,7 +151,7 @@ class _ExportHinweiseScreenState extends State<ExportHinweiseScreen> {
                           }
                         }
                       },
-                    ),
+                    )),
 
                     const SizedBox(height: 16),
 
@@ -512,6 +514,29 @@ class _StepCard extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Farbiger Rahmen mit Glow, damit eine Karte sich abhebt.
+class _HighlightFrame extends StatelessWidget {
+  final AppSkin skin;
+  final Widget child;
+  const _HighlightFrame({required this.skin, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        color: skin.primary.withValues(alpha: 0.14),
+        border: Border.all(color: skin.primary.withValues(alpha: 0.75), width: 1.6),
+        boxShadow: [
+          BoxShadow(color: skin.primary.withValues(alpha: 0.30), blurRadius: 18, offset: const Offset(0, 4)),
+        ],
+      ),
+      child: child,
     );
   }
 }

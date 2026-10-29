@@ -358,7 +358,15 @@ if (e.groupKeys.contains(AppleCalendarSyncService.appleImportGroupKey)) {
   return;
 }
 
-if (_isReadOnly && !_eventIsSyncScoped(e)) {
+// Android: aus dem Geräte-Kalender importierte Termine bleiben IMMER lokal.
+    if (AppleCalendarSyncService.isDeviceImported(e)) {
+      final everPushed =
+          Hive.box('einstellungen').get('_syncver_calendar_events/$id') != null;
+      if (everPushed) await _delete('calendar_events', id);
+      return;
+    }
+
+    if (_isReadOnly && !_eventIsSyncScoped(e)) {
       // NEU: Nur löschen, wenn für diese ID überhaupt jemals ein echter
       // Push stattgefunden hat (_syncver_calendar_events/$id wird
       // ausschließlich in _push() gesetzt). Frisch aus Apple gepullte
@@ -377,6 +385,12 @@ if (_isReadOnly && !_eventIsSyncScoped(e)) {
     }
     await _push('calendar_events', id, e.toJson());
   }
+
+  /// true, wenn dieser Datensatz jemals mit Firestore ausgetauscht wurde
+  /// (selbst gepusht ODER empfangen). Nur solche dürfen beim Abgleich als
+  /// "remote gelöscht" gelten — rein lokale Termine nie.
+  bool _everExchanged(String collection, String id) =>
+      Hive.box('einstellungen').get('_syncver_$collection/$id') != null;
 
   bool _eventIsSyncScoped(CalendarEvent e) {
     for (final key in e.groupKeys) {
@@ -479,6 +493,7 @@ if (_isReadOnly && !_eventIsSyncScoped(e)) {
           .whereType<Map>()
           .map((m) => CalendarEvent.fromJson(Map<String, dynamic>.from(m)))
           .toList();
+      events.addAll(CalendarEventStore.loadAllRaw().where(AppleCalendarSyncService.isDeviceImported));
       await CalendarEventStore.saveAllExternal(events);
     } catch (e) { debugPrint('$_tag: Restore calendar_events Fehler: $e'); }
 
@@ -1069,7 +1084,8 @@ Future<void> _clearCalendarSyncverMeta() async {
         debugPrint('$_tag: Remote-Event-IDs Abruf Fehler: $e');
       }
       for (final e in CalendarEventStore.loadAllRaw()) {
-  if (e.groupKeys.contains(AppleCalendarSyncService.appleImportGroupKey)) continue; // NEU
+  if (e.groupKeys.contains(AppleCalendarSyncService.appleImportGroupKey) ||
+          AppleCalendarSyncService.isDeviceImported(e)) continue; // NEU
   if (!remoteEventIds.contains(e.id)) {
     _markPendingOwn('calendar_events', e.id);
     await _push('calendar_events', e.id, e.toJson(), isInitialLinkSync: true);
@@ -1194,7 +1210,10 @@ Future<void> _clearCalendarSyncverMeta() async {
         for (final e in all) {
           final isOwnPending =
               SyncTokenService.role == 'reader' && isPendingOwn('calendar_events', e.id);
-          if (remoteIds.contains(e.id) || isOwnPending) {
+          if (remoteIds.contains(e.id) ||
+              isOwnPending ||
+              AppleCalendarSyncService.isDeviceImported(e) ||
+              !_everExchanged('calendar_events', e.id)) {
             toKeep.add(e);
           } else {
             changed = true;

@@ -5,6 +5,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import '../theme/app_theme.dart';
 import '../models/relationship_style.dart';
 import '../widgets/glass_kit.dart';
+import 'permissions_onboarding_sheet.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ONBOARDING-EINSTIEG
@@ -47,6 +48,10 @@ Future<void> maybeShowWelcomeDialog(BuildContext context) async {
       builder: (_) => const _RelationshipSheet(),
     );
   }
+
+  // Danach: Berechtigungen nacheinander abfragen (überspringt bereits erteilte).
+  if (!context.mounted) return;
+  await maybeShowPermissionsOnboarding(context);
 }
 
 String _capitalizeEachWord(String text) {

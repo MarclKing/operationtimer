@@ -18,6 +18,7 @@ import '../services/pdf_service.dart';
 import '../services/sync_service.dart';
 import '../services/travel_mode_service.dart';
 import '../utils/time_rounding.dart';
+import '../tutorial/tutorial_controller.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MonthScreen
@@ -865,7 +866,7 @@ void _editEntry(Map<String, dynamic> entry) {
                         const SizedBox(height: 16),
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 24),
-                          child: GlassTabSwitcher(
+                          child: KeyedSubtree(key: TutorialKeys.monthTabSwitcher, child: GlassTabSwitcher(
                             index: _activeTab == _MonthTab.zeit ? 0 : 1,
                             items: const [
                               GlassTabItem(label: 'Zeiterfassung', icon: Icons.access_time_rounded),
@@ -879,7 +880,7 @@ void _editEntry(Map<String, dynamic> entry) {
                                 _openSwipedEntryId = null;
                               });
                             },
-                          ),
+                          )),
                         ),
                         const SizedBox(height: 12),
                       ],

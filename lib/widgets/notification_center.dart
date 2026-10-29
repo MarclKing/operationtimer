@@ -26,6 +26,10 @@ import '../widgets/glass_kit.dart';
 // gewählte "Hinweisen"-Zeitpunkte). Rein "heute" reicht NICHT mehr aus.
 // ─────────────────────────────────────────────────────────────────────────
 
+// Schlüssel pro Vorkommen (Serientermine teilen sich die ID, daher mit Datum)
+String _eventKey(CalendarEvent e) =>
+    'event_${e.id}_${DateFormat('yyyyMMdd').format(e.start)}';
+
 bool _taskNotificationDue(Task t) {
   if (t.dueDate == null) return false;
   final now = DateTime.now();
@@ -201,12 +205,17 @@ class NotificationCenterStore {
       if (!_taskNotificationDue(t)) continue; // NEU (Punkt 3)
       if (!seenMap.containsKey('task_${t.id}')) count++;
     }
+    final showAllDayBanner = _box.get('notif_center_show_allday_banner', defaultValue: true) as bool;
     final todaysEvents = CalendarEventStore.occurrencesInRange(
         CalendarEventStore.loadAll(), todayStart, todayEnd);
     for (final e in todaysEvents) {
-      final key = 'event_${e.id}';
+      final key = _eventKey(e);
       if (hidden.contains(key)) continue;
-      if (!e.allDay && !_eventNotificationDue(e)) continue; // NEU (Punkt 3)
+      if (e.allDay) {
+        if (showAllDayBanner) continue; // Balken zählt nicht als Benachrichtigung
+      } else if (!_eventNotificationDue(e)) {
+        continue; // NEU (Punkt 3)
+      }
       if (!seenMap.containsKey(key)) count++;
     }
 
@@ -524,7 +533,7 @@ class _NotificationsPanelState extends State<_NotificationsPanel> {
         _store.markReminderSeen('task_${t.id}');
       }
       for (final e in _todayCalendarEvents()) {
-        _store.markReminderSeen('event_${e.id}');
+        _store.markReminderSeen(_eventKey(e));
       }
       _store.recompute();
     });
@@ -705,7 +714,7 @@ class _NotificationsPanelState extends State<_NotificationsPanel> {
     final todayEnd = todayStart.add(const Duration(days: 1));
     final all = CalendarEventStore.loadAll();
     final occ = CalendarEventStore.occurrencesInRange(all, todayStart, todayEnd)
-        .where((e) => !_store.isHidden('event_${e.id}')) // NEU (Punkt 6)
+        .where((e) => !_store.isHidden(_eventKey(e))) // NEU (Punkt 6)
         .where((e) => e.allDay || _eventNotificationDue(e)) // NEU (Punkt 3)
         .toList();
     occ.sort((a, b) {
@@ -802,7 +811,7 @@ class _NotificationsPanelState extends State<_NotificationsPanel> {
                       skin: skin,
                       events: listEvents,
                       onHideEvent: (e) {
-                        _store.hideNotification('event_${e.id}');
+                        _store.hideNotification(_eventKey(e));
                         setState(() {});
                       },
                     ),

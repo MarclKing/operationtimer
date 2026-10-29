@@ -48,6 +48,10 @@ import 'models/location_info.dart';
 import 'services/location_resolver.dart';
 import 'widgets/share_location_sheet.dart';
 import 'widgets/favorites_sheet.dart';
+import 'tutorial/tutorial_controller.dart';
+import 'tutorial/tutorial_overlay.dart';
+import 'tutorial/tutorial_demos.dart';
+import 'widgets/location_actions.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TAB-DEFINITION — steuert Reihenfolge & Sichtbarkeit der Haupt-Tabs.
@@ -78,6 +82,7 @@ List<_Tab> _computeActiveTabs({required bool readOnly}) => [
 
 const String kAppleCalendarBgTaskName = 'appleCalendarSync';
 const String kAppleCalendarBgTaskId = 'de.marcel.optimes.appleCalendarSync';
+const int _firestoreCacheSizeBytes = 100 * 1024 * 1024;
 
 @pragma('vm:entry-point')
 void callbackDispatcher() {
@@ -94,7 +99,7 @@ void callbackDispatcher() {
       await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
       FirebaseFirestore.instance.settings = const Settings(
         persistenceEnabled: true,
-        cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+        cacheSizeBytes: _firestoreCacheSizeBytes,
       );
 
       await AuthService.instance.init();
@@ -113,10 +118,11 @@ void callbackDispatcher() {
     await NotificationService.instance.init();
 
       debugPrint('✅ BG-Task fertig: $task');
+    return true;
     } catch (e) {
-      debugPrint('⚠️ BG-Task Fehler ($task): $e');
+    debugPrint('⚠️ BG-Task Fehler ($task): $e');
+    return false;
     }
-    return Future.value(true);
   });
 }
 
@@ -143,7 +149,7 @@ Future<void> _initializeAppServicesInBackground() async {
 
     FirebaseFirestore.instance.settings = const Settings(
       persistenceEnabled: true,
-      cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+      cacheSizeBytes: _firestoreCacheSizeBytes,
     );
 
     debugPrint('✅ Firebase + Firestore Offline-Cache initialisiert');
@@ -289,6 +295,13 @@ class MyApp extends StatelessWidget {
             navigatorKey: MyApp.navigatorKey,
             title: 'OpTimes',
             debugShowCheckedModeBanner: false,
+            builder: (context, child) => Stack(
+              fit: StackFit.expand,
+              children: [
+                if (child != null) child,
+                const Positioned.fill(child: TutorialOverlay()),
+              ],
+            ),
             onGenerateRoute: (settings) {
               final name = settings.name ?? '';
               if (name.startsWith('optimes://dienstplan/note/')) {
@@ -348,6 +361,7 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin, WidgetsBindingObserver {
   int _currentPage = 0;
+  bool _tutSheetOpen = false; // Tutorial: Demo-Sheet offen
 
   late AnimationController _slideCtrl;
   bool _isDragging = false;
@@ -428,6 +442,9 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin, 
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    TutorialController.instance.onEnterStep = _tutorialEnter;
+    TutorialController.instance.onLeaveStep = _tutorialLeave;
+    TutorialController.instance.onFinished = _tutorialFinished;
     scheduleShowsPlan.addListener(_onPlanTabChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) => _checkTravelModeTz());
 
@@ -589,7 +606,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin, 
 void didChangeAppLifecycleState(AppLifecycleState state) {
   if (state == AppLifecycleState.resumed) {
     _checkTravelModeTz();
-    AppleCalendarSyncService.instance.pullAllLinkedGroups();
+    AppleCalendarSyncService.instance.pullAllLinkedGroups(onResume: true);
     NotificationService.instance.scheduleDailyOverview(); // NEU — Inhalt bei jedem Öffnen auffrischen
   } else if (state == AppLifecycleState.paused ||
       state == AppLifecycleState.inactive ||
@@ -610,6 +627,7 @@ void didChangeAppLifecycleState(AppLifecycleState state) {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    TutorialController.instance.detachHooks();
     scheduleShowsPlan.removeListener(_onPlanTabChanged);
     _cleanupTimer?.cancel();
     _intentSub?.cancel();
@@ -622,6 +640,162 @@ void didChangeAppLifecycleState(AppLifecycleState state) {
     _scheduleForeignView.dispose();
     _tasksShowingYear.dispose();
     super.dispose();
+  }
+
+  // ── Tutorial-Hooks: Navigation je Schritt ──
+
+  /// Arbeitszeit-Tutorial: nur beim allerersten Besuch des Monat-Tabs.
+  void _maybeTutorialForPage(int page) {
+    if (_readOnlyMode) return;
+    final tabs = _activeTabs;
+    if (page < 0 || page >= tabs.length) return;
+    if (tabs[page] == _Tab.month) {
+      TutorialTriggers.maybeStart(TutorialKind.main,
+          delay: const Duration(milliseconds: 900));
+    }
+  }
+
+  bool _hasAnySchedule() {
+    final box = Hive.box('einstellungen');
+    final re = RegExp(r'^schedule_\d{4}-\d{2}$');
+    for (final k in box.keys) {
+      if (!re.hasMatch(k.toString())) continue;
+      final v = box.get(k);
+      if (v is Map && v.isNotEmpty) return true;
+    }
+    return false;
+  }
+
+  /// Dienstplan-Tutorial: nach dem ersten erfolgreichen Import.
+  void _maybeScheduleTutorial() {
+    if (_readOnlyMode || !_hasAnySchedule()) return;
+    TutorialTriggers.maybeStart(TutorialKind.schedule,
+        delay: const Duration(milliseconds: 1200));
+  }
+
+  Future<void> _tutorialEnter(TutorialStep step) async {
+    FocusManager.instance.primaryFocus?.unfocus();
+    final hosted = TutorialController.instance.hosted;
+    final month = _indexOfTab(_Tab.month);
+    final schedule = _indexOfTab(_Tab.schedule);
+    final fahrt = _indexOfTab(_Tab.fahrtenbuch);
+    switch (step.id) {
+      case TutorialStepId.monthSwitcher:
+        _closeMenu();
+        await _animateToPage(month);
+        break;
+      case TutorialStepId.bvaMenu:
+        if (_currentPage != month) {
+          await _animateToPage(month);
+        }
+        if (!_menuOpen) _toggleMenu();
+        break;
+      case TutorialStepId.scheduleDayCard:
+        _closeMenu();
+        if (_currentPage != schedule) await _animateToPage(schedule);
+        _scheduleKey.currentState?.tutorialPrepare(plan: false);
+        break;
+      case TutorialStepId.scheduleColleagues:
+        _closeMenu();
+        if (_currentPage != schedule) await _animateToPage(schedule);
+        _scheduleKey.currentState?.tutorialPrepare(plan: false);
+        _scheduleKey.currentState?.tutorialOpenColleagues();
+        break;
+      case TutorialStepId.scheduleImport:
+        if (_currentPage != schedule) await _animateToPage(schedule);
+        _scheduleKey.currentState?.tutorialPrepare(plan: false);
+        if (!_menuOpen) _toggleMenu();
+        break;
+      case TutorialStepId.eventLocation:
+        _closeMenu();
+        if (!hosted) {
+          if (_currentPage != schedule) await _animateToPage(schedule);
+          _scheduleKey.currentState?.closeOverlays();
+        }
+        TutorialDemo.eventStage.value = 0;
+        if (!_tutSheetOpen) {
+          _tutSheetOpen = true;
+          _scheduleKey.currentState?.tutorialOpenEventSheet();
+        }
+        break;
+      case TutorialStepId.eventMap:
+        TutorialDemo.eventStage.value = 2; // leeres Feld, Karten-Symbol pulsiert
+        break;
+      case TutorialStepId.mapAdjust:
+        _closeMenu();
+        if (!hosted && _currentPage != schedule) await _animateToPage(schedule);
+        if (!_tutSheetOpen) {
+          _tutSheetOpen = true;
+          unawaited(showTutorialMapDemo(context, skin: AppTheme.of(context)));
+        }
+        break;
+      case TutorialStepId.mapFavorite:
+        break;
+      case TutorialStepId.fahrtKennzeichen:
+        _closeMenu();
+        if (!hosted && _currentPage != fahrt) await _animateToPage(fahrt);
+        if (!_tutSheetOpen) {
+          _tutSheetOpen = true;
+          _fahrtenbuchKey.currentState?.tutorialOpenSheet();
+        }
+        break;
+      case TutorialStepId.fahrtKm:
+        break;
+      case TutorialStepId.exportSelect:
+        _closeMenu();
+        if (_currentPage != fahrt) await _animateToPage(fahrt);
+        _fahrtenbuchKey.currentState?.tutorialSetDemo(true);
+        break;
+      case TutorialStepId.exportMenu:
+        if (_currentPage != fahrt) await _animateToPage(fahrt);
+        if (!_menuOpen) _toggleMenu();
+        break;
+      case TutorialStepId.schedulePlan:
+        _closeMenu();
+        if (_currentPage != schedule) await _animateToPage(schedule);
+        _scheduleKey.currentState?.closeOverlays();
+        _scheduleKey.currentState?.tutorialPrepare(plan: true);
+        break;
+    }
+  }
+
+  Future<void> _closeTutSheet() async {
+    if (!_tutSheetOpen) return;
+    _tutSheetOpen = false;
+    MyApp.navigatorKey.currentState?.pop();
+    await Future.delayed(const Duration(milliseconds: 350));
+  }
+
+  Future<void> _tutorialLeave(TutorialStep step) async {
+    switch (step.id) {
+      case TutorialStepId.bvaMenu:
+      case TutorialStepId.exportMenu:
+      case TutorialStepId.scheduleImport:
+        _closeMenu();
+        break;
+      case TutorialStepId.scheduleColleagues:
+        _scheduleKey.currentState?.closeOverlays();
+        break;
+      case TutorialStepId.eventMap:
+      case TutorialStepId.mapFavorite:
+      case TutorialStepId.fahrtKm:
+        await _closeTutSheet();
+        break;
+      default:
+        break;
+    }
+  }
+
+  void _tutorialFinished() {
+    _scheduleKey.currentState?.tutorialEnd();
+    _fahrtenbuchKey.currentState?.tutorialSetDemo(false);
+    _closeMenu();
+    TutorialDemo.eventStage.value = 0;
+    // Nur das Demo-Sheet schließen – ein darunterliegendes echtes Sheet bleibt offen.
+    if (_tutSheetOpen) {
+      _tutSheetOpen = false;
+      MyApp.navigatorKey.currentState?.pop();
+    }
   }
 
   void _onPlanTabChanged() {
@@ -985,6 +1159,7 @@ void didChangeAppLifecycleState(AppLifecycleState state) {
       type: wasOverwritten ? GlassSnackBarType.warning : GlassSnackBarType.success,
       duration: const Duration(seconds: 3),
     );
+    _maybeScheduleTutorial();
   }
 
   String _monthName(int m) {
@@ -1010,6 +1185,7 @@ void didChangeAppLifecycleState(AppLifecycleState state) {
         onImported: () {
           setState(() {});
           _scheduleKey.currentState?.loadScheduleData();
+          _maybeScheduleTutorial();
         },
       ),
     );
@@ -1018,6 +1194,7 @@ void didChangeAppLifecycleState(AppLifecycleState state) {
   Future<void> _animateToPage(int target) async {
     final safeTarget = target.clamp(0, _pageCount - 1).toDouble();
     setState(() => _currentPage = target.clamp(0, _pageCount - 1));
+    _maybeTutorialForPage(_currentPage);
     await _slideCtrl.animateTo(
       safeTarget,
       duration: const Duration(milliseconds: 320),
@@ -1135,6 +1312,7 @@ void didChangeAppLifecycleState(AppLifecycleState state) {
     if (targetPage == 0) _navCompact.value = false;
 
     setState(() => _currentPage = targetPage);
+    _maybeTutorialForPage(targetPage);
     _slideCtrl.animateTo(
       targetPage.toDouble(),
       duration: const Duration(milliseconds: 260),
@@ -1384,6 +1562,7 @@ void didChangeAppLifecycleState(AppLifecycleState state) {
                                                     child: GlassBlur(
                             sigma: 20,
                             child: Container(
+                              key: TutorialKeys.menuPanel,
                               width: 220,
                               decoration: BoxDecoration(
                                 color: skin.isLight ? Colors.white.withValues(alpha: 0.82) : skin.bgCard.withValues(alpha: 0.88),
@@ -1417,6 +1596,7 @@ void didChangeAppLifecycleState(AppLifecycleState state) {
                                     ),
                                     _Divider(),
                                     _DropdownItem(
+                                      key: TutorialKeys.exportGuideItem,
                                       icon: Icons.upload_outlined,
                                       label: 'Exportanleitung',
                                       onTap: () {
@@ -1433,6 +1613,7 @@ void didChangeAppLifecycleState(AppLifecycleState state) {
                                   ],
                                   if (_isOnSchedulePage && !_isOnFahrtenbuchPage && !readOnly) ...[
                                     _DropdownItem(
+                                      key: TutorialKeys.importItem,
                                       icon: Icons.upload_file_outlined,
                                       label: 'Dienstplan importieren',
                                       onTap: () {
@@ -1463,6 +1644,7 @@ void didChangeAppLifecycleState(AppLifecycleState state) {
   _Divider(),
   if (FeatureFlags.bvaEnabled) ...[
     _DropdownItem(
+      key: TutorialKeys.bvaItem,
       icon: Icons.description_outlined,
       label: 'BVA-Dienstreise',
       onTap: () {
@@ -1692,6 +1874,7 @@ void didChangeAppLifecycleState(AppLifecycleState state) {
         onImported: () {
           setState(() {});
           _scheduleKey.currentState?.loadScheduleData();
+          _maybeScheduleTutorial();
         },
       ),
     );
@@ -1901,7 +2084,7 @@ class _DropdownItem extends StatelessWidget {
   final IconData icon;
   final String label;
   final VoidCallback onTap;
-  const _DropdownItem({required this.icon, required this.label, required this.onTap});
+  const _DropdownItem({super.key, required this.icon, required this.label, required this.onTap});
 
   @override
   Widget build(BuildContext context) {

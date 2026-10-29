@@ -27,6 +27,8 @@ import '../services/sync_service.dart';
 import 'calendar_view.dart' show ShiftLookup;
 import '../widgets/day_plan.dart';
 import '../services/route_time_service.dart';
+import '../models/location_info.dart';
+import '../tutorial/tutorial_controller.dart';
 
 /// Meldet an main.dart, ob der Tab „Tagesplan“ offen ist (Lupe nur im Dienstplan).
 final ValueNotifier<bool> scheduleShowsPlan = ValueNotifier<bool>(false);
@@ -1688,7 +1690,7 @@ class ScheduleScreenState extends State<ScheduleScreen> with WidgetsBindingObser
     final schedRaw = SyncService.instance.visibleValueFor('schedule', monthKey, box.get('schedule_$monthKey'));
     if (schedRaw is Map) ownShift = (schedRaw[key] ?? '').toString().trim();
 
-    final groups = <String, List<({String name, bool isSelf})>>{'P1': [], 'P': [], 'P2': []};
+    final groups = <String, List<({String name, bool isSelf})>>{'P1': [], 'P': [], 'P2': [], 'VK': []};
     final cRaw = box.get('colleagues_$monthKey');
     if (cRaw is String && cRaw.isNotEmpty) {
       try {
@@ -1720,87 +1722,208 @@ class ScheduleScreenState extends State<ScheduleScreen> with WidgetsBindingObser
     if (active.isEmpty) return const SizedBox.shrink();
 
     final workColor = isChrome ? const Color(0xFFCCCCCC) : const Color(0xFF5B8DEF);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-      decoration: BoxDecoration(
-        color: skin.isLight
-            ? Colors.white.withValues(alpha: skin.glassOpacity)
-            : skin.bgCard.withValues(alpha: skin.glassOpacity),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: skin.glassBorder),
-      ),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    const vkColor = Color(0xFFEF5B5B);
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         for (int i = 0; i < active.length; i++) ...[
-          if (i > 0) const SizedBox(width: 10),
+          if (i > 0) const SizedBox(width: 14),
           Expanded(
             flex: active[i].value.length,
             child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                decoration: BoxDecoration(
-                  color: workColor.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(5),
-                ),
-                child: Text(active[i].key,
-                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: workColor)),
-              ),
+              Text(active[i].key,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.3,
+                    color: active[i].key == 'VK' ? vkColor : workColor,
+                  )),
               const SizedBox(width: 6),
               Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.only(top: 1),
-                  child: Text.rich(
-                    TextSpan(children: [
-                      for (int n = 0; n < active[i].value.length; n++) ...[
-                        if (n > 0) TextSpan(text: ', ', style: TextStyle(color: skin.surface(0.4))),
-                        TextSpan(
-                          text: active[i].value[n].name,
-                          style: TextStyle(
-                            fontWeight: active[i].value[n].isSelf ? FontWeight.w700 : FontWeight.w500,
-                            color: active[i].value[n].isSelf ? skin.primary : skin.textPrimary,
-                          ),
+                child: Text.rich(
+                  TextSpan(children: [
+                    for (int n = 0; n < active[i].value.length; n++) ...[
+                      if (n > 0) TextSpan(text: ', ', style: TextStyle(color: skin.surface(0.4))),
+                      TextSpan(
+                        text: active[i].value[n].name,
+                        style: TextStyle(
+                          fontWeight: active[i].value[n].isSelf ? FontWeight.w700 : FontWeight.w500,
+                          color: active[i].value[n].isSelf ? skin.primary : skin.textPrimary,
                         ),
-                      ],
-                    ]),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 12, height: 1.3),
-                  ),
+                      ),
+                    ],
+                  ]),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 12, height: 1.3),
                 ),
               ),
             ]),
           ),
         ],
       ]),
-    );
+      const SizedBox(height: 8),
+      Container(height: 0.5, color: skin.glassBorder),
+    ]);
   }
 
   void _onRouteTimesChanged() {
     if (mounted) setState(() {});
   }
 
-  /// Läuft alle 30 s mit, fragt aber nur bei veralteten Werten wirklich ab
-  /// (heute: älter als 30 Min; andere Tage: nur wenn noch nie berechnet).
+  /// Läuft alle 30 s mit; die Service-Schicht erneuert Live-Routen höchstens alle 30 Min.
   void _refreshRouteTimes() {
     if (!mounted || _orgTab != 1 || isForeignView || widget.readOnly) return;
     if (!RouteTimeService.enabled) return;
     unawaited(RouteTimeService.ensureForDay(_planDate, DayPlanStore.load(_planKey)));
   }
 
-  /// Fahrzeit vom vorherigen Ereignis zu items[i]; beim ersten Ereignis nie.
-  String? _travelTextFor(List<DayPlanItem> items, int i) {
-    if (i <= 0 || i >= items.length || !RouteTimeService.enabled) return null;
-    return RouteTimeService.labelFor(items[i - 1], items[i]);
+  // ── Tutorial (Dienstplan) ────────────────────────────────────────────────
+  bool tutorialDemoPlan = false;
+  int? _tutorialPrevOrgTab;
+
+  /// Tab wählen (Dienstplan / Tagesplan). Merkt sich den vorherigen Tab.
+  void tutorialPrepare({required bool plan}) {
+    if (!mounted) return;
+    _tutorialPrevOrgTab ??= _orgTab;
+    closeOverlays();
+    if (isForeignView) leaveColleagueView();
+    setState(() {
+      _orgTab = plan ? 1 : 0;
+      scheduleShowsPlan.value = plan;
+      tutorialDemoPlan = plan;
+      _openPlanId = null;
+    });
+    if (!plan) scrollToTop();
+  }
+
+  /// Öffnet die Kollegen-Übersicht (wie Doppeltippen).
+  void tutorialOpenColleagues() {
+    if (!mounted) return;
+    final now = DateTime.now();
+    final day = (_selectedMonth.year == now.year && _selectedMonth.month == now.month)
+        ? now
+        : DateTime(_selectedMonth.year, _selectedMonth.month, 1);
+    openColleaguesOverlay(DateFormat('yyyy-MM-dd').format(day));
+  }
+
+  /// Aufräumen: Demo aus, vorherigen Tab wiederherstellen.
+  void tutorialEnd() {
+    if (!mounted || _tutorialPrevOrgTab == null) return;
+    closeOverlays();
+    final prev = _tutorialPrevOrgTab!;
+    _tutorialPrevOrgTab = null;
+    setState(() {
+      tutorialDemoPlan = false;
+      _orgTab = prev;
+      scheduleShowsPlan.value = prev == 1;
+    });
+  }
+
+  /// Tutorial: Ereignis-Sheet im Demo-Modus öffnen (nichts wird gespeichert).
+  void tutorialOpenEventSheet() {
+    if (!mounted) return;
+    final skin = AppTheme.of(context);
+    final t = DateTime.now().add(const Duration(days: 1));
+    final day = DateTime(t.year, t.month, t.day);
+    unawaited(showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      useSafeArea: false,
+      isDismissible: false,
+      enableDrag: false,
+      constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.92),
+      builder: (_) => DayPlanItemSheet(
+        skin: skin,
+        day: day,
+        initialStart: day.add(const Duration(hours: 11)),
+        initialTitle: 'Besuch Bundestag',
+        tutorialDemo: true,
+        onSave: (_) {},
+      ),
+    ));
+  }
+
+  Widget _buildTutorialPlan(AppSkin skin, double bottomNavHeight) {
+    final t = DateTime.now().add(const Duration(days: 1));
+    final d = DateTime(t.year, t.month, t.day);
+    final a = DayPlanItem(
+      id: 'tutorial_1',
+      title: 'Bundeskriminalamt Berlin',
+      start: d.add(const Duration(hours: 9)),
+      end: d.add(const Duration(hours: 10)),
+      location: 'Am Treptower Park 5-8, 12435 Berlin',
+      loc: LocationInfo(
+        rawInput: 'Am Treptower Park 5-8, 12435 Berlin',
+        name: null,
+        street: 'Am Treptower Park 5-8',
+        postalCode: '12435',
+        city: 'Berlin',
+        lat: 52.4893,
+        lng: 13.4637,
+      ),
+    );
+    final b = DayPlanItem(
+      id: 'tutorial_2',
+      title: 'Bundestag',
+      start: d.add(const Duration(hours: 11)),
+      end: d.add(const Duration(hours: 12)),
+      location: 'Platz der Republik 1, 11011 Berlin',
+      loc: LocationInfo(
+        rawInput: 'Platz der Republik 1, 11011 Berlin',
+        name: null,
+        street: 'Platz der Republik 1',
+        postalCode: '11011',
+        city: 'Berlin',
+        lat: 52.5186,
+        lng: 13.3762,
+      ),
+    );
+    return ListView(
+      physics: const BouncingScrollPhysics(),
+      padding: EdgeInsets.fromLTRB(24, 4, 24, bottomNavHeight + 110),
+      children: [
+        _buildPRow(skin),
+        const SizedBox(height: 14),
+        // Freigestellt: Headline + 1. Karte + Fahrzeit + oberer Teil der 2. Karte
+        KeyedSubtree(
+          key: TutorialKeys.planDemoTop,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(children: [
+                Icon(Icons.schedule_outlined, size: 13, color: skin.primary),
+                const SizedBox(width: 6),
+                Text('EREIGNISSE',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: skin.primary, letterSpacing: 0.9)),
+              ]),
+              const SizedBox(height: 10),
+              _PlanCard(item: a, skin: skin),
+              _TutorialTravelGap(skin: skin, text: '32 Min.'),
+              ClipRect(
+                child: Align(
+                  alignment: Alignment.topCenter,
+                  heightFactor: 0.4,
+                  child: _PlanCard(item: b, skin: skin),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
   }
 
   Widget _buildDayPlanTab(AppSkin skin, double bottomNavHeight) {
+    if (tutorialDemoPlan) return _buildTutorialPlan(skin, bottomNavHeight);
     final key = _planKey;
     final items = _planOverride ?? DayPlanStore.load(key);
     if (RouteTimeService.enabled) {
       unawaited(RouteTimeService.ensureForDay(_planDate, items));
     }
 
-    Widget card(DayPlanItem it, int i) =>
-        _PlanCard(item: it, skin: skin, travelText: _travelTextFor(items, i));
+    Widget card(DayPlanItem it, int i) => _PlanCard(item: it, skin: skin);
 
     return ListView(
       physics: const BouncingScrollPhysics(),
@@ -1851,8 +1974,17 @@ class ScheduleScreenState extends State<ScheduleScreen> with WidgetsBindingObser
                 key: ValueKey('plan_${it.id}'),
                 index: i,
                 child: Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: GlassSwipeCard(
+                  padding: EdgeInsets.only(
+                      bottom: (i + 1 < items.length &&
+                              RouteTimeService.infoFor(items[i], items[i + 1]) != null)
+                          ? 0
+                          : 10),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (i > 0 && RouteTimeService.infoFor(items[i - 1], it) != null)
+                        _TravelGap(skin: skin, info: RouteTimeService.infoFor(items[i - 1], it)!),
+                      GlassSwipeCard(
                     cardKey: it.id,
                     externallyOpen: _openPlanId,
                     onCardSwiped: (k) => setState(() => _openPlanId = k),
@@ -1867,6 +1999,8 @@ class ScheduleScreenState extends State<ScheduleScreen> with WidgetsBindingObser
                       if (mounted) setState(() => _openPlanId = null);
                     },
                     child: card(it, i),
+                  ),
+                    ],
                   ),
                 ),
               );
@@ -2408,7 +2542,7 @@ class ScheduleScreenState extends State<ScheduleScreen> with WidgetsBindingObser
                             ]),
                           const SizedBox(height: 16),
                           if (!isForeignView && !widget.readOnly) ...[
-                            _buildOrgSwitcher(skin),
+                            KeyedSubtree(key: TutorialKeys.orgSwitcher, child: _buildOrgSwitcher(skin)),
                             const SizedBox(height: 12),
                           ],
                           _buildNavPicker(skin, showPlan, monthName),
@@ -2501,6 +2635,7 @@ class ScheduleScreenState extends State<ScheduleScreen> with WidgetsBindingObser
                                           final shift = _displayScheduleData[key] ?? '';
                                           final entry = shift.isEmpty ? null : ScheduleEntry(shift);
                                           return Padding(
+                                            key: index == 1 ? TutorialKeys.dayCard : null,
                                             padding: const EdgeInsets.only(bottom: 8),
                                             child: _DayCard(
                                               day: day, entry: entry, skin: skin, isChrome: isChrome,
@@ -3100,8 +3235,20 @@ class _DayPlanOverlayState extends State<_DayPlanOverlay>
     );
     _planItems = DayPlanStore.load(widget.dateKey);
     SyncService.instance.scheduleDataChanged.addListener(_onSyncChanged);
+    RouteTimeService.changed.addListener(_onRouteChanged);
+    _ensureRoutes();
     _ctrl.forward();
     _loadData();
+  }
+
+  void _onRouteChanged() {
+    if (mounted) setState(() {});
+  }
+
+  void _ensureRoutes() {
+    if (!_showPlan || !RouteTimeService.enabled) return;
+    final day = DateTime.tryParse(widget.dateKey) ?? DateTime.now();
+    unawaited(RouteTimeService.ensureForDay(day, _planItems));
   }
 
   void _onSyncChanged() {
@@ -3113,6 +3260,7 @@ class _DayPlanOverlayState extends State<_DayPlanOverlay>
   @override
   void dispose() {
     SyncService.instance.scheduleDataChanged.removeListener(_onSyncChanged);
+    RouteTimeService.changed.removeListener(_onRouteChanged);
     _ctrl.dispose();
     super.dispose();
   }
@@ -3199,6 +3347,7 @@ class _DayPlanOverlayState extends State<_DayPlanOverlay>
       _planItems = DayPlanStore.load(widget.dateKey);
     });
     widget.onPlanChanged?.call(); // Tageskarte bekommt ggf. das Plan-Icon
+    _ensureRoutes();
   }
 
   Future<void> _openItemSheet({DayPlanItem? existing}) async {
@@ -4137,6 +4286,14 @@ List<Widget> _pfWidgets() {
                                     _eventText!.isNotEmpty)
                                   _buildEventInfo(),
                                 // ═══ KOLLEGEN ═══
+                                KeyedSubtree(
+                                  key: TutorialKeys.colleaguesBlock,
+                                  child: SizedBox(
+                                    width: double.infinity,
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
                                 _sectionLabel(Icons.people_outline, 'KOLLEGEN'),
                                 const SizedBox(height: 8),
                                 if (_debugLog != null) _buildDebugLog(),
@@ -4179,6 +4336,10 @@ List<Widget> _pfWidgets() {
                                   const SizedBox(height: 10),
                                   _allColleaguesTile(),
                                 ],
+                                      ],
+                                    ),
+                                  ),
+                                ),
 
                                 // ═══ EREIGNISSE (nur eigene Ansicht) ═══
                                 if (_showPlan) ...[
@@ -4196,11 +4357,12 @@ List<Widget> _pfWidgets() {
                                     'EREIGNISSE',
                                   ),
                                   const SizedBox(height: 8),
-                                  for (final it in _planItems)
+                                  for (final (i, it) in _planItems.indexed) ...[
                                     _PlanRow(
                                       key: ValueKey(it.id),
                                       item: it,
                                       skin: skin,
+                                      travel: i > 0 ? RouteTimeService.infoFor(_planItems[i - 1], it) : null,
                                       externallyOpenId: _openSwipedPlanId,
                                       onSwiped: (id) => setState(
                                         () => _openSwipedPlanId = id,
@@ -4217,6 +4379,7 @@ List<Widget> _pfWidgets() {
                                         _reloadPlan();
                                       },
                                     ),
+                                  ],
                                   if (_planItems.isNotEmpty)
                                     const SizedBox(height: 2),
                                   _addPlanButton(),
@@ -4245,6 +4408,7 @@ List<Widget> _pfWidgets() {
 class _PlanRow extends StatefulWidget {
   final DayPlanItem item;
   final AppSkin skin;
+  final RouteInfo? travel;
   final String? externallyOpenId;
   final void Function(String?)? onSwiped;
   final VoidCallback onTap;
@@ -4253,6 +4417,7 @@ class _PlanRow extends StatefulWidget {
     super.key,
     required this.item,
     required this.skin,
+    this.travel,
     this.externallyOpenId,
     this.onSwiped,
     required this.onTap,
@@ -4466,16 +4631,22 @@ class _PlanRowState extends State<_PlanRow>
             const SizedBox(width: 8),
             Expanded(
               flex: 11,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Icon(
-                    Icons.place_outlined,
-                    size: 12,
-                    color: skin.surface(0.4),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      Icon(Icons.place_outlined, size: 12, color: skin.surface(0.4)),
+                      const SizedBox(width: 4),
+                      Flexible(child: locationWidget),
+                    ],
                   ),
-                  const SizedBox(width: 4),
-                  Flexible(child: locationWidget),
+                  if (widget.travel != null) ...[
+                    const SizedBox(height: 3),
+                    _TravelChip(skin: skin, info: widget.travel!),
+                  ],
                 ],
               ),
             ),
@@ -6124,10 +6295,7 @@ class _PlanLiftState extends State<_PlanLift> with SingleTickerProviderStateMixi
 class _PlanCard extends StatelessWidget {
   final DayPlanItem item;
   final AppSkin skin;
-
-  /// Fahrzeit vom vorherigen Ereignis, z. B. "ca. 25 Min". null = nicht anzeigen.
-  final String? travelText;
-  const _PlanCard({required this.item, required this.skin, this.travelText});
+  const _PlanCard({required this.item, required this.skin});
 
   @override
   Widget build(BuildContext context) {
@@ -6201,15 +6369,6 @@ class _PlanCard extends StatelessWidget {
                     ),
                   ]),
                 ],
-                if (travelText != null) ...[
-                  const SizedBox(height: 5),
-                  Row(children: [
-                    Icon(Icons.directions_car_outlined, size: 14, color: skin.surface(0.45)),
-                    const SizedBox(width: 5),
-                    Text(travelText!,
-                        style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w500, color: skin.surface(0.5))),
-                  ]),
-                ],
               ]),
             ),
             if (canNav) ...[
@@ -6237,6 +6396,77 @@ class _PlanCard extends StatelessWidget {
           ]),
         ),
       ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Kleine Fahrzeit-Zeile zwischen zwei Ereignissen
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _TravelChip extends StatelessWidget {
+  final AppSkin skin;
+  final RouteInfo info;
+  const _TravelChip({required this.skin, required this.info});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      Icon(Icons.directions_car_outlined, size: 11, color: skin.surface(0.42)),
+      const SizedBox(width: 3),
+      Text(info.short,
+          style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w500, color: skin.surface(0.45))),
+      if (info.badge != RouteBadge.none) ...[
+        const SizedBox(width: 2),
+        RouteBadgeIcon(badge: info.badge, size: 11),
+      ],
+    ]);
+  }
+}
+
+// Fahrzeit als schmale Zeile zwischen zwei Karten (nur 2 px Abstand oben/unten)
+class _TravelGap extends StatelessWidget {
+  final AppSkin skin;
+  final RouteInfo info;
+  const _TravelGap({required this.skin, required this.info});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 2, 0, 2),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(Icons.directions_car_outlined, size: 12, color: skin.surface(0.42)),
+        const SizedBox(width: 4),
+        Text(info.text,
+            style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w500, color: skin.surface(0.45))),
+        if (info.badge != RouteBadge.none) ...[
+          const SizedBox(width: 3),
+          RouteBadgeIcon(badge: info.badge, size: 12),
+        ],
+      ]),
+    );
+  }
+}
+
+
+// Demo-Fahrtzeit fürs Tutorial: fester Wert + grüner Blitz (= Live-Traffic)
+class _TutorialTravelGap extends StatelessWidget {
+  final AppSkin skin;
+  final String text;
+  const _TutorialTravelGap({required this.skin, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 2, 0, 2),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(Icons.directions_car_outlined, size: 12, color: skin.surface(0.42)),
+        const SizedBox(width: 4),
+        Text(text,
+            style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w500, color: skin.surface(0.45))),
+        const SizedBox(width: 3),
+        const Icon(Icons.bolt_rounded, size: 12, color: Color(0xFF3DD68C)),
+      ]),
     );
   }
 }

@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart'
+    show debugPrint, kDebugMode, kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tz;
@@ -8,40 +10,27 @@ import '../models/relationship_style.dart';
 import '../models/notification_phrases.dart'
     show WeatherCategory, categoryFor, eventReminderTitle, eventReminderBody;
 import 'weather_service.dart';
+import 'package:flutter/widgets.dart'
+    show WidgetsBinding, WidgetsBindingObserver, AppLifecycleState;
+import '../models/calendar_event.dart' show CalendarEventStore;
 import 'package:flutter_timezone/flutter_timezone.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // NOTIFICATION SERVICE
 //
-// Aufbau:
+// 1) BADGE: _refreshBadge() setzt das App-Icon-Badge auf die Zahl überfälliger,
+//    offener Aufgaben (nur iOS).
+// 2) TEXTE: stilabhängig über RelationshipTexts (relationship_style.dart).
+// 3) TAGESVORSCHAU: plant die nächsten 7 Tage einzeln (Morgen + optional
+//    Vorabend), jeweils mit dem Inhalt des Tages, an dem sie feuert.
+// 4) DRINGEND: genau eine Erinnerung 24 h nach der Markierung.
 //
-// 1) BADGE-MANAGEMENT: _refreshBadge() zählt überfällige, nicht erledigte
-//    Aufgaben und setzt das App-Icon-Badge exakt darauf — aufgerufen bei
-//    init() und über notifyTasksChanged() von außen (tasks_screen.dart).
-//
-// 2) STILABHÄNGIGE TEXTE: Jeder Notification-Case holt Titel/Body/Subtitle
-//    aus RelationshipTexts (relationship_style.dart), die wiederum aus
-//    notification_phrases.dart zufällige Varianten zieht. Dieser Service
-//    kennt selbst keine Text-/Stil-Logik, nur WANN und WORAUS (Dienst,
-//    Wetter, Aufgaben-Zahlen) eine Notification besteht.
-//
-// 3) TAGESVORSCHAU: scheduleDailyOverview() plant eine täglich wiederkeh-
-//    rende Notification, die kombiniert: Dienst (Hive-Key schedule_<yyyy-MM>),
-//    Notiz-Vorhandensein (Hive-Key schedule_note_<dateKey>), Wetter
-//    (WeatherService) und fällige/offene Aufgaben (Hive-Key 'tasks').
-//    Konfigurierbar über DailyOverviewSettings (ein/aus, feste Uhrzeit vs.
-//    App-Start, nur wenn relevant, zusätzliche Vorabend-Vorschau).
-//
-// 4) DRINGEND (NEU): Aufgaben, die als dringend (isUrgent == true) markiert
-//    werden, erhalten GENAU EINE zusätzliche Erinnerung 24 Stunden nach der
-//    Markierung, falls bis dahin nicht erledigt — verwaltet über
-//    scheduleUrgentReminder()/cancelUrgentReminder(), aufgerufen von
-//    tasks_screen.dart bei Statusänderung. Bewusst einmalig, keine echte
-//    Wiederholung alle X Stunden (technisch ohne offene App nicht
-//    zuverlässig nativ umsetzbar, s. Kommentar an der Methode selbst).
+// IDs: stabiler FNV-1a-Hash statt String.hashCode (der ist über Dart-Versionen
+// nicht garantiert stabil → nach Updates ließen sich alte Erinnerungen nicht
+// mehr abbrechen → Mehrfach-Benachrichtigungen). Eigene, weit getrennte
+// Nummernräume pro Typ.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Liest/schreibt alle Einstellungen rund um die Tagesvorschau aus Hive.
 /// Android: ohne diese Details wirft das Plugin beim Anzeigen/Planen eine NPE.
 const AndroidNotificationDetails _androidDetails = AndroidNotificationDetails(
   'optimes_default',
@@ -51,6 +40,7 @@ const AndroidNotificationDetails _androidDetails = AndroidNotificationDetails(
   priority: Priority.high,
 );
 
+/// Liest/schreibt alle Einstellungen rund um die Tagesvorschau aus Hive.
 class DailyOverviewSettings {
   static const _kEnabled = 'daily_overview_enabled';
   static const _kMode = 'daily_overview_mode'; // 'fixed_time' | 'app_start'
@@ -110,35 +100,58 @@ class NotificationService {
   bool _initialized = false;
   bool _permissionsRequested = false;
 
-  // Feste IDs für die wiederkehrende Tagesvorschau (Morgen/Abend) und für
-  // den reinen Badge-Reset — getrennt von den dynamischen Task-Reminder-IDs
-  // (siehe _notificationId), damit sie sich nie überschneiden können.
+  // Feste IDs: Legacy-Tagesvorschau (nur noch zum Aufräumen / App-Start-Modus)
+  // und reiner Badge-Reset.
   static const int _dailyOverviewMorningId = 9000001;
   static const int _dailyOverviewEveningId = 9000002;
   static const int _badgeOnlyNotificationId = 9000099;
 
-  // Basis-Offset für die "dringend, alle 6h" wiederkehrenden IDs — eigener
-  // Nummernraum, getrennt von den normalen Task-Remindern (_notificationId)
-  // und den Tagesvorschau-IDs oben.
-  static const int _urgentRecurringIdBase = 3000000;
+  // Tagesvorschau: eine ID pro Tag (0..6) für Morgen und Vorabend.
+  static const int _overviewMorningBase = 9001000;
+  static const int _overviewEveningBase = 9002000;
+  static const int _overviewDays = 7; // Maximum (zum Aufräumen)
 
-  // ── KALENDER-TERMIN REMINDER (NEU) ──────────────────────────────────────
-  // Eigener ID-Nummernraum, getrennt von Task-Remindern (_notificationId),
-  // Dringend-Remindern (_urgentRecurringIdBase) und Tagesvorschau
-  // (_dailyOverviewMorningId/_dailyOverviewEveningId) — kann also nie
-  // kollidieren. Bewusst neutraler Text ohne RelationshipStyle, wie
-  // vereinbart.
-  static const int _eventReminderIdBase = 4000000;
+  /// iOS hält nur 64 geplante Benachrichtigungen → dort weniger Tage vorplanen.
+  int get _overviewPlanDays =>
+      (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) ? 3 : _overviewDays;
+
+  // Nummernräume (je 90 Mio. breit, alle < 2^31). Die alten Bereiche
+  // 1.000.000–4.999.999 gelten als "Legacy" und werden gezielt aufgeräumt.
+  static const int _taskIdBase = 100000000;
+  static const int _urgentIdBase = 200000000;
+  static const int _eventIdBase = 300000000;
+  static const String _iosScheduledAtKey = '_ios_notification_scheduled_at';
+  static const int _iosPendingLimit = 64;
+  static const int _legacyIdMin = 1000000;
+  static const int _legacyIdMax = 5000000;
+
+  static const int _overdueNowIndex = 99;
+
+  /// Stabiler FNV-1a-Hash (32 Bit).
+  static int _stableHash(String s) {
+    var h = 0x811c9dc5;
+    for (final c in s.codeUnits) {
+      h ^= c;
+      h = (h * 0x01000193) & 0xFFFFFFFF;
+    }
+    return h;
+  }
+
+  static int _idIn(int base, String key) => base + _stableHash(key) % 90000000;
 
   Future<void> init() async {
     if (_initialized) return;
 
     // ── Timezone initialisieren ──────────────────────────────────────────────
     tz.initializeTimeZones();
-    
-    // NEU: lokale Timezone setzen, sonst ist tz.local immer UTC
+
+    // Lokale Timezone setzen, sonst ist tz.local immer UTC
     final String timeZoneName = await _getLocalTimezoneName();
-    tz.setLocalLocation(tz.getLocation(timeZoneName));
+    try {
+      tz.setLocalLocation(tz.getLocation(timeZoneName));
+    } catch (_) {
+      tz.setLocalLocation(tz.getLocation('Europe/Berlin'));
+    }
 
     const iosSettings = DarwinInitializationSettings(
       requestAlertPermission: false,
@@ -171,15 +184,40 @@ class NotificationService {
     if (DailyOverviewSettings.enabled && DailyOverviewSettings.mode == 'fixed_time') {
       await scheduleDailyOverview();
     }
+
+    _lastRefresh = DateTime.now();
+    await CalendarEventStore.rescheduleAllNotifications();
+    _startLifecycleRefresh();
+
+    await debugLogPending();
+  }
+
+  /// Debug: listet alle geplanten Benachrichtigungen und meldet Duplikate
+  /// (gleicher Titel + Text + Payload). Läuft nur im Debug-Modus.
+  Future<void> debugLogPending() async {
+    if (!kDebugMode) return;
+    try {
+      final pending = await _plugin.pendingNotificationRequests();
+      final counts = <String, int>{};
+      for (final r in pending) {
+        final k = '${r.title}|${r.body}|${r.payload}';
+        counts[k] = (counts[k] ?? 0) + 1;
+      }
+      print('Notifications pending: ${pending.length}');
+      counts.forEach((k, n) {
+        if (n > 1) print('  DUPLIKAT x$n: $k');
+      });
+    } catch (e) {
+      print('debugLogPending: $e');
+    }
   }
 
   /// Holt die lokale Timezone des Geräts.
   Future<String> _getLocalTimezoneName() async {
     try {
-      // flutter_timezone package
       return (await FlutterTimezone.getLocalTimezone()).identifier;
     } catch (_) {
-      return 'Europe/Berlin'; // Fallback für dein Gerät
+      return 'Europe/Berlin';
     }
   }
 
@@ -208,7 +246,13 @@ class NotificationService {
       final notifOk = await android.requestNotificationsPermission();
       final canExact = await android.canScheduleExactNotifications();
       if (canExact != true) {
-        await android.requestExactAlarmsPermission();
+        // Nur EINMAL pro Installation nachfragen — sonst öffnet jeder App-Start
+        // die Systemeinstellungen.
+        final box = Hive.box('einstellungen');
+        if (box.get('notif_exact_alarm_asked', defaultValue: false) != true) {
+          await box.put('notif_exact_alarm_asked', true);
+          await android.requestExactAlarmsPermission();
+        }
       }
       await _refreshScheduleMode();
       return notifOk ?? false;
@@ -248,31 +292,177 @@ class NotificationService {
     );
   }
 
+  // ── Planen mit Absicherung ────────────────────────────────────────────────
+
+  /// Plant eine Notification. Fehler (z.B. fehlende Exact-Alarm-Berechtigung
+  /// auf Android) werden abgefangen; dann folgt ein zweiter Versuch ungefähr.
+  Future<void> _zoned(
+    int id,
+    String title,
+    String body,
+    DateTime at,
+    NotificationDetails details,
+    String payload,
+  ) {
+    if (!_isIos) {
+      return _scheduleZoned(id, title, body, at, details, payload);
+    }
+
+    final next = _zonedQueue.then(
+      (_) => _scheduleZoned(id, title, body, at, details, payload),
+    ).catchError((Object e) {
+      print('Notification schedule failed (id $id): $e');
+    });
+    _zonedQueue = next;
+    return next;
+  }
+
+  bool get _isIos => !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
+
+  Future<void> _zonedQueue = Future<void>.value();
+
+  Map<int, int> _loadIosScheduledAt() {
+    final raw = Hive.box('einstellungen').get(_iosScheduledAtKey);
+    if (raw is! String || raw.isEmpty) return {};
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map) {
+        return {
+          for (final entry in decoded.entries)
+            if (int.tryParse(entry.key.toString()) != null && entry.value is num)
+              int.parse(entry.key.toString()): (entry.value as num).toInt(),
+        };
+      }
+    } catch (e) {
+      debugPrint('Invalid iOS notification schedule registry: $e');
+    }
+    return {};
+  }
+
+  Future<void> _saveIosScheduledAt(Map<int, int> scheduledAt) =>
+      Hive.box('einstellungen').put(
+        _iosScheduledAtKey,
+        jsonEncode({
+          for (final entry in scheduledAt.entries)
+            '${entry.key}': entry.value,
+        }),
+      );
+
+  Future<void> _scheduleZoned(
+    int id,
+    String title,
+    String body,
+    DateTime at,
+    NotificationDetails details,
+    String payload,
+  ) async {
+    Map<int, int>? scheduledAt;
+    if (_isIos) {
+      final pending = await _plugin.pendingNotificationRequests();
+      final pendingIds = pending.map((request) => request.id).toSet();
+      scheduledAt = _loadIosScheduledAt()
+        ..removeWhere((scheduledId, _) => !pendingIds.contains(scheduledId));
+
+      if (!pendingIds.contains(id)) {
+        var pendingCount = pending.length;
+        while (pendingCount >= _iosPendingLimit) {
+          final managed = scheduledAt.entries
+              .where((entry) => pendingIds.contains(entry.key))
+              .toList()
+            ..sort((a, b) => b.value.compareTo(a.value));
+          if (managed.isEmpty) {
+            debugPrint(
+              'Notification skipped: iOS pending limit ($_iosPendingLimit) reached.',
+            );
+            return;
+          }
+          final farthest = managed.first;
+          if (!at.isBefore(DateTime.fromMillisecondsSinceEpoch(farthest.value))) {
+            debugPrint(
+              'Notification skipped: iOS already has $_iosPendingLimit earlier notifications.',
+            );
+            return;
+          }
+          await _plugin.cancel(farthest.key);
+          pendingIds.remove(farthest.key);
+          scheduledAt.remove(farthest.key);
+          pendingCount--;
+        }
+      }
+    }
+
+    final when = tz.TZDateTime.from(at, tz.local);
+    for (final mode in [_scheduleMode, AndroidScheduleMode.inexactAllowWhileIdle]) {
+      try {
+        await _plugin.zonedSchedule(
+          id,
+          title,
+          body,
+          when,
+          details,
+          androidScheduleMode: mode,
+          uiLocalNotificationDateInterpretation:
+              UILocalNotificationDateInterpretation.absoluteTime,
+          payload: payload,
+        );
+        if (scheduledAt != null) {
+          scheduledAt[id] = at.millisecondsSinceEpoch;
+          await _saveIosScheduledAt(scheduledAt);
+        }
+        return;
+      } catch (e) {
+        print('Notification schedule failed (id $id, $mode): $e');
+      }
+    }
+  }
+
+  /// Bricht Altlasten aus dem alten ID-Schema (1–5 Mio.) mit diesem Payload ab.
+  /// Fasst NIE neue IDs an, kann also nicht mit frisch geplanten kollidieren.
+  Future<void> _cancelLegacyByPayload(String payload) async {
+    try {
+      final pending = await _plugin.pendingNotificationRequests();
+      for (final r in pending) {
+        if (r.payload == payload && r.id >= _legacyIdMin && r.id < _legacyIdMax) {
+          await _plugin.cancel(r.id);
+        }
+      }
+    } catch (e) {
+      print('_cancelLegacyByPayload: $e');
+    }
+  }
+
+  final Map<String, Future<void>> _legacyPurged = {};
+
+  /// Einmal pro App-Lauf und Payload: alte, nicht mehr abbrechbare Einträge
+  /// entfernen, bevor neu geplant wird.
+  Future<void> _purgeLegacyOnce(String payload) =>
+      _legacyPurged.putIfAbsent(payload, () => _cancelLegacyByPayload(payload));
+
   // ── BADGE-MANAGEMENT ───────────────────────────────────────────────────────
 
-  /// Setzt das App-Icon-Badge auf die Anzahl der aktuell wirklich
-  /// relevanten Items — aktuell: überfällige, nicht erledigte Aufgaben.
+  /// Setzt das App-Icon-Badge auf die Anzahl überfälliger, offener Aufgaben.
+  /// Nur iOS: auf Android würde die "stille" Notification kurz sichtbar sein.
   Future<void> _refreshBadge() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) return;
     final count = _countOverdueOpenTasks();
-    if (count <= 0) {
-      // Eine "stille" Notification (kein Alert, kein Sound, nur Badge),
-      // die sofort wieder gecancelt wird — zuverlässigster Weg über
-      // flutter_local_notifications, das Badge explizit auf 0 zu setzen.
+    try {
       await _plugin.show(
         _badgeOnlyNotificationId,
         null,
         null,
-        const NotificationDetails(
+        NotificationDetails(
           android: _androidDetails,
           iOS: DarwinNotificationDetails(
             presentAlert: false,
             presentBadge: true,
             presentSound: false,
-            badgeNumber: 0,
+            badgeNumber: count,
           ),
         ),
       );
       await _plugin.cancel(_badgeOnlyNotificationId);
+    } catch (e) {
+      print('_refreshBadge: $e');
     }
   }
 
@@ -315,19 +505,19 @@ class NotificationService {
   }
 
   /// Von außen (z.B. tasks_screen.dart) aufzurufen, sobald sich der
-  /// Erledigt-Status, die Frist oder die Existenz einer Aufgabe ändert —
-  /// hält das Badge konsistent mit dem echten Zustand.
+  /// Erledigt-Status, die Frist oder die Existenz einer Aufgabe ändert.
   Future<void> notifyTasksChanged() => _refreshBadge();
 
-  // ── TASK REMINDER (bestehender Mechanismus, stilabhängig über Phrasen) ───
+  // ── TASK REMINDER ─────────────────────────────────────────────────────────
 
-  void scheduleTaskReminder({
+  Future<void> scheduleTaskReminder({
     required String taskId,
     required int reminderIndex,
     required String title,
     required DateTime reminderAt,
-  }) {
+  }) async {
     if (reminderAt.isBefore(DateTime.now())) return;
+    await _purgeLegacyOnce(taskId);
 
     final copy = RelationshipTexts.taskReminder(
       style: _style,
@@ -335,42 +525,36 @@ class NotificationService {
       fullName: _fullName,
     );
 
-    final id = _notificationId(taskId, reminderIndex);
-
-    _plugin.zonedSchedule(
-      id,
+    await _zoned(
+      _notificationId(taskId, reminderIndex),
       copy.title,
       copy.body,
-      tz.TZDateTime.from(reminderAt, tz.local),
+      reminderAt,
       _detailsFor(copy, badgeNumber: _countOverdueOpenTasks() + 1),
-      androidScheduleMode: _scheduleMode,
-      uiLocalNotificationDateInterpretation:
-          UILocalNotificationDateInterpretation.absoluteTime,
-      payload: taskId,
+      taskId,
     );
   }
 
-  void scheduleTaskDueToday({
+  Future<void> scheduleTaskDueToday({
     required String taskId,
     required int reminderIndex,
     required String taskTitle,
     required DateTime fireAt,
-  }) {
+  }) async {
     if (fireAt.isBefore(DateTime.now())) return;
+    await _purgeLegacyOnce(taskId);
     final copy = RelationshipTexts.taskDueToday(
       style: _style,
       taskTitle: taskTitle,
       fullName: _fullName,
     );
-    _plugin.zonedSchedule(
+    await _zoned(
       _notificationId(taskId, reminderIndex),
       copy.title,
       copy.body,
-      tz.TZDateTime.from(fireAt, tz.local),
+      fireAt,
       _detailsFor(copy, badgeNumber: _countOverdueOpenTasks()),
-      androidScheduleMode: _scheduleMode,
-      uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
-      payload: taskId,
+      taskId,
     );
   }
 
@@ -384,7 +568,7 @@ class NotificationService {
       fullName: _fullName,
     );
     await _plugin.show(
-      _notificationId(taskId, 99),
+      _notificationId(taskId, _overdueNowIndex),
       copy.title,
       copy.body,
       _detailsFor(copy, badgeNumber: _countOverdueOpenTasks()),
@@ -396,10 +580,12 @@ class NotificationService {
     for (int i = 0; i < 10; i++) {
       cancelTaskReminder(taskId, i);
     }
-    cancelGuaranteedDueReminder(taskId); // NEU
-    // Auch eine eventuell laufende Dringend-Erinnerung für diese Aufgabe
-    // stoppen — relevant, wenn die Aufgabe erledigt/gelöscht wird.
+    _plugin.cancel(_notificationId(taskId, _overdueNowIndex));
+    cancelGuaranteedDueReminder(taskId);
+    // Auch eine eventuell laufende Dringend-Erinnerung stoppen.
     cancelUrgentReminder(taskId);
+    _cancelLegacyByPayload(taskId);
+    _cancelLegacyByPayload('urgent:$taskId');
     _refreshBadge();
   }
 
@@ -407,105 +593,96 @@ class NotificationService {
     _plugin.cancel(_notificationId(taskId, reminderIndex));
   }
 
-  int _notificationId(String taskId, int reminderIndex) {
-    // NEU: eigener Basis-Offset (1.000.000), damit Task-IDs garantiert
-    // nicht mehr mit Dringend- (3.000.000+), Event- (4.000.000+) oder
-    // Tagesvorschau-IDs (9.000.000+) kollidieren können.
-    return 1000000 + (taskId.hashCode.abs() % 100000) * 10 + reminderIndex;
-  }
+  int _notificationId(String taskId, int reminderIndex) =>
+      _idIn(_taskIdBase, 'task|$taskId|$reminderIndex');
 
-  // ── DRINGEND, EINMALIGE ERINNERUNG NACH 24H (NEU) ─────────────────────────
+  // ── DRINGEND, EINMALIGE ERINNERUNG NACH 24H ───────────────────────────────
   //
-  // Aufgaben, die als dringend markiert werden, erhalten GENAU EINE
-  // zusätzliche Erinnerung 24 Stunden nach der Markierung, falls sie bis
-  // dahin nicht erledigt wurde — unabhängig von eventuell zusätzlich
-  // gesetzten normalen Remindern. Bewusst einmalig (keine echte
-  // Wiederholung alle 6h): flutter_local_notifications/iOS unterstützen
-  // keine native "alle X Stunden, für immer"-Wiederholung ohne dass die
-  // App regelmäßig im Vorder- oder Hintergrund läuft, um neu zu planen.
-  // Eine einmalige 24h-Erinnerung ist die zuverlässige, einfache Lösung.
+  // Genau eine zusätzliche Erinnerung 24 Stunden nach der Markierung, falls
+  // die Aufgabe bis dahin nicht erledigt wurde. Bewusst einmalig: iOS/
+  // flutter_local_notifications kennen keine native "alle X Stunden"-
+  // Wiederholung ohne laufende App.
 
-  int _urgentRecurringId(String taskId) =>
-      _urgentRecurringIdBase + (taskId.hashCode.abs() % 100000);
+  int _urgentRecurringId(String taskId) => _idIn(_urgentIdBase, 'urgent|$taskId');
 
-  /// Plant die einmalige Dringend-Erinnerung für 24h ab jetzt. Aufzurufen
-  /// von tasks_screen.dart, sobald eine Aufgabe als dringend markiert wird.
-  /// Erneuter Aufruf (z.B. bei Titel-Änderung) ersetzt automatisch den
-  /// bisherigen Termin (gleiche ID).
   Future<void> scheduleUrgentReminder({
     required String taskId,
     required String taskTitle,
   }) async {
+    await _purgeLegacyOnce('urgent:$taskId');
     final copy = RelationshipTexts.taskUrgentRecurring(
       style: _style,
       taskTitle: taskTitle,
       fullName: _fullName,
     );
-    final id = _urgentRecurringId(taskId);
     final fireAt = DateTime.now().add(const Duration(hours: 24));
-
-    await _plugin.zonedSchedule(
-      id,
+    await _zoned(
+      _urgentRecurringId(taskId),
       copy.title,
       copy.body,
-      tz.TZDateTime.from(fireAt, tz.local),
+      fireAt,
       _detailsFor(copy, badgeNumber: _countOverdueOpenTasks()),
-      androidScheduleMode: _scheduleMode,
-      uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
-      payload: 'urgent:$taskId',
+      'urgent:$taskId',
     );
   }
 
-  /// Stoppt die Dringend-Erinnerung für eine Aufgabe — aufzurufen, wenn die
-  /// Aufgabe nicht mehr dringend ist, erledigt oder gelöscht wurde.
   void cancelUrgentReminder(String taskId) {
     _plugin.cancel(_urgentRecurringId(taskId));
   }
 
-  // ── GARANTIERTE FÄLLIG-ERINNERUNG (NEU) ───────────────────────────────────
+  // ── GARANTIERTE FÄLLIG-ERINNERUNG ─────────────────────────────────────────
   //
-  // Unabhängig davon, ob manuell ein "X vorher"-Chip gewählt wurde: sobald
-  // eine Aufgabe fällig ist, MUSS eine Notification kommen. Fester, für
-  // diesen Zweck reservierter Index (50) — kollidiert nie mit den max. 3
-  // wählbaren Chip-Remindern (Index 0-2) oder der Sofort-Notification (99).
+  // Unabhängig von "X vorher"-Chips MUSS bei Fälligkeit eine Notification
+  // kommen. Eigener Index (50), kollidiert dank Hash-IDs nicht mehr.
   static const int _dueReminderIndex = 50;
-  /// NEU (Punkt 3): öffentlich, damit das Notification-Center exakt
-  /// denselben Standard-Uhrzeit-Wert nutzt wie der echte iOS-Reminder.
+  /// Öffentlich, damit das Notification-Center denselben Standard-Uhrzeit-
+  /// Wert nutzt wie der echte iOS-Reminder.
   static const int dueTimeDefaultHour = 9; // Uhrzeit für Aufgaben ohne Uhrzeit
 
-  void scheduleGuaranteedDueReminder({
+  Future<void> scheduleGuaranteedDueReminder({
     required String taskId,
     required String taskTitle,
     required DateTime dueDate,
     required bool hasTime,
-  }) {
+  }) async {
+    final now = DateTime.now();
     final fireAt = hasTime
         ? dueDate
         : DateTime(dueDate.year, dueDate.month, dueDate.day, dueTimeDefaultHour, 0);
-        
-    // Liegt der Zeitpunkt schon in der Vergangenheit (Frist z.B. heute
-    // Mittag, Aufgabe wird aber erst abends angelegt/bearbeitet): sofort
-    // auslösen, statt die Erinnerung stillschweigend zu verlieren.
-    if (fireAt.isBefore(DateTime.now())) {
-      showTaskOverdueNow(taskId: taskId, taskTitle: taskTitle);
+
+    if (fireAt.isBefore(now)) {
+      // Zeitpunkt liegt in der Vergangenheit. Nur wenn die Aufgabe WIRKLICH
+      // überfällig ist, einmal pro Frist sofort melden — nicht bei jedem
+      // erneuten Planen und nicht für "heute fällig, 9 Uhr schon vorbei".
+      final overdue = hasTime
+          ? dueDate.isBefore(now)
+          : DateTime(dueDate.year, dueDate.month, dueDate.day)
+              .isBefore(DateTime(now.year, now.month, now.day));
+      if (overdue) {
+        final box = Hive.box('einstellungen');
+        final sig = dueDate.toIso8601String();
+        if (box.get('notif_overdue_$taskId') != sig) {
+          await box.put('notif_overdue_$taskId', sig);
+          await showTaskOverdueNow(taskId: taskId, taskTitle: taskTitle);
+        }
+      }
       return;
     }
 
+    await _purgeLegacyOnce(taskId);
     final copy = RelationshipTexts.taskDueToday(
       style: _style,
       taskTitle: taskTitle,
       fullName: _fullName,
     );
 
-    _plugin.zonedSchedule(
+    await _zoned(
       _notificationId(taskId, _dueReminderIndex),
       copy.title,
       copy.body,
-      tz.TZDateTime.from(fireAt, tz.local),
+      fireAt,
       _detailsFor(copy, badgeNumber: _countOverdueOpenTasks() + 1),
-      androidScheduleMode: _scheduleMode,
-      uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
-      payload: taskId,
+      taskId,
     );
   }
 
@@ -513,90 +690,197 @@ class NotificationService {
     _plugin.cancel(_notificationId(taskId, _dueReminderIndex));
   }
 
-  // ── KALENDER-TERMIN REMINDER (NEU) ──────────────────────────────────────
+  // ── KALENDER-TERMIN REMINDER ──────────────────────────────────────────────
+  //
+  // Die ID entsteht aus Titel + Terminstart + Erinnerungszeit (nicht aus dem
+  // reminderIndex): dieselbe Erinnerung hat IMMER dieselbe ID, egal von
+  // welcher Stelle sie geplant wird → doppelte Benachrichtigungen sind
+  // unmöglich. Stornieren läuft über den Payload 'event:<id>' und räumt damit
+  // auch Altlasten mit beliebigem Index ab.
 
-  int _eventNotificationId(String eventId, int reminderIndex) {
-    return _eventReminderIdBase + (eventId.hashCode.abs() % 100000) * 10 + reminderIndex;
+  /// Alle Termin-Aufträge laufen nacheinander, damit ein Neuplanen nie vor
+  /// dem vorherigen Stornieren ausgeführt wird.
+  Future<void> _eventQueue = Future.value();
+
+  Future<void> _enqueue(Future<void> Function() job) {
+    final next = _eventQueue.then((_) => job()).catchError((Object e) {
+      print('Notification queue: $e');
+    });
+    _eventQueue = next;
+    return next;
   }
 
-  /// Plant eine einzelne Erinnerung für einen Kalender-Termin. [reminderAt]
-  /// ist der bereits berechnete Zeitpunkt (Termin-Start minus Vorlaufzeit),
-  /// exakt wie bei scheduleTaskReminder — nur der Text ist neutral.
-  void scheduleEventReminder({
+  int _eventNotificationId(
+    String eventId,
+    String title,
+    DateTime start,
+    DateTime at,
+  ) => _idIn(
+      _eventIdBase,
+      'event|$eventId|$title|${start.millisecondsSinceEpoch ~/ 60000}|${at.millisecondsSinceEpoch ~/ 60000}');
+
+  /// Plant eine Erinnerung für einen Kalender-Termin. [reminderAt] ist der
+  /// bereits berechnete Zeitpunkt (Termin-Start minus Vorlaufzeit).
+  /// [reminderIndex] bleibt aus Kompatibilität in der Signatur, wird aber
+  /// nicht mehr für die ID verwendet.
+  Future<void> scheduleEventReminder({
     required String eventId,
     required int reminderIndex,
     required String eventTitle,
     required DateTime eventStart,
     required DateTime reminderAt,
-  }) {
-    if (reminderAt.isBefore(DateTime.now())) return;
+  }) =>
+      _enqueue(() async {
+        if (reminderAt.isBefore(DateTime.now())) return;
+        await _purgeLegacyOnce('event:$eventId');
+        final timeLabel = DateFormat('HH:mm').format(eventStart);
+        await _zoned(
+          _eventNotificationId(eventId, eventTitle, eventStart, reminderAt),
+          eventReminderTitle,
+          eventReminderBody(eventTitle, timeLabel),
+          reminderAt,
+          const NotificationDetails(
+            android: _androidDetails,
+            iOS: DarwinNotificationDetails(sound: 'default', interruptionLevel: InterruptionLevel.active),
+          ),
+          'event:$eventId',
+        );
+      });
 
-    final timeLabel = DateFormat('HH:mm').format(eventStart);
-    final id = _eventNotificationId(eventId, reminderIndex);
-
-    _plugin.zonedSchedule(
-      id,
-      eventReminderTitle,
-      eventReminderBody(eventTitle, timeLabel),
-      tz.TZDateTime.from(reminderAt, tz.local),
-      const NotificationDetails(
-        android: _androidDetails,
-        iOS: DarwinNotificationDetails(sound: 'default', interruptionLevel: InterruptionLevel.active),
-      ),
-      androidScheduleMode: _scheduleMode,
-      uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
-      payload: 'event:$eventId',
-    );
-  }
-
-  /// Storniert ALLE Reminder eines Termins (max. 3 möglich, Index 0-2 reicht
-  /// als Löschbereich mit etwas Puffer).
+  /// Storniert ALLE Erinnerungen eines Termins (auch die garantierte und
+  /// Altlasten) über den Payload.
   void cancelEventReminders(String eventId) {
-    for (int i = 0; i < 5; i++) {
-      _plugin.cancel(_eventNotificationId(eventId, i));
-    }
-    cancelGuaranteedEventReminder(eventId); // NEU (Punkt 5)
+    _enqueue(() async {
+      final payload = 'event:$eventId';
+      try {
+        final pending = await _plugin.pendingNotificationRequests();
+        for (final r in pending) {
+          if (r.payload == payload) await _plugin.cancel(r.id);
+        }
+      } catch (e) {
+        print('cancelEventReminders: $e');
+      }
+    });
   }
 
-  // ── GARANTIERTE TERMIN-ERINNERUNG (NEU, Punkt 5) ─────────────────────────
+  // ── GARANTIERTE TERMIN-ERINNERUNG ─────────────────────────────────────────
   //
-  // Analog zur garantierten Fällig-Erinnerung bei Aufgaben: unabhängig von
-  // gewählten "Hinweisen" bekommt jeder Termin zusätzlich GENAU EINE
-  // Erinnerung exakt zum Start.
-  static const int _eventGuaranteedIndex = 50;
+  // Jeder Termin bekommt zusätzlich GENAU EINE Erinnerung exakt zum Start.
 
-  void scheduleGuaranteedEventReminder({
+  Future<void> scheduleGuaranteedEventReminder({
     required String eventId,
     required String eventTitle,
     required DateTime eventStart,
-  }) {
-    if (eventStart.isBefore(DateTime.now())) return;
-    _plugin.zonedSchedule(
-      _eventNotificationId(eventId, _eventGuaranteedIndex),
-      eventReminderTitle,
-      eventReminderBody(eventTitle, DateFormat('HH:mm').format(eventStart)),
-      tz.TZDateTime.from(eventStart, tz.local),
-      const NotificationDetails(
-        android: _androidDetails,
-        iOS: DarwinNotificationDetails(sound: 'default', interruptionLevel: InterruptionLevel.active),
-      ),
-      androidScheduleMode: _scheduleMode,
-      uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
-      payload: 'event:$eventId',
-    );
+  }) =>
+      _enqueue(() async {
+        if (eventStart.isBefore(DateTime.now())) return;
+        // Ganztägige Termine beginnen um 00:00 — keine Mitternachts-Meldung.
+        if (eventStart.hour == 0 && eventStart.minute == 0) return;
+        await _purgeLegacyOnce('event:$eventId');
+        await _zoned(
+          _eventNotificationId(eventId, eventTitle, eventStart, eventStart),
+          eventReminderTitle,
+          eventReminderBody(eventTitle, DateFormat('HH:mm').format(eventStart)),
+          eventStart,
+          const NotificationDetails(
+            android: _androidDetails,
+            iOS: DarwinNotificationDetails(sound: 'default', interruptionLevel: InterruptionLevel.active),
+          ),
+          'event:$eventId',
+        );
+      });
+
+  void cancelGuaranteedEventReminder(String eventId) => cancelEventReminders(eventId);
+
+  // ── ROLLENDES FENSTER FÜR TERMINE (Serien inklusive) ─────────────────────
+  //
+  // Baut ALLE Termin-Benachrichtigungen neu auf: erst alles mit Payload
+  // 'event:' abbrechen (auch Altlasten), dann die zeitlich nächsten planen.
+  // iOS hält nur die 64 nächsten → dort 40 Plätze für Termine; Android
+  // kennt diese Grenze nicht.
+
+  DateTime? _lastRefresh;
+  _LifecycleHook? _hook;
+
+  void _startLifecycleRefresh() {
+    if (_hook != null) return;
+    _hook = _LifecycleHook(() => _onResume());
+    WidgetsBinding.instance.addObserver(_hook!);
   }
 
-  void cancelGuaranteedEventReminder(String eventId) {
-    _plugin.cancel(_eventNotificationId(eventId, _eventGuaranteedIndex));
+  /// Beim Zurückkehren in die App: Planungsmodus neu lesen (Nutzer kann
+  /// gerade die Berechtigung für exakte Alarme erteilt haben). Hat sich der
+  /// Modus geändert, wird sofort neu geplant.
+  Future<void> _onResume() async {
+    final before = _scheduleMode;
+    await _refreshScheduleMode();
+    await refreshAll(force: before != _scheduleMode);
   }
+
+  /// Termine + Tagesvorschau neu planen (gedrosselt auf alle 20 Minuten).
+  Future<void> refreshAll({bool force = false}) async {
+    final last = _lastRefresh;
+    if (!force && last != null && DateTime.now().difference(last) < const Duration(minutes: 20)) {
+      return;
+    }
+    _lastRefresh = DateTime.now();
+    try {
+      await CalendarEventStore.rescheduleAllNotifications();
+      if (DailyOverviewSettings.enabled && DailyOverviewSettings.mode == 'fixed_time') {
+        await scheduleDailyOverview();
+      }
+      await _refreshBadge();
+    } catch (e) {
+      print('refreshAll: $e');
+    }
+  }
+
+  Future<void> rescheduleAllEvents(List<EventOccurrencePlan> plans) => _enqueue(() async {
+        final isIos = !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
+        final budget = isIos ? 40 : 400;
+
+        try {
+          final pending = await _plugin.pendingNotificationRequests();
+          for (final r in pending) {
+            final p = r.payload;
+            if (p != null && p.startsWith('event:')) await _plugin.cancel(r.id);
+          }
+        } catch (e) {
+          print('rescheduleAllEvents cancel: $e');
+        }
+
+        final now = DateTime.now();
+        final byId = <int, ({DateTime at, String eventId, String title, DateTime start})>{};
+        for (final p in plans) {
+          final times = <DateTime>{p.start, for (final l in p.leads) p.start.subtract(l)};
+          for (final at in times) {
+            if (!at.isAfter(now)) continue;
+            final id = _eventNotificationId(p.eventId, p.title, p.start, at);
+            byId[id] = (at: at, eventId: p.eventId, title: p.title, start: p.start);
+          }
+        }
+        final list = byId.entries.toList()..sort((a, b) => a.value.at.compareTo(b.value.at));
+        for (final e in list.take(budget)) {
+          final v = e.value;
+          await _zoned(
+            e.key,
+            eventReminderTitle,
+            eventReminderBody(v.title, DateFormat('HH:mm').format(v.start)),
+            v.at,
+            const NotificationDetails(
+              android: _androidDetails,
+              iOS: DarwinNotificationDetails(sound: 'default', interruptionLevel: InterruptionLevel.active),
+            ),
+            'event:${v.eventId}',
+          );
+        }
+      });
 
   // ── TAGESVORSCHAU ──────────────────────────────────────────────────────────
 
   /// Liest den Schichtcode für einen bestimmten Tag direkt aus Hive —
-  /// exakt derselbe Key wie in ScheduleScreenState.loadScheduleData():
-  /// 'schedule_<yyyy-MM>' → Map<'yyyy-MM-dd', shiftCode>. 'X' (= frei/kein
-  /// Eintrag laut DienstplanParser) wird als "frei" behandelt, kein Eintrag
-  /// als "kein Dienstplan vorhanden".
+  /// 'schedule_<yyyy-MM>' → Map<'yyyy-MM-dd', shiftCode>. 'X' = frei,
+  /// kein Eintrag = "kein Dienstplan vorhanden".
   ({bool hasShift, bool isFree, String? code, String? resolvedShift}) _shiftInfoForDay(DateTime day) {
     final box = Hive.box('einstellungen');
     final monthKey = DateFormat('yyyy-MM').format(day);
@@ -641,9 +925,7 @@ class NotificationService {
     }
   }
 
-  /// true, wenn für diesen Tag eine Notiz hinterlegt ist (Telefonnummer
-  /// oder Text) — identische Hive-Konvention zu _NoteData in
-  /// schedule_screen.dart ('schedule_note_<dateKey>').
+  /// true, wenn für diesen Tag eine Notiz hinterlegt ist ('schedule_note_<dateKey>').
   bool _hasNoteForDay(DateTime day) {
     final box = Hive.box('einstellungen');
     final dateKey = DateFormat('yyyy-MM-dd').format(day);
@@ -656,12 +938,9 @@ class NotificationService {
     return false;
   }
 
-  /// Liefert die Aufgaben-Kennzahlen für die Tagesvorschau eines Tages:
-  /// - Anzahl Aufgaben mit Frist GENAU an diesem Tag (dueTodayCount)
-  /// - Titel der einzigen solchen Aufgabe, falls dueTodayCount == 1
-  /// - Anzahl ANDERER offener Aufgaben (otherOpenCount) — alle nicht
-  ///   erledigten Aufgaben, die NICHT an diesem Tag fällig sind (egal ob
-  ///   sie eine Frist an einem anderen Tag haben oder gar keine Frist).
+  /// Aufgaben-Kennzahlen für die Tagesvorschau eines Tages:
+  /// Anzahl mit Frist GENAU an diesem Tag, Titel falls genau eine, Anzahl
+  /// ANDERER offener Aufgaben.
   ({int dueTodayCount, String? dueTodayTaskTitle, int otherOpenCount}) _taskInfoForDay(DateTime day) {
     final tasks = _loadTasksRaw();
     int dueToday = 0;
@@ -687,10 +966,7 @@ class NotificationService {
     );
   }
 
-  /// Holt die aktuell gecachten Wetterdaten (kein aktiver Fetch hier, das
-  /// übernimmt der reguläre WeatherService-Aufruf z.B. beim App-Start im
-  /// Homescreen) und mappt sie auf eine WeatherCategory. Liefert null, wenn
-  /// keine (auch keine veralteten) Wetterdaten vorliegen.
+  /// Mappt gecachte Wetterdaten auf eine WeatherCategory (null = keine Daten).
   ({WeatherCategory category, double tempC})? _weatherInfoFrom(
       WeatherData? data, {required bool forTomorrow}) {
     if (data == null) return null;
@@ -736,13 +1012,20 @@ class NotificationService {
     return (shiftInfo.hasShift && !shiftInfo.isFree) || taskInfo.dueTodayCount > 0;
   }
 
-  /// Plant die wiederkehrende Tagesvorschau (Modus 'fixed_time'). Plant
-  /// IMMER neu (cancel + reschedule), damit Änderungen an Uhrzeit/Optionen
-  /// aus den Settings sofort wirksam werden, und damit der Inhalt bei jedem
-  /// App-Start mit den aktuellen Daten neu befüllt wird.
-  Future<void> scheduleDailyOverview() async {
+  Future<void> _cancelAllOverviews() async {
     await _plugin.cancel(_dailyOverviewMorningId);
     await _plugin.cancel(_dailyOverviewEveningId);
+    for (int i = 0; i < _overviewDays; i++) {
+      await _plugin.cancel(_overviewMorningBase + i);
+      await _plugin.cancel(_overviewEveningBase + i);
+    }
+  }
+
+  /// Plant die Tagesvorschau (Modus 'fixed_time') für die nächsten 7 Tage,
+  /// jeweils mit dem Inhalt des Tages, an dem sie feuert. Plant IMMER neu
+  /// (cancel + reschedule). Wetter gibt es nur für heute und morgen.
+  Future<void> scheduleDailyOverview() async {
+    await _cancelAllOverviews();
 
     if (!DailyOverviewSettings.enabled || DailyOverviewSettings.mode != 'fixed_time') {
       return;
@@ -751,55 +1034,57 @@ class NotificationService {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
 
-    // Frische Wetterdaten einmalig für beide Notifications holen
+    // Frische Wetterdaten einmalig für alle Notifications holen
     final weatherData = await WeatherService.instance.fetchForecastForNotification();
 
-    // ── Morgen-Vorschau für HEUTE ──
-    if (!DailyOverviewSettings.onlyIfRelevant || _dayHasRelevantContent(today)) {
-      final copy = _buildOverviewCopy(day: today, weatherData: weatherData, forTomorrow: false);
-      var fireTime = DateTime(
-        now.year, now.month, now.day,
+    for (int i = 0; i < _overviewPlanDays; i++) {
+      final day = DateTime(today.year, today.month, today.day + i);
+
+      // ── Morgen-Vorschau für diesen Tag ──
+      final morning = DateTime(
+        day.year, day.month, day.day,
         DailyOverviewSettings.hour, DailyOverviewSettings.minute,
       );
-      if (fireTime.isBefore(now)) fireTime = fireTime.add(const Duration(days: 1));
+      if (morning.isAfter(now) &&
+          (!DailyOverviewSettings.onlyIfRelevant || _dayHasRelevantContent(day))) {
+        final copy = _buildOverviewCopy(
+          day: day,
+          weatherData: i <= 1 ? weatherData : null,
+          forTomorrow: i == 1,
+        );
+        await _zoned(
+          _overviewMorningBase + i,
+          copy.title,
+          copy.body,
+          morning,
+          _detailsFor(copy, badgeNumber: _countOverdueOpenTasks()),
+          'daily_overview',
+        );
+      }
 
-      await _plugin.zonedSchedule(
-  _dailyOverviewMorningId,
-  copy.title,
-  copy.body,
-  tz.TZDateTime.from(fireTime, tz.local),
-  _detailsFor(copy, badgeNumber: _countOverdueOpenTasks()),
-  androidScheduleMode: _scheduleMode,
-  uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
-  // matchDateTimeComponents entfernt — jede Vorschau wird jetzt einzeln
-  // mit frischem Inhalt geplant, statt für immer denselben Text zu wiederholen.
-  payload: 'daily_overview',
-);
-    }
-
-    // ── Vorabend-Vorschau für MORGEN (optional) ──
-    if (DailyOverviewSettings.eveningPreviewEnabled) {
-      final tomorrow = today.add(const Duration(days: 1));
-      if (!DailyOverviewSettings.onlyIfRelevant || _dayHasRelevantContent(tomorrow)) {
-        final copy = _buildOverviewCopy(day: tomorrow, weatherData: weatherData, forTomorrow: true);
-        var fireTime = DateTime(
-          now.year, now.month, now.day,
+      // ── Vorabend-Vorschau (optional) für den FOLGETAG ──
+      if (DailyOverviewSettings.eveningPreviewEnabled) {
+        final next = DateTime(day.year, day.month, day.day + 1);
+        final evening = DateTime(
+          day.year, day.month, day.day,
           DailyOverviewSettings.eveningHour, DailyOverviewSettings.eveningMinute,
         );
-        if (fireTime.isBefore(now)) fireTime = fireTime.add(const Duration(days: 1));
-
-        await _plugin.zonedSchedule(
-  _dailyOverviewMorningId,
-  copy.title,
-  copy.body,
-  tz.TZDateTime.from(fireTime, tz.local),
-  _detailsFor(copy, badgeNumber: _countOverdueOpenTasks()),
-  androidScheduleMode: _scheduleMode,
-  uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
-  // matchDateTimeComponents entfernt — jede Vorschau wird jetzt einzeln
-  // mit frischem Inhalt geplant, statt für immer denselben Text zu wiederholen.
-  payload: 'daily_overview_evening',
-);
+        if (evening.isAfter(now) &&
+            (!DailyOverviewSettings.onlyIfRelevant || _dayHasRelevantContent(next))) {
+          final copy = _buildOverviewCopy(
+            day: next,
+            weatherData: i == 0 ? weatherData : null,
+            forTomorrow: true,
+          );
+          await _zoned(
+            _overviewEveningBase + i,
+            copy.title,
+            copy.body,
+            evening,
+            _detailsFor(copy, badgeNumber: _countOverdueOpenTasks()),
+            'daily_overview_evening',
+          );
+        }
       }
     }
   }
@@ -834,8 +1119,31 @@ class NotificationService {
     if (DailyOverviewSettings.mode == 'fixed_time') {
       await scheduleDailyOverview();
     } else {
-      await _plugin.cancel(_dailyOverviewMorningId);
-      await _plugin.cancel(_dailyOverviewEveningId);
+      await _cancelAllOverviews();
     }
+  }
+}
+
+/// Ein Termin-Vorkommen samt Vorlaufzeiten für die Planung.
+class EventOccurrencePlan {
+  final String eventId;
+  final String title;
+  final DateTime start;
+  final List<Duration> leads;
+  const EventOccurrencePlan({
+    required this.eventId,
+    required this.title,
+    required this.start,
+    required this.leads,
+  });
+}
+
+class _LifecycleHook with WidgetsBindingObserver {
+  final void Function() onResume;
+  _LifecycleHook(this.onResume);
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) onResume();
   }
 }

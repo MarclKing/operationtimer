@@ -47,11 +47,24 @@ enum WeatherCategory {
   kalt,
 }
 
+/// Kälte überschreibt nur mildes Wetter — Schnee, Regen und Gewitter bleiben erhalten.
 WeatherCategory categoryFor(int weatherCode, double tempC, {
   double coldThresholdC = 5.0,
   bool isDay = true,
 }) {
-  if (tempC <= coldThresholdC) return WeatherCategory.kalt;
+  final c = _categoryForRaw(weatherCode, tempC, coldThresholdC: coldThresholdC, isDay: isDay);
+  final mild = c == WeatherCategory.sonnig ||
+      c == WeatherCategory.wechselhaftBewoelkt ||
+      c == WeatherCategory.bedeckt ||
+      c == WeatherCategory.nebel;
+  if (tempC <= coldThresholdC && mild) return WeatherCategory.kalt;
+  return c;
+}
+
+WeatherCategory _categoryForRaw(int weatherCode, double tempC, {
+  double coldThresholdC = 5.0,
+  bool isDay = true,
+}) {
   if (!isDay) {
     if (weatherCode == 0) return WeatherCategory.bedeckt;
     if (weatherCode <= 2) return WeatherCategory.wechselhaftBewoelkt;
@@ -257,7 +270,7 @@ const Map<WeatherCategory, List<String>> _weatherBro = {
   WeatherCategory.sonnig: [
     'Draußen warten sonnige {temp} — Sonnencreme nicht vergessen!',
     'Bombenwetter da draußen: {temp} und Sonne satt.',
-    'Bei {temp} den Bikini nicht vergessen!',
+    'Bei {temp} die Sonnenbrille nicht vergessen!',
   ],
   WeatherCategory.wechselhaftBewoelkt: [
     'Draußen ist es wechselhaft bei unentspannten {temp}.',
@@ -283,7 +296,7 @@ const Map<WeatherCategory, List<String>> _weatherBro = {
     'Gewitter im Anmarsch, {temp} draußen — pass auf dich auf!',
   ],
   WeatherCategory.kalt: [
-    'Es fröstelt es ordentlich, {temp} — pack kugelsichere Socken ein!',
+    'Es fröstelt ordentlich, {temp} — pack kugelsichere Socken ein!',
   ],
 };
 
@@ -383,7 +396,7 @@ const List<String> _taskOneOnlyFamilie = [
 ];
 
 const List<String> _taskOnePlusFewBro = [
-  '📌 Heute steht an: {task}. Die anderen Aufgaben erfüllen sich auch nicht  allein.',
+  '📌 Heute steht an: {task}. Die anderen Aufgaben erfüllen sich auch nicht allein.',
 ];
 const List<String> _taskOnePlusFewVorname = [
   '📌 Heute steht an: {task}. Schau auch mal bei den anderen Aufgaben vorbei.',
@@ -417,9 +430,9 @@ const List<String> _taskManyFamilie = [
 ];
 
 const List<String> _taskNoneTodayButOpenBro = [
-  '✅ Heute ist nichts fällig, aber der Rest mach sich auch nicht durch Nichtstun!',
+  '✅ Heute ist nichts fällig, aber der Rest macht sich auch nicht durch Nichtstun!',
   '✅ Heute keine Fristen, die anderen Aufgaben sind trotzdem nicht aus der Welt!',
-  '✅ Heute ist nichts fällig, aber fürs nichtstun wirst du auch nicht bezahlt!',
+  '✅ Heute ist nichts fällig, aber fürs Nichtstun wirst du auch nicht bezahlt!',
 ];
 const List<String> _taskNoneTodayButOpenVorname = [
   '✅ Heute ist nichts fällig, aber es sind noch Aufgaben offen — schau mal vorbei.',

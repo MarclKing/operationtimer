@@ -15,3 +15,8 @@
 -keep class com.dexterous.** { *; }
 -keep class com.google.gson.reflect.TypeToken { *; }
 -keep class * extends com.google.gson.reflect.TypeToken
+# device_calendar: Modelle nicht umbenennen/entfernen (sonst id/name/eventId = null)
+-keep class com.builttoroam.devicecalendar.** { *; }
+-keep class com.google.gson.** { *; }
+-keepattributes Signature
+-keepattributes *Annotation*

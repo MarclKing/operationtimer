@@ -29,9 +29,9 @@ class SyncTokenService {
   static const _base58Chars =
       '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
 
-  static const _syncedCollections = [
+    static const _syncedCollections = [
     'arbeitszeiten', 'schedule', 'fahrten', 'notes', 'events',
-    'colleagues', 'tasks', 'calendar_events', 'event_groups', 'vehicle_memory',
+    'colleagues', 'dayplans', 'tasks', 'calendar_events', 'event_groups', 'vehicle_memory',
   ];
 
   StreamSubscription? _presenceSub;

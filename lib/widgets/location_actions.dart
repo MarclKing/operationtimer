@@ -17,6 +17,8 @@ import 'glass_kit.dart';
 import 'glass_snackbar.dart';
 import '../services/favorite_place_store.dart';
 import 'favorite_name_sheet.dart';
+import '../tutorial/tutorial_controller.dart';
+import '../tutorial/tutorial_demos.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // NAVIGIEREN
@@ -438,6 +440,10 @@ class LocationMapCard extends StatelessWidget {
 
   /// false = kein Navigieren-Button in der Vorschau und im Vollbild.
   final bool allowNavigate;
+
+  /// Tutorial: Key + Puls-Animation für das Vollbild-Symbol
+  final GlobalKey? expandIconKey;
+  final bool pulseExpandIcon;
   const LocationMapCard({
     super.key,
     required this.skin,
@@ -446,6 +452,8 @@ class LocationMapCard extends StatelessWidget {
     this.onLocationChanged,
     this.allowFavorite = true,
     this.allowNavigate = true,
+    this.expandIconKey,
+    this.pulseExpandIcon = false,
   });
 
   Future<void> _openFullscreen(BuildContext context) async {
@@ -474,11 +482,16 @@ class LocationMapCard extends StatelessWidget {
           top: 10,
           right: 10,
           child: IgnorePointer(
-            child: Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(color: skin.bgCard.withValues(alpha: 0.85), shape: BoxShape.circle),
-              child: Icon(Icons.open_in_full_rounded, size: 14, color: skin.textPrimary),
-            ),
+            child: TutorialPulse(
+                active: pulseExpandIcon,
+                maxScale: 1.5,
+                child: Container(
+                  key: expandIconKey,
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(color: skin.bgCard.withValues(alpha: 0.85), shape: BoxShape.circle),
+                  child: Icon(Icons.open_in_full_rounded, size: 14, color: skin.textPrimary),
+                ),
+              ),
           ),
         ),
         if (allowNavigate)
@@ -535,8 +548,9 @@ class LocationFullscreenSheet extends StatefulWidget {
   final LocationInfo? loc;
   final bool allowFavorite;
   final bool allowNavigate;
+  final bool tutorialDemo;
   const LocationFullscreenSheet(
-      {super.key, required this.skin, this.loc, this.allowFavorite = true, this.allowNavigate = true});
+      {super.key, required this.skin, this.loc, this.allowFavorite = true, this.allowNavigate = true, this.tutorialDemo = false});
 
   @override
   State<LocationFullscreenSheet> createState() => _LocationFullscreenSheetState();
@@ -597,7 +611,11 @@ class _LocationFullscreenSheetState extends State<LocationFullscreenSheet> {
         });
       }
     });
-    _centerOnUser();
+    if (!widget.tutorialDemo) {
+      _centerOnUser();
+      TutorialTriggers.maybeStart(TutorialKind.map,
+          delay: const Duration(milliseconds: 1100));
+    }
   }
 
   @override
@@ -1356,6 +1374,7 @@ class _LocationFullscreenSheetState extends State<LocationFullscreenSheet> {
               top: 22,
               left: 14,
               child: GestureDetector(
+                key: widget.tutorialDemo ? TutorialKeys.mapFavorite : null,
                 onTap: _saveFavorite,
                 child: Opacity(
                   opacity: (_canSaveFavorite || _currentIsFavorite) ? 1.0 : 0.5,
@@ -1428,10 +1447,13 @@ class _LocationFullscreenSheetState extends State<LocationFullscreenSheet> {
                     ),
                     const SizedBox(width: 8),
                   ],
-                  _circleButton(
-                    icon: Icons.location_on_outlined,
-                    color: skin.deleteColor,
-                    onTap: _startAdjust,
+                  KeyedSubtree(
+                    key: widget.tutorialDemo ? TutorialKeys.mapAdjust : null,
+                    child: _circleButton(
+                      icon: Icons.location_on_outlined,
+                      color: skin.deleteColor,
+                      onTap: _startAdjust,
+                    ),
                   ),
                 ],
               ]),
@@ -1441,4 +1463,22 @@ class _LocationFullscreenSheetState extends State<LocationFullscreenSheet> {
       ),
     );
   }
+}
+
+
+/// Tutorial: Vollbild-Karte mit Platzhalter-Ort (Bundestag), nichts wird gespeichert.
+Future<void> showTutorialMapDemo(BuildContext context, {required AppSkin skin}) {
+  return showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: Colors.transparent,
+    isScrollControlled: true,
+    useSafeArea: false,
+    enableDrag: false,
+    isDismissible: false,
+    builder: (_) => LocationFullscreenSheet(
+      skin: skin,
+      loc: TutorialDemo.bundestag(),
+      tutorialDemo: true,
+    ),
+  );
 }

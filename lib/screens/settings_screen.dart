@@ -6,7 +6,8 @@ import 'package:hive_flutter/hive_flutter.dart';
 import '../theme/app_theme.dart';
 import '../models/relationship_style.dart';
 import '../services/notification_service.dart';
-import '../screens/welcome_screen.dart' show RelationshipOptionCard, showReadOnlyModeWelcome;
+import '../screens/welcome_screen.dart'
+    show RelationshipOptionCard, showReadOnlyModeWelcome;
 import '../widgets/glass_pickers.dart' show IOSTimePicker;
 import '../screens/dictation_help_screen.dart';
 import '../screens/speech_log_screen.dart';
@@ -34,7 +35,8 @@ import 'dart:convert';
 import '../services/apple_calendar_sync_service.dart';
 import '../services/feature_flags.dart';
 import '../services/route_time_service.dart';
-
+import 'package:url_launcher/url_launcher.dart';
+import '../tutorial/tutorial_controller.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // EINSTIEGSPUNKT — Apple-artige Kachel-Übersicht
@@ -53,7 +55,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final skin = AppTheme.of(context);
 
     return ValueListenableBuilder(
-      valueListenable: Hive.box('einstellungen').listenable(keys: ['name', 'read_only_mode']),
+      valueListenable: Hive.box(
+        'einstellungen',
+      ).listenable(keys: ['name', 'read_only_mode']),
       builder: (context, box, _) {
         final name = box.get('name', defaultValue: '') as String;
         final readOnly = box.get('read_only_mode', defaultValue: false) as bool;
@@ -63,7 +67,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
           body: SafeArea(
             child: Column(
               children: [
-                _SettingsHeader(title: 'Einstellungen', onBack: () => Navigator.pop(context)),
+                _SettingsHeader(
+                  title: 'Einstellungen',
+                  onBack: () => Navigator.pop(context),
+                ),
                 Expanded(
                   child: SingleChildScrollView(
                     padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
@@ -74,27 +81,42 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         GlassSurface(
                           borderRadius: 18,
                           padding: EdgeInsets.zero,
-                          child: Column(children: [
-                            GlassListItem(
-                              leading: Container(
-                                width: 32, height: 32,
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF5B8DEF),
-                                  borderRadius: BorderRadius.circular(8),
+                          child: Column(
+                            children: [
+                              GlassListItem(
+                                leading: Container(
+                                  width: 32,
+                                  height: 32,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF5B8DEF),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: const Icon(
+                                    Icons.person_rounded,
+                                    color: Colors.white,
+                                    size: 18,
+                                  ),
                                 ),
-                                child: const Icon(Icons.person_rounded, color: Colors.white, size: 18),
+                                title: name.isEmpty ? 'Profil' : name,
+                                subtitle: name.isEmpty
+                                    ? 'Name & Dienstplan-Name'
+                                    : 'Profil & Dienstplan-Name',
+                                isLast: true,
+                                trailing: Icon(
+                                  Icons.chevron_right_rounded,
+                                  size: 18,
+                                  color: skin.surface(0.28),
+                                ),
+                                onTap: () => Navigator.push(
+                                  context,
+                                  CupertinoPageRoute(
+                                    builder: (_) =>
+                                        const _ProfileSettingsScreen(),
+                                  ),
+                                ),
                               ),
-                              title: name.isEmpty ? 'Profil' : name,
-                              subtitle: name.isEmpty ? 'Name & Dienstplan-Name' : 'Profil & Dienstplan-Name',
-                              isLast: true,
-                              trailing: Icon(Icons.chevron_right_rounded, size: 18, color: skin.surface(0.28)),
-                              onTap: () => Navigator.push(
-                                context,
-                                CupertinoPageRoute(
-                                  builder: (_) => const _ProfileSettingsScreen()),
-                              ),
-                            ),
-                          ]),
+                            ],
+                          ),
                         ),
                         const SizedBox(height: 24),
 
@@ -102,143 +124,228 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         GlassSurface(
                           borderRadius: 18,
                           padding: EdgeInsets.zero,
-                          child: Column(children: [
-                            GlassListItem(
-                              leading: Container(
-                                width: 32, height: 32,
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFEF5B5B),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: const Icon(Icons.notifications_rounded, color: Colors.white, size: 18),
-                              ),
-                              title: 'Benachrichtigungen',
-                              subtitle: 'Tagesvorschau · Erinnerungszeit',
-                              trailing: Icon(Icons.chevron_right_rounded, size: 18, color: skin.surface(0.28)),
-                              onTap: () => Navigator.push(
-                                context,
-                                CupertinoPageRoute(
-                                  builder: (_) => const _NotificationSettingsScreen()),
-                              ),
-                            ),
-                            GlassListItem(
-                              leading: Container(
-                                width: 32, height: 32,
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF5B8DEF),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: const Icon(Icons.dashboard_rounded, color: Colors.white, size: 18),
-                              ),
-                              title: 'Startbildschirm',
-                              subtitle: 'Wetter · Aufgabe hinzufügen',
-                              trailing: Icon(Icons.chevron_right_rounded, size: 18, color: skin.surface(0.28)),
-                              onTap: () => Navigator.push(
-                                context,
-                                CupertinoPageRoute(
-                                  builder: (_) => const _HomescreenSettingsScreen()),
-                              ),
-                            ),
-                            if (!readOnly)
+                          child: Column(
+                            children: [
                               GlassListItem(
                                 leading: Container(
-                                  width: 32, height: 32,
+                                  width: 32,
+                                  height: 32,
                                   decoration: BoxDecoration(
-                                    color: const Color(0xFF2D6CFF),
+                                    color: const Color(0xFFEF5B5B),
                                     borderRadius: BorderRadius.circular(8),
                                   ),
-                                  child: const Icon(Icons.access_time_filled_rounded, color: Colors.white, size: 18),
+                                  child: const Icon(
+                                    Icons.notifications_rounded,
+                                    color: Colors.white,
+                                    size: 18,
+                                  ),
                                 ),
-                                title: 'Arbeitszeiterfassung',
-                                subtitle: 'Nachtschicht · Reisemodus',
-                                trailing: Icon(Icons.chevron_right_rounded, size: 18, color: skin.surface(0.28)),
+                                title: 'Benachrichtigungen',
+                                subtitle: 'Tagesvorschau · Erinnerungszeit',
+                                trailing: Icon(
+                                  Icons.chevron_right_rounded,
+                                  size: 18,
+                                  color: skin.surface(0.28),
+                                ),
                                 onTap: () => Navigator.push(
                                   context,
                                   CupertinoPageRoute(
-                                    builder: (_) => const _WorkTimeSettingsScreen()),
+                                    builder: (_) =>
+                                        const _NotificationSettingsScreen(),
+                                  ),
                                 ),
                               ),
-                            if (!readOnly || AuthService.instance.isAdmin)
                               GlassListItem(
                                 leading: Container(
-                                  width: 32, height: 32,
+                                  width: 32,
+                                  height: 32,
                                   decoration: BoxDecoration(
-                                    color: const Color(0xFFFFB347),
+                                    color: const Color(0xFF5B8DEF),
                                     borderRadius: BorderRadius.circular(8),
                                   ),
-                                  child: const Icon(Icons.calendar_month_rounded, color: Colors.white, size: 18),
+                                  child: const Icon(
+                                    Icons.dashboard_rounded,
+                                    color: Colors.white,
+                                    size: 18,
+                                  ),
                                 ),
-                                title: 'Dienstplan',
-                                subtitle: AuthService.instance.isAdmin ? 'Routen-Zeit · Entwickler-Modus' : 'Routen-Zeit',
-                                trailing: Icon(Icons.chevron_right_rounded, size: 18, color: skin.surface(0.28)),
+                                title: 'Startbildschirm',
+                                subtitle: 'Wetter · Aufgabe hinzufügen',
+                                trailing: Icon(
+                                  Icons.chevron_right_rounded,
+                                  size: 18,
+                                  color: skin.surface(0.28),
+                                ),
                                 onTap: () => Navigator.push(
                                   context,
                                   CupertinoPageRoute(
-                                    builder: (_) => const _ScheduleSettingsScreen()),
+                                    builder: (_) =>
+                                        const _HomescreenSettingsScreen(),
+                                  ),
                                 ),
                               ),
-                            GlassListItem(
-                              leading: Container(
-                                width: 32, height: 32,
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF3DD68C),
-                                  borderRadius: BorderRadius.circular(8),
+                              if (!readOnly)
+                                GlassListItem(
+                                  leading: Container(
+                                    width: 32,
+                                    height: 32,
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF2D6CFF),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: const Icon(
+                                      Icons.access_time_filled_rounded,
+                                      color: Colors.white,
+                                      size: 18,
+                                    ),
+                                  ),
+                                  title: 'Arbeitszeiterfassung',
+                                  subtitle: 'Nachtschicht · Reisemodus',
+                                  trailing: Icon(
+                                    Icons.chevron_right_rounded,
+                                    size: 18,
+                                    color: skin.surface(0.28),
+                                  ),
+                                  onTap: () => Navigator.push(
+                                    context,
+                                    CupertinoPageRoute(
+                                      builder: (_) =>
+                                          const _WorkTimeSettingsScreen(),
+                                    ),
+                                  ),
                                 ),
-                                child: const Icon(Icons.task_alt_rounded, color: Colors.white, size: 18),
-                              ),
-                              title: 'Kalender & Aufgaben',
-                              subtitle: 'Gruppen · Diktat · Sprach-Analyse',
-                              trailing: Icon(Icons.chevron_right_rounded, size: 18, color: skin.surface(0.28)),
-                              onTap: () => Navigator.push(
-                                context,
-                                CupertinoPageRoute(
-                                  builder: (_) => const TasksDictationSettingsScreen()),
-                              ),
-                            ),
-                            GlassListItem(
-                              leading: Container(
-                                width: 32, height: 32,
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF8B8B9E),
-                                  borderRadius: BorderRadius.circular(8),
+                              if (!readOnly || AuthService.instance.isAdmin)
+                                GlassListItem(
+                                  leading: Container(
+                                    width: 32,
+                                    height: 32,
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFFFB347),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: const Icon(
+                                      Icons.calendar_month_rounded,
+                                      color: Colors.white,
+                                      size: 18,
+                                    ),
+                                  ),
+                                  title: 'Organisation',
+                                  subtitle:
+                                      'Dienstplan · Tagesplan · Live-Traffic',
+                                  trailing: Icon(
+                                    Icons.chevron_right_rounded,
+                                    size: 18,
+                                    color: skin.surface(0.28),
+                                  ),
+                                  onTap: () => Navigator.push(
+                                    context,
+                                    CupertinoPageRoute(
+                                      builder: (_) =>
+                                          const _ScheduleSettingsScreen(),
+                                    ),
+                                  ),
                                 ),
-                                child: const Icon(Icons.folder_rounded, color: Colors.white, size: 18),
-                              ),
-                              title: 'Datenverwaltung',
-                              subtitle: 'Aufbewahrung · Auto-Löschung',
-                              trailing: Icon(Icons.chevron_right_rounded, size: 18, color: skin.surface(0.28)),
-                              onTap: () => Navigator.push(
-                                context,
-                                CupertinoPageRoute(
-                                  builder: (_) => const _DataManagementSettingsScreen()),
-                              ),
-                            ),
-                            GlassListItem(
-                              leading: Container(
-                                width: 32, height: 32,
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF3DD6C8),
-                                  borderRadius: BorderRadius.circular(8),
+                              GlassListItem(
+                                leading: Container(
+                                  width: 32,
+                                  height: 32,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF3DD68C),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: const Icon(
+                                    Icons.task_alt_rounded,
+                                    color: Colors.white,
+                                    size: 18,
+                                  ),
                                 ),
-                                child: const Icon(Icons.palette_rounded, color: Colors.white, size: 18),
+                                title: 'Kalender & Aufgaben',
+                                subtitle: 'Gruppen · Diktat · Sprach-Analyse',
+                                trailing: Icon(
+                                  Icons.chevron_right_rounded,
+                                  size: 18,
+                                  color: skin.surface(0.28),
+                                ),
+                                onTap: () => Navigator.push(
+                                  context,
+                                  CupertinoPageRoute(
+                                    builder: (_) =>
+                                        const TasksDictationSettingsScreen(),
+                                  ),
+                                ),
                               ),
-                              title: 'Design',
-                              subtitle: 'Farbschema',
-                              isLast: true,
-                              trailing: Icon(Icons.chevron_right_rounded, size: 18, color: skin.surface(0.28)),
-                              onTap: () => Navigator.push(
-                                context,
-                                CupertinoPageRoute(
-                                  builder: (_) => const _DesignSettingsScreen()),
+                              GlassListItem(
+                                leading: Container(
+                                  width: 32,
+                                  height: 32,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF8B8B9E),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: const Icon(
+                                    Icons.folder_rounded,
+                                    color: Colors.white,
+                                    size: 18,
+                                  ),
+                                ),
+                                title: 'Datenverwaltung',
+                                subtitle: 'Aufbewahrung · Auto-Löschung',
+                                trailing: Icon(
+                                  Icons.chevron_right_rounded,
+                                  size: 18,
+                                  color: skin.surface(0.28),
+                                ),
+                                onTap: () => Navigator.push(
+                                  context,
+                                  CupertinoPageRoute(
+                                    builder: (_) =>
+                                        const _DataManagementSettingsScreen(),
+                                  ),
+                                ),
                               ),
-                            ),
-                          ]),
+                              GlassListItem(
+                                leading: Container(
+                                  width: 32,
+                                  height: 32,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF3DD6C8),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: const Icon(
+                                    Icons.palette_rounded,
+                                    color: Colors.white,
+                                    size: 18,
+                                  ),
+                                ),
+                                title: 'Design',
+                                subtitle: 'Farbschema',
+                                isLast: true,
+                                trailing: Icon(
+                                  Icons.chevron_right_rounded,
+                                  size: 18,
+                                  color: skin.surface(0.28),
+                                ),
+                                onTap: () => Navigator.push(
+                                  context,
+                                  CupertinoPageRoute(
+                                    builder: (_) =>
+                                        const _DesignSettingsScreen(),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
 
                         const SizedBox(height: 40),
                         Center(
-                          child: Text('OpTimes v1.4.2',
-                              style: TextStyle(fontSize: 12, color: skin.textHint)),
+                          child: Text(
+                            'OpTimes v1.4.2',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: skin.textHint,
+                            ),
+                          ),
                         ),
                       ],
                     ),
@@ -262,8 +369,8 @@ class _SettingsHeader extends StatelessWidget {
   final VoidCallback onBack;
   final Widget? trailing;
 
-  const _SettingsHeader(
-      {required this.title, required this.onBack}) : trailing = null;
+  const _SettingsHeader({required this.title, required this.onBack})
+    : trailing = null;
 
   @override
   Widget build(BuildContext context) {
@@ -278,18 +385,20 @@ class _SettingsHeader extends StatelessWidget {
             child: const SizedBox(
               width: 48,
               height: 48,
-              child: Center(
-                  child: Icon(Icons.arrow_back_ios_new, size: 18)),
+              child: Center(child: Icon(Icons.arrow_back_ios_new, size: 18)),
             ),
           ),
           const SizedBox(width: 16),
           Expanded(
-            child: Text(title,
-                style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w700,
-                    color: skin.textPrimary,
-                    letterSpacing: -0.5)),
+            child: Text(
+              title,
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.w700,
+                color: skin.textPrimary,
+                letterSpacing: -0.5,
+              ),
+            ),
           ),
           ?trailing,
         ],
@@ -307,12 +416,15 @@ class _SectionHeader extends StatelessWidget {
     final skin = AppTheme.of(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(6, 0, 6, 8),
-      child: Text(label.toUpperCase(),
-          style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: skin.textMuted,
-              letterSpacing: 0.6)),
+      child: Text(
+        label.toUpperCase(),
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: skin.textMuted,
+          letterSpacing: 0.6,
+        ),
+      ),
     );
   }
 }
@@ -326,9 +438,10 @@ class _SectionFootnote extends StatelessWidget {
     final skin = AppTheme.of(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(6, 8, 6, 0),
-      child: Text(text,
-          style: TextStyle(
-              fontSize: 12, color: skin.textMuted, height: 1.5)),
+      child: Text(
+        text,
+        style: TextStyle(fontSize: 12, color: skin.textMuted, height: 1.5),
+      ),
     );
   }
 }
@@ -358,8 +471,11 @@ class _TiCardHeader extends StatelessWidget {
   final IconData icon;
   final String label;
 
-  const _TiCardHeader(
-      {required this.skin, required this.icon, required this.label});
+  const _TiCardHeader({
+    required this.skin,
+    required this.icon,
+    required this.label,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -367,11 +483,14 @@ class _TiCardHeader extends StatelessWidget {
       children: [
         Icon(icon, size: 18, color: skin.primary),
         const SizedBox(width: 8),
-        Text(label,
-            style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-                color: skin.textPrimary)),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w700,
+            color: skin.textPrimary,
+          ),
+        ),
       ],
     );
   }
@@ -413,8 +532,7 @@ class _TiTextField extends StatelessWidget {
         inputFormatters: autoCapitalizeFirst
             ? [_FirstLetterUppercaseFormatter()]
             : null,
-        style: TextStyle(
-            color: skin.textPrimary, fontSize: 15),
+        style: TextStyle(color: skin.textPrimary, fontSize: 15),
         decoration: InputDecoration(
           hintText: hint,
           hintStyle: TextStyle(color: skin.textHint),
@@ -432,7 +550,9 @@ class _TiTextField extends StatelessWidget {
 class _FirstLetterUppercaseFormatter extends TextInputFormatter {
   @override
   TextEditingValue formatEditUpdate(
-      TextEditingValue oldValue, TextEditingValue newValue) {
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
     if (newValue.text.isEmpty) return newValue;
     final text = newValue.text;
     final capitalized = text[0].toUpperCase() + text.substring(1);
@@ -461,11 +581,14 @@ class _TiToggleRow extends StatelessWidget {
     return Row(
       children: [
         Expanded(
-          child: Text(label,
-              style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                  color: value ? activeColor : skin.textMuted)),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              color: value ? activeColor : skin.textMuted,
+            ),
+          ),
         ),
         Switch(
           value: value,
@@ -486,8 +609,7 @@ class _TiSkinPicker extends StatelessWidget {
   final String activeSkin;
   final ValueChanged<String> onSelect;
 
-  const _TiSkinPicker(
-      {required this.activeSkin, required this.onSelect});
+  const _TiSkinPicker({required this.activeSkin, required this.onSelect});
 
   @override
   Widget build(BuildContext context) {
@@ -515,17 +637,16 @@ class _TiSkinPicker extends StatelessWidget {
               ),
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
-                color: isSelected
-                    ? skin.primary
-                    : skin.glassBorder,
+                color: isSelected ? skin.primary : skin.glassBorder,
                 width: isSelected ? 2.5 : 1.0,
               ),
               boxShadow: isSelected
                   ? [
                       BoxShadow(
-                          color: s.primary.withValues(alpha: 0.4),
-                          blurRadius: 12,
-                          offset: const Offset(0, 4))
+                        color: s.primary.withValues(alpha: 0.4),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      ),
                     ]
                   : [],
             ),
@@ -535,8 +656,11 @@ class _TiSkinPicker extends StatelessWidget {
                   const Positioned(
                     top: 6,
                     right: 6,
-                    child: Icon(Icons.check_circle_rounded,
-                        size: 16, color: Colors.white),
+                    child: Icon(
+                      Icons.check_circle_rounded,
+                      size: 16,
+                      color: Colors.white,
+                    ),
                   ),
                 Align(
                   alignment: Alignment.bottomCenter,
@@ -546,16 +670,18 @@ class _TiSkinPicker extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: Colors.black.withValues(alpha: 0.28),
                       borderRadius: const BorderRadius.vertical(
-                          bottom: Radius.circular(14)),
+                        bottom: Radius.circular(14),
+                      ),
                     ),
                     child: Text(
                       s.displayName,
                       textAlign: TextAlign.center,
                       style: const TextStyle(
-                          fontSize: 9,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white,
-                          letterSpacing: 0.3),
+                        fontSize: 9,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                        letterSpacing: 0.3,
+                      ),
                     ),
                   ),
                 ),
@@ -585,11 +711,21 @@ class _RoleBadge extends StatelessWidget {
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: color.withValues(alpha: 0.35)),
       ),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(icon, size: 13, color: color),
-        const SizedBox(width: 6),
-        Text(label, style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: color)),
-      ]),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: color),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w700,
+              color: color,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -649,21 +785,31 @@ class _SyncTokenCard extends StatelessWidget {
               Icon(
                 role == 'reader' ? Icons.link_rounded : Icons.sync_rounded,
                 size: 18,
-                color: role == 'reader' ? const Color(0xFF3DD6C8) : skin.primary,
+                color: role == 'reader'
+                    ? const Color(0xFF3DD6C8)
+                    : skin.primary,
               ),
               const SizedBox(width: 8),
-              Text('Sync-Token',
-                  style: TextStyle(
-                      fontSize: 15, fontWeight: FontWeight.w700, color: skin.textPrimary)),
+              Text(
+                'Sync-Token',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: skin.textPrimary,
+                ),
+              ),
               const Spacer(),
               if (syncToken != null)
                 GestureDetector(
                   onTap: onUnlink,
-                  child: Text('Trennen',
-                      style: TextStyle(
-                          fontSize: 12,
-                          color: skin.deleteColor,
-                          fontWeight: FontWeight.w600)),
+                  child: Text(
+                    'Trennen',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: skin.deleteColor,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                 ),
             ],
           ),
@@ -683,9 +829,12 @@ class _SyncTokenCard extends StatelessWidget {
             if (isGenerating)
               Center(
                 child: SizedBox(
-                  width: 18, height: 18,
+                  width: 18,
+                  height: 18,
                   child: CircularProgressIndicator(
-                      strokeWidth: 2, color: skin.primary),
+                    strokeWidth: 2,
+                    color: skin.primary,
+                  ),
                 ),
               )
             else
@@ -716,7 +865,10 @@ class _SyncTokenCard extends StatelessWidget {
                 children: [
                   const SizedBox(height: 12),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
                       color: skin.surface(0.05),
                       borderRadius: BorderRadius.circular(14),
@@ -733,10 +885,15 @@ class _SyncTokenCard extends StatelessWidget {
                       ),
                       decoration: InputDecoration(
                         hintText: 'Token eingeben (22 Zeichen)',
-                        hintStyle: TextStyle(color: skin.textHint, fontSize: 13),
+                        hintStyle: TextStyle(
+                          color: skin.textHint,
+                          fontSize: 13,
+                        ),
                         border: InputBorder.none,
                         isDense: true,
-                        contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                        contentPadding: const EdgeInsets.symmetric(
+                          vertical: 10,
+                        ),
                       ),
                       onSubmitted: (_) => onLink(),
                     ),
@@ -745,9 +902,12 @@ class _SyncTokenCard extends StatelessWidget {
                   if (isLinking)
                     Center(
                       child: SizedBox(
-                        width: 18, height: 18,
+                        width: 18,
+                        height: 18,
                         child: CircularProgressIndicator(
-                            strokeWidth: 2, color: skin.primary),
+                          strokeWidth: 2,
+                          color: skin.primary,
+                        ),
                       ),
                     )
                   else
@@ -759,9 +919,10 @@ class _SyncTokenCard extends StatelessWidget {
                   if (linkFeedback != null) ...[
                     const SizedBox(height: 10),
                     _FeedbackBadge(
-                        skin: skin,
-                        message: linkFeedback!,
-                        isSuccess: linkSuccess),
+                      skin: skin,
+                      message: linkFeedback!,
+                      isSuccess: linkSuccess,
+                    ),
                   ],
                 ],
               ),
@@ -781,9 +942,11 @@ class _SyncTokenCard extends StatelessWidget {
               ),
               child: Row(
                 children: [
-                  Icon(Icons.vpn_key_rounded,
-                      size: 16,
-                      color: skin.primary.withValues(alpha: 0.7)),
+                  Icon(
+                    Icons.vpn_key_rounded,
+                    size: 16,
+                    color: skin.primary.withValues(alpha: 0.7),
+                  ),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
@@ -809,7 +972,9 @@ class _SyncTokenCard extends StatelessWidget {
                 Expanded(
                   child: GlassSecondaryButton(
                     skin: skin,
-                    label: (linkFeedback != null && linkSuccess) ? 'Kopiert!' : 'Kopieren',
+                    label: (linkFeedback != null && linkSuccess)
+                        ? 'Kopiert!'
+                        : 'Kopieren',
                     onTap: onCopy,
                   ),
                 ),
@@ -843,9 +1008,10 @@ class _SyncTokenCard extends StatelessWidget {
                   Text(
                     showTokenInput ? 'Schließen' : 'Anderen Token eingeben',
                     style: TextStyle(
-                        fontSize: 12,
-                        color: skin.textMuted,
-                        fontWeight: FontWeight.w500),
+                      fontSize: 12,
+                      color: skin.textMuted,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                 ],
               ),
@@ -861,7 +1027,10 @@ class _SyncTokenCard extends StatelessWidget {
                 children: [
                   const SizedBox(height: 12),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
                       color: skin.surface(0.05),
                       borderRadius: BorderRadius.circular(14),
@@ -878,10 +1047,15 @@ class _SyncTokenCard extends StatelessWidget {
                       ),
                       decoration: InputDecoration(
                         hintText: 'Token eingeben (22 Zeichen)',
-                        hintStyle: TextStyle(color: skin.textHint, fontSize: 13),
+                        hintStyle: TextStyle(
+                          color: skin.textHint,
+                          fontSize: 13,
+                        ),
                         border: InputBorder.none,
                         isDense: true,
-                        contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                        contentPadding: const EdgeInsets.symmetric(
+                          vertical: 10,
+                        ),
                       ),
                       onSubmitted: (_) => onLink(),
                     ),
@@ -890,9 +1064,12 @@ class _SyncTokenCard extends StatelessWidget {
                   if (isLinking)
                     Center(
                       child: SizedBox(
-                        width: 18, height: 18,
+                        width: 18,
+                        height: 18,
                         child: CircularProgressIndicator(
-                            strokeWidth: 2, color: skin.primary),
+                          strokeWidth: 2,
+                          color: skin.primary,
+                        ),
                       ),
                     )
                   else
@@ -904,9 +1081,10 @@ class _SyncTokenCard extends StatelessWidget {
                   if (linkFeedback != null) ...[
                     const SizedBox(height: 10),
                     _FeedbackBadge(
-                        skin: skin,
-                        message: linkFeedback!,
-                        isSuccess: linkSuccess),
+                      skin: skin,
+                      message: linkFeedback!,
+                      isSuccess: linkSuccess,
+                    ),
                   ],
                 ],
               ),
@@ -925,8 +1103,11 @@ class _FeedbackBadge extends StatelessWidget {
   final String message;
   final bool isSuccess;
 
-  const _FeedbackBadge(
-      {required this.skin, required this.message, required this.isSuccess});
+  const _FeedbackBadge({
+    required this.skin,
+    required this.message,
+    required this.isSuccess,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -943,15 +1124,22 @@ class _FeedbackBadge extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(
-            isSuccess ? Icons.check_circle_outline_rounded : Icons.error_outline_rounded,
+            isSuccess
+                ? Icons.check_circle_outline_rounded
+                : Icons.error_outline_rounded,
             size: 15,
             color: color,
           ),
           const SizedBox(width: 8),
           Expanded(
-            child: Text(message,
-                style: TextStyle(
-                    fontSize: 12, color: color.withValues(alpha: 0.85), height: 1.4)),
+            child: Text(
+              message,
+              style: TextStyle(
+                fontSize: 12,
+                color: color.withValues(alpha: 0.85),
+                height: 1.4,
+              ),
+            ),
           ),
         ],
       ),
@@ -995,6 +1183,53 @@ class _ProfileSettingsScreenState extends State<_ProfileSettingsScreen> {
     HapticFeedback.selectionClick();
   }
 
+  Future<void> _startKindTutorial(TutorialKind kind) async {
+    if (buildTutorialSteps(kind).isEmpty) {
+      showGlassSnackBar(
+        context,
+        'Im Lesemodus gibt es dieses Tutorial nicht.',
+        type: GlassSnackBarType.warning,
+      );
+      return;
+    }
+    HapticFeedback.selectionClick();
+    MyApp.navigatorKey.currentState?.popUntil((r) => r.isFirst);
+    await Future.delayed(const Duration(milliseconds: 450));
+    TutorialController.instance.start(kind);
+  }
+
+  Future<void> _startScheduleTutorial() async {
+    // Lesemodus: kein Dienstplan-Tutorial → im Screen bleiben
+    if (buildTutorialSteps(TutorialKind.schedule).isEmpty) {
+      showGlassSnackBar(
+        context,
+        'Im Lesemodus gibt es dieses Tutorial nicht.',
+        type: GlassSnackBarType.warning,
+      );
+      return;
+    }
+    HapticFeedback.selectionClick();
+    MyApp.navigatorKey.currentState?.popUntil((r) => r.isFirst);
+    await Future.delayed(const Duration(milliseconds: 450));
+    TutorialController.instance.start(TutorialKind.schedule);
+  }
+
+  Future<void> _startTutorial() async {
+    // Lesemodus: keine Schritte vorhanden → im Screen bleiben
+    if (buildTutorialSteps(TutorialKind.all).isEmpty) {
+      showGlassSnackBar(
+        context,
+        'Im Lesemodus gibt es kein Tutorial.',
+        type: GlassSnackBarType.warning,
+      );
+      return;
+    }
+    HapticFeedback.selectionClick();
+    MyApp.navigatorKey.currentState?.popUntil((r) => r.isFirst);
+    await Future.delayed(const Duration(milliseconds: 450));
+    TutorialController.instance.start(TutorialKind.all);
+  }
+
   @override
   Widget build(BuildContext context) {
     final skin = AppTheme.of(context);
@@ -1005,7 +1240,10 @@ class _ProfileSettingsScreenState extends State<_ProfileSettingsScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            _SettingsHeader(title: 'Profil', onBack: () => Navigator.pop(context)),
+            _SettingsHeader(
+              title: 'Profil',
+              onBack: () => Navigator.pop(context),
+            ),
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
@@ -1018,10 +1256,20 @@ class _ProfileSettingsScreenState extends State<_ProfileSettingsScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          _TiCardHeader(skin: skin, icon: Icons.person_outline_rounded, label: 'Name'),
+                          _TiCardHeader(
+                            skin: skin,
+                            icon: Icons.person_outline_rounded,
+                            label: 'Name',
+                          ),
                           const SizedBox(height: 12),
-                          Text('Dein Name wird in Benachrichtigungen und im Dienstplan verwendet.',
-                              style: TextStyle(fontSize: 13, color: skin.textMuted, height: 1.5)),
+                          Text(
+                            'Dein Name wird in Benachrichtigungen und im Dienstplan verwendet.',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: skin.textMuted,
+                              height: 1.5,
+                            ),
+                          ),
                           const SizedBox(height: 12),
                           _TiTextField(
                             skin: skin,
@@ -1037,51 +1285,123 @@ class _ProfileSettingsScreenState extends State<_ProfileSettingsScreen> {
                     GlassSurface(
                       borderRadius: 18,
                       padding: EdgeInsets.zero,
-                      child: Column(children: [
-                        GlassDropdownButton<RelationshipStyle>(
-                          value: _selectedStyle,
-                          label: 'Umgangsform',
-                          icon: Icons.chat_bubble_outline_rounded,
-                          iconBg: const Color(0xFF5B8DEF),
-                          isLast: true,
-                          displayBuilder: (s) {
-                            switch (s) {
-                              case RelationshipStyle.bro: return 'Locker';
-                              case RelationshipStyle.vorname: return 'Vorname';
-                              case RelationshipStyle.familie: return 'Formell';
-                            }
-                          },
-                          items: [
-                            GlassDropdownItem(value: RelationshipStyle.bro, label: 'Locker', icon: Icons.bolt_rounded),
-                            GlassDropdownItem(value: RelationshipStyle.vorname, label: 'Normal', icon: Icons.waving_hand_outlined),
-                            GlassDropdownItem(value: RelationshipStyle.familie, label: 'Formell', icon: Icons.workspace_premium_outlined),
-                          ],
-                          onChanged: _selectStyle,
-                        ),
-                      ]),
+                      child: Column(
+                        children: [
+                          GlassDropdownButton<RelationshipStyle>(
+                            value: _selectedStyle,
+                            label: 'Umgangsform',
+                            icon: Icons.chat_bubble_outline_rounded,
+                            iconBg: const Color(0xFF5B8DEF),
+                            isLast: true,
+                            displayBuilder: (s) {
+                              switch (s) {
+                                case RelationshipStyle.bro:
+                                  return 'Locker';
+                                case RelationshipStyle.vorname:
+                                  return 'Vorname';
+                                case RelationshipStyle.familie:
+                                  return 'Formell';
+                              }
+                            },
+                            items: [
+                              GlassDropdownItem(
+                                value: RelationshipStyle.bro,
+                                label: 'Locker',
+                                icon: Icons.bolt_rounded,
+                              ),
+                              GlassDropdownItem(
+                                value: RelationshipStyle.vorname,
+                                label: 'Normal',
+                                icon: Icons.waving_hand_outlined,
+                              ),
+                              GlassDropdownItem(
+                                value: RelationshipStyle.familie,
+                                label: 'Formell',
+                                icon: Icons.workspace_premium_outlined,
+                              ),
+                            ],
+                            onChanged: _selectStyle,
+                          ),
+                        ],
+                      ),
                     ),
-                    const SizedBox(height: 16),                                      // NEU
-                    const _SectionHeader(label: 'Funktionsfreischaltung'),           // NEU
-                    GlassSurface(                                                    // NEU
+                    const SizedBox(height: 16), // NEU
+                    const _SectionHeader(
+                      label: 'Funktionsfreischaltung',
+                    ), // NEU
+                    GlassSurface(
+                      // NEU
                       borderRadius: 18,
                       padding: EdgeInsets.zero,
-                      child: Column(children: [
-                        GlassListItem(
-                          leading: Container(
-                            width: 32, height: 32,
-                            decoration: BoxDecoration(color: const Color(0xFF8B8B9E), borderRadius: BorderRadius.circular(8)),
-                            child: const Icon(Icons.lock_outline_rounded, color: Colors.white, size: 18),
+                      child: Column(
+                        children: [
+                          GlassListItem(
+                            leading: Container(
+                              width: 32,
+                              height: 32,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF8B8B9E),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Icon(
+                                Icons.lock_outline_rounded,
+                                color: Colors.white,
+                                size: 18,
+                              ),
+                            ),
+                            title: 'Funktionen verwalten',
+                            subtitle:
+                                'BVA · Kalender-Sync · ${AppleCalendarSyncService.deviceCalendarName}',
+                            isLast: true,
+                            trailing: Icon(
+                              Icons.chevron_right_rounded,
+                              size: 18,
+                              color: skin.surface(0.28),
+                            ),
+                            onTap: () => Navigator.push(
+                              context,
+                              CupertinoPageRoute(
+                                builder: (_) =>
+                                    const _FeatureAccessSettingsScreen(),
+                              ),
+                            ),
                           ),
-                          title: 'Funktionen verwalten',
-                          subtitle: 'BVA · Kalender-Sync · Apple-Kalender',
-                          isLast: true,
-                          trailing: Icon(Icons.chevron_right_rounded, size: 18, color: skin.surface(0.28)),
-                          onTap: () => Navigator.push(
-                            context,
-                            CupertinoPageRoute(builder: (_) => const _FeatureAccessSettingsScreen()),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    const _SectionHeader(label: 'Hilfe'),
+                    GlassSurface(
+                      borderRadius: 18,
+                      padding: EdgeInsets.zero,
+                      child: Column(
+                        children: [
+                          GlassListItem(
+                            leading: Container(
+                              width: 32,
+                              height: 32,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF3DD68C),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Icon(
+                                Icons.school_rounded,
+                                color: Colors.white,
+                                size: 18,
+                              ),
+                            ),
+                            title: 'Tutorial',
+                            subtitle: 'Geführte Tour durch die ganze App',
+                            isLast: true,
+                            trailing: Icon(
+                              Icons.chevron_right_rounded,
+                              size: 18,
+                              color: skin.surface(0.28),
+                            ),
+                            onTap: _startTutorial,
                           ),
-                        ),
-                      ]),
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -1101,10 +1421,12 @@ class _ProfileSettingsScreenState extends State<_ProfileSettingsScreen> {
 class _FeatureAccessSettingsScreen extends StatefulWidget {
   const _FeatureAccessSettingsScreen();
   @override
-  State<_FeatureAccessSettingsScreen> createState() => _FeatureAccessSettingsScreenState();
+  State<_FeatureAccessSettingsScreen> createState() =>
+      _FeatureAccessSettingsScreenState();
 }
 
-class _FeatureAccessSettingsScreenState extends State<_FeatureAccessSettingsScreen> {
+class _FeatureAccessSettingsScreenState
+    extends State<_FeatureAccessSettingsScreen> {
   late bool _bva;
   late bool _calendarSync;
   late bool _appleCalendar;
@@ -1125,7 +1447,10 @@ class _FeatureAccessSettingsScreenState extends State<_FeatureAccessSettingsScre
       body: SafeArea(
         child: Column(
           children: [
-            _SettingsHeader(title: 'Funktionsfreischaltung', onBack: () => Navigator.pop(context)),
+            _SettingsHeader(
+              title: 'Funktionsfreischaltung',
+              onBack: () => Navigator.pop(context),
+            ),
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
@@ -1135,55 +1460,85 @@ class _FeatureAccessSettingsScreenState extends State<_FeatureAccessSettingsScre
                     GlassSurface(
                       borderRadius: 18,
                       padding: EdgeInsets.zero,
-                      child: Column(children: [
-                        GlassListItem(
-                          leading: Container(
-                            width: 32, height: 32,
-                            decoration: BoxDecoration(color: const Color(0xFFFFB347), borderRadius: BorderRadius.circular(8)),
-                            child: const Icon(Icons.description_outlined, color: Colors.white, size: 18),
+                      child: Column(
+                        children: [
+                          GlassListItem(
+                            leading: Container(
+                              width: 32,
+                              height: 32,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFFB347),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Icon(
+                                Icons.description_outlined,
+                                color: Colors.white,
+                                size: 18,
+                              ),
+                            ),
+                            title: 'BVA-Abrechnungen',
+                            subtitle: 'BVA-Dienstreise-Formular erreichbar',
+                            switchValue: _bva,
+                            onSwitchChanged: (v) {
+                              setState(() => _bva = v);
+                              FeatureFlags.bvaEnabled = v;
+                            },
                           ),
-                          title: 'BVA-Abrechnungen',
-                          subtitle: 'BVA-Dienstreise-Formular erreichbar',
-                          switchValue: _bva,
-                          onSwitchChanged: (v) {
-                            setState(() => _bva = v);
-                            FeatureFlags.bvaEnabled = v;
-                          },
-                        ),
-                        GlassListItem(
-                          leading: Container(
-                            width: 32, height: 32,
-                            decoration: BoxDecoration(color: const Color(0xFF3DD6C8), borderRadius: BorderRadius.circular(8)),
-                            child: const Icon(Icons.sync_rounded, color: Colors.white, size: 18),
+                          GlassListItem(
+                            leading: Container(
+                              width: 32,
+                              height: 32,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF3DD6C8),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Icon(
+                                Icons.sync_rounded,
+                                color: Colors.white,
+                                size: 18,
+                              ),
+                            ),
+                            title: 'Kalender-Sync (Lesemodus)',
+                            subtitle:
+                                'Kalender-Freigabe mit Original-Gerät anfragbar',
+                            switchValue: _calendarSync,
+                            onSwitchChanged: (v) {
+                              setState(() => _calendarSync = v);
+                              FeatureFlags.calendarSyncEnabled = v;
+                            },
                           ),
-                          title: 'Kalender-Sync (Lesemodus)',
-                          subtitle: 'Kalender-Freigabe mit Original-Gerät anfragbar',
-                          switchValue: _calendarSync,
-                          onSwitchChanged: (v) {
-                            setState(() => _calendarSync = v);
-                            FeatureFlags.calendarSyncEnabled = v;
-                          },
-                        ),
-                        GlassListItem(
-                          leading: Container(
-                            width: 32, height: 32,
-                            decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(8)),
-                            child: const Icon(Icons.apple, color: Colors.white, size: 18),
+                          GlassListItem(
+                            leading: Container(
+                              width: 32,
+                              height: 32,
+                              decoration: BoxDecoration(
+                                color: Colors.black,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Icon(
+                                AppleCalendarSyncService.deviceCalendarIcon,
+                                color: Colors.white,
+                                size: 18,
+                              ),
+                            ),
+                            title:
+                                '${AppleCalendarSyncService.deviceCalendarName} teilen',
+                            subtitle:
+                                'Globalen ${AppleCalendarSyncService.deviceCalendarName}-Import erlauben',
+                            isLast: true,
+                            switchValue: _appleCalendar,
+                            onSwitchChanged: (v) {
+                              setState(() => _appleCalendar = v);
+                              FeatureFlags.appleCalendarEnabled = v;
+                            },
                           ),
-                          title: 'Apple-Kalender teilen',
-                          subtitle: 'Globalen Apple-Kalender-Import erlauben',
-                          isLast: true,
-                          switchValue: _appleCalendar,
-                          onSwitchChanged: (v) {
-                            setState(() => _appleCalendar = v);
-                            FeatureFlags.appleCalendarEnabled = v;
-                          },
-                        ),
-                      ]),
+                        ],
+                      ),
                     ),
                     const _SectionFootnote(
-                      text: 'Deaktivierte Funktionen werden ausgeblendet bzw. sind nicht mehr erreichbar. '
-                            'Bereits aktive Verbindungen (z.B. laufender Kalender-Sync) laufen unverändert weiter.',
+                      text:
+                          'Deaktivierte Funktionen werden ausgeblendet bzw. sind nicht mehr erreichbar. '
+                          'Bereits aktive Verbindungen (z.B. laufender Kalender-Sync) laufen unverändert weiter.',
                     ),
                   ],
                 ),
@@ -1229,14 +1584,19 @@ class _NotificationSettingsScreenState
     _overviewEnabled = DailyOverviewSettings.enabled;
     _mode = DailyOverviewSettings.mode;
     _morningTime = TimeOfDay(
-        hour: DailyOverviewSettings.hour,
-        minute: DailyOverviewSettings.minute);
+      hour: DailyOverviewSettings.hour,
+      minute: DailyOverviewSettings.minute,
+    );
     _eveningEnabled = DailyOverviewSettings.eveningPreviewEnabled;
-    _showAllDayBanner = Hive.box('einstellungen')
-        .get('notif_center_show_allday_banner', defaultValue: true) as bool; // NEU
+    _showAllDayBanner =
+        Hive.box(
+              'einstellungen',
+            ).get('notif_center_show_allday_banner', defaultValue: true)
+            as bool; // NEU
     _eveningTime = TimeOfDay(
-        hour: DailyOverviewSettings.eveningHour,
-        minute: DailyOverviewSettings.eveningMinute);
+      hour: DailyOverviewSettings.eveningHour,
+      minute: DailyOverviewSettings.eveningMinute,
+    );
   }
 
   void _selectStyle(RelationshipStyle style) {
@@ -1246,8 +1606,7 @@ class _NotificationSettingsScreenState
   }
 
   Future<void> _applyChanges() async {
-    await NotificationService.instance
-        .applyDailyOverviewSettingsChanged();
+    await NotificationService.instance.applyDailyOverviewSettingsChanged();
   }
 
   void _setOverviewEnabled(bool v) {
@@ -1324,8 +1683,9 @@ class _NotificationSettingsScreenState
         child: Column(
           children: [
             _SettingsHeader(
-                title: 'Benachrichtigungen',
-                onBack: () => Navigator.pop(context)),
+              title: 'Benachrichtigungen',
+              onBack: () => Navigator.pop(context),
+            ),
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
@@ -1336,134 +1696,190 @@ class _NotificationSettingsScreenState
                     GlassSurface(
                       borderRadius: 18,
                       padding: EdgeInsets.zero,
-                      child: Column(children: [
-                        GlassListItem(
-                          leading: Container(
-                            width: 32, height: 32,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF2D6CFF),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: const Icon(Icons.today_rounded, color: Colors.white, size: 18),
-                          ),
-                          title: 'Tagesvorschau aktiv',
-                          subtitle: 'Zeigt täglich Dienst & fällige Aufgaben',
-                          switchValue: _overviewEnabled,
-                          onSwitchChanged: _setOverviewEnabled,
-                          isLast: !_overviewEnabled,
-                        ),
-                        if (_overviewEnabled) ...[
-                          // ── Modus-Auswahl ──────────────────────────────
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(
-                                14, 4, 14, 12),
-                            child: Row(children: [
-                              const SizedBox(width: 46),
-                              Expanded(
-                                child: GlassSegmentedControl<String>(
-                                  value: _mode,
-                                  items: const [
-                                    GlassSegmentItem(value: 'fixed_time', label: 'Feste Uhrzeit'),
-                                    GlassSegmentItem(value: 'app_start',  label: 'Bei App-Start'),
-                                  ],
-                                  onChanged: _setMode,
-                                ),
-                              ),
-                            ]),
-                          ),
-                          Padding(
-                            padding:
-                                const EdgeInsets.only(left: 60),
-                            child: Divider(
-                                height: 0.5, color: skin.glassBorder),
-                          ),
-
-                          if (_mode == 'fixed_time')
-                            GlassListItem(
-                              leading: Container(
-                                width: 32, height: 32,
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF5B8DEF),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: const Icon(Icons.schedule_rounded, color: Colors.white, size: 18),
-                              ),
-                              title: 'Uhrzeit',
-                              trailing: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(_formatTime(_morningTime),
-                                      style: TextStyle(fontSize: 14, color: skin.textMuted)),
-                                  const SizedBox(width: 6),
-                                  Icon(Icons.chevron_right_rounded, size: 18, color: skin.surface(0.28)),
-                                ],
-                              ),
-                              onTap: _pickMorningTime,
-                            )
-                          else
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(
-                                  14, 4, 14, 12),
-                              child: Row(children: [
-                                const SizedBox(width: 46),
-                                Expanded(
-                                  child: Text(
-                                    'Wird einmal pro Tag direkt beim Öffnen der App angezeigt.',
-                                    style: TextStyle(
-                                        fontSize: 12,
-                                        color: skin.textMuted,
-                                        height: 1.4),
-                                  ),
-                                ),
-                              ]),
-                            ),
-
-                          Padding(
-                            padding:
-                                const EdgeInsets.only(left: 60),
-                            child: Divider(
-                                height: 0.5, color: skin.glassBorder),
-                          ),
+                      child: Column(
+                        children: [
                           GlassListItem(
                             leading: Container(
-                              width: 32, height: 32,
+                              width: 32,
+                              height: 32,
                               decoration: BoxDecoration(
-                                color: const Color(0xFF6D7ADF),
+                                color: const Color(0xFF2D6CFF),
                                 borderRadius: BorderRadius.circular(8),
                               ),
-                              child: const Icon(Icons.nightlight_round, color: Colors.white, size: 18),
+                              child: const Icon(
+                                Icons.today_rounded,
+                                color: Colors.white,
+                                size: 18,
+                              ),
                             ),
-                            title: 'Vorabend-Vorschau',
-                            subtitle: 'Zusätzlich abends Vorschau auf morgen',
-                            switchValue: _eveningEnabled,
-                            onSwitchChanged: _setEveningEnabled,
-                            isLast: !_eveningEnabled,
+                            title: 'Tagesvorschau aktiv',
+                            subtitle: 'Zeigt täglich Dienst & fällige Aufgaben',
+                            switchValue: _overviewEnabled,
+                            onSwitchChanged: _setOverviewEnabled,
+                            isLast: !_overviewEnabled,
                           ),
-                          if (_eveningEnabled)
+                          if (_overviewEnabled) ...[
+                            // ── Modus-Auswahl ──────────────────────────────
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(14, 4, 14, 12),
+                              child: Row(
+                                children: [
+                                  const SizedBox(width: 46),
+                                  Expanded(
+                                    child: GlassSegmentedControl<String>(
+                                      value: _mode,
+                                      items: const [
+                                        GlassSegmentItem(
+                                          value: 'fixed_time',
+                                          label: 'Feste Uhrzeit',
+                                        ),
+                                        GlassSegmentItem(
+                                          value: 'app_start',
+                                          label: 'Bei App-Start',
+                                        ),
+                                      ],
+                                      onChanged: _setMode,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Padding(
+                              padding: const EdgeInsets.only(left: 60),
+                              child: Divider(
+                                height: 0.5,
+                                color: skin.glassBorder,
+                              ),
+                            ),
+
+                            if (_mode == 'fixed_time')
+                              GlassListItem(
+                                leading: Container(
+                                  width: 32,
+                                  height: 32,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF5B8DEF),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: const Icon(
+                                    Icons.schedule_rounded,
+                                    color: Colors.white,
+                                    size: 18,
+                                  ),
+                                ),
+                                title: 'Uhrzeit',
+                                trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      _formatTime(_morningTime),
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        color: skin.textMuted,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Icon(
+                                      Icons.chevron_right_rounded,
+                                      size: 18,
+                                      color: skin.surface(0.28),
+                                    ),
+                                  ],
+                                ),
+                                onTap: _pickMorningTime,
+                              )
+                            else
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  14,
+                                  4,
+                                  14,
+                                  12,
+                                ),
+                                child: Row(
+                                  children: [
+                                    const SizedBox(width: 46),
+                                    Expanded(
+                                      child: Text(
+                                        'Wird einmal pro Tag direkt beim Öffnen der App angezeigt.',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: skin.textMuted,
+                                          height: 1.4,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+
+                            Padding(
+                              padding: const EdgeInsets.only(left: 60),
+                              child: Divider(
+                                height: 0.5,
+                                color: skin.glassBorder,
+                              ),
+                            ),
                             GlassListItem(
                               leading: Container(
-                                width: 32, height: 32,
+                                width: 32,
+                                height: 32,
                                 decoration: BoxDecoration(
                                   color: const Color(0xFF6D7ADF),
                                   borderRadius: BorderRadius.circular(8),
                                 ),
-                                child: const Icon(Icons.schedule_rounded, color: Colors.white, size: 18),
+                                child: const Icon(
+                                  Icons.nightlight_round,
+                                  color: Colors.white,
+                                  size: 18,
+                                ),
                               ),
-                              title: 'Uhrzeit (abends)',
-                              isLast: true,
-                              trailing: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(_formatTime(_eveningTime),
-                                      style: TextStyle(fontSize: 14, color: skin.textMuted)),
-                                  const SizedBox(width: 6),
-                                  Icon(Icons.chevron_right_rounded, size: 18, color: skin.surface(0.28)),
-                                ],
-                              ),
-                              onTap: _pickEveningTime,
+                              title: 'Vorabend-Vorschau',
+                              subtitle: 'Zusätzlich abends Vorschau auf morgen',
+                              switchValue: _eveningEnabled,
+                              onSwitchChanged: _setEveningEnabled,
+                              isLast: !_eveningEnabled,
                             ),
+                            if (_eveningEnabled)
+                              GlassListItem(
+                                leading: Container(
+                                  width: 32,
+                                  height: 32,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF6D7ADF),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: const Icon(
+                                    Icons.schedule_rounded,
+                                    color: Colors.white,
+                                    size: 18,
+                                  ),
+                                ),
+                                title: 'Uhrzeit (abends)',
+                                isLast: true,
+                                trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      _formatTime(_eveningTime),
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        color: skin.textMuted,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Icon(
+                                      Icons.chevron_right_rounded,
+                                      size: 18,
+                                      color: skin.surface(0.28),
+                                    ),
+                                  ],
+                                ),
+                                onTap: _pickEveningTime,
+                              ),
+                          ],
                         ],
-                      ]),
+                      ),
                     ),
 
                     const SizedBox(height: 24),
@@ -1471,23 +1887,31 @@ class _NotificationSettingsScreenState
                     GlassSurface(
                       borderRadius: 18,
                       padding: EdgeInsets.zero,
-                      child: Column(children: [
-                        GlassListItem(
-                          leading: Container(
-                            width: 32, height: 32,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF8B5CF6),
-                              borderRadius: BorderRadius.circular(8),
+                      child: Column(
+                        children: [
+                          GlassListItem(
+                            leading: Container(
+                              width: 32,
+                              height: 32,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF8B5CF6),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Icon(
+                                Icons.view_day_outlined,
+                                color: Colors.white,
+                                size: 18,
+                              ),
                             ),
-                            child: const Icon(Icons.view_day_outlined, color: Colors.white, size: 18),
+                            title: 'Ganztägige Termine als Banner',
+                            subtitle:
+                                'Sonst als normaler Eintrag unter Kalender',
+                            isLast: true,
+                            switchValue: _showAllDayBanner,
+                            onSwitchChanged: _setShowAllDayBanner,
                           ),
-                          title: 'Ganztägige Termine als Banner',
-                          subtitle: 'Sonst als normaler Eintrag unter Kalender',
-                          isLast: true,
-                          switchValue: _showAllDayBanner,
-                          onSwitchChanged: _setShowAllDayBanner,
-                        ),
-                      ]),
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -1512,8 +1936,7 @@ class _WorkTimeSettingsScreen extends StatefulWidget {
       _WorkTimeSettingsScreenState();
 }
 
-class _WorkTimeSettingsScreenState
-    extends State<_WorkTimeSettingsScreen> {
+class _WorkTimeSettingsScreenState extends State<_WorkTimeSettingsScreen> {
   bool _nachtschichtModus = false;
   bool _reisemodus = false;
   String _rundung = TimeRounding.defaultRule;
@@ -1533,7 +1956,9 @@ class _WorkTimeSettingsScreenState
     _nachtschichtModus =
         box.get('nachtschicht_modus', defaultValue: false) as bool;
     _reisemodus = TravelModeService.isEnabled;
-    _rundung = box.get(TimeRounding.hiveKey, defaultValue: TimeRounding.defaultRule) as String;
+    _rundung =
+        box.get(TimeRounding.hiveKey, defaultValue: TimeRounding.defaultRule)
+            as String;
   }
 
   void _setNachtschichtModus(bool value) {
@@ -1551,7 +1976,11 @@ class _WorkTimeSettingsScreenState
       if (mounted) setState(() => _reisemodus = value);
     } catch (e) {
       if (mounted) {
-        showGlassSnackBar(context, 'Reisemodus-Fehler: $e', type: GlassSnackBarType.warning);
+        showGlassSnackBar(
+          context,
+          'Reisemodus-Fehler: $e',
+          type: GlassSnackBarType.warning,
+        );
       }
     }
   }
@@ -1569,7 +1998,9 @@ class _WorkTimeSettingsScreenState
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (_) => Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.viewInsetsOf(context).bottom,
+        ),
         child: GlassSheet(
           skin: skin,
           child: StatefulBuilder(
@@ -1582,13 +2013,16 @@ class _WorkTimeSettingsScreenState
                   errorMsg = null;
                   verified = null;
                 });
-                final result = await TravelModeService.verifyLocationTimeZone(input);
+                final result = await TravelModeService.verifyLocationTimeZone(
+                  input,
+                );
                 setSheetState(() {
                   isVerifying = false;
                   if (result != null) {
                     verified = result;
                   } else {
-                    errorMsg = 'Ort nicht gefunden. Bitte prüfe die Schreibweise.';
+                    errorMsg =
+                        'Ort nicht gefunden. Bitte prüfe die Schreibweise.';
                   }
                 });
               }
@@ -1608,12 +2042,19 @@ class _WorkTimeSettingsScreenState
                   children: [
                     Center(child: SheetHandle(skin: skin)),
                     const SizedBox(height: 16),
-                    Text('Zeitzone wählen',
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700,
-                            color: skin.textPrimary)),
+                    Text(
+                      'Zeitzone wählen',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: skin.textPrimary,
+                      ),
+                    ),
                     const SizedBox(height: 4),
-                    Text('Wird sofort als aktuelle Zone übernommen.',
-                        style: TextStyle(fontSize: 13, color: skin.textMuted)),
+                    Text(
+                      'Wird sofort als aktuelle Zone übernommen.',
+                      style: TextStyle(fontSize: 13, color: skin.textMuted),
+                    ),
                     const SizedBox(height: 16),
                     _TiTextField(
                       skin: skin,
@@ -1631,13 +2072,21 @@ class _WorkTimeSettingsScreenState
                       Row(
                         children: [
                           SizedBox(
-                            width: 16, height: 16,
+                            width: 16,
+                            height: 16,
                             child: CircularProgressIndicator(
-                                strokeWidth: 2, color: skin.primary),
+                              strokeWidth: 2,
+                              color: skin.primary,
+                            ),
                           ),
                           const SizedBox(width: 10),
-                          Text('Prüfe Ort…',
-                              style: TextStyle(fontSize: 13, color: skin.textMuted)),
+                          Text(
+                            'Prüfe Ort…',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: skin.textMuted,
+                            ),
+                          ),
                         ],
                       ),
                     ],
@@ -1645,25 +2094,38 @@ class _WorkTimeSettingsScreenState
                       const SizedBox(height: 14),
                       Container(
                         width: double.infinity,
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF3DD68C).withValues(alpha: 0.10),
+                          color: const Color(
+                            0xFF3DD68C,
+                          ).withValues(alpha: 0.10),
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: const Color(0xFF3DD68C).withValues(alpha: 0.25)),
+                          border: Border.all(
+                            color: const Color(
+                              0xFF3DD68C,
+                            ).withValues(alpha: 0.25),
+                          ),
                         ),
                         child: Row(
                           children: [
-                            const Icon(Icons.check_circle_outline_rounded,
-                                size: 16, color: Color(0xFF3DD68C)),
+                            const Icon(
+                              Icons.check_circle_outline_rounded,
+                              size: 16,
+                              color: Color(0xFF3DD68C),
+                            ),
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
                                 'Gefunden: ${verified!.displayLabel} · ${verified!.tzId} '
                                 '(${TravelModeService.offsetLabelFor(verified!.tzId)})',
                                 style: const TextStyle(
-                                    fontSize: 12.5,
-                                    color: Color(0xFF3DD68C),
-                                    fontWeight: FontWeight.w600),
+                                  fontSize: 12.5,
+                                  color: Color(0xFF3DD68C),
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
                             ),
                           ],
@@ -1674,21 +2136,35 @@ class _WorkTimeSettingsScreenState
                       const SizedBox(height: 14),
                       Container(
                         width: double.infinity,
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
                         decoration: BoxDecoration(
                           color: skin.deleteColor.withValues(alpha: 0.10),
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: skin.deleteColor.withValues(alpha: 0.25)),
+                          border: Border.all(
+                            color: skin.deleteColor.withValues(alpha: 0.25),
+                          ),
                         ),
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Icon(Icons.error_outline_rounded, size: 16, color: skin.deleteColor),
+                            Icon(
+                              Icons.error_outline_rounded,
+                              size: 16,
+                              color: skin.deleteColor,
+                            ),
                             const SizedBox(width: 8),
                             Expanded(
-                              child: Text(errorMsg!,
-                                  style: TextStyle(
-                                      fontSize: 12.5, color: skin.deleteColor, height: 1.4)),
+                              child: Text(
+                                errorMsg!,
+                                style: TextStyle(
+                                  fontSize: 12.5,
+                                  color: skin.deleteColor,
+                                  height: 1.4,
+                                ),
+                              ),
                             ),
                           ],
                         ),
@@ -1704,15 +2180,25 @@ class _WorkTimeSettingsScreenState
                           width: double.infinity,
                           padding: const EdgeInsets.symmetric(vertical: 14),
                           decoration: BoxDecoration(
-                            color: skin.primary.withValues(alpha: skin.isLight ? 0.12 : 0.20),
+                            color: skin.primary.withValues(
+                              alpha: skin.isLight ? 0.12 : 0.20,
+                            ),
                             borderRadius: BorderRadius.circular(14),
                             border: Border.all(
-                                color: skin.primary.withValues(alpha: skin.isLight ? 0.30 : 0.45)),
+                              color: skin.primary.withValues(
+                                alpha: skin.isLight ? 0.30 : 0.45,
+                              ),
+                            ),
                           ),
                           child: Center(
-                            child: Text('Prüfen',
-                                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700,
-                                    color: skin.primary)),
+                            child: Text(
+                              'Prüfen',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                                color: skin.primary,
+                              ),
+                            ),
                           ),
                         ),
                       )
@@ -1723,14 +2209,25 @@ class _WorkTimeSettingsScreenState
                           width: double.infinity,
                           padding: const EdgeInsets.symmetric(vertical: 14),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF3DD68C).withValues(alpha: 0.18),
+                            color: const Color(
+                              0xFF3DD68C,
+                            ).withValues(alpha: 0.18),
                             borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: const Color(0xFF3DD68C).withValues(alpha: 0.45)),
+                            border: Border.all(
+                              color: const Color(
+                                0xFF3DD68C,
+                              ).withValues(alpha: 0.45),
+                            ),
                           ),
                           child: const Center(
-                            child: Text('Übernehmen',
-                                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700,
-                                    color: Color(0xFF3DD68C))),
+                            child: Text(
+                              'Übernehmen',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF3DD68C),
+                              ),
+                            ),
                           ),
                         ),
                       ),
@@ -1753,8 +2250,9 @@ class _WorkTimeSettingsScreenState
         child: Column(
           children: [
             _SettingsHeader(
-                title: 'Arbeitszeiterfassung',
-                onBack: () => Navigator.pop(context)),
+              title: 'Arbeitszeiterfassung',
+              onBack: () => Navigator.pop(context),
+            ),
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
@@ -1765,86 +2263,123 @@ class _WorkTimeSettingsScreenState
                     GlassSurface(
                       borderRadius: 18,
                       padding: EdgeInsets.zero,
-                      child: Column(children: [
-                        GlassDropdownButton<String>(
-                          value: _rundung,
-                          label: 'Rundung',
-                          subtitle: 'Kommen-Zeit auf runden',
-                          icon: Icons.timer_outlined,
-                          iconBg: const Color(0xFF2D6CFF),
-                          isLast: true,
-                          displayBuilder: TimeRounding.label,
-                          items: const [
-                            GlassDropdownItem(value: 'exact', label: 'Genau (keine Rundung)'),
-                            GlassDropdownItem(value: '5',     label: '5 Minuten'),
-                            GlassDropdownItem(value: '10',    label: '10 Minuten'),
-                            GlassDropdownItem(value: '15',    label: '15 Minuten'),
-                          ],
-                          onChanged: (v) {
-                            setState(() => _rundung = v);
-                            Hive.box('einstellungen').put(TimeRounding.hiveKey, v);
-                          },
-                        ),
-                      ]),
+                      child: Column(
+                        children: [
+                          GlassDropdownButton<String>(
+                            value: _rundung,
+                            label: 'Rundung',
+                            subtitle: 'Kommen-Zeit auf runden',
+                            icon: Icons.timer_outlined,
+                            iconBg: const Color(0xFF2D6CFF),
+                            isLast: true,
+                            displayBuilder: TimeRounding.label,
+                            items: const [
+                              GlassDropdownItem(
+                                value: 'exact',
+                                label: 'Genau (keine Rundung)',
+                              ),
+                              GlassDropdownItem(value: '5', label: '5 Minuten'),
+                              GlassDropdownItem(
+                                value: '10',
+                                label: '10 Minuten',
+                              ),
+                              GlassDropdownItem(
+                                value: '15',
+                                label: '15 Minuten',
+                              ),
+                            ],
+                            onChanged: (v) {
+                              setState(() => _rundung = v);
+                              Hive.box(
+                                'einstellungen',
+                              ).put(TimeRounding.hiveKey, v);
+                            },
+                          ),
+                        ],
+                      ),
                     ),
                     const SizedBox(height: 20),
                     const _SectionHeader(label: 'Modi'),
                     GlassSurface(
                       borderRadius: 18,
                       padding: EdgeInsets.zero,
-                      child: Column(children: [
-                        GlassListItem(
-                          leading: Container(
-                            width: 32, height: 32,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF2E7D32),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: const Icon(Icons.dark_mode_outlined, color: Colors.white, size: 18),
-                          ),
-                          title: 'Nachtschicht-Modus',
-                          subtitle: 'Teilt Nachtschichten auf zwei Tage auf',
-                          switchValue: _nachtschichtModus,
-                          onSwitchChanged: _setNachtschichtModus,
-                        ),
-                        GlassListItem(
-                          leading: Container(
-                            width: 32, height: 32,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF6D7ADF),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: const Icon(Icons.flight_takeoff_rounded, color: Colors.white, size: 18),
-                          ),
-                          title: 'Reisemodus',
-                          subtitle: _reisemodus
-                              ? 'Aktiv · ${TravelModeService.activeTzId}'
-                              : 'Zeitzonen-Anpassung',
-                          isLast: !_reisemodus,
-                          switchValue: _reisemodus,
-                          onSwitchChanged: _setReisemodus,
-                        ),
-                        if (_reisemodus)
+                      child: Column(
+                        children: [
                           GlassListItem(
                             leading: Container(
-                              width: 32, height: 32,
+                              width: 32,
+                              height: 32,
                               decoration: BoxDecoration(
-                                color: const Color(0xFF5B9EF5),
+                                color: const Color(0xFF2E7D32),
                                 borderRadius: BorderRadius.circular(8),
                               ),
-                              child: const Icon(Icons.edit_location_alt_outlined, color: Colors.white, size: 18),
+                              child: const Icon(
+                                Icons.dark_mode_outlined,
+                                color: Colors.white,
+                                size: 18,
+                              ),
                             ),
-                            title: 'Zeitzone manuell wählen',
-                            subtitle: 'Aktuell: ${TravelModeService.activeTzId}',
-                            isLast: true,
-                            trailing: Icon(Icons.chevron_right_rounded, size: 18, color: skin.surface(0.28)),
-                            onTap: () => _showTimeZonePickerSheet(context, skin),
+                            title: 'Nachtschicht-Modus',
+                            subtitle: 'Teilt Nachtschichten auf zwei Tage auf',
+                            switchValue: _nachtschichtModus,
+                            onSwitchChanged: _setNachtschichtModus,
                           ),
-                      ]),
+                          GlassListItem(
+                            leading: Container(
+                              width: 32,
+                              height: 32,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF6D7ADF),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Icon(
+                                Icons.flight_takeoff_rounded,
+                                color: Colors.white,
+                                size: 18,
+                              ),
+                            ),
+                            title: 'Reisemodus',
+                            subtitle: _reisemodus
+                                ? 'Aktiv · ${TravelModeService.activeTzId}'
+                                : 'Zeitzonen-Anpassung',
+                            isLast: !_reisemodus,
+                            switchValue: _reisemodus,
+                            onSwitchChanged: _setReisemodus,
+                          ),
+                          if (_reisemodus)
+                            GlassListItem(
+                              leading: Container(
+                                width: 32,
+                                height: 32,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF5B9EF5),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Icon(
+                                  Icons.edit_location_alt_outlined,
+                                  color: Colors.white,
+                                  size: 18,
+                                ),
+                              ),
+                              title: 'Zeitzone manuell wählen',
+                              subtitle:
+                                  'Aktuell: ${TravelModeService.activeTzId}',
+                              isLast: true,
+                              trailing: Icon(
+                                Icons.chevron_right_rounded,
+                                size: 18,
+                                color: skin.surface(0.28),
+                              ),
+                              onTap: () =>
+                                  _showTimeZonePickerSheet(context, skin),
+                            ),
+                        ],
+                      ),
                     ),
                     const _SectionFootnote(
-                      text: 'Nachtschicht: Kommen bis 23:59 (selber Tag) + 00:00 bis Gehen (nächster Tag). '
-                            'Reisemodus: die Schreib-Zeitzone wechselt erst beim nächsten Dienstbeginn nach einem Feierabend.',
+                      text:
+                          'Nachtschicht: Kommen bis 23:59 (selber Tag) + 00:00 bis Gehen (nächster Tag). '
+                          'Reisemodus: die Schreib-Zeitzone wechselt erst beim nächsten Dienstbeginn nach einem Feierabend.',
                     ),
 
                     if (_reisemodus && AuthService.instance.isAdmin) ...[
@@ -1875,16 +2410,42 @@ class _ScheduleSettingsScreen extends StatefulWidget {
       _ScheduleSettingsScreenState();
 }
 
+Color _liveColor(LiveTrafficStatus s) {
+  switch (s) {
+    case LiveTrafficStatus.ok:
+      return const Color(0xFF3DD68C);
+    case LiveTrafficStatus.failing:
+      return const Color(0xFFEF5B5B);
+    default:
+      return const Color(0xFF8B8B9E);
+  }
+}
+
+String _liveText(LiveTrafficStatus s) {
+  switch (s) {
+    case LiveTrafficStatus.ok:
+      return 'Aktiv · funktioniert';
+    case LiveTrafficStatus.failing:
+      return 'Keine Verbindung · Fallback ohne Verkehr';
+    case LiveTrafficStatus.unknown:
+      return 'Wird geprüft …';
+    case LiveTrafficStatus.off:
+      return 'Aus · Route ohne Verkehr';
+  }
+}
+
 class _ScheduleSettingsScreenState extends State<_ScheduleSettingsScreen> {
   bool _dienstplanDevMode = false;
-  bool _routeTime = true;
+  bool _live = true;
 
   @override
   void initState() {
     super.initState();
     final box = Hive.box('einstellungen');
-    _dienstplanDevMode = box.get('dienstplan_dev_placeholder', defaultValue: false) as bool;
-    _routeTime = RouteTimeService.enabled;
+    _dienstplanDevMode =
+        box.get('dienstplan_dev_placeholder', defaultValue: false) as bool;
+    _live = RouteTimeService.liveTraffic;
+    if (_live) RouteTimeService.checkLive();
   }
 
   @override
@@ -1896,63 +2457,300 @@ class _ScheduleSettingsScreenState extends State<_ScheduleSettingsScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            _SettingsHeader(title: 'Dienstplan', onBack: () => Navigator.pop(context)),
+            _SettingsHeader(
+              title: 'Dienstplan',
+              onBack: () => Navigator.pop(context),
+            ),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+                child: ValueListenableBuilder<int>(
+                  valueListenable: RouteTimeService.changed,
+                  builder: (context, _, __) {
+                    final st = RouteTimeService.liveStatus;
+                    final hasOwn = RouteTimeService.userKey.isNotEmpty;
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        GlassSurface(
+                          borderRadius: 18,
+                          padding: EdgeInsets.zero,
+                          child: Column(
+                            children: [
+                              GlassListItem(
+                                leading: Stack(
+                                  clipBehavior: Clip.none,
+                                  children: [
+                                    Container(
+                                      width: 32,
+                                      height: 32,
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF2D6CFF),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: const Icon(
+                                        Icons.bolt_rounded,
+                                        color: Colors.white,
+                                        size: 18,
+                                      ),
+                                    ),
+                                    Positioned(
+                                      right: -3,
+                                      bottom: -3,
+                                      child: Container(
+                                        width: 11,
+                                        height: 11,
+                                        decoration: BoxDecoration(
+                                          color: _liveColor(st),
+                                          shape: BoxShape.circle,
+                                          border: Border.all(
+                                            color: skin.bgBase,
+                                            width: 2,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                title: 'Live-Verkehr',
+                                subtitle: _liveText(st),
+                                switchValue: _live,
+                                onSwitchChanged: (v) {
+                                  setState(() => _live = v);
+                                  RouteTimeService.liveTraffic = v;
+                                },
+                              ),
+                              GlassListItem(
+                                leading: Container(
+                                  width: 32,
+                                  height: 32,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF8B8B9E),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: const Icon(
+                                    Icons.key_rounded,
+                                    color: Colors.white,
+                                    size: 18,
+                                  ),
+                                ),
+                                title: 'Eigener TomTom-API-Key',
+                                subtitle: hasOwn
+                                    ? 'Eigener Key aktiv'
+                                    : 'Standard-Key',
+                                isLast: !isAdmin,
+                                trailing: Icon(
+                                  Icons.chevron_right_rounded,
+                                  size: 18,
+                                  color: skin.surface(0.28),
+                                ),
+                                onTap: () => Navigator.push(
+                                  context,
+                                  CupertinoPageRoute(
+                                    builder: (_) => const _TomTomKeyScreen(),
+                                  ),
+                                ),
+                              ),
+                              if (isAdmin)
+                                GlassListItem(
+                                  leading: Container(
+                                    width: 32,
+                                    height: 32,
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFEF5B5B),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: const Icon(
+                                      Icons.code_rounded,
+                                      color: Colors.white,
+                                      size: 18,
+                                    ),
+                                  ),
+                                  title: 'Entwickler-Modus',
+                                  subtitle:
+                                      'Erweiterte Fehlermeldungen beim PDF-Import',
+                                  isLast: true,
+                                  switchValue: _dienstplanDevMode,
+                                  onSwitchChanged: (v) {
+                                    setState(() => _dienstplanDevMode = v);
+                                    Hive.box(
+                                      'einstellungen',
+                                    ).put('dienstplan_dev_placeholder', v);
+                                  },
+                                ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        const _SectionFootnote(
+                          text:
+                              'Fahrzeiten zwischen Ereignissen werden immer angezeigt. '
+                              'Mit Live-Verkehr nutzt die App TomTom, sonst eine Route ohne Verkehr. '
+                              'Das Blitz-Symbol hinter der Zeit zeigt einen Live-Wert (grün) '
+                              'oder einen Ersatzwert (rot).',
+                        ),
+                        const SizedBox(height: 8),
+                        const _SectionFootnote(
+                          text:
+                              'Der Dienstplan-Import befindet sich noch in der Beta-Phase.',
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TomTomKeyScreen extends StatefulWidget {
+  const _TomTomKeyScreen();
+
+  @override
+  State<_TomTomKeyScreen> createState() => _TomTomKeyScreenState();
+}
+
+class _TomTomKeyScreenState extends State<_TomTomKeyScreen> {
+  late final TextEditingController _keyCtrl;
+  bool _testing = false;
+  String? _keyStatus;
+  bool _keyOk = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _keyCtrl = TextEditingController(text: RouteTimeService.userKey);
+  }
+
+  @override
+  void dispose() {
+    _keyCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _testKey() async {
+    final k = _keyCtrl.text.trim();
+    if (k.isEmpty) {
+      setState(() {
+        _keyOk = false;
+        _keyStatus = 'Bitte zuerst einen Key eintragen.';
+      });
+      return;
+    }
+    setState(() {
+      _testing = true;
+      _keyStatus = null;
+    });
+    final r = await RouteTimeService.testKey(k);
+    if (!mounted) return;
+    setState(() {
+      _testing = false;
+      _keyOk = r == true;
+      _keyStatus = r == true
+          ? 'Key funktioniert.'
+          : (r == false
+                ? 'Key wurde von TomTom abgelehnt. Ist die Routing API für den Key aktiviert?'
+                : 'Keine Verbindung. Bitte später erneut prüfen.');
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final skin = AppTheme.of(context);
+    return Scaffold(
+      backgroundColor: skin.bgBase,
+      body: SafeArea(
+        child: Column(
+          children: [
+            _SettingsHeader(
+              title: 'TomTom-API-Key',
+              onBack: () => Navigator.pop(context),
+            ),
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    GlassSurface(
-                      borderRadius: 18,
-                      padding: EdgeInsets.zero,
-                      child: Column(children: [
-                        GlassListItem(
-                          leading: Container(
-                            width: 32, height: 32,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF2D6CFF),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: const Icon(Icons.directions_car_rounded, color: Colors.white, size: 18),
+                    _TiCard(
+                      skin: skin,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _TiCardHeader(
+                            skin: skin,
+                            icon: Icons.key_rounded,
+                            label: 'Eigener API-Key',
                           ),
-                          title: 'Routen-Zeit vorberechnen',
-                          subtitle: 'Fahrzeit mit dem Auto zwischen Ereignissen im Tagesplan',
-                          isLast: !isAdmin,
-                          switchValue: _routeTime,
-                          onSwitchChanged: (v) {
-                            setState(() => _routeTime = v);
-                            RouteTimeService.enabled = v;
-                          },
-                        ),
-                        if (isAdmin)
-                          GlassListItem(
-                            leading: Container(
-                              width: 32, height: 32,
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFEF5B5B),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: const Icon(Icons.code_rounded, color: Colors.white, size: 18),
+                          const SizedBox(height: 10),
+                          Text(
+                            'Optional. Ohne eigenen Key nutzt die App einen Standard-Key. Mit deinem '
+                            'Key laufen die Anfragen über dein eigenes, kostenloses Kontingent '
+                            '(ca. 2.500 pro Tag).',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: skin.textMuted,
+                              height: 1.5,
                             ),
-                            title: 'Entwickler-Modus',
-                            subtitle: 'Erweiterte Fehlermeldungen beim PDF-Import',
-                            isLast: true,
-                            switchValue: _dienstplanDevMode,
-                            onSwitchChanged: (v) {
-                              setState(() => _dienstplanDevMode = v);
-                              Hive.box('einstellungen').put('dienstplan_dev_placeholder', v);
+                          ),
+                          const SizedBox(height: 12),
+                          _TiTextField(
+                            skin: skin,
+                            controller: _keyCtrl,
+                            hint: 'API-Key einfügen',
+                            onChanged: (v) {
+                              RouteTimeService.userKey = v;
+                              if (_keyStatus != null)
+                                setState(() => _keyStatus = null);
                             },
                           ),
-                      ]),
-                    ),
-                    const SizedBox(height: 8),
-                    const _SectionFootnote(
-                      text: 'Zeigt im Tagesplan, wie lange du vom vorherigen Ereignis zum nächsten '
-                            'mit dem Auto brauchst (aktuelle Verkehrslage). Heute wird höchstens alle '
-                            '30 Minuten aktualisiert, andere Tage werden nur einmal berechnet. '
-                            'Es zählen nur Ereignisse mit erkanntem Ort (Kartenposition).\n\n'
-                            'Der Dienstplan-Import befindet sich noch in der Beta-Phase.',
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: GlassSecondaryButton(
+                                  skin: skin,
+                                  label: 'Website öffnen',
+                                  onTap: () => launchUrl(
+                                    Uri.parse('https://developer.tomtom.com'),
+                                    mode: LaunchMode.externalApplication,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: GlassPrimaryButton(
+                                  skin: skin,
+                                  label: _testing ? 'Prüfe …' : 'Key prüfen',
+                                  onTap: _testing ? () {} : _testKey,
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (_keyStatus != null) ...[
+                            const SizedBox(height: 10),
+                            _FeedbackBadge(
+                              skin: skin,
+                              message: _keyStatus!,
+                              isSuccess: _keyOk,
+                            ),
+                          ],
+                          const SizedBox(height: 12),
+                          Text(
+                            'Kostenlosen Key erstellen: developer.tomtom.com → registrieren → '
+                            'Dashboard → Keys → neuen Key anlegen und die Routing API aktivieren.',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: skin.textMuted,
+                              height: 1.5,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -1972,10 +2770,12 @@ class _ScheduleSettingsScreenState extends State<_ScheduleSettingsScreen> {
 class _SyncTokenAndReadOnlySection extends StatefulWidget {
   const _SyncTokenAndReadOnlySection();
   @override
-  State<_SyncTokenAndReadOnlySection> createState() => _SyncTokenAndReadOnlySectionState();
+  State<_SyncTokenAndReadOnlySection> createState() =>
+      _SyncTokenAndReadOnlySectionState();
 }
 
-class _SyncTokenAndReadOnlySectionState extends State<_SyncTokenAndReadOnlySection> {
+class _SyncTokenAndReadOnlySectionState
+    extends State<_SyncTokenAndReadOnlySection> {
   late TextEditingController _tokenInputController;
   String? _syncToken;
   bool _isGenerating = false;
@@ -1986,13 +2786,16 @@ class _SyncTokenAndReadOnlySectionState extends State<_SyncTokenAndReadOnlySecti
   bool _readOnlyMode = false;
 
   bool get _canUseReadOnlyMode =>
-      _readOnlyMode || (_syncToken != null && SyncTokenService.role == 'reader');
+      _readOnlyMode ||
+      (_syncToken != null && SyncTokenService.role == 'reader');
 
   @override
   void initState() {
     super.initState();
     _tokenInputController = TextEditingController();
-    _readOnlyMode = Hive.box('einstellungen').get('read_only_mode', defaultValue: false) as bool;
+    _readOnlyMode =
+        Hive.box('einstellungen').get('read_only_mode', defaultValue: false)
+            as bool;
     _loadToken();
   }
 
@@ -2011,7 +2814,11 @@ class _SyncTokenAndReadOnlySectionState extends State<_SyncTokenAndReadOnlySecti
     setState(() => _isGenerating = true);
     try {
       final token = await SyncTokenService.instance.generateAndRegister();
-      if (mounted) setState(() { _syncToken = token; _isGenerating = false; });
+      if (mounted)
+        setState(() {
+          _syncToken = token;
+          _isGenerating = false;
+        });
     } catch (e) {
       if (mounted) setState(() => _isGenerating = false);
     }
@@ -2031,11 +2838,13 @@ class _SyncTokenAndReadOnlySectionState extends State<_SyncTokenAndReadOnlySecti
       final confirmed = await confirmActionDialog(
         context: context,
         skin: skin,
-        icon: Icons.apple,
-        title: 'Apple-Kalender-Freigabe zurücksetzen?',
-        message: 'Diese Verknüpfung setzt die aktive "Mit Apple-Kalender '
+        icon: AppleCalendarSyncService.deviceCalendarIcon,
+        title:
+            '${AppleCalendarSyncService.deviceCalendarName}-Freigabe zurücksetzen?',
+        message:
+            'Diese Verknüpfung setzt die aktive "Mit ${AppleCalendarSyncService.deviceCalendarName} '
             'teilen"-Einstellung zurück und entfernt alle bisher importierten '
-            'Apple-Termine aus OpTimes. Deine Termine im echten Apple-Kalender '
+            '${AppleCalendarSyncService.deviceImportName}-Termine aus OpTimes. Deine Termine im echten ${AppleCalendarSyncService.deviceCalendarName} '
             'bleiben davon unberührt. Du kannst die Freigabe danach im '
             'Lesemodus jederzeit wieder aktivieren.',
         cancelLabel: 'Abbrechen',
@@ -2045,7 +2854,10 @@ class _SyncTokenAndReadOnlySectionState extends State<_SyncTokenAndReadOnlySecti
       await AppleCalendarSyncService.instance.disconnectAllForSafeReset();
     }
 
-    setState(() { _isLinking = true; _linkFeedback = null; });
+    setState(() {
+      _isLinking = true;
+      _linkFeedback = null;
+    });
     try {
       final result = await SyncTokenService.instance.linkExistingToken(input);
       if (mounted) {
@@ -2088,7 +2900,10 @@ class _SyncTokenAndReadOnlySectionState extends State<_SyncTokenAndReadOnlySecti
     if (_syncToken == null) return;
     Clipboard.setData(ClipboardData(text: _syncToken!));
     HapticFeedback.lightImpact();
-    setState(() { _linkSuccess = true; _linkFeedback = '✓ Token kopiert!'; });
+    setState(() {
+      _linkSuccess = true;
+      _linkFeedback = '✓ Token kopiert!';
+    });
     Future.delayed(const Duration(seconds: 2), () {
       if (mounted) setState(() => _linkFeedback = null);
     });
@@ -2109,7 +2924,8 @@ class _SyncTokenAndReadOnlySectionState extends State<_SyncTokenAndReadOnlySecti
       skin: skin,
       icon: Icons.visibility_outlined,
       title: 'Lesemodus aktivieren?',
-      message: 'Zeigt nur noch den Dienstplan zum Ansehen. Arbeitszeiterfassung, '
+      message:
+          'Zeigt nur noch den Dienstplan zum Ansehen. Arbeitszeiterfassung, '
           'Monat, Fahrtenbuch und Backup/Export werden ausgeblendet. Aufgaben '
           'und Kalender laufen ab jetzt getrennt vom Original.\n\n'
           'Deaktivieren nur mit Code möglich.',
@@ -2166,8 +2982,10 @@ class _SyncTokenAndReadOnlySectionState extends State<_SyncTokenAndReadOnlySecti
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-        builder: (sheetCtx) => Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(sheetCtx).bottom),
+      builder: (sheetCtx) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.viewInsetsOf(sheetCtx).bottom,
+        ),
         child: GlassSheet(
           skin: skin,
           child: StatefulBuilder(
@@ -2175,7 +2993,9 @@ class _SyncTokenAndReadOnlySectionState extends State<_SyncTokenAndReadOnlySecti
               void tryUnlock() {
                 if (ctrl.text.trim() == '1951') {
                   final token = SyncTokenService.instance.localToken;
-                  if (token != null && CalendarSyncHandshake.instance.state.value != CalendarSyncState.off) {
+                  if (token != null &&
+                      CalendarSyncHandshake.instance.state.value !=
+                          CalendarSyncState.off) {
                     CalendarSyncHandshake.instance.disconnect(token);
                   }
                   Hive.box('einstellungen').put('read_only_mode', false);
@@ -2195,18 +3015,33 @@ class _SyncTokenAndReadOnlySectionState extends State<_SyncTokenAndReadOnlySecti
                   children: [
                     Center(child: SheetHandle(skin: skin)),
                     const SizedBox(height: 16),
-                    Text('Lesemodus deaktivieren',
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: skin.textPrimary)),
+                    Text(
+                      'Lesemodus deaktivieren',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: skin.textPrimary,
+                      ),
+                    ),
                     const SizedBox(height: 4),
-                    Text('Bitte Code eingeben.', style: TextStyle(fontSize: 13, color: skin.textMuted)),
-                    if (CalendarSyncHandshake.instance.state.value != CalendarSyncState.off) ...[
+                    Text(
+                      'Bitte Code eingeben.',
+                      style: TextStyle(fontSize: 13, color: skin.textMuted),
+                    ),
+                    if (CalendarSyncHandshake.instance.state.value !=
+                        CalendarSyncState.off) ...[
                       const SizedBox(height: 4),
-                      Text('Kalender-Sync wird dabei ebenfalls beendet.',
-                          style: TextStyle(fontSize: 11.5, color: skin.textMuted)),
+                      Text(
+                        'Kalender-Sync wird dabei ebenfalls beendet.',
+                        style: TextStyle(fontSize: 11.5, color: skin.textMuted),
+                      ),
                     ],
                     const SizedBox(height: 16),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
                         color: skin.surface(0.05),
                         borderRadius: BorderRadius.circular(14),
@@ -2217,23 +3052,47 @@ class _SyncTokenAndReadOnlySectionState extends State<_SyncTokenAndReadOnlySecti
                         autofocus: true,
                         obscureText: true,
                         keyboardType: TextInputType.number,
-                        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                        style: TextStyle(color: skin.textPrimary, fontSize: 20, letterSpacing: 4, fontWeight: FontWeight.w700),
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                        ],
+                        style: TextStyle(
+                          color: skin.textPrimary,
+                          fontSize: 20,
+                          letterSpacing: 4,
+                          fontWeight: FontWeight.w700,
+                        ),
                         decoration: InputDecoration(
                           hintText: '••••',
-                          hintStyle: TextStyle(color: skin.textHint, fontSize: 20, letterSpacing: 4),
-                          border: InputBorder.none, isDense: true,
-                          contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                          hintStyle: TextStyle(
+                            color: skin.textHint,
+                            fontSize: 20,
+                            letterSpacing: 4,
+                          ),
+                          border: InputBorder.none,
+                          isDense: true,
+                          contentPadding: const EdgeInsets.symmetric(
+                            vertical: 10,
+                          ),
                         ),
                         onSubmitted: (_) => tryUnlock(),
                       ),
                     ),
                     if (error != null) ...[
                       const SizedBox(height: 10),
-                      Text(error!, style: TextStyle(fontSize: 12.5, color: skin.deleteColor)),
+                      Text(
+                        error!,
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          color: skin.deleteColor,
+                        ),
+                      ),
                     ],
                     const SizedBox(height: 16),
-                    GlassPrimaryButton(skin: skin, label: 'Entsperren', onTap: tryUnlock),
+                    GlassPrimaryButton(
+                      skin: skin,
+                      label: 'Entsperren',
+                      onTap: tryUnlock,
+                    ),
                   ],
                 ),
               );
@@ -2263,14 +3122,18 @@ class _SyncTokenAndReadOnlySectionState extends State<_SyncTokenAndReadOnlySecti
           onGenerate: _generateToken,
           onCopy: _copyToken,
           onShare: _shareToken,
-          onToggleInput: () => setState(() { _showTokenInput = !_showTokenInput; _linkFeedback = null; }),
+          onToggleInput: () => setState(() {
+            _showTokenInput = !_showTokenInput;
+            _linkFeedback = null;
+          }),
           onLink: _linkToken,
           onUnlink: _unlinkToken,
           role: SyncTokenService.role,
         ),
         const SizedBox(height: 8),
         const _SectionFootnote(
-          text: 'Der Sync-Token ist dein persönlicher Schlüssel. Teile ihn nur mit Geräten, die du selbst verwendest. Wer den Token kennt, hat Lesezugriff auf deine Daten.',
+          text:
+              'Der Sync-Token ist dein persönlicher Schlüssel. Teile ihn nur mit Geräten, die du selbst verwendest. Wer den Token kennt, hat Lesezugriff auf deine Daten.',
         ),
 
         if (_syncToken != null && SyncTokenService.role == 'original')
@@ -2285,15 +3148,32 @@ class _SyncTokenAndReadOnlySectionState extends State<_SyncTokenAndReadOnlySecti
                   padding: EdgeInsets.zero,
                   child: GlassListItem(
                     leading: Container(
-                      width: 32, height: 32,
-                      decoration: BoxDecoration(color: const Color(0xFFFFB347), borderRadius: BorderRadius.circular(8)),
-                      child: const Icon(Icons.warning_amber_rounded, color: Colors.white, size: 18),
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFB347),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(
+                        Icons.warning_amber_rounded,
+                        color: Colors.white,
+                        size: 18,
+                      ),
                     ),
                     title: 'Sync-Konflikte',
                     subtitle: '$count offene Änderung(en) vom Kopiergerät',
                     isLast: true,
-                    trailing: Icon(Icons.chevron_right_rounded, size: 18, color: skin.surface(0.28)),
-                    onTap: () => Navigator.push(context, CupertinoPageRoute(builder: (_) => const SyncConflictsScreen())),
+                    trailing: Icon(
+                      Icons.chevron_right_rounded,
+                      size: 18,
+                      color: skin.surface(0.28),
+                    ),
+                    onTap: () => Navigator.push(
+                      context,
+                      CupertinoPageRoute(
+                        builder: (_) => const SyncConflictsScreen(),
+                      ),
+                    ),
                   ),
                 ),
               );
@@ -2306,39 +3186,66 @@ class _SyncTokenAndReadOnlySectionState extends State<_SyncTokenAndReadOnlySecti
           GlassSurface(
             borderRadius: 18,
             padding: EdgeInsets.zero,
-            child: Column(children: [
-              if (!_readOnlyMode)
-                GlassListItem(
-                  leading: Container(
-                    width: 32, height: 32,
-                    decoration: BoxDecoration(color: const Color(0xFF8B8B9E), borderRadius: BorderRadius.circular(8)),
-                    child: const Icon(Icons.visibility_outlined, color: Colors.white, size: 18),
+            child: Column(
+              children: [
+                if (!_readOnlyMode)
+                  GlassListItem(
+                    leading: Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF8B8B9E),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(
+                        Icons.visibility_outlined,
+                        color: Colors.white,
+                        size: 18,
+                      ),
+                    ),
+                    title: 'Lesemodus aktivieren',
+                    subtitle: 'Dienstplan schreibgeschützt anzeigen',
+                    isLast: true,
+                    trailing: Icon(
+                      Icons.chevron_right_rounded,
+                      size: 18,
+                      color: skin.surface(0.28),
+                    ),
+                    onTap: _confirmEnableReadOnly,
+                  )
+                else
+                  GlassListItem(
+                    leading: Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEF5B5B),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(
+                        Icons.lock_outline_rounded,
+                        color: Colors.white,
+                        size: 18,
+                      ),
+                    ),
+                    title: 'Lesemodus aktiv',
+                    subtitle: 'Code erforderlich zum Deaktivieren',
+                    isLast: true,
+                    trailing: Icon(
+                      Icons.chevron_right_rounded,
+                      size: 18,
+                      color: skin.surface(0.28),
+                    ),
+                    onTap: _showDisableReadOnlyCodeSheet,
                   ),
-                  title: 'Lesemodus aktivieren',
-                  subtitle: 'Dienstplan schreibgeschützt anzeigen',
-                  isLast: true,
-                  trailing: Icon(Icons.chevron_right_rounded, size: 18, color: skin.surface(0.28)),
-                  onTap: _confirmEnableReadOnly,
-                )
-              else
-                GlassListItem(
-                  leading: Container(
-                    width: 32, height: 32,
-                    decoration: BoxDecoration(color: const Color(0xFFEF5B5B), borderRadius: BorderRadius.circular(8)),
-                    child: const Icon(Icons.lock_outline_rounded, color: Colors.white, size: 18),
-                  ),
-                  title: 'Lesemodus aktiv',
-                  subtitle: 'Code erforderlich zum Deaktivieren',
-                  isLast: true,
-                  trailing: Icon(Icons.chevron_right_rounded, size: 18, color: skin.surface(0.28)),
-                  onTap: _showDisableReadOnlyCodeSheet,
-                ),
-            ]),
+              ],
+            ),
           ),
           if (_readOnlyMode) ...[
             const SizedBox(height: 8),
             const _SectionFootnote(
-              text: 'Nur Dienstplan-Ansicht aktiv. Monat & Fahrtenbuch sind ausgeblendet, Aufgaben bleiben voll nutzbar.',
+              text:
+                  'Nur Dienstplan-Ansicht aktiv. Monat & Fahrtenbuch sind ausgeblendet, Aufgaben bleiben voll nutzbar.',
             ),
           ],
         ],
@@ -2346,8 +3253,14 @@ class _SyncTokenAndReadOnlySectionState extends State<_SyncTokenAndReadOnlySecti
         if (AuthService.instance.isAdmin) ...[
           const SizedBox(height: 20),
           Center(
-            child: Text('Admin · Lesemodus-Code: 1951',
-                style: TextStyle(fontSize: 11, color: skin.textMuted, fontWeight: FontWeight.w600)),
+            child: Text(
+              'Admin · Lesemodus-Code: 1951',
+              style: TextStyle(
+                fontSize: 11,
+                color: skin.textMuted,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ),
         ],
       ],
@@ -2376,7 +3289,10 @@ class _ReadOnlyActivationSplash extends StatelessWidget {
             SizedBox(
               width: 22,
               height: 22,
-              child: CircularProgressIndicator(strokeWidth: 2.4, color: skin.primary),
+              child: CircularProgressIndicator(
+                strokeWidth: 2.4,
+                color: skin.primary,
+              ),
             ),
           ],
         ),
@@ -2392,10 +3308,12 @@ class _ReadOnlyActivationSplash extends StatelessWidget {
 class _DataManagementSettingsScreen extends StatefulWidget {
   const _DataManagementSettingsScreen();
   @override
-  State<_DataManagementSettingsScreen> createState() => _DataManagementSettingsScreenState();
+  State<_DataManagementSettingsScreen> createState() =>
+      _DataManagementSettingsScreenState();
 }
 
-class _DataManagementSettingsScreenState extends State<_DataManagementSettingsScreen> {
+class _DataManagementSettingsScreenState
+    extends State<_DataManagementSettingsScreen> {
   int _zeitDeleteMonths = 3;
   int _dienstplanDeleteMonths = 3;
   int _fahrtenbuchDeleteMonths = 3;
@@ -2405,34 +3323,48 @@ class _DataManagementSettingsScreenState extends State<_DataManagementSettingsSc
   void initState() {
     super.initState();
     final box = Hive.box('einstellungen');
-    _zeitDeleteMonths = box.get('deleteAfterMonths_zeit', defaultValue: 3) as int;
-    _dienstplanDeleteMonths = box.get('deleteAfterMonths_dienstplan', defaultValue: 3) as int;
-    _fahrtenbuchDeleteMonths = box.get('deleteAfterMonths_fahrtenbuch', defaultValue: 3) as int;
+    _zeitDeleteMonths =
+        box.get('deleteAfterMonths_zeit', defaultValue: 3) as int;
+    _dienstplanDeleteMonths =
+        box.get('deleteAfterMonths_dienstplan', defaultValue: 3) as int;
+    _fahrtenbuchDeleteMonths =
+        box.get('deleteAfterMonths_fahrtenbuch', defaultValue: 3) as int;
     _taskAutoDelete = box.get('task_auto_delete', defaultValue: '1d') as String;
   }
 
   String _monthLabel(int m) {
     switch (m) {
-      case 1:  return '1 Monat';
-      case 3:  return '3 Monate';
-      case 6:  return '6 Monate';
-      case 12: return '1 Jahr';
-      default: return '$m Monate';
+      case 1:
+        return '1 Monat';
+      case 3:
+        return '3 Monate';
+      case 6:
+        return '6 Monate';
+      case 12:
+        return '1 Jahr';
+      default:
+        return '$m Monate';
     }
   }
 
   String _taskLabel(String k) {
     switch (k) {
-      case 'never': return 'Nie';
-      case '1d':    return '1 Tag';
-      case '2d':    return '2 Tage';
-      case '1w':    return '1 Woche';
-      case '1m':    return '1 Monat';
-      default:      return k;
+      case 'never':
+        return 'Nie';
+      case '1d':
+        return '1 Tag';
+      case '2d':
+        return '2 Tage';
+      case '1w':
+        return '1 Woche';
+      case '1m':
+        return '1 Monat';
+      default:
+        return k;
     }
   }
 
-    String _describe(RetentionArea area, RetentionPreview p) {
+  String _describe(RetentionArea area, RetentionPreview p) {
     switch (area) {
       case RetentionArea.zeit:
         return '${p.items} Zeiterfassungs-Einträge';
@@ -2448,29 +3380,49 @@ class _DataManagementSettingsScreenState extends State<_DataManagementSettingsSc
     }
   }
 
-  String _retentionMessage(RetentionArea area, RetentionPreview p, String label) {
+  String _retentionMessage(
+    RetentionArea area,
+    RetentionPreview p,
+    String label,
+  ) {
     final what = _describe(area, p);
     final buf = StringBuffer();
     if (area == RetentionArea.tasks) {
-      buf.write('Bei „$label" werden $what gelöscht, die vor mehr als $label erledigt wurden.');
+      buf.write(
+        'Bei „$label" werden $what gelöscht, die vor mehr als $label erledigt wurden.',
+      );
     } else {
       final d = DateFormat('dd.MM.yyyy').format(p.cutoff!);
-      buf.write('Bei „$label" werden $what vor dem $d gelöscht. '
-          'Maßgeblich ist das heutige Datum, nicht der Import-Zeitpunkt.');
+      buf.write(
+        'Bei „$label" werden $what vor dem $d gelöscht. '
+        'Maßgeblich ist das heutige Datum, nicht der Import-Zeitpunkt.',
+      );
     }
     if (area == RetentionArea.fahrtenbuch && p.kept > 0) {
-      buf.write('\n\n${p.kept} ältere, noch nicht eingetragene Fahrten bleiben erhalten.');
+      buf.write(
+        '\n\n${p.kept} ältere, noch nicht eingetragene Fahrten bleiben erhalten.',
+      );
     }
     buf.write('\n\nDas kann nicht rückgängig gemacht werden.');
     return buf.toString();
   }
 
-  Future<void> _changeRetention(RetentionArea area, {int? months, String? taskRule}) async {
+  Future<void> _changeRetention(
+    RetentionArea area, {
+    int? months,
+    String? taskRule,
+  }) async {
     final box = Hive.box('einstellungen');
-    final preview = DataRetention.preview(area, months: months, taskRule: taskRule);
+    final preview = DataRetention.preview(
+      area,
+      months: months,
+      taskRule: taskRule,
+    );
 
     if (!preview.isEmpty) {
-      final label = area == RetentionArea.tasks ? _taskLabel(taskRule!) : _monthLabel(months!);
+      final label = area == RetentionArea.tasks
+          ? _taskLabel(taskRule!)
+          : _monthLabel(months!);
       final confirmed = await confirmDeleteDialog(
         context: context,
         skin: AppTheme.of(context),
@@ -2497,13 +3449,18 @@ class _DataManagementSettingsScreenState extends State<_DataManagementSettingsSc
         await box.put('task_auto_delete', taskRule);
     }
 
-    await DataRetention.apply(area); // sofort, nach den frisch gespeicherten Werten
+    await DataRetention.apply(
+      area,
+    ); // sofort, nach den frisch gespeicherten Werten
     if (area == RetentionArea.tasks) TaskStore.changesSignal.value++;
     MyApp.mainScreenKey.currentState?.refreshAfterRetentionCleanup();
 
     if (!preview.isEmpty && mounted) {
-      showGlassSnackBar(context, '✓ ${_describe(area, preview)} gelöscht',
-          type: GlassSnackBarType.success);
+      showGlassSnackBar(
+        context,
+        '✓ ${_describe(area, preview)} gelöscht',
+        type: GlassSnackBarType.success,
+      );
     }
   }
 
@@ -2512,7 +3469,11 @@ class _DataManagementSettingsScreenState extends State<_DataManagementSettingsSc
       await BackupService.exportBackup();
     } catch (e) {
       if (mounted) {
-        showGlassSnackBar(context, 'Export fehlgeschlagen: $e', type: GlassSnackBarType.warning);
+        showGlassSnackBar(
+          context,
+          'Export fehlgeschlagen: $e',
+          type: GlassSnackBarType.warning,
+        );
       }
     }
   }
@@ -2529,8 +3490,11 @@ class _DataManagementSettingsScreenState extends State<_DataManagementSettingsSc
     final preview = await BackupService.readBackupFile(path);
     if (preview == null) {
       if (mounted) {
-        showGlassSnackBar(context, 'Ungültige oder beschädigte Backup-Datei.',
-            type: GlassSnackBarType.warning);
+        showGlassSnackBar(
+          context,
+          'Ungültige oder beschädigte Backup-Datei.',
+          type: GlassSnackBarType.warning,
+        );
       }
       return;
     }
@@ -2545,7 +3509,8 @@ class _DataManagementSettingsScreenState extends State<_DataManagementSettingsSc
       skin: skin,
       icon: Icons.upload_file_outlined,
       title: 'Backup importieren?',
-      message: 'Backup vom $exportedLabel mit ${preview.settingsCount} Einstellungs- '
+      message:
+          'Backup vom $exportedLabel mit ${preview.settingsCount} Einstellungs- '
           'und ${preview.zeitenCount} Zeiterfassungs-Einträgen. Alle aktuellen Daten '
           'auf diesem Gerät werden dabei ÜBERSCHRIEBEN.',
       cancelLabel: 'Abbrechen',
@@ -2576,7 +3541,10 @@ class _DataManagementSettingsScreenState extends State<_DataManagementSettingsSc
       body: SafeArea(
         child: Column(
           children: [
-            _SettingsHeader(title: 'Datenverwaltung', onBack: () => Navigator.pop(context)),
+            _SettingsHeader(
+              title: 'Datenverwaltung',
+              onBack: () => Navigator.pop(context),
+            ),
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
@@ -2592,21 +3560,31 @@ class _DataManagementSettingsScreenState extends State<_DataManagementSettingsSc
                       GlassSurface(
                         borderRadius: 18,
                         padding: EdgeInsets.zero,
-                        child: Column(children: [
-                          GlassDropdownButton<int>(
-                            value: _zeitDeleteMonths,
-                            label: 'Zeiterfassung',
-                            subtitle: 'Einträge löschen nach',
-                            icon: Icons.access_time_outlined,
-                            iconBg: const Color(0xFF2D6CFF),
-                            isLast: true,
-                            displayBuilder: _monthLabel,
-                            items: [1, 3, 6, 12]
-                                .map((m) => GlassDropdownItem(value: m, label: _monthLabel(m)))
-                                .toList(),
-                            onChanged: (v) => _changeRetention(RetentionArea.zeit, months: v),
-                          ),
-                        ]),
+                        child: Column(
+                          children: [
+                            GlassDropdownButton<int>(
+                              value: _zeitDeleteMonths,
+                              label: 'Zeiterfassung',
+                              subtitle: 'Einträge löschen nach',
+                              icon: Icons.access_time_outlined,
+                              iconBg: const Color(0xFF2D6CFF),
+                              isLast: true,
+                              displayBuilder: _monthLabel,
+                              items: [1, 3, 6, 12]
+                                  .map(
+                                    (m) => GlassDropdownItem(
+                                      value: m,
+                                      label: _monthLabel(m),
+                                    ),
+                                  )
+                                  .toList(),
+                              onChanged: (v) => _changeRetention(
+                                RetentionArea.zeit,
+                                months: v,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                       const SizedBox(height: 14),
                     ],
@@ -2615,21 +3593,31 @@ class _DataManagementSettingsScreenState extends State<_DataManagementSettingsSc
                     GlassSurface(
                       borderRadius: 18,
                       padding: EdgeInsets.zero,
-                      child: Column(children: [
-                        GlassDropdownButton<int>(
-                          value: _dienstplanDeleteMonths,
-                          label: 'Dienstplan',
-                          subtitle: 'Daten löschen nach',
-                          icon: Icons.calendar_month_outlined,
-                          iconBg: const Color(0xFFFFB347),
-                          isLast: true,
-                          displayBuilder: _monthLabel,
-                          items: [1, 3, 6, 12]
-                              .map((m) => GlassDropdownItem(value: m, label: _monthLabel(m)))
-                              .toList(),
-                          onChanged: (v) => _changeRetention(RetentionArea.dienstplan, months: v),
-                        ),
-                      ]),
+                      child: Column(
+                        children: [
+                          GlassDropdownButton<int>(
+                            value: _dienstplanDeleteMonths,
+                            label: 'Dienstplan',
+                            subtitle: 'Daten löschen nach',
+                            icon: Icons.calendar_month_outlined,
+                            iconBg: const Color(0xFFFFB347),
+                            isLast: true,
+                            displayBuilder: _monthLabel,
+                            items: [1, 3, 6, 12]
+                                .map(
+                                  (m) => GlassDropdownItem(
+                                    value: m,
+                                    label: _monthLabel(m),
+                                  ),
+                                )
+                                .toList(),
+                            onChanged: (v) => _changeRetention(
+                              RetentionArea.dienstplan,
+                              months: v,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                     const SizedBox(height: 14),
 
@@ -2638,21 +3626,31 @@ class _DataManagementSettingsScreenState extends State<_DataManagementSettingsSc
                       GlassSurface(
                         borderRadius: 18,
                         padding: EdgeInsets.zero,
-                        child: Column(children: [
-                          GlassDropdownButton<int>(
-                            value: _fahrtenbuchDeleteMonths,
-                            label: 'Fahrtenbuch',
-                            subtitle: 'Eingetr. Fahrten löschen nach',
-                            icon: Icons.directions_car_outlined,
-                            iconBg: const Color(0xFF8B8B9E),
-                            isLast: true,
-                            displayBuilder: _monthLabel,
-                            items: [1, 3, 6, 12]
-                                .map((m) => GlassDropdownItem(value: m, label: _monthLabel(m)))
-                                .toList(),
-                            onChanged: (v) => _changeRetention(RetentionArea.fahrtenbuch, months: v),
-                          ),
-                        ]),
+                        child: Column(
+                          children: [
+                            GlassDropdownButton<int>(
+                              value: _fahrtenbuchDeleteMonths,
+                              label: 'Fahrtenbuch',
+                              subtitle: 'Eingetr. Fahrten löschen nach',
+                              icon: Icons.directions_car_outlined,
+                              iconBg: const Color(0xFF8B8B9E),
+                              isLast: true,
+                              displayBuilder: _monthLabel,
+                              items: [1, 3, 6, 12]
+                                  .map(
+                                    (m) => GlassDropdownItem(
+                                      value: m,
+                                      label: _monthLabel(m),
+                                    ),
+                                  )
+                                  .toList(),
+                              onChanged: (v) => _changeRetention(
+                                RetentionArea.fahrtenbuch,
+                                months: v,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                       const SizedBox(height: 14),
                     ],
@@ -2661,34 +3659,39 @@ class _DataManagementSettingsScreenState extends State<_DataManagementSettingsSc
                     GlassSurface(
                       borderRadius: 18,
                       padding: EdgeInsets.zero,
-                      child: Column(children: [
-                        GlassDropdownButton<String>(
-                          value: _taskAutoDelete,
-                          label: 'Erledigte Aufgaben',
-                          subtitle: 'Automatisch löschen nach',
-                          icon: Icons.task_alt_outlined,
-                          iconBg: const Color(0xFF3DD68C),
-                          isLast: true,
-                          displayBuilder: _taskLabel,
-                          items: const [
-                            GlassDropdownItem(value: 'never', label: 'Nie'),
-                            GlassDropdownItem(value: '1d',    label: '1 Tag'),
-                            GlassDropdownItem(value: '2d',    label: '2 Tage'),
-                            GlassDropdownItem(value: '1w',    label: '1 Woche'),
-                            GlassDropdownItem(value: '1m',    label: '1 Monat'),
-                          ],
-                          onChanged: (v) => _changeRetention(RetentionArea.tasks, taskRule: v),
-                        ),
-                      ]),
+                      child: Column(
+                        children: [
+                          GlassDropdownButton<String>(
+                            value: _taskAutoDelete,
+                            label: 'Erledigte Aufgaben',
+                            subtitle: 'Automatisch löschen nach',
+                            icon: Icons.task_alt_outlined,
+                            iconBg: const Color(0xFF3DD68C),
+                            isLast: true,
+                            displayBuilder: _taskLabel,
+                            items: const [
+                              GlassDropdownItem(value: 'never', label: 'Nie'),
+                              GlassDropdownItem(value: '1d', label: '1 Tag'),
+                              GlassDropdownItem(value: '2d', label: '2 Tage'),
+                              GlassDropdownItem(value: '1w', label: '1 Woche'),
+                              GlassDropdownItem(value: '1m', label: '1 Monat'),
+                            ],
+                            onChanged: (v) => _changeRetention(
+                              RetentionArea.tasks,
+                              taskRule: v,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
 
                     const SizedBox(height: 8),
                     const _SectionFootnote(
                       text:
                           'Maßgeblich ist das heutige Datum: Bei „1 Monat" bleibt nur, was jünger als '
-'ein Monat ab heute ist. Änderungen wirken sofort, vorher wirst du gefragt, '
-'falls dabei Daten gelöscht würden. Beim Fahrtenbuch zählen nur bereits '
-'eingetragene Fahrten. Erledigte Aufgaben werden standardmäßig nach 1 Tag gelöscht.',
+                          'ein Monat ab heute ist. Änderungen wirken sofort, vorher wirst du gefragt, '
+                          'falls dabei Daten gelöscht würden. Beim Fahrtenbuch zählen nur bereits '
+                          'eingetragene Fahrten. Erledigte Aufgaben werden standardmäßig nach 1 Tag gelöscht.',
                     ),
 
                     if (!readOnly) ...[
@@ -2697,41 +3700,62 @@ class _DataManagementSettingsScreenState extends State<_DataManagementSettingsSc
                       GlassSurface(
                         borderRadius: 18,
                         padding: EdgeInsets.zero,
-                        child: Column(children: [
-                          GlassListItem(
-                            leading: Container(
-                              width: 32, height: 32,
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF3DD68C),
-                                borderRadius: BorderRadius.circular(8),
+                        child: Column(
+                          children: [
+                            GlassListItem(
+                              leading: Container(
+                                width: 32,
+                                height: 32,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF3DD68C),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Icon(
+                                  Icons.ios_share_rounded,
+                                  color: Colors.white,
+                                  size: 18,
+                                ),
                               ),
-                              child: const Icon(Icons.ios_share_rounded, color: Colors.white, size: 18),
-                            ),
-                            title: 'Backup exportieren',
-                            subtitle: 'Als JSON-Datei teilen/speichern',
-                            trailing: Icon(Icons.chevron_right_rounded, size: 18, color: skin.surface(0.28)),
-                            onTap: _exportBackup,
-                          ),
-                          GlassListItem(
-                            leading: Container(
-                              width: 32, height: 32,
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF2D6CFF),
-                                borderRadius: BorderRadius.circular(8),
+                              title: 'Backup exportieren',
+                              subtitle: 'Als JSON-Datei teilen/speichern',
+                              trailing: Icon(
+                                Icons.chevron_right_rounded,
+                                size: 18,
+                                color: skin.surface(0.28),
                               ),
-                              child: const Icon(Icons.upload_file_outlined, color: Colors.white, size: 18),
+                              onTap: _exportBackup,
                             ),
-                            title: 'Backup importieren',
-                            subtitle: 'Überschreibt aktuelle Daten',
-                            isLast: true,
-                            trailing: Icon(Icons.chevron_right_rounded, size: 18, color: skin.surface(0.28)),
-                            onTap: _pickAndImportBackup,
-                          ),
-                        ]),
+                            GlassListItem(
+                              leading: Container(
+                                width: 32,
+                                height: 32,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF2D6CFF),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Icon(
+                                  Icons.upload_file_outlined,
+                                  color: Colors.white,
+                                  size: 18,
+                                ),
+                              ),
+                              title: 'Backup importieren',
+                              subtitle: 'Überschreibt aktuelle Daten',
+                              isLast: true,
+                              trailing: Icon(
+                                Icons.chevron_right_rounded,
+                                size: 18,
+                                color: skin.surface(0.28),
+                              ),
+                              onTap: _pickAndImportBackup,
+                            ),
+                          ],
+                        ),
                       ),
                       const _SectionFootnote(
-                        text: 'Ein Import überschreibt alle Einstellungen, Zeiten, Aufgaben und '
-                              'den Dienstplan auf diesem Gerät vollständig.',
+                        text:
+                            'Ein Import überschreibt alle Einstellungen, Zeiten, Aufgaben und '
+                            'den Dienstplan auf diesem Gerät vollständig.',
                       ),
                     ],
                   ],
@@ -2753,20 +3777,17 @@ class _DesignSettingsScreen extends StatefulWidget {
   const _DesignSettingsScreen();
 
   @override
-  State<_DesignSettingsScreen> createState() =>
-      _DesignSettingsScreenState();
+  State<_DesignSettingsScreen> createState() => _DesignSettingsScreenState();
 }
 
-class _DesignSettingsScreenState
-    extends State<_DesignSettingsScreen> {
+class _DesignSettingsScreenState extends State<_DesignSettingsScreen> {
   String _activeSkin = 'chrome';
 
   @override
   void initState() {
     super.initState();
     final box = Hive.box('einstellungen');
-    _activeSkin =
-        box.get(AppTheme.hiveKey, defaultValue: 'chrome') as String;
+    _activeSkin = box.get(AppTheme.hiveKey, defaultValue: 'chrome') as String;
   }
 
   void _setSkin(String key) {
@@ -2785,7 +3806,9 @@ class _DesignSettingsScreenState
         child: Column(
           children: [
             _SettingsHeader(
-                title: 'Design', onBack: () => Navigator.pop(context)),
+              title: 'Design',
+              onBack: () => Navigator.pop(context),
+            ),
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
@@ -2817,7 +3840,8 @@ class _DesignSettingsScreenState
                     ),
                     const SizedBox(height: 4),
                     const _SectionFootnote(
-                        text: 'Änderung wird sofort übernommen.'),
+                      text: 'Änderung wird sofort übernommen.',
+                    ),
                   ],
                 ),
               ),
@@ -2865,9 +3889,10 @@ class _SkinPreviewCard extends StatelessWidget {
           boxShadow: isSelected
               ? [
                   BoxShadow(
-                      color: skin.primary.withValues(alpha: 0.28),
-                      blurRadius: 16,
-                      offset: const Offset(0, 4)),
+                    color: skin.primary.withValues(alpha: 0.28),
+                    blurRadius: 16,
+                    offset: const Offset(0, 4),
+                  ),
                 ]
               : [],
         ),
@@ -2879,7 +3904,10 @@ class _SkinPreviewCard extends StatelessWidget {
             children: [
               _SkinMockupUI(previewSkin: previewSkin),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
                 color: skin.isLight
                     ? Colors.white.withValues(alpha: skin.glassOpacity)
                     : skin.bgCard.withValues(alpha: skin.glassOpacity),
@@ -2892,23 +3920,29 @@ class _SkinPreviewCard extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           fontSize: 13.5,
-                          fontWeight:
-                              isSelected ? FontWeight.w700 : FontWeight.w600,
+                          fontWeight: isSelected
+                              ? FontWeight.w700
+                              : FontWeight.w600,
                           color: isSelected ? skin.primary : skin.textPrimary,
                         ),
                       ),
                     ),
                     if (isSelected)
-                      Icon(Icons.check_circle_rounded,
-                          size: 16, color: skin.primary)
+                      Icon(
+                        Icons.check_circle_rounded,
+                        size: 16,
+                        color: skin.primary,
+                      )
                     else
                       Container(
                         width: 14,
                         height: 14,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          border:
-                              Border.all(color: skin.surface(0.25), width: 1.5),
+                          border: Border.all(
+                            color: skin.surface(0.25),
+                            width: 1.5,
+                          ),
                         ),
                       ),
                   ],
@@ -2937,8 +3971,10 @@ class _SkinMockupUI extends StatelessWidget {
     return Container(
       width: width,
       height: height,
-      decoration:
-          BoxDecoration(color: color, borderRadius: BorderRadius.circular(radius)),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(radius),
+      ),
     );
   }
 
@@ -2953,7 +3989,9 @@ class _SkinMockupUI extends StatelessWidget {
           width: 16,
           height: 16,
           decoration: BoxDecoration(
-              color: iconColor, borderRadius: BorderRadius.circular(5)),
+            color: iconColor,
+            borderRadius: BorderRadius.circular(5),
+          ),
         ),
         const SizedBox(width: 8),
         Expanded(
@@ -2964,8 +4002,9 @@ class _SkinMockupUI extends StatelessWidget {
               _bar(
                 width: titleWidth,
                 height: 6,
-                color: previewSkin.textPrimary
-                    .withValues(alpha: previewSkin.isLight ? 0.65 : 0.55),
+                color: previewSkin.textPrimary.withValues(
+                  alpha: previewSkin.isLight ? 0.65 : 0.55,
+                ),
               ),
               const SizedBox(height: 4),
               _bar(
@@ -2999,15 +4038,18 @@ class _SkinMockupUI extends StatelessWidget {
               Container(
                 width: 18,
                 height: 18,
-                decoration:
-                    BoxDecoration(color: previewSkin.primary, shape: BoxShape.circle),
+                decoration: BoxDecoration(
+                  color: previewSkin.primary,
+                  shape: BoxShape.circle,
+                ),
               ),
               const SizedBox(width: 8),
               _bar(
                 width: 46,
                 height: 7,
-                color: previewSkin.textPrimary
-                    .withValues(alpha: previewSkin.isLight ? 0.7 : 0.6),
+                color: previewSkin.textPrimary.withValues(
+                  alpha: previewSkin.isLight ? 0.7 : 0.6,
+                ),
               ),
               const Spacer(),
               _bar(
@@ -3025,8 +4067,9 @@ class _SkinMockupUI extends StatelessWidget {
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 9),
             decoration: BoxDecoration(
-              color: previewSkin.bgCard
-                  .withValues(alpha: previewSkin.isLight ? 0.9 : 0.7),
+              color: previewSkin.bgCard.withValues(
+                alpha: previewSkin.isLight ? 0.9 : 0.7,
+              ),
               borderRadius: BorderRadius.circular(9),
               border: Border.all(color: previewSkin.borderSubtle),
             ),
@@ -3034,12 +4077,17 @@ class _SkinMockupUI extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _row(iconColor: previewSkin.primary, titleWidth: 40, subtitleWidth: 28),
+                _row(
+                  iconColor: previewSkin.primary,
+                  titleWidth: 40,
+                  subtitleWidth: 28,
+                ),
                 const SizedBox(height: 6),
                 _row(
-                    iconColor: previewSkin.statComplete,
-                    titleWidth: 34,
-                    subtitleWidth: 22),
+                  iconColor: previewSkin.statComplete,
+                  titleWidth: 34,
+                  subtitleWidth: 22,
+                ),
               ],
             ),
           ),
@@ -3049,8 +4097,9 @@ class _SkinMockupUI extends StatelessWidget {
           _bar(
             width: double.infinity,
             height: 10,
-            color: previewSkin.primary
-                .withValues(alpha: previewSkin.isLight ? 0.30 : 0.42),
+            color: previewSkin.primary.withValues(
+              alpha: previewSkin.isLight ? 0.30 : 0.42,
+            ),
             radius: 6,
           ),
         ],
@@ -3073,7 +4122,9 @@ class _CalendarSyncCard extends StatefulWidget {
 
 class _CalendarSyncCardState extends State<_CalendarSyncCard> {
   String? get _token => SyncTokenService.instance.localToken;
-  bool get _readOnly => Hive.box('einstellungen').get('read_only_mode', defaultValue: false) as bool;
+  bool get _readOnly =>
+      Hive.box('einstellungen').get('read_only_mode', defaultValue: false)
+          as bool;
 
   Future<void> _confirmDisconnect(String token) async {
     final skin = widget.skin;
@@ -3081,7 +4132,8 @@ class _CalendarSyncCardState extends State<_CalendarSyncCard> {
       context: context,
       skin: skin,
       title: 'Kalender-Sync trennen?',
-      message: 'Die Verbindung wird auf beiden Geräten beendet. Beide Seiten müssen '
+      message:
+          'Die Verbindung wird auf beiden Geräten beendet. Beide Seiten müssen '
           'erneut zustimmen, um wieder zu synchronisieren.',
       confirmLabel: 'Trennen',
     );
@@ -3110,12 +4162,22 @@ class _CalendarSyncCardState extends State<_CalendarSyncCard> {
             padding: EdgeInsets.zero,
             child: GlassListItem(
               leading: Container(
-                width: 32, height: 32,
-                decoration: BoxDecoration(color: const Color(0xFF3DD68C), borderRadius: BorderRadius.circular(8)),
-                child: const Icon(Icons.link_rounded, color: Colors.white, size: 18),
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF3DD68C),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.link_rounded,
+                  color: Colors.white,
+                  size: 18,
+                ),
               ),
               title: 'Kalender synchronisieren',
-              subtitle: isReader ? 'Verbunden mit Original' : 'Verbunden mit Lesemodus-Gerät',
+              subtitle: isReader
+                  ? 'Verbunden mit Original'
+                  : 'Verbunden mit Lesemodus-Gerät',
               isLast: true,
               trailing: GestureDetector(
                 onTap: () => _confirmDisconnect(token),
@@ -3126,7 +4188,11 @@ class _CalendarSyncCardState extends State<_CalendarSyncCard> {
                     color: skin.deleteColor.withValues(alpha: 0.12),
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(Icons.close_rounded, size: 16, color: skin.deleteColor),
+                  child: Icon(
+                    Icons.close_rounded,
+                    size: 16,
+                    color: skin.deleteColor,
+                  ),
                 ),
               ),
             ),
@@ -3140,9 +4206,17 @@ class _CalendarSyncCardState extends State<_CalendarSyncCard> {
             padding: EdgeInsets.zero,
             child: GlassListItem(
               leading: Container(
-                width: 32, height: 32,
-                decoration: BoxDecoration(color: const Color(0xFF3DD6C8), borderRadius: BorderRadius.circular(8)),
-                child: const Icon(Icons.sync_rounded, color: Colors.white, size: 18),
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF3DD6C8),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.sync_rounded,
+                  color: Colors.white,
+                  size: 18,
+                ),
               ),
               title: 'Kalender synchronisieren',
               subtitle: 'Warte auf Bestätigung des Original-Geräts',
@@ -3154,7 +4228,8 @@ class _CalendarSyncCardState extends State<_CalendarSyncCard> {
 
         // ── Lesemodus-Gerät: aus → Schalter zum Anfragen (wie bisher) ────
         if (isReader) {
-          if (!FeatureFlags.calendarSyncEnabled) return const SizedBox.shrink(); // NEU
+          if (!FeatureFlags.calendarSyncEnabled)
+            return const SizedBox.shrink(); // NEU
           final enabled = _readOnly;
           return Opacity(
             opacity: enabled ? 1.0 : 0.4,
@@ -3165,12 +4240,22 @@ class _CalendarSyncCardState extends State<_CalendarSyncCard> {
                 padding: EdgeInsets.zero,
                 child: GlassListItem(
                   leading: Container(
-                    width: 32, height: 32,
-                    decoration: BoxDecoration(color: const Color(0xFF3DD6C8), borderRadius: BorderRadius.circular(8)),
-                    child: const Icon(Icons.sync_rounded, color: Colors.white, size: 18),
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF3DD6C8),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(
+                      Icons.sync_rounded,
+                      color: Colors.white,
+                      size: 18,
+                    ),
                   ),
                   title: 'Kalender synchronisieren',
-                  subtitle: enabled ? 'Kalender-Gruppen mit "Sync" teilen' : 'Nur im Lesemodus verfügbar',
+                  subtitle: enabled
+                      ? 'Kalender-Gruppen mit "Sync" teilen'
+                      : 'Nur im Lesemodus verfügbar',
                   isLast: true,
                   switchValue: false,
                   onSwitchChanged: (v) {
@@ -3193,63 +4278,118 @@ class _CalendarSyncCardState extends State<_CalendarSyncCard> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(children: [
-                  Container(
-                    width: 32, height: 32,
-                    decoration: BoxDecoration(color: const Color(0xFF3DD6C8), borderRadius: BorderRadius.circular(8)),
-                    child: const Icon(Icons.sync_rounded, color: Colors.white, size: 18),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Kalender synchronisieren', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: skin.textPrimary)),
-                        const SizedBox(height: 2),
-                        Text('Lesemodus-Gerät möchte Kalender teilen', style: TextStyle(fontSize: 12, color: skin.textMuted)),
-                      ],
+                Row(
+                  children: [
+                    Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF3DD6C8),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(
+                        Icons.sync_rounded,
+                        color: Colors.white,
+                        size: 18,
+                      ),
                     ),
-                  ),
-                  const _PendingDots(),
-                ]),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Kalender synchronisieren',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              color: skin.textPrimary,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Lesemodus-Gerät möchte Kalender teilen',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: skin.textMuted,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const _PendingDots(),
+                  ],
+                ),
                 const SizedBox(height: 12),
-                Row(children: [
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: () {
-                        HapticFeedback.selectionClick();
-                        CalendarSyncHandshake.instance.setOriginalApproval(token, false);
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                        decoration: BoxDecoration(
-                          color: skin.surface(0.05),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: skin.borderSubtle),
+                Row(
+                  children: [
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () {
+                          HapticFeedback.selectionClick();
+                          CalendarSyncHandshake.instance.setOriginalApproval(
+                            token,
+                            false,
+                          );
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          decoration: BoxDecoration(
+                            color: skin.surface(0.05),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: skin.borderSubtle),
+                          ),
+                          child: Center(
+                            child: Text(
+                              'Ablehnen',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: skin.textMuted,
+                              ),
+                            ),
+                          ),
                         ),
-                        child: Center(child: Text('Ablehnen', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: skin.textMuted))),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: () {
-                        HapticFeedback.mediumImpact();
-                        CalendarSyncHandshake.instance.setOriginalApproval(token, true);
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF3DD6C8).withValues(alpha: 0.20),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: const Color(0xFF3DD6C8).withValues(alpha: 0.5)),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () {
+                          HapticFeedback.mediumImpact();
+                          CalendarSyncHandshake.instance.setOriginalApproval(
+                            token,
+                            true,
+                          );
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          decoration: BoxDecoration(
+                            color: const Color(
+                              0xFF3DD6C8,
+                            ).withValues(alpha: 0.20),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: const Color(
+                                0xFF3DD6C8,
+                              ).withValues(alpha: 0.5),
+                            ),
+                          ),
+                          child: const Center(
+                            child: Text(
+                              'Bestätigen',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF3DD6C8),
+                              ),
+                            ),
+                          ),
                         ),
-                        child: const Center(child: Text('Bestätigen', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF3DD6C8)))),
                       ),
                     ),
-                  ),
-                ]),
+                  ],
+                ),
               ],
             ),
           );
@@ -3265,9 +4405,17 @@ class _CalendarSyncCardState extends State<_CalendarSyncCard> {
               padding: EdgeInsets.zero,
               child: GlassListItem(
                 leading: Container(
-                  width: 32, height: 32,
-                  decoration: BoxDecoration(color: const Color(0xFF3DD6C8), borderRadius: BorderRadius.circular(8)),
-                  child: const Icon(Icons.sync_rounded, color: Colors.white, size: 18),
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF3DD6C8),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(
+                    Icons.sync_rounded,
+                    color: Colors.white,
+                    size: 18,
+                  ),
                 ),
                 title: 'Kalender synchronisieren',
                 subtitle: 'Warte auf Anfrage vom Lesemodus-Gerät',
@@ -3290,13 +4438,17 @@ class _PendingDots extends StatefulWidget {
   State<_PendingDots> createState() => _PendingDotsState();
 }
 
-class _PendingDotsState extends State<_PendingDots> with SingleTickerProviderStateMixin {
+class _PendingDotsState extends State<_PendingDots>
+    with SingleTickerProviderStateMixin {
   late AnimationController _ctrl;
 
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1200))..repeat();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat();
   }
 
   @override
@@ -3321,8 +4473,12 @@ class _PendingDotsState extends State<_PendingDots> with SingleTickerProviderSta
               child: Opacity(
                 opacity: 0.4 + 0.6 * pulse,
                 child: Container(
-                  width: 6, height: 6,
-                  decoration: BoxDecoration(shape: BoxShape.circle, color: skin.primary),
+                  width: 6,
+                  height: 6,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: skin.primary,
+                  ),
                 ),
               ),
             );
@@ -3353,15 +4509,16 @@ class _CalendarSyncFootnote extends StatelessWidget {
         final bool active = isReader
             ? state != CalendarSyncState.off
             : isOriginal
-                ? state == CalendarSyncState.active
-                : false;
+            ? state == CalendarSyncState.active
+            : false;
 
         if (!active) return const SizedBox.shrink();
 
         return const _SectionFootnote(
-          text: 'Erlaubt es, ausgewählte Kalender-Gruppen (Scope "Sync") zwischen '
-                'Original-Gerät und Lesemodus-Gerät zu teilen. Beide Seiten müssen '
-                'zustimmen, bevor der Sync aktiv wird.',
+          text:
+              'Erlaubt es, ausgewählte Kalender-Gruppen (Scope "Sync") zwischen '
+              'Original-Gerät und Lesemodus-Gerät zu teilen. Beide Seiten müssen '
+              'zustimmen, bevor der Sync aktiv wird.',
         );
       },
     );
@@ -3372,10 +4529,12 @@ class _DefaultEventGroupDropdown extends StatefulWidget {
   const _DefaultEventGroupDropdown();
 
   @override
-  State<_DefaultEventGroupDropdown> createState() => _DefaultEventGroupDropdownState();
+  State<_DefaultEventGroupDropdown> createState() =>
+      _DefaultEventGroupDropdownState();
 }
 
-class _DefaultEventGroupDropdownState extends State<_DefaultEventGroupDropdown> {
+class _DefaultEventGroupDropdownState
+    extends State<_DefaultEventGroupDropdown> {
   late String _selected;
 
   @override
@@ -3395,22 +4554,26 @@ class _DefaultEventGroupDropdownState extends State<_DefaultEventGroupDropdown> 
     return GlassSurface(
       borderRadius: 18,
       padding: EdgeInsets.zero,
-      child: Column(children: [
-        GlassDropdownButton<String>(
-          value: _selected,
-          label: 'Standard-Gruppe',
-          subtitle: 'Vorausgewählt bei neuen Ereignissen',
-          icon: Icons.label_outline_rounded,
-          iconBg: const Color(0xFF2FD3C7),
-          isLast: true,
-          displayBuilder: (key) => EventGroupStore.byKey(key).name,
-          items: groups.map((g) => GlassDropdownItem(value: g.key, label: g.name)).toList(),
-          onChanged: (key) {
-            setState(() => _selected = key);
-            EventGroupStore.setDefaultGroupKey(key);
-          },
-        ),
-      ]),
+      child: Column(
+        children: [
+          GlassDropdownButton<String>(
+            value: _selected,
+            label: 'Standard-Gruppe',
+            subtitle: 'Vorausgewählt bei neuen Ereignissen',
+            icon: Icons.label_outline_rounded,
+            iconBg: const Color(0xFF2FD3C7),
+            isLast: true,
+            displayBuilder: (key) => EventGroupStore.byKey(key).name,
+            items: groups
+                .map((g) => GlassDropdownItem(value: g.key, label: g.name))
+                .toList(),
+            onChanged: (key) {
+              setState(() => _selected = key);
+              EventGroupStore.setDefaultGroupKey(key);
+            },
+          ),
+        ],
+      ),
     );
   }
 }
@@ -3432,8 +4595,9 @@ class TasksDictationSettingsScreen extends StatelessWidget {
         child: Column(
           children: [
             _SettingsHeader(
-                title: 'Kalender & Aufgaben',
-                onBack: () => Navigator.pop(context)),
+              title: 'Kalender & Aufgaben',
+              onBack: () => Navigator.pop(context),
+            ),
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
@@ -3445,27 +4609,45 @@ class TasksDictationSettingsScreen extends StatelessWidget {
                     GlassSurface(
                       borderRadius: 18,
                       padding: EdgeInsets.zero,
-                      child: Column(children: [
-                        GlassListItem(
-                          leading: Container(
-                            width: 32, height: 32,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFFFB347),
-                              borderRadius: BorderRadius.circular(8),
+                      child: Column(
+                        children: [
+                          GlassListItem(
+                            leading: Container(
+                              width: 32,
+                              height: 32,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFFB347),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Icon(
+                                Icons.palette_outlined,
+                                color: Colors.white,
+                                size: 18,
+                              ),
                             ),
-                            child: const Icon(Icons.palette_outlined, color: Colors.white, size: 18),
-                          ),
-                          title: 'Kalender-Gruppen verwalten',
-                          subtitle: 'Eigene Gruppen anlegen, umbenennen, färben, löschen',
-                          trailing: Icon(Icons.chevron_right_rounded, size: 18, color: skin.surface(0.28)),
-                          onTap: () => Navigator.push(
+                            title: 'Kalender-Gruppen verwalten',
+                            subtitle:
+                                'Eigene Gruppen anlegen, umbenennen, färben, löschen',
+                            trailing: Icon(
+                              Icons.chevron_right_rounded,
+                              size: 18,
+                              color: skin.surface(0.28),
+                            ),
+                            onTap: () => Navigator.push(
                               context,
-                              CupertinoPageRoute(builder: (_) => const _EventGroupSettingsScreen())),
-                        ),
-                        _DefaultEventGroupRow(isLast: !FeatureFlags.appleCalendarEnabled),   // GEÄNDERT
-                        if (FeatureFlags.appleCalendarEnabled)                                 // NEU
-                          const _AppleCalendarSyncRow(isLast: true),
-                      ]),
+                              CupertinoPageRoute(
+                                builder: (_) =>
+                                    const _EventGroupSettingsScreen(),
+                              ),
+                            ),
+                          ),
+                          _DefaultEventGroupRow(
+                            isLast: !FeatureFlags.appleCalendarEnabled,
+                          ), // GEÄNDERT
+                          if (FeatureFlags.appleCalendarEnabled) // NEU
+                            const _AppleCalendarSyncRow(isLast: true),
+                        ],
+                      ),
                     ),
 
                     if (SyncTokenService.instance.localToken != null) ...[
@@ -3483,62 +4665,97 @@ class TasksDictationSettingsScreen extends StatelessWidget {
                     GlassSurface(
                       borderRadius: 18,
                       padding: EdgeInsets.zero,
-                      child: Column(children: [
-                        GlassListItem(
-                          leading: Container(
-                            width: 32, height: 32,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF2D6CFF),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: const Icon(Icons.mic_outlined, color: Colors.white, size: 18),
-                          ),
-                          title: 'Sprachbefehle & Hilfe',
-                          subtitle: 'Muster, Beispiele und Tipps',
-                          trailing: Icon(Icons.chevron_right_rounded, size: 18, color: skin.surface(0.28)),
-                          onTap: () => Navigator.push(
-                              context,
-                              CupertinoPageRoute(
-                                  builder: (_) => const DictationHelpScreen())),
-                        ),
-                        GlassListItem(
-                          leading: Container(
-                            width: 32, height: 32,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF5B9EF5),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: const Icon(Icons.bar_chart_rounded, color: Colors.white, size: 18),
-                          ),
-                          title: 'Sprach-Log',
-                          subtitle: 'Alle Diktiereingaben & Erkennungsrate',
-                          isLast: !isAdmin,
-                          trailing: Icon(Icons.chevron_right_rounded, size: 18, color: skin.surface(0.28)),
-                          onTap: () => Navigator.push(
-                              context,
-                              CupertinoPageRoute(
-                                  builder: (_) => const SpeechLogScreen())),
-                        ),
-                        if (isAdmin)
+                      child: Column(
+                        children: [
                           GlassListItem(
                             leading: Container(
-                              width: 32, height: 32,
+                              width: 32,
+                              height: 32,
                               decoration: BoxDecoration(
-                                color: const Color(0xFF8B5CF6),
+                                color: const Color(0xFF2D6CFF),
                                 borderRadius: BorderRadius.circular(8),
                               ),
-                              child: const Icon(Icons.auto_awesome_outlined, color: Colors.white, size: 18),
+                              child: const Icon(
+                                Icons.mic_outlined,
+                                color: Colors.white,
+                                size: 18,
+                              ),
                             ),
-                            title: 'Sprach-Analyse',
-                            subtitle: 'Eingaben analysieren · Regeln lernen',
-                            isLast: true,
-                            trailing: Icon(Icons.chevron_right_rounded, size: 18, color: skin.surface(0.28)),
+                            title: 'Sprachbefehle & Hilfe',
+                            subtitle: 'Muster, Beispiele und Tipps',
+                            trailing: Icon(
+                              Icons.chevron_right_rounded,
+                              size: 18,
+                              color: skin.surface(0.28),
+                            ),
                             onTap: () => Navigator.push(
+                              context,
+                              CupertinoPageRoute(
+                                builder: (_) => const DictationHelpScreen(),
+                              ),
+                            ),
+                          ),
+                          GlassListItem(
+                            leading: Container(
+                              width: 32,
+                              height: 32,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF5B9EF5),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Icon(
+                                Icons.bar_chart_rounded,
+                                color: Colors.white,
+                                size: 18,
+                              ),
+                            ),
+                            title: 'Sprach-Log',
+                            subtitle: 'Alle Diktiereingaben & Erkennungsrate',
+                            isLast: !isAdmin,
+                            trailing: Icon(
+                              Icons.chevron_right_rounded,
+                              size: 18,
+                              color: skin.surface(0.28),
+                            ),
+                            onTap: () => Navigator.push(
+                              context,
+                              CupertinoPageRoute(
+                                builder: (_) => const SpeechLogScreen(),
+                              ),
+                            ),
+                          ),
+                          if (isAdmin)
+                            GlassListItem(
+                              leading: Container(
+                                width: 32,
+                                height: 32,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF8B5CF6),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Icon(
+                                  Icons.auto_awesome_outlined,
+                                  color: Colors.white,
+                                  size: 18,
+                                ),
+                              ),
+                              title: 'Sprach-Analyse',
+                              subtitle: 'Eingaben analysieren · Regeln lernen',
+                              isLast: true,
+                              trailing: Icon(
+                                Icons.chevron_right_rounded,
+                                size: 18,
+                                color: skin.surface(0.28),
+                              ),
+                              onTap: () => Navigator.push(
                                 context,
                                 CupertinoPageRoute(
-                                    builder: (_) => const AdminRulesScreen())),
-                          ),
-                      ]),
+                                  builder: (_) => const AdminRulesScreen(),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -3584,7 +4801,9 @@ class _DefaultEventGroupRowState extends State<_DefaultEventGroupRow> {
       iconBg: const Color(0xFF2FD3C7),
       isLast: widget.isLast,
       displayBuilder: (key) => EventGroupStore.byKey(key).name,
-      items: groups.map((g) => GlassDropdownItem(value: g.key, label: g.name)).toList(),
+      items: groups
+          .map((g) => GlassDropdownItem(value: g.key, label: g.name))
+          .toList(),
       onChanged: (key) {
         setState(() => _selected = key);
         EventGroupStore.setDefaultGroupKey(key);
@@ -3618,17 +4837,25 @@ class _AppleCalendarSyncRowState extends State<_AppleCalendarSyncRow> {
     final confirmed = await confirmDeleteDialog(
       context: context,
       skin: skin,
-      title: 'Apple-Importe löschen?',
-      message: 'Löscht alle Termine, die über "Mit Apple-Kalender teilen" importiert wurden, '
-          'sowie die dafür automatisch angelegten Gruppen. Deine Apple-Kalender selbst bleiben unangetastet.',
+      title: '${AppleCalendarSyncService.deviceImportName}-Importe löschen?',
+      message:
+          'Löscht alle Termine, die über "Mit ${AppleCalendarSyncService.deviceCalendarName} teilen" importiert wurden, '
+          'sowie die dafür automatisch angelegten Gruppen. Deine ${AppleCalendarSyncService.deviceCalendarName} selbst bleiben unangetastet.',
       confirmLabel: 'Löschen',
     );
     if (confirmed != true) return;
     setState(() => _deleting = true);
     await AppleCalendarSyncService.instance.deleteAllGlobalImports();
     if (mounted) {
-      setState(() { _deleting = false; _justDisabled = false; });
-      showGlassSnackBar(context, '✓ Apple-Importe gelöscht', type: GlassSnackBarType.success);
+      setState(() {
+        _deleting = false;
+        _justDisabled = false;
+      });
+      showGlassSnackBar(
+        context,
+        '✓ ${AppleCalendarSyncService.deviceImportName}-Importe gelöscht',
+        type: GlassSnackBarType.success,
+      );
     }
   }
 
@@ -3642,28 +4869,40 @@ class _AppleCalendarSyncRowState extends State<_AppleCalendarSyncRow> {
       children: [
         GlassListItem(
           leading: Container(
-            width: 32, height: 32,
-            decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(8)),
-            child: const Icon(Icons.apple, color: Colors.white, size: 18),
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              color: Colors.black,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(
+              AppleCalendarSyncService.deviceCalendarIcon,
+              color: Colors.white,
+              size: 18,
+            ),
           ),
-          title: 'Mit Apple-Kalender teilen',
+          title: 'Mit ${AppleCalendarSyncService.deviceCalendarName} teilen',
           subtitle: linked
               ? 'Aktiv — wird laufend synchronisiert'
-              : 'Importiert alle Apple-Kalender & hält sie synchron',
+              : 'Importiert alle ${AppleCalendarSyncService.deviceCalendarName} & hält sie synchron',
           isLast: widget.isLast && !_justDisabled,
           trailing: _loading
               ? const SizedBox(
-                  width: 20, height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2))
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
               : Switch(
                   value: linked,
                   onChanged: (v) async {
                     setState(() => _loading = true);
                     bool ok = true;
                     if (v) {
-                      ok = await AppleCalendarSyncService.instance.enableGlobalSync();
+                      ok = await AppleCalendarSyncService.instance
+                          .enableGlobalSync();
                     } else {
-                      await AppleCalendarSyncService.instance.disableGlobalSync();
+                      await AppleCalendarSyncService.instance
+                          .disableGlobalSync();
                     }
                     if (mounted) {
                       setState(() {
@@ -3690,13 +4929,29 @@ class _AppleCalendarSyncRowState extends State<_AppleCalendarSyncRow> {
               child: Row(
                 children: [
                   if (_deleting)
-                    SizedBox(width: 14, height: 14,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: skin.deleteColor))
+                    SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: skin.deleteColor,
+                      ),
+                    )
                   else
-                    Icon(Icons.delete_outline_rounded, size: 15, color: skin.deleteColor),
+                    Icon(
+                      Icons.delete_outline_rounded,
+                      size: 15,
+                      color: skin.deleteColor,
+                    ),
                   const SizedBox(width: 8),
-                  Text('Importierte Apple-Termine jetzt löschen',
-                      style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: skin.deleteColor)),
+                  Text(
+                    'Importierte ${AppleCalendarSyncService.deviceImportName}-Termine jetzt löschen',
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                      color: skin.deleteColor,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -3719,7 +4974,7 @@ class _HomescreenSettingsScreen extends StatefulWidget {
 }
 
 class _HomescreenSettingsScreenState extends State<_HomescreenSettingsScreen> {
-  bool _weatherBig = false;
+  bool _weatherBig = true;
   bool _weatherUseGps = true;
   String _taskAddMode = 'dictate';
   String _weatherCity = '';
@@ -3730,11 +4985,13 @@ class _HomescreenSettingsScreenState extends State<_HomescreenSettingsScreen> {
   void initState() {
     super.initState();
     final box = Hive.box('einstellungen');
-    _weatherBig = box.get('homescreen_weather_big', defaultValue: false) as bool;
+    _weatherBig = box.get('homescreen_weather_big', defaultValue: true) as bool;
     _weatherUseGps = box.get('weather_use_gps', defaultValue: true) as bool;
-    _taskAddMode = box.get('homescreen_task_add_mode', defaultValue: 'dictate') as String;
+    _taskAddMode =
+        box.get('homescreen_task_add_mode', defaultValue: 'dictate') as String;
     _weatherCity = box.get('weather_city', defaultValue: '') as String;
-    _compactTiles = box.get('homescreen_compact_tiles', defaultValue: false) as bool;
+    _compactTiles =
+        box.get('homescreen_compact_tiles', defaultValue: false) as bool;
     _cityCtrl = TextEditingController(text: _weatherCity);
   }
 
@@ -3757,7 +5014,9 @@ class _HomescreenSettingsScreenState extends State<_HomescreenSettingsScreen> {
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (_) => Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.viewInsetsOf(context).bottom,
+        ),
         child: GlassSheet(
           skin: skin,
           child: StatefulBuilder(
@@ -3772,13 +5031,16 @@ class _HomescreenSettingsScreenState extends State<_HomescreenSettingsScreen> {
                   errorMsg = null;
                   verifiedLabel = null;
                 });
-                final result = await WeatherService.instance.verifyCityName(input);
+                final result = await WeatherService.instance.verifyCityName(
+                  input,
+                );
                 setSheetState(() {
                   isVerifying = false;
                   if (result != null) {
                     verifiedLabel = result;
                   } else {
-                    errorMsg = 'Stadt nicht gefunden. Bitte prüfe die Schreibweise.';
+                    errorMsg =
+                        'Stadt nicht gefunden. Bitte prüfe die Schreibweise.';
                   }
                 });
               }
@@ -3798,12 +5060,19 @@ class _HomescreenSettingsScreenState extends State<_HomescreenSettingsScreen> {
                   children: [
                     Center(child: SheetHandle(skin: skin)),
                     const SizedBox(height: 16),
-                    Text('Stadt eingeben',
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700,
-                            color: skin.textPrimary)),
+                    Text(
+                      'Stadt eingeben',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: skin.textPrimary,
+                      ),
+                    ),
                     const SizedBox(height: 4),
-                    Text('Das Wetter wird für diese Stadt geladen.',
-                        style: TextStyle(fontSize: 13, color: skin.textMuted)),
+                    Text(
+                      'Das Wetter wird für diese Stadt geladen.',
+                      style: TextStyle(fontSize: 13, color: skin.textMuted),
+                    ),
                     const SizedBox(height: 16),
                     // NEU:
                     _TiTextField(
@@ -3824,13 +5093,21 @@ class _HomescreenSettingsScreenState extends State<_HomescreenSettingsScreen> {
                       Row(
                         children: [
                           SizedBox(
-                            width: 16, height: 16,
+                            width: 16,
+                            height: 16,
                             child: CircularProgressIndicator(
-                                strokeWidth: 2, color: skin.primary),
+                              strokeWidth: 2,
+                              color: skin.primary,
+                            ),
                           ),
                           const SizedBox(width: 10),
-                          Text('Prüfe Ort…',
-                              style: TextStyle(fontSize: 13, color: skin.textMuted)),
+                          Text(
+                            'Prüfe Ort…',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: skin.textMuted,
+                            ),
+                          ),
                         ],
                       ),
                     ],
@@ -3838,23 +5115,38 @@ class _HomescreenSettingsScreenState extends State<_HomescreenSettingsScreen> {
                       const SizedBox(height: 14),
                       Container(
                         width: double.infinity,
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF3DD68C).withValues(alpha: 0.10),
+                          color: const Color(
+                            0xFF3DD68C,
+                          ).withValues(alpha: 0.10),
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: const Color(0xFF3DD68C).withValues(alpha: 0.25)),
+                          border: Border.all(
+                            color: const Color(
+                              0xFF3DD68C,
+                            ).withValues(alpha: 0.25),
+                          ),
                         ),
                         child: Row(
                           children: [
-                            const Icon(Icons.check_circle_outline_rounded,
-                                size: 16, color: Color(0xFF3DD68C)),
+                            const Icon(
+                              Icons.check_circle_outline_rounded,
+                              size: 16,
+                              color: Color(0xFF3DD68C),
+                            ),
                             const SizedBox(width: 8),
                             Expanded(
-                              child: Text('Gefunden: $verifiedLabel',
-                                  style: const TextStyle(
-                                      fontSize: 12.5,
-                                      color: Color(0xFF3DD68C),
-                                      fontWeight: FontWeight.w600)),
+                              child: Text(
+                                'Gefunden: $verifiedLabel',
+                                style: const TextStyle(
+                                  fontSize: 12.5,
+                                  color: Color(0xFF3DD68C),
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
                             ),
                           ],
                         ),
@@ -3864,21 +5156,35 @@ class _HomescreenSettingsScreenState extends State<_HomescreenSettingsScreen> {
                       const SizedBox(height: 14),
                       Container(
                         width: double.infinity,
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
                         decoration: BoxDecoration(
                           color: skin.deleteColor.withValues(alpha: 0.10),
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: skin.deleteColor.withValues(alpha: 0.25)),
+                          border: Border.all(
+                            color: skin.deleteColor.withValues(alpha: 0.25),
+                          ),
                         ),
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Icon(Icons.error_outline_rounded, size: 16, color: skin.deleteColor),
+                            Icon(
+                              Icons.error_outline_rounded,
+                              size: 16,
+                              color: skin.deleteColor,
+                            ),
                             const SizedBox(width: 8),
                             Expanded(
-                              child: Text(errorMsg!,
-                                  style: TextStyle(
-                                      fontSize: 12.5, color: skin.deleteColor, height: 1.4)),
+                              child: Text(
+                                errorMsg!,
+                                style: TextStyle(
+                                  fontSize: 12.5,
+                                  color: skin.deleteColor,
+                                  height: 1.4,
+                                ),
+                              ),
                             ),
                           ],
                         ),
@@ -3895,15 +5201,25 @@ class _HomescreenSettingsScreenState extends State<_HomescreenSettingsScreen> {
                           width: double.infinity,
                           padding: const EdgeInsets.symmetric(vertical: 14),
                           decoration: BoxDecoration(
-                            color: skin.primary.withValues(alpha: skin.isLight ? 0.12 : 0.20),
+                            color: skin.primary.withValues(
+                              alpha: skin.isLight ? 0.12 : 0.20,
+                            ),
                             borderRadius: BorderRadius.circular(14),
                             border: Border.all(
-                                color: skin.primary.withValues(alpha: skin.isLight ? 0.30 : 0.45)),
+                              color: skin.primary.withValues(
+                                alpha: skin.isLight ? 0.30 : 0.45,
+                              ),
+                            ),
                           ),
                           child: Center(
-                            child: Text('Prüfen',
-                                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700,
-                                    color: skin.primary)),
+                            child: Text(
+                              'Prüfen',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                                color: skin.primary,
+                              ),
+                            ),
                           ),
                         ),
                       )
@@ -3914,14 +5230,25 @@ class _HomescreenSettingsScreenState extends State<_HomescreenSettingsScreen> {
                           width: double.infinity,
                           padding: const EdgeInsets.symmetric(vertical: 14),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF3DD68C).withValues(alpha: 0.18),
+                            color: const Color(
+                              0xFF3DD68C,
+                            ).withValues(alpha: 0.18),
                             borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: const Color(0xFF3DD68C).withValues(alpha: 0.45)),
+                            border: Border.all(
+                              color: const Color(
+                                0xFF3DD68C,
+                              ).withValues(alpha: 0.45),
+                            ),
                           ),
                           child: const Center(
-                            child: Text('Übernehmen',
-                                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700,
-                                    color: Color(0xFF3DD68C))),
+                            child: Text(
+                              'Übernehmen',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF3DD68C),
+                              ),
+                            ),
                           ),
                         ),
                       ),
@@ -3932,12 +5259,15 @@ class _HomescreenSettingsScreenState extends State<_HomescreenSettingsScreen> {
                       Center(
                         child: GestureDetector(
                           onTap: () => saveAndClose(ctrl.text.trim()),
-                          child: Text('Trotzdem speichern',
-                              style: TextStyle(
-                                  fontSize: 12.5,
-                                  color: skin.textMuted,
-                                  fontWeight: FontWeight.w500,
-                                  decoration: TextDecoration.underline)),
+                          child: Text(
+                            'Trotzdem speichern',
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              color: skin.textMuted,
+                              fontWeight: FontWeight.w500,
+                              decoration: TextDecoration.underline,
+                            ),
+                          ),
                         ),
                       ),
                     ],
@@ -3963,7 +5293,9 @@ class _HomescreenSettingsScreenState extends State<_HomescreenSettingsScreen> {
         child: Column(
           children: [
             _SettingsHeader(
-                title: 'Startbildschirm', onBack: () => Navigator.pop(context)),
+              title: 'Startbildschirm',
+              onBack: () => Navigator.pop(context),
+            ),
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
@@ -3975,52 +5307,73 @@ class _HomescreenSettingsScreenState extends State<_HomescreenSettingsScreen> {
                     GlassSurface(
                       borderRadius: 18,
                       padding: EdgeInsets.zero,
-                      child: Column(children: [
-                        GlassListItem(
-                          leading: Container(
-                            width: 32, height: 32,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF5B9EF5),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: const Icon(Icons.location_on_outlined, color: Colors.white, size: 18),
-                          ),
-                          title: 'Per GPS-Standort',
-                          subtitle: 'Automatisch aktueller Standort',
-                          switchValue: _weatherUseGps,
-                          onSwitchChanged: (v) {
-                            setState(() => _weatherUseGps = v);
-                            _set('weather_use_gps', v);
-                            WeatherService.instance.invalidateCache();
-                          },
-                          isLast: _weatherUseGps,
-                        ),
-                        if (!_weatherUseGps)
+                      child: Column(
+                        children: [
                           GlassListItem(
                             leading: Container(
-                              width: 32, height: 32,
+                              width: 32,
+                              height: 32,
                               decoration: BoxDecoration(
-                                color: const Color(0xFF8B8B9E),
+                                color: const Color(0xFF5B9EF5),
                                 borderRadius: BorderRadius.circular(8),
                               ),
-                              child: const Icon(Icons.location_city_outlined, color: Colors.white, size: 18),
+                              child: const Icon(
+                                Icons.location_on_outlined,
+                                color: Colors.white,
+                                size: 18,
+                              ),
                             ),
-                            title: 'Stadt',
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  _weatherCity.isNotEmpty ? _weatherCity : 'nicht gesetzt',
-                                  style: TextStyle(fontSize: 14, color: skin.textMuted),
-                                ),
-                                const SizedBox(width: 6),
-                                Icon(Icons.chevron_right_rounded, size: 18, color: skin.surface(0.28)),
-                              ],
-                            ),
-                            isLast: true,
-                            onTap: () => _showCityInputSheet(context, skin),
+                            title: 'Per GPS-Standort',
+                            subtitle: 'Automatisch aktueller Standort',
+                            switchValue: _weatherUseGps,
+                            onSwitchChanged: (v) {
+                              setState(() => _weatherUseGps = v);
+                              _set('weather_use_gps', v);
+                              WeatherService.instance.invalidateCache();
+                            },
+                            isLast: _weatherUseGps,
                           ),
-                      ]),
+                          if (!_weatherUseGps)
+                            GlassListItem(
+                              leading: Container(
+                                width: 32,
+                                height: 32,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF8B8B9E),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Icon(
+                                  Icons.location_city_outlined,
+                                  color: Colors.white,
+                                  size: 18,
+                                ),
+                              ),
+                              title: 'Stadt',
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    _weatherCity.isNotEmpty
+                                        ? _weatherCity
+                                        : 'nicht gesetzt',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      color: skin.textMuted,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Icon(
+                                    Icons.chevron_right_rounded,
+                                    size: 18,
+                                    color: skin.surface(0.28),
+                                  ),
+                                ],
+                              ),
+                              isLast: true,
+                              onTap: () => _showCityInputSheet(context, skin),
+                            ),
+                        ],
+                      ),
                     ),
                     _SectionFootnote(
                       text: _weatherUseGps
@@ -4035,65 +5388,86 @@ class _HomescreenSettingsScreenState extends State<_HomescreenSettingsScreen> {
                     GlassSurface(
                       borderRadius: 18,
                       padding: EdgeInsets.zero,
-                      child: Column(children: [
-                        GlassListItem(
-                          leading: Container(
-                            width: 32, height: 32,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFFFB347),
-                              borderRadius: BorderRadius.circular(8),
+                      child: Column(
+                        children: [
+                          GlassListItem(
+                            leading: Container(
+                              width: 32,
+                              height: 32,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFFB347),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Icon(
+                                Icons.wb_sunny_outlined,
+                                color: Colors.white,
+                                size: 18,
+                              ),
                             ),
-                            child: const Icon(Icons.wb_sunny_outlined, color: Colors.white, size: 18),
+                            title: 'Große Info-Kacheln',
+                            subtitle:
+                                'Dienst und Wetter werden größer angezeigt',
+                            switchValue: _weatherBig,
+                            onSwitchChanged: (v) {
+                              setState(() => _weatherBig = v);
+                              _set('homescreen_weather_big', v);
+                            },
                           ),
-                          title: 'Wetter als große Kachel',
-                          subtitle: 'Zeigt mehr Wetterinformationen',
-                          switchValue: _weatherBig,
-                          onSwitchChanged: (v) {
-                            setState(() => _weatherBig = v);
-                            _set('homescreen_weather_big', v);
-                          },
-                        ),
-                        GlassListItem(
-                          leading: Container(
-                            width: 32, height: 32,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF8B8B9E),
-                              borderRadius: BorderRadius.circular(8),
+                          GlassListItem(
+                            leading: Container(
+                              width: 32,
+                              height: 32,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF8B8B9E),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Icon(
+                                Icons.view_agenda_outlined,
+                                color: Colors.white,
+                                size: 18,
+                              ),
                             ),
-                            child: const Icon(Icons.view_agenda_outlined, color: Colors.white, size: 18),
+                            title: 'Große Aktions-Kacheln',
+                            subtitle:
+                                'Stempeluhr, Fahrtenbuch und Aufgaben werden größer',
+                            switchValue: !_compactTiles,
+                            onSwitchChanged: (v) {
+                              setState(() => _compactTiles = !v);
+                              _set('homescreen_compact_tiles', !v);
+                            },
                           ),
-                          title: 'Kleine Kacheln',
-                          subtitle: 'Fahrtenbuch, Stempeluhr & Aufgabe kompakter — Aufgabenliste größer',
-                          switchValue: _compactTiles,
-                          onSwitchChanged: (v) {
-                            setState(() => _compactTiles = v);
-                            _set('homescreen_compact_tiles', v);
-                          },
-                        ),
-                        GlassListItem(
-                          leading: Container(
-                            width: 32, height: 32,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF3DD68C),
-                              borderRadius: BorderRadius.circular(8),
+                          GlassListItem(
+                            leading: Container(
+                              width: 32,
+                              height: 32,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF3DD68C),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Icon(
+                                Icons.mic_outlined,
+                                color: Colors.white,
+                                size: 18,
+                              ),
                             ),
-                            child: const Icon(Icons.mic_outlined, color: Colors.white, size: 18),
+                            title: 'Diktieren',
+                            subtitle:
+                                'Nutzt Schnell-Diktieren statt manuellem Formular',
+                            isLast: true,
+                            switchValue: _taskAddMode == 'dictate',
+                            onSwitchChanged: (v) {
+                              final mode = v ? 'dictate' : 'sheet';
+                              setState(() => _taskAddMode = mode);
+                              _set('homescreen_task_add_mode', mode);
+                            },
                           ),
-                          title: 'Diktieren',
-                          subtitle: 'Nutzt Schnell-Diktieren statt manuellem Formular',
-                          isLast: true,
-                          switchValue: _taskAddMode == 'dictate',
-                          onSwitchChanged: (v) {
-                            final mode = v ? 'dictate' : 'sheet';
-                            setState(() => _taskAddMode = mode);
-                            _set('homescreen_task_add_mode', mode);
-                          },
-                        ),
-                      ]),
+                        ],
+                      ),
                     ),
                     const _SectionFootnote(
-                      text: 'Mit Diktieren: langer Druck auf + öffnet direkt das Mikrofon. '
-                            'Ohne: tippt direkt das Formular auf.',
+                      text:
+                          'Mit Diktieren: langer Druck auf + öffnet direkt das Mikrofon. '
+                          'Ohne: tippt direkt das Formular auf.',
                     ),
                   ],
                 ),
@@ -4113,13 +5487,20 @@ class _HomescreenSettingsScreenState extends State<_HomescreenSettingsScreen> {
 class _EventGroupSettingsScreen extends StatefulWidget {
   const _EventGroupSettingsScreen();
   @override
-  State<_EventGroupSettingsScreen> createState() => _EventGroupSettingsScreenState();
+  State<_EventGroupSettingsScreen> createState() =>
+      _EventGroupSettingsScreenState();
 }
 
 class _EventGroupSettingsScreenState extends State<_EventGroupSettingsScreen> {
   static const _palette = [
-    0xFF2D6CFF, 0xFF34C759, 0xFF2FD3C7, 0xFFFFB347,
-    0xFFEF5B5B, 0xFF8B5CF6, 0xFF5B9EF5, 0xFF8B8B9E,
+    0xFF2D6CFF,
+    0xFF34C759,
+    0xFF2FD3C7,
+    0xFFFFB347,
+    0xFFEF5B5B,
+    0xFF8B5CF6,
+    0xFF5B9EF5,
+    0xFF8B8B9E,
   ];
 
   List<EventGroupDef> get _groups => EventGroupStore.loadAll();
@@ -4129,16 +5510,21 @@ class _EventGroupSettingsScreenState extends State<_EventGroupSettingsScreen> {
     final nameCtrl = TextEditingController(text: existing?.name ?? '');
     int selectedColor = existing?.colorValue ?? _palette.first;
     GroupScope selectedScope = existing?.scope ?? GroupScope.local;
-    bool appleLinked = existing != null &&
-        AppleCalendarSyncService.instance.isGroupAppleLinked(existing.key); // NEU
-    bool appleLoading = false;  
+    bool appleLinked =
+        existing != null &&
+        AppleCalendarSyncService.instance.isGroupAppleLinked(
+          existing.key,
+        ); // NEU
+    bool appleLoading = false;
 
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (_) => Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.viewInsetsOf(context).bottom,
+        ),
         child: GlassSheet(
           skin: skin,
           child: StatefulBuilder(
@@ -4150,10 +5536,21 @@ class _EventGroupSettingsScreenState extends State<_EventGroupSettingsScreen> {
                 children: [
                   Center(child: SheetHandle(skin: skin)),
                   const SizedBox(height: 16),
-                  Text(existing == null ? 'Neue Gruppe' : 'Gruppe bearbeiten',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: skin.textPrimary)),
+                  Text(
+                    existing == null ? 'Neue Gruppe' : 'Gruppe bearbeiten',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: skin.textPrimary,
+                    ),
+                  ),
                   const SizedBox(height: 16),
-                  _TiTextField(skin: skin, controller: nameCtrl, hint: 'Name der Gruppe', autoCapitalizeFirst: true),
+                  _TiTextField(
+                    skin: skin,
+                    controller: nameCtrl,
+                    hint: 'Name der Gruppe',
+                    autoCapitalizeFirst: true,
+                  ),
                   const SizedBox(height: 16),
                   Wrap(
                     spacing: 10,
@@ -4166,82 +5563,136 @@ class _EventGroupSettingsScreenState extends State<_EventGroupSettingsScreen> {
                           setSheetState(() => selectedColor = c);
                         },
                         child: Container(
-                          width: 34, height: 34,
+                          width: 34,
+                          height: 34,
                           decoration: BoxDecoration(
                             color: Color(c),
                             shape: BoxShape.circle,
-                            border: selected ? Border.all(color: skin.textPrimary, width: 2.5) : null,
+                            border: selected
+                                ? Border.all(
+                                    color: skin.textPrimary,
+                                    width: 2.5,
+                                  )
+                                : null,
                           ),
-                          child: selected ? const Icon(Icons.check_rounded, size: 16, color: Colors.white) : null,
+                          child: selected
+                              ? const Icon(
+                                  Icons.check_rounded,
+                                  size: 16,
+                                  color: Colors.white,
+                                )
+                              : null,
                         ),
                       );
                     }).toList(),
                   ),
                   const SizedBox(height: 16),
-                  Row(children: [
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: () {
-                          HapticFeedback.selectionClick();
-                          setSheetState(() => selectedScope = GroupScope.local);
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 9),
-                          decoration: BoxDecoration(
-                            color: selectedScope == GroupScope.local
-                                ? skin.primary.withValues(alpha: 0.14)
-                                : skin.surface(0.05),
-                            borderRadius: const BorderRadius.horizontal(left: Radius.circular(10)),
-                            border: Border.all(
+                  Row(
+                    children: [
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () {
+                            HapticFeedback.selectionClick();
+                            setSheetState(
+                              () => selectedScope = GroupScope.local,
+                            );
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 9),
+                            decoration: BoxDecoration(
                               color: selectedScope == GroupScope.local
-                                  ? skin.primary.withValues(alpha: 0.45)
-                                  : skin.borderSubtle,
+                                  ? skin.primary.withValues(alpha: 0.14)
+                                  : skin.surface(0.05),
+                              borderRadius: const BorderRadius.horizontal(
+                                left: Radius.circular(10),
+                              ),
+                              border: Border.all(
+                                color: selectedScope == GroupScope.local
+                                    ? skin.primary.withValues(alpha: 0.45)
+                                    : skin.borderSubtle,
+                              ),
                             ),
-                          ),
-                          child: Center(
-                            child: Row(mainAxisSize: MainAxisSize.min, children: [
-                              Icon(Icons.smartphone_rounded, size: 13,
-                                  color: selectedScope == GroupScope.local ? skin.primary : skin.textMuted),
-                              const SizedBox(width: 5),
-                              Text('Lokal', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600,
-                                  color: selectedScope == GroupScope.local ? skin.primary : skin.textMuted)),
-                            ]),
+                            child: Center(
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.smartphone_rounded,
+                                    size: 13,
+                                    color: selectedScope == GroupScope.local
+                                        ? skin.primary
+                                        : skin.textMuted,
+                                  ),
+                                  const SizedBox(width: 5),
+                                  Text(
+                                    'Lokal',
+                                    style: TextStyle(
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.w600,
+                                      color: selectedScope == GroupScope.local
+                                          ? skin.primary
+                                          : skin.textMuted,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: () {
-                          HapticFeedback.selectionClick();
-                          setSheetState(() => selectedScope = GroupScope.sync);
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 9),
-                          decoration: BoxDecoration(
-                            color: selectedScope == GroupScope.sync
-                                ? skin.primary.withValues(alpha: 0.14)
-                                : skin.surface(0.05),
-                            borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
-                            border: Border.all(
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () {
+                            HapticFeedback.selectionClick();
+                            setSheetState(
+                              () => selectedScope = GroupScope.sync,
+                            );
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 9),
+                            decoration: BoxDecoration(
                               color: selectedScope == GroupScope.sync
-                                  ? skin.primary.withValues(alpha: 0.45)
-                                  : skin.borderSubtle,
+                                  ? skin.primary.withValues(alpha: 0.14)
+                                  : skin.surface(0.05),
+                              borderRadius: const BorderRadius.horizontal(
+                                right: Radius.circular(10),
+                              ),
+                              border: Border.all(
+                                color: selectedScope == GroupScope.sync
+                                    ? skin.primary.withValues(alpha: 0.45)
+                                    : skin.borderSubtle,
+                              ),
                             ),
-                          ),
-                          child: Center(
-                            child: Row(mainAxisSize: MainAxisSize.min, children: [
-                              Icon(Icons.sync_rounded, size: 13,
-                                  color: selectedScope == GroupScope.sync ? skin.primary : skin.textMuted),
-                              const SizedBox(width: 5),
-                              Text('Sync', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600,
-                                  color: selectedScope == GroupScope.sync ? skin.primary : skin.textMuted)),
-                            ]),
+                            child: Center(
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.sync_rounded,
+                                    size: 13,
+                                    color: selectedScope == GroupScope.sync
+                                        ? skin.primary
+                                        : skin.textMuted,
+                                  ),
+                                  const SizedBox(width: 5),
+                                  Text(
+                                    'Sync',
+                                    style: TextStyle(
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.w600,
+                                      color: selectedScope == GroupScope.sync
+                                          ? skin.primary
+                                          : skin.textMuted,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  ]),
+                    ],
+                  ),
                   const SizedBox(height: 4),
                   Text(
                     selectedScope == GroupScope.sync
@@ -4252,20 +5703,36 @@ class _EventGroupSettingsScreenState extends State<_EventGroupSettingsScreen> {
                   // NEU: die feste Sammel-Gruppe "Apple" verwaltet ihre
                   // Apple-Verknüpfung ausschließlich über den globalen
                   // Schalter — kein zusätzlicher manueller Toggle hier.
-                  if (existing != null && existing.key != AppleCalendarSyncService.appleImportGroupKey) ...[
+                  if (existing != null &&
+                      existing.key !=
+                          AppleCalendarSyncService.appleImportGroupKey) ...[
                     const SizedBox(height: 16),
                     Row(
                       children: [
-                        Icon(Icons.apple, size: 16, color: skin.textMuted),
+                        Icon(
+                          AppleCalendarSyncService.deviceCalendarIcon,
+                          size: 16,
+                          color: skin.textMuted,
+                        ),
                         const SizedBox(width: 8),
                         Expanded(
-                          child: Text('Mit Apple-Kalender teilen',
-                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: skin.textPrimary)),
+                          child: Text(
+                            'Mit ${AppleCalendarSyncService.deviceCalendarName} teilen',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: skin.textPrimary,
+                            ),
+                          ),
                         ),
                         if (appleLoading)
                           SizedBox(
-                            width: 18, height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: skin.primary),
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: skin.primary,
+                            ),
                           )
                         else
                           Switch(
@@ -4274,9 +5741,12 @@ class _EventGroupSettingsScreenState extends State<_EventGroupSettingsScreen> {
                               setSheetState(() => appleLoading = true);
                               bool success = true;
                               if (v) {
-                                success = await AppleCalendarSyncService.instance.linkGroup(existing);
+                                success = await AppleCalendarSyncService
+                                    .instance
+                                    .linkGroup(existing);
                               } else {
-                                await AppleCalendarSyncService.instance.unlinkGroup(existing.key);
+                                await AppleCalendarSyncService.instance
+                                    .unlinkGroup(existing.key);
                               }
                               setSheetState(() {
                                 appleLoading = false;
@@ -4296,7 +5766,7 @@ class _EventGroupSettingsScreenState extends State<_EventGroupSettingsScreen> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Legt einen eigenen Apple-Kalender „OpTimes – ${existing.name}" an und '
+                      'Legt einen eigenen ${AppleCalendarSyncService.deviceCalendarName} „OpTimes – ${existing.name}" an und '
                       'gleicht Termine dieser Gruppe automatisch ab.',
                       style: TextStyle(fontSize: 10.5, color: skin.textMuted),
                     ),
@@ -4315,8 +5785,11 @@ class _EventGroupSettingsScreenState extends State<_EventGroupSettingsScreen> {
                       // pushCalendarEvent → _eventIsSyncScoped). Auf dem
                       // Original oder einem vollen Zweitgerät (Lesemodus
                       // aus) hat der Wechsel ohnehin keinen Effekt.
-                      final isReadOnlyDevice = Hive.box('einstellungen')
-                          .get('read_only_mode', defaultValue: false) as bool;
+                      final isReadOnlyDevice =
+                          Hive.box(
+                                'einstellungen',
+                              ).get('read_only_mode', defaultValue: false)
+                              as bool;
 
                       // NEU (Variante B — komplettes Verbot): Ein Wechsel
                       // Sync → Lokal ist untersagt, solange die Gruppqe noch
@@ -4331,7 +5804,9 @@ class _EventGroupSettingsScreenState extends State<_EventGroupSettingsScreen> {
                           existing != null &&
                           existing.scope == GroupScope.sync &&
                           selectedScope == GroupScope.local &&
-                          SyncService.instance.groupHasForeignEvents(existing.key)) {
+                          SyncService.instance.groupHasForeignEvents(
+                            existing.key,
+                          )) {
                         showGlassSnackBar(
                           context,
                           'Sync kann nicht deaktiviert werden — die Gruppe enthält Termine vom anderen Gerät.',
@@ -4341,19 +5816,23 @@ class _EventGroupSettingsScreenState extends State<_EventGroupSettingsScreen> {
                       }
 
                       if (existing == null) {
-                        EventGroupStore.add(EventGroupDef(
-                          key: EventGroupStore.newKey(),
-                          name: name,
-                          colorValue: selectedColor,
-                          scope: selectedScope,
-                        ));
+                        EventGroupStore.add(
+                          EventGroupDef(
+                            key: EventGroupStore.newKey(),
+                            name: name,
+                            colorValue: selectedColor,
+                            scope: selectedScope,
+                          ),
+                        );
                       } else {
-                        EventGroupStore.update(EventGroupDef(
-                          key: existing.key,
-                          name: name,
-                          colorValue: selectedColor,
-                          scope: selectedScope,
-                        ));
+                        EventGroupStore.update(
+                          EventGroupDef(
+                            key: existing.key,
+                            name: name,
+                            colorValue: selectedColor,
+                            scope: selectedScope,
+                          ),
+                        );
                       }
                       if (!context.mounted) return;
                       Navigator.pop(context);
@@ -4372,14 +5851,19 @@ class _EventGroupSettingsScreenState extends State<_EventGroupSettingsScreen> {
   Future<void> _confirmDelete(EventGroupDef g) async {
     final skin = AppTheme.of(context);
     if (_groups.length <= 1) {
-      showGlassSnackBar(context, 'Es muss mindestens eine Gruppe geben.', type: GlassSnackBarType.warning);
+      showGlassSnackBar(
+        context,
+        'Es muss mindestens eine Gruppe geben.',
+        type: GlassSnackBarType.warning,
+      );
       return;
     }
     final confirmed = await confirmDeleteDialog(
       context: context,
       skin: skin,
       title: 'Gruppe löschen',
-      message: 'Termine mit dieser Gruppe werden automatisch der ersten verbleibenden Gruppe zugeordnet.',
+      message:
+          'Termine mit dieser Gruppe werden automatisch der ersten verbleibenden Gruppe zugeordnet.',
     );
     if (confirmed == true) {
       // NEU: awaiten, da EventGroupStore.delete() jetzt Future<void>
@@ -4402,7 +5886,10 @@ class _EventGroupSettingsScreenState extends State<_EventGroupSettingsScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            _SettingsHeader(title: 'Kalender-Gruppen', onBack: () => Navigator.pop(context)),
+            _SettingsHeader(
+              title: 'Kalender-Gruppen',
+              onBack: () => Navigator.pop(context),
+            ),
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
@@ -4417,24 +5904,41 @@ class _EventGroupSettingsScreenState extends State<_EventGroupSettingsScreen> {
                           final i = entry.key;
                           final g = entry.value;
                           final isLast = i == groups.length - 1;
-                          final isAppleGroup = g.key == EventGroupStore.appleImportGroupKey;
+                          final isAppleGroup =
+                              g.key == EventGroupStore.appleImportGroupKey;
                           return GlassListItem(
                             leading: Container(
-                              width: 24, height: 24,
-                              decoration: BoxDecoration(color: g.color, shape: BoxShape.circle),
+                              width: 24,
+                              height: 24,
+                              decoration: BoxDecoration(
+                                color: g.color,
+                                shape: BoxShape.circle,
+                              ),
                             ),
                             title: g.name,
                             subtitle: isAppleGroup
-                                ? 'Alle importierten Apple-Termine · nicht auswählbar'
+                                ? 'Alle importierten ${AppleCalendarSyncService.deviceImportName}-Termine · nicht auswählbar'
                                 : (g.isSync ? 'Sync' : null),
                             isLast: isLast,
                             trailing: isAppleGroup
-                                ? Icon(Icons.lock_outline_rounded, size: 18, color: skin.textMuted)
+                                ? Icon(
+                                    Icons.lock_outline_rounded,
+                                    size: 18,
+                                    color: skin.textMuted,
+                                  )
                                 : GestureDetector(
                                     onTap: () => _confirmDelete(g),
-                                    child: Icon(Icons.delete_outline_rounded, size: 18, color: skin.deleteColor.withValues(alpha: 0.7)),
+                                    child: Icon(
+                                      Icons.delete_outline_rounded,
+                                      size: 18,
+                                      color: skin.deleteColor.withValues(
+                                        alpha: 0.7,
+                                      ),
+                                    ),
                                   ),
-                            onTap: isAppleGroup ? null : () => _showEditSheet(existing: g),
+                            onTap: isAppleGroup
+                                ? null
+                                : () => _showEditSheet(existing: g),
                           );
                         }).toList(),
                       ),
@@ -4446,7 +5950,8 @@ class _EventGroupSettingsScreenState extends State<_EventGroupSettingsScreen> {
                       onTap: () => _showEditSheet(),
                     ),
                     const _SectionFootnote(
-                      text: 'Löschen einer Gruppe verschiebt zugehörige Termine automatisch in die erste verbleibende Gruppe.',
+                      text:
+                          'Löschen einer Gruppe verschiebt zugehörige Termine automatisch in die erste verbleibende Gruppe.',
                     ),
                   ],
                 ),
@@ -4495,8 +6000,11 @@ class _ReisemodusDebugCardState extends State<_ReisemodusDebugCard> {
     final skin = AppTheme.of(context);
 
     if (detected == null) {
-      showGlassSnackBar(context, 'Keine neue Zeitzone erkannt (identisch mit aktiver Zone).',
-          type: GlassSnackBarType.warning);
+      showGlassSnackBar(
+        context,
+        'Keine neue Zeitzone erkannt (identisch mit aktiver Zone).',
+        type: GlassSnackBarType.warning,
+      );
       return;
     }
     final label = TravelModeService.offsetLabelFor(detected);
@@ -4505,7 +6013,8 @@ class _ReisemodusDebugCardState extends State<_ReisemodusDebugCard> {
       skin: skin,
       icon: Icons.flight_takeoff_rounded,
       title: '✈️ Neue Zeitzone erkannt',
-      message: 'Simuliert: $detected ($label)\n\n'
+      message:
+          'Simuliert: $detected ($label)\n\n'
           'Jetzt als aktive Zone übernehmen?',
       confirmLabel: 'Übernehmen',
       cancelLabel: 'Verwerfen',
@@ -4527,11 +6036,19 @@ class _ReisemodusDebugCardState extends State<_ReisemodusDebugCard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _TiCardHeader(skin: skin, icon: Icons.bug_report_outlined, label: 'Zeitzone simulieren'),
+          _TiCardHeader(
+            skin: skin,
+            icon: Icons.bug_report_outlined,
+            label: 'Zeitzone simulieren',
+          ),
           const SizedBox(height: 10),
           Text(
             'Überschreibt die erkannte Geräte-Zeitzone zum Testen, unabhängig vom echten Standort.',
-            style: TextStyle(fontSize: 12.5, color: skin.textMuted, height: 1.4),
+            style: TextStyle(
+              fontSize: 12.5,
+              color: skin.textMuted,
+              height: 1.4,
+            ),
           ),
           const SizedBox(height: 12),
 
@@ -4543,20 +6060,27 @@ class _ReisemodusDebugCardState extends State<_ReisemodusDebugCard> {
               return GestureDetector(
                 onTap: () => _setOverride(e.value),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
                   decoration: BoxDecoration(
                     color: isActive
                         ? skin.primary.withValues(alpha: 0.20)
                         : skin.surface(0.05),
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(
-                        color: isActive ? skin.primary : skin.borderSubtle),
+                      color: isActive ? skin.primary : skin.borderSubtle,
+                    ),
                   ),
-                  child: Text(e.key,
-                      style: TextStyle(
-                          fontSize: 12.5,
-                          fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
-                          color: isActive ? skin.primary : skin.textPrimary)),
+                  child: Text(
+                    e.key,
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
+                      color: isActive ? skin.primary : skin.textPrimary,
+                    ),
+                  ),
                 ),
               );
             }).toList(),
@@ -4564,11 +6088,14 @@ class _ReisemodusDebugCardState extends State<_ReisemodusDebugCard> {
           const SizedBox(height: 8),
           GestureDetector(
             onTap: () => _setOverride(null),
-            child: Text('Override zurücksetzen (echtes Gerät nutzen)',
-                style: TextStyle(
-                    fontSize: 12.5,
-                    color: skin.textMuted,
-                    decoration: TextDecoration.underline)),
+            child: Text(
+              'Override zurücksetzen (echtes Gerät nutzen)',
+              style: TextStyle(
+                fontSize: 12.5,
+                color: skin.textMuted,
+                decoration: TextDecoration.underline,
+              ),
+            ),
           ),
 
           const SizedBox(height: 16),
@@ -4597,16 +6124,24 @@ class _ReisemodusDebugCardState extends State<_ReisemodusDebugCard> {
                     children: [
                       SizedBox(
                         width: 150,
-                        child: Text(e.key,
-                            style: TextStyle(fontSize: 11.5, color: skin.textMuted)),
+                        child: Text(
+                          e.key,
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            color: skin.textMuted,
+                          ),
+                        ),
                       ),
                       Expanded(
-                        child: Text(e.value,
-                            style: TextStyle(
-                                fontSize: 11.5,
-                                fontFamily: 'monospace',
-                                color: skin.textPrimary,
-                                fontWeight: FontWeight.w600)),
+                        child: Text(
+                          e.value,
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            fontFamily: 'monospace',
+                            color: skin.textPrimary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                       ),
                     ],
                   ),
@@ -4649,7 +6184,9 @@ class _SyncConflictsScreenState extends State<SyncConflictsScreen> {
         if (p is Map) {
           final incoming = Map<String, dynamic>.from(p);
           final localRaw = Hive.box('einstellungen').get('schedule_${c.docId}');
-          final local = localRaw is Map ? Map<String, dynamic>.from(localRaw) : <String, dynamic>{};
+          final local = localRaw is Map
+              ? Map<String, dynamic>.from(localRaw)
+              : <String, dynamic>{};
           final changed = <String>[];
           final allKeys = {...incoming.keys, ...local.keys}.toList()..sort();
           for (final k in allKeys) {
@@ -4663,7 +6200,9 @@ class _SyncConflictsScreenState extends State<SyncConflictsScreen> {
           }
           if (changed.isEmpty) return 'Keine erkennbaren Änderungen';
           final preview = changed.take(3).join(', ');
-          return changed.length > 3 ? '$preview … (+${changed.length - 3})' : preview;
+          return changed.length > 3
+              ? '$preview … (+${changed.length - 3})'
+              : preview;
         }
         break;
       case 'fahrten':
@@ -4696,7 +6235,9 @@ class _SyncConflictsScreenState extends State<SyncConflictsScreen> {
                 ? ' · ${fmt(first)}'
                 : ' · ${fmt(first)}–${fmt(last)}';
           }
-          final kzLabel = kennzeichen.isEmpty ? '' : ' · ${kennzeichen.take(2).join(', ')}';
+          final kzLabel = kennzeichen.isEmpty
+              ? ''
+              : ' · ${kennzeichen.take(2).join(', ')}';
           return '$count Fahrt(en)$dateLabel · $totalKm km$kzLabel';
         }
         break;
@@ -4708,12 +6249,16 @@ class _SyncConflictsScreenState extends State<SyncConflictsScreen> {
               final k = (e['kommen'] ?? '').toString();
               final g = (e['gehen'] ?? '').toString();
               if (k.isNotEmpty || g.isNotEmpty) {
-                parts.add('${k.isEmpty ? '--:--' : k}–${g.isEmpty ? '--:--' : g}');
+                parts.add(
+                  '${k.isEmpty ? '--:--' : k}–${g.isEmpty ? '--:--' : g}',
+                );
               }
             }
           }
           final extra = p.length > 2 ? ' (+${p.length - 2})' : '';
-          return parts.isEmpty ? '${p.length} Eintrag/-träge' : '${parts.join(', ')}$extra';
+          return parts.isEmpty
+              ? '${p.length} Eintrag/-träge'
+              : '${parts.join(', ')}$extra';
         }
         break;
       case 'calendar_events':
@@ -4736,7 +6281,9 @@ class _SyncConflictsScreenState extends State<SyncConflictsScreen> {
           if (dueRaw.isNotEmpty) {
             final dt = DateTime.tryParse(dueRaw);
             if (dt != null) {
-              parts.add('Fällig: ${dt.day.toString().padLeft(2, '0')}.${dt.month.toString().padLeft(2, '0')}.${dt.year}');
+              parts.add(
+                'Fällig: ${dt.day.toString().padLeft(2, '0')}.${dt.month.toString().padLeft(2, '0')}.${dt.year}',
+              );
             }
           }
           final notes = (p['notes'] ?? '').toString().trim();
@@ -4759,8 +6306,19 @@ class _SyncConflictsScreenState extends State<SyncConflictsScreen> {
 
   String _formatMonthKey(String key) {
     const months = [
-      '', 'Januar', 'Februar', 'März', 'April', 'Mai', 'Juni',
-      'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember',
+      '',
+      'Januar',
+      'Februar',
+      'März',
+      'April',
+      'Mai',
+      'Juni',
+      'Juli',
+      'August',
+      'September',
+      'Oktober',
+      'November',
+      'Dezember',
     ];
     final parts = key.split('-');
     if (parts.length == 2) {
@@ -4826,7 +6384,13 @@ class _SyncConflictsScreenState extends State<SyncConflictsScreen> {
       grouped.putIfAbsent(it.collection, () => []).add(it);
     }
     // NEU (Punkt 4): feste Reihenfolge entlang der App-Struktur.
-    const _sectionOrder = ['arbeitszeiten', 'schedule', 'fahrten', 'tasks', 'calendar_events'];
+    const _sectionOrder = [
+      'arbeitszeiten',
+      'schedule',
+      'fahrten',
+      'tasks',
+      'calendar_events',
+    ];
     final orderedGrouped = <String, List<SyncConflictItem>>{
       for (final key in _sectionOrder)
         if (grouped.containsKey(key)) key: grouped[key]!,
@@ -4837,12 +6401,20 @@ class _SyncConflictsScreenState extends State<SyncConflictsScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            _SettingsHeader(title: 'Sync-Konflikte', onBack: () => Navigator.pop(context)),
+            _SettingsHeader(
+              title: 'Sync-Konflikte',
+              onBack: () => Navigator.pop(context),
+            ),
             Expanded(
               child: items.isEmpty
                   ? Center(
-                      child: Text('Keine offenen Konflikte',
-                          style: TextStyle(color: skin.surface(0.3), fontSize: 15)),
+                      child: Text(
+                        'Keine offenen Konflikte',
+                        style: TextStyle(
+                          color: skin.surface(0.3),
+                          fontSize: 15,
+                        ),
+                      ),
                     )
                   : SingleChildScrollView(
                       padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
@@ -4857,75 +6429,124 @@ class _SyncConflictsScreenState extends State<SyncConflictsScreen> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
                                   children: [
                                     _SectionHeader(label: label),
-                                    Row(children: [
-                                      GestureDetector(
-                                        onTap: () => _rejectAll(collection),
-                                        child: Text('Alle verwerfen',
-                                            style: TextStyle(fontSize: 12.5, color: skin.deleteColor, fontWeight: FontWeight.w600)),
-                                      ),
-                                      const SizedBox(width: 14),
-                                      GestureDetector(
-                                        onTap: () => _acceptAll(collection),
-                                        child: Text('Alle übernehmen',
-                                            style: TextStyle(fontSize: 12.5, color: skin.primary, fontWeight: FontWeight.w600)),
-                                      ),
-                                    ]),
+                                    Row(
+                                      children: [
+                                        GestureDetector(
+                                          onTap: () => _rejectAll(collection),
+                                          child: Text(
+                                            'Alle verwerfen',
+                                            style: TextStyle(
+                                              fontSize: 12.5,
+                                              color: skin.deleteColor,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 14),
+                                        GestureDetector(
+                                          onTap: () => _acceptAll(collection),
+                                          child: Text(
+                                            'Alle übernehmen',
+                                            style: TextStyle(
+                                              fontSize: 12.5,
+                                              color: skin.primary,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ],
                                 ),
                                 const SizedBox(height: 8),
-                                ...entry.value.map((c) => Padding(
-                                      padding: const EdgeInsets.only(bottom: 10),
-                                      child: GlassSurface(
-                                        borderRadius: 16,
-                                        padding: const EdgeInsets.all(14),
-                                        child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            Row(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
-                                              children: [
-                                                Expanded(
-                                                  child: Text(_titleFor(c),
-                                                      style: TextStyle(
-                                                          fontSize: 13.5,
-                                                          fontWeight: FontWeight.w700,
-                                                          color: skin.textPrimary),
-                                                      maxLines: 1,
-                                                      overflow: TextOverflow.ellipsis),
-                                                ),
-                                                if ((c.authorName ?? '').trim().isNotEmpty) ...[
-                                                  const SizedBox(width: 8),
-                                                  Container(
-                                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                                    decoration: BoxDecoration(
-                                                      color: skin.primary.withValues(alpha: 0.10),
-                                                      borderRadius: BorderRadius.circular(8),
-                                                    ),
-                                                    child: Text(c.authorName!,
-                                                        style: TextStyle(
-                                                            fontSize: 10.5,
-                                                            fontWeight: FontWeight.w600,
-                                                            color: skin.primary),
-                                                        maxLines: 1,
-                                                        overflow: TextOverflow.ellipsis),
+                                ...entry.value.map(
+                                  (c) => Padding(
+                                    padding: const EdgeInsets.only(bottom: 10),
+                                    child: GlassSurface(
+                                      borderRadius: 16,
+                                      padding: const EdgeInsets.all(14),
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Row(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Expanded(
+                                                child: Text(
+                                                  _titleFor(c),
+                                                  style: TextStyle(
+                                                    fontSize: 13.5,
+                                                    fontWeight: FontWeight.w700,
+                                                    color: skin.textPrimary,
                                                   ),
-                                                ],
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                ),
+                                              ),
+                                              if ((c.authorName ?? '')
+                                                  .trim()
+                                                  .isNotEmpty) ...[
+                                                const SizedBox(width: 8),
+                                                Container(
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                        horizontal: 8,
+                                                        vertical: 3,
+                                                      ),
+                                                  decoration: BoxDecoration(
+                                                    color: skin.primary
+                                                        .withValues(
+                                                          alpha: 0.10,
+                                                        ),
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          8,
+                                                        ),
+                                                  ),
+                                                  child: Text(
+                                                    c.authorName!,
+                                                    style: TextStyle(
+                                                      fontSize: 10.5,
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                      color: skin.primary,
+                                                    ),
+                                                    maxLines: 1,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                  ),
+                                                ),
                                               ],
+                                            ],
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            _previewFor(c),
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: skin.textMuted,
                                             ),
-                                            const SizedBox(height: 4),
-                                            Text(_previewFor(c),
-                                                style: TextStyle(fontSize: 12, color: skin.textMuted),
-                                                maxLines: 1, overflow: TextOverflow.ellipsis),
-                                            const SizedBox(height: 10),
-                                            Row(children: [
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                          const SizedBox(height: 10),
+                                          Row(
+                                            children: [
                                               Expanded(
                                                 child: GlassSecondaryButton(
                                                   skin: skin,
                                                   label: 'Verwerfen',
-                                                  onTap: () => _reject(c.collection, c.docId),
+                                                  onTap: () => _reject(
+                                                    c.collection,
+                                                    c.docId,
+                                                  ),
                                                 ),
                                               ),
                                               const SizedBox(width: 10),
@@ -4933,14 +6554,19 @@ class _SyncConflictsScreenState extends State<SyncConflictsScreen> {
                                                 child: GlassPrimaryButton(
                                                   skin: skin,
                                                   label: 'Übernehmen',
-                                                  onTap: () => _accept(c.collection, c.docId),
+                                                  onTap: () => _accept(
+                                                    c.collection,
+                                                    c.docId,
+                                                  ),
                                                 ),
                                               ),
-                                            ]),
-                                          ],
-                                        ),
+                                            ],
+                                          ),
+                                        ],
                                       ),
-                                    )),
+                                    ),
+                                  ),
+                                ),
                               ],
                             ),
                           );

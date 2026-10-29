@@ -67,9 +67,11 @@ class DictationFabState extends State<DictationFab>
   bool get _speechAvailable => SpeechService.instance.isAvailable;
 
   DictationPhase _phase = DictationPhase.idle;
-  bool _isFinishing = false; // Guard gegen doppelten Aufruf von _finishListeningAndReveal
+  bool _isFinishing =
+      false; // Guard gegen doppelten Aufruf von _finishListeningAndReveal
   String _liveTranscript = '';
   String _finalTranscript = '';
+  Completer<void>? _finalResultReceived;
   List<String> _revealedWords = [];
   int _revealIndex = 0;
   Timer? _revealTimer;
@@ -115,39 +117,60 @@ class DictationFabState extends State<DictationFab>
   void initState() {
     super.initState();
     _fabPulseCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 900));
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    );
     _idlePulseCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 650));
+      vsync: this,
+      duration: const Duration(milliseconds: 650),
+    );
     _bubbleCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 320));
+      vsync: this,
+      duration: const Duration(milliseconds: 320),
+    );
     _bubbleScale = CurvedAnimation(
-        parent: _bubbleCtrl,
-        curve: Curves.easeOutBack,
-        reverseCurve: Curves.easeInBack);
+      parent: _bubbleCtrl,
+      curve: Curves.easeOutBack,
+      reverseCurve: Curves.easeInBack,
+    );
     _bubbleOpacity = CurvedAnimation(
-        parent: _bubbleCtrl,
-        curve: Curves.easeOut,
-        reverseCurve: Curves.easeIn);
+      parent: _bubbleCtrl,
+      curve: Curves.easeOut,
+      reverseCurve: Curves.easeIn,
+    );
 
     _cancelAnimCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 480));
+      vsync: this,
+      duration: const Duration(milliseconds: 480),
+    );
     _spectrumShrink = Tween<double>(begin: 1.0, end: 0.0).animate(
-        CurvedAnimation(
-            parent: _cancelAnimCtrl,
-            curve: const Interval(0.0, 0.55, curve: Curves.easeInCubic)));
+      CurvedAnimation(
+        parent: _cancelAnimCtrl,
+        curve: const Interval(0.0, 0.55, curve: Curves.easeInCubic),
+      ),
+    );
     _spectrumFade = Tween<double>(begin: 1.0, end: 0.0).animate(
-        CurvedAnimation(
+      CurvedAnimation(
+        parent: _cancelAnimCtrl,
+        curve: const Interval(0.25, 0.55, curve: Curves.easeIn),
+      ),
+    );
+    _trashPulse =
+        TweenSequence<double>([
+          TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.35), weight: 40),
+          TweenSequenceItem(tween: Tween(begin: 1.35, end: 0.0), weight: 60),
+        ]).animate(
+          CurvedAnimation(
             parent: _cancelAnimCtrl,
-            curve: const Interval(0.25, 0.55, curve: Curves.easeIn)));
-    _trashPulse = TweenSequence<double>([
-      TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.35), weight: 40),
-      TweenSequenceItem(tween: Tween(begin: 1.35, end: 0.0), weight: 60),
-    ]).animate(CurvedAnimation(
+            curve: const Interval(0.30, 0.80, curve: Curves.easeInOut),
+          ),
+        );
+    _exitFade = Tween<double>(begin: 1.0, end: 0.0).animate(
+      CurvedAnimation(
         parent: _cancelAnimCtrl,
-        curve: const Interval(0.30, 0.80, curve: Curves.easeInOut)));
-    _exitFade = Tween<double>(begin: 1.0, end: 0.0).animate(CurvedAnimation(
-        parent: _cancelAnimCtrl,
-        curve: const Interval(0.60, 1.0, curve: Curves.easeOut)));
+        curve: const Interval(0.60, 1.0, curve: Curves.easeOut),
+      ),
+    );
 
     _cancelAnimCtrl.addListener(() {
       if (mounted) {
@@ -187,7 +210,8 @@ class DictationFabState extends State<DictationFab>
 
   void stopListening() {
     if (_phase != DictationPhase.listening &&
-        _phase != DictationPhase.preparing) return;
+        _phase != DictationPhase.preparing)
+      return;
     if (_aborted) return;
     _aborted = true;
     try {
@@ -260,6 +284,7 @@ class DictationFabState extends State<DictationFab>
     _isFinishing = false; // NEU
     _cancelDragX = 0.0;
     _listenStartedAt = DateTime.now();
+    _finalResultReceived = Completer<void>();
     setState(() {
       _phase = DictationPhase.preparing;
       _liveTranscript = '';
@@ -288,7 +313,14 @@ class DictationFabState extends State<DictationFab>
         if (_aborted || !mounted) return;
         setState(() {
           _liveTranscript = result.recognizedWords;
-          if (result.finalResult) _finalTranscript = result.recognizedWords;
+          if (result.finalResult) {
+            _finalTranscript = result.recognizedWords;
+            final finalResultReceived = _finalResultReceived;
+            if (finalResultReceived != null &&
+                !finalResultReceived.isCompleted) {
+              finalResultReceived.complete();
+            }
+          }
         });
         widget.onBubbleStateChanged?.call();
       },
@@ -308,8 +340,23 @@ class DictationFabState extends State<DictationFab>
     if (_aborted || _isFinishing) return;
     if (_phase != DictationPhase.listening) return;
     _isFinishing = true;
+    final finalResultReceived = Completer<void>();
+    _finalResultReceived = finalResultReceived;
     await _speech.stop();
-    if (_aborted) {
+    if (_aborted || !mounted) {
+      _isFinishing = false;
+      return;
+    }
+
+    // The final recognition callback can arrive just after stop() completes.
+    // Wait briefly for it, then fall back to the latest partial result.
+    if (!finalResultReceived.isCompleted) {
+      await Future.any<void>([
+        finalResultReceived.future,
+        Future<void>.delayed(const Duration(milliseconds: 700)),
+      ]);
+    }
+    if (_aborted || !mounted) {
       _isFinishing = false;
       return;
     }
@@ -321,6 +368,8 @@ class DictationFabState extends State<DictationFab>
             .trim();
     if (text.isEmpty) {
       setState(() => _phase = DictationPhase.idle);
+      _isFinishing = false;
+      _finalResultReceived = null;
       _bubbleCtrl.reverse();
       widget.onListeningEnd?.call();
       widget.onBubbleStateChanged?.call();
@@ -333,8 +382,10 @@ class DictationFabState extends State<DictationFab>
     await Future.delayed(const Duration(milliseconds: 350));
     if (_aborted || !mounted) return;
 
-    final words =
-        text.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
+    final words = text
+        .split(RegExp(r'\s+'))
+        .where((w) => w.isNotEmpty)
+        .toList();
     setState(() {
       _phase = DictationPhase.revealing;
       _revealedWords = words;
@@ -343,8 +394,7 @@ class DictationFabState extends State<DictationFab>
     widget.onBubbleStateChanged?.call();
 
     _revealTimer?.cancel();
-    _revealTimer =
-        Timer.periodic(const Duration(milliseconds: 90), (timer) {
+    _revealTimer = Timer.periodic(const Duration(milliseconds: 90), (timer) {
       if (_aborted || !mounted) {
         timer.cancel();
         return;
@@ -361,7 +411,8 @@ class DictationFabState extends State<DictationFab>
   Future<void> _cancelListening() async {
     if (_isCancelling) return;
     if (_phase != DictationPhase.listening &&
-        _phase != DictationPhase.preparing) return;
+        _phase != DictationPhase.preparing)
+      return;
     _aborted = true;
     _isCancelling = true;
     HapticFeedback.heavyImpact();
@@ -382,6 +433,7 @@ class DictationFabState extends State<DictationFab>
       _phase = DictationPhase.idle;
       _liveTranscript = '';
       _finalTranscript = '';
+      _finalResultReceived = null;
       _revealedWords = [];
       _revealIndex = 0;
       rawLevelNotifier.value = 0.0;
@@ -435,8 +487,7 @@ class DictationFabState extends State<DictationFab>
     final hasNoDateTime = parsed.date == null && !parsed.hasTime;
     final titleTooShort = parsed.title.trim().length < 3;
 
-    final needsReview = titleTooShort ||
-        (normalizerMissed && wordCount > 4);
+    final needsReview = titleTooShort || (normalizerMissed && wordCount > 4);
 
     final logRef = SpeechLog.record(
       raw: text,
@@ -477,7 +528,7 @@ class DictationFabState extends State<DictationFab>
   /// (z.B. der Kachel), in globalen Screen-Koordinaten.
   List<Widget> buildExternalBubbles({
     required AppSkin skin,
-    required Offset anchorTopRight,   // obere rechte Ecke der Kachel
+    required Offset anchorTopRight, // obere rechte Ecke der Kachel
     required double kachelWidth,
     double kachelHeight = 100.0,
   }) {
@@ -534,7 +585,8 @@ class DictationFabState extends State<DictationFab>
   void onExternalDragUpdate(double dx) {
     if ((_phase != DictationPhase.listening &&
             _phase != DictationPhase.preparing) ||
-        _isCancelling) return;
+        _isCancelling)
+      return;
     final newVal = (dx < 0 ? dx : 0.0);
     setState(() => _cancelDragX = newVal);
     widget.onBubbleStateChanged?.call();
@@ -572,18 +624,18 @@ class DictationFabState extends State<DictationFab>
             bottom: 68,
             right: 0,
             child: AnimatedBuilder(
-              animation:
-                  Listenable.merge([_bubbleCtrl, _cancelAnimCtrl]),
+              animation: Listenable.merge([_bubbleCtrl, _cancelAnimCtrl]),
               builder: (context, child) {
                 final exitOpacity = _exitFade.value;
-                final bubbleOp =
-                    (_bubbleOpacity.value * exitOpacity).clamp(0.0, 1.0);
+                final bubbleOp = (_bubbleOpacity.value * exitOpacity).clamp(
+                  0.0,
+                  1.0,
+                );
                 final dragProgress = cancelProgress;
                 final slideX = -dragProgress * 40.0;
                 final shrink =
                     _spectrumShrink.value * (1.0 - dragProgress * 0.2);
-                final fadeOp =
-                    _spectrumFade.value * (1.0 - dragProgress * 0.3);
+                final fadeOp = _spectrumFade.value * (1.0 - dragProgress * 0.3);
 
                 return Transform.translate(
                   offset: Offset(slideX, 0),
@@ -602,11 +654,7 @@ class DictationFabState extends State<DictationFab>
           ),
 
         if (_isActive || _cancelAnimCtrl.value > 0)
-          Positioned(
-            bottom: 0,
-            right: 68,
-            child: _buildTrashButton(skin),
-          ),
+          Positioned(bottom: 0, right: 68, child: _buildTrashButton(skin)),
 
         if (_phase == DictationPhase.revealing ||
             _phase == DictationPhase.done ||
@@ -641,15 +689,16 @@ class DictationFabState extends State<DictationFab>
       behavior: HitTestBehavior.opaque,
       onLongPressStart: (_) => _startListening(),
       onLongPressEnd: (_) {
-        if (!_isCancelling) _finishListeningAndReveal();
+        if (!_isCancelling) finishListening();
       },
       onLongPressCancel: () {
-        if (!_isCancelling) _finishListeningAndReveal();
+        if (!_isCancelling) finishListening();
       },
       onLongPressMoveUpdate: (details) {
         if ((_phase != DictationPhase.listening &&
                 _phase != DictationPhase.preparing) ||
-            _isCancelling) return;
+            _isCancelling)
+          return;
         final dx = details.offsetFromOrigin.dx;
         setState(() => _cancelDragX = dx < 0 ? dx : 0.0);
         if (dx < -80.0) _cancelListening();
@@ -657,8 +706,9 @@ class DictationFabState extends State<DictationFab>
       child: AnimatedBuilder(
         animation: Listenable.merge([_fabPulseCtrl, _cancelAnimCtrl]),
         builder: (context, _) {
-          final pulse =
-              _phase == DictationPhase.listening ? _fabPulseCtrl.value : 0.0;
+          final pulse = _phase == DictationPhase.listening
+              ? _fabPulseCtrl.value
+              : 0.0;
           final cp = cancelProgress;
           final fabColor = _isActive
               ? Color.lerp(
@@ -667,8 +717,8 @@ class DictationFabState extends State<DictationFab>
                   cp,
                 )!
               : (skin.isLight
-                  ? Colors.white.withValues(alpha: 0.72)
-                  : Colors.black.withValues(alpha: 0.55));
+                    ? Colors.white.withValues(alpha: 0.72)
+                    : Colors.black.withValues(alpha: 0.55));
 
           final fabContent = Container(
             width: 56,
@@ -680,8 +730,8 @@ class DictationFabState extends State<DictationFab>
                 color: _isActive
                     ? Colors.white.withValues(alpha: 0.35)
                     : (skin.isLight
-                        ? Colors.white.withValues(alpha: 0.55)
-                        : Colors.white.withValues(alpha: 0.12)),
+                          ? Colors.white.withValues(alpha: 0.55)
+                          : Colors.white.withValues(alpha: 0.12)),
                 width: _isActive ? 1.2 : 0.8,
               ),
               boxShadow: [
@@ -689,12 +739,12 @@ class DictationFabState extends State<DictationFab>
                   color: _isActive
                       ? Color.lerp(
                           skin.primaryWithAlpha(0.45 + pulse * 0.2),
-                          const Color(0xFFEF5B5B)
-                              .withValues(alpha: 0.5),
+                          const Color(0xFFEF5B5B).withValues(alpha: 0.5),
                           cp,
                         )!
                       : Colors.black.withValues(
-                          alpha: skin.isLight ? 0.08 : 0.35),
+                          alpha: skin.isLight ? 0.08 : 0.35,
+                        ),
                   blurRadius: _isActive ? 20 + pulse * 10 : 24,
                   spreadRadius: _isActive ? pulse * 2 : 0,
                   offset: const Offset(0, 6),
@@ -706,12 +756,10 @@ class DictationFabState extends State<DictationFab>
               child: Icon(
                 cp > 0.35
                     ? Icons.close_rounded
-                    : (_isActive
-                        ? Icons.mic_rounded
-                        : Icons.mic_none_rounded),
-                key: ValueKey(cp > 0.35
-                    ? 'cancel'
-                    : (_isActive ? 'active' : 'idle')),
+                    : (_isActive ? Icons.mic_rounded : Icons.mic_none_rounded),
+                key: ValueKey(
+                  cp > 0.35 ? 'cancel' : (_isActive ? 'active' : 'idle'),
+                ),
                 color: cp > 0.35
                     ? Colors.white
                     : (_isActive ? skin.onGradient : skin.textPrimary),
@@ -725,10 +773,7 @@ class DictationFabState extends State<DictationFab>
             child: ClipRRect(
               borderRadius: _kRadius20,
               child: _isActive
-                  ? PlatformBackdropFilter(
-                      filter: _kBlur20,
-                      child: fabContent,
-                    )
+                  ? PlatformBackdropFilter(filter: _kBlur20, child: fabContent)
                   : fabContent,
             ),
           );
@@ -751,12 +796,15 @@ class DictationFabState extends State<DictationFab>
                 : skin.bgCard.withValues(alpha: 0.85),
             borderRadius: _kRadius20,
             border: Border.all(
-                color: skin.primary.withValues(alpha: 0.30), width: 1.0),
+              color: skin.primary.withValues(alpha: 0.30),
+              width: 1.0,
+            ),
             boxShadow: [
               BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.20),
-                  blurRadius: 24,
-                  offset: const Offset(0, 8)),
+                color: Colors.black.withValues(alpha: 0.20),
+                blurRadius: 24,
+                offset: const Offset(0, 8),
+              ),
             ],
           ),
           child: _phase == DictationPhase.preparing
@@ -817,8 +865,9 @@ class DictationFabState extends State<DictationFab>
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: const Color(0xFFEF5B5B)
-                            .withValues(alpha: dragProgress * 0.30),
+                        color: const Color(
+                          0xFFEF5B5B,
+                        ).withValues(alpha: dragProgress * 0.30),
                         blurRadius: 16,
                         offset: const Offset(0, 4),
                       ),
@@ -826,8 +875,11 @@ class DictationFabState extends State<DictationFab>
                   ),
                   child: Icon(
                     Icons.delete_outline_rounded,
-                    color: Color.lerp(skin.surface(0.25),
-                        const Color(0xFFEF5B5B), dragProgress),
+                    color: Color.lerp(
+                      skin.surface(0.25),
+                      const Color(0xFFEF5B5B),
+                      dragProgress,
+                    ),
                     size: 22,
                   ),
                 ),
@@ -849,14 +901,14 @@ class DictationFabState extends State<DictationFab>
         ? math.min(
             maxWidth,
             minWidth +
-                (_revealedWords.take(_revealIndex).join(' ').length * 6.2))
+                (_revealedWords.take(_revealIndex).join(' ').length * 6.2),
+          )
         : minWidth;
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 260),
       curve: Curves.easeOutCubic,
-      constraints:
-          const BoxConstraints(minWidth: minWidth, maxWidth: maxWidth),
+      constraints: const BoxConstraints(minWidth: minWidth, maxWidth: maxWidth),
       width: targetWidth.clamp(minWidth, maxWidth),
       child: ClipRRect(
         borderRadius: _kRadius20,
@@ -869,23 +921,30 @@ class DictationFabState extends State<DictationFab>
                   : skin.bgCard.withValues(alpha: 0.85),
               borderRadius: _kRadius20,
               border: Border.all(
-                  color: skin.primary.withValues(alpha: 0.30), width: 1.0),
+                color: skin.primary.withValues(alpha: 0.30),
+                width: 1.0,
+              ),
               boxShadow: [
                 BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.20),
-                    blurRadius: 24,
-                    offset: const Offset(0, 8)),
+                  color: Colors.black.withValues(alpha: 0.20),
+                  blurRadius: 24,
+                  offset: const Offset(0, 8),
+                ),
               ],
             ),
             child: isProcessing
                 ? Padding(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 14),
+                      horizontal: 16,
+                      vertical: 14,
+                    ),
                     child: ProcessingIndicator(skin: skin),
                   )
                 : Padding(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 12),
+                      horizontal: 14,
+                      vertical: 12,
+                    ),
                     child: RevealingText(
                       skin: skin,
                       words: _revealedWords,
@@ -932,12 +991,16 @@ class _ExternalSpectrumBubble extends StatelessWidget {
       left: left,
       top: top,
       child: AnimatedBuilder(
-        animation:
-            Listenable.merge([fabState.bubbleCtrl, fabState.cancelAnimCtrl]),
+        animation: Listenable.merge([
+          fabState.bubbleCtrl,
+          fabState.cancelAnimCtrl,
+        ]),
         builder: (context, child) {
           final exitOpacity = fabState.exitFade.value;
-          final bubbleOp =
-              (fabState.bubbleOpacity.value * exitOpacity).clamp(0.0, 1.0);
+          final bubbleOp = (fabState.bubbleOpacity.value * exitOpacity).clamp(
+            0.0,
+            1.0,
+          );
           final dragProgress = fabState.cancelProgress;
           final slideX = -dragProgress * 40.0;
           final shrink =
@@ -971,12 +1034,15 @@ class _ExternalSpectrumBubble extends StatelessWidget {
                     : skin.bgCard.withValues(alpha: 0.85),
                 borderRadius: _kRadius20,
                 border: Border.all(
-                    color: skin.primary.withValues(alpha: 0.30), width: 1.0),
+                  color: skin.primary.withValues(alpha: 0.30),
+                  width: 1.0,
+                ),
                 boxShadow: [
                   BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.20),
-                      blurRadius: 24,
-                      offset: const Offset(0, 8)),
+                    color: Colors.black.withValues(alpha: 0.20),
+                    blurRadius: 24,
+                    offset: const Offset(0, 8),
+                  ),
                 ],
               ),
               child: Center(
@@ -1068,8 +1134,9 @@ class _ExternalTrashButton extends StatelessWidget {
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: const Color(0xFFEF5B5B)
-                              .withValues(alpha: dragProgress * 0.30),
+                          color: const Color(
+                            0xFFEF5B5B,
+                          ).withValues(alpha: dragProgress * 0.30),
                           blurRadius: 16,
                           offset: const Offset(0, 4),
                         ),
@@ -1077,8 +1144,11 @@ class _ExternalTrashButton extends StatelessWidget {
                     ),
                     child: Icon(
                       Icons.delete_outline_rounded,
-                      color: Color.lerp(skin.surface(0.25),
-                          const Color(0xFFEF5B5B), dragProgress),
+                      color: Color.lerp(
+                        skin.surface(0.25),
+                        const Color(0xFFEF5B5B),
+                        dragProgress,
+                      ),
                       size: 22,
                     ),
                   ),
@@ -1113,7 +1183,8 @@ class _ExternalRevealBubble extends StatelessWidget {
     const double bubbleH = 56.0;
     const gap = 8.0;
 
-    final isRevealing = fabState.phase == DictationPhase.revealing ||
+    final isRevealing =
+        fabState.phase == DictationPhase.revealing ||
         fabState.phase == DictationPhase.done;
     final targetWidth = isRevealing
         ? math.min(
@@ -1123,7 +1194,8 @@ class _ExternalRevealBubble extends StatelessWidget {
                         .take(fabState.revealIndex)
                         .join(' ')
                         .length *
-                    6.2))
+                    6.2),
+          )
         : minWidth;
     final clampedW = targetWidth.clamp(minWidth, maxWidth);
 
@@ -1149,8 +1221,10 @@ class _ExternalRevealBubble extends StatelessWidget {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 260),
           curve: Curves.easeOutCubic,
-          constraints:
-              const BoxConstraints(minWidth: minWidth, maxWidth: maxWidth),
+          constraints: const BoxConstraints(
+            minWidth: minWidth,
+            maxWidth: maxWidth,
+          ),
           width: clampedW,
           child: ClipRRect(
             borderRadius: _kRadius20,
@@ -1163,23 +1237,30 @@ class _ExternalRevealBubble extends StatelessWidget {
                       : skin.bgCard.withValues(alpha: 0.85),
                   borderRadius: _kRadius20,
                   border: Border.all(
-                      color: skin.primary.withValues(alpha: 0.30), width: 1.0),
+                    color: skin.primary.withValues(alpha: 0.30),
+                    width: 1.0,
+                  ),
                   boxShadow: [
                     BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.20),
-                        blurRadius: 24,
-                        offset: const Offset(0, 8)),
+                      color: Colors.black.withValues(alpha: 0.20),
+                      blurRadius: 24,
+                      offset: const Offset(0, 8),
+                    ),
                   ],
                 ),
                 child: fabState.phase == DictationPhase.processing
                     ? Padding(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 14),
+                          horizontal: 16,
+                          vertical: 14,
+                        ),
                         child: ProcessingIndicator(skin: skin),
                       )
                     : Padding(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 12),
+                          horizontal: 14,
+                          vertical: 12,
+                        ),
                         child: RevealingText(
                           skin: skin,
                           words: fabState.revealedWords,
@@ -1250,14 +1331,18 @@ class _SpectrumIndicatorState extends State<SpectrumIndicator>
     final range = (_levelCeil - _levelFloor).clamp(1.5, double.infinity);
     final normalized = ((raw - _levelFloor) / range).clamp(0.0, 1.0);
 
-    final warmingUp = widget.listenStartedAt != null &&
+    final warmingUp =
+        widget.listenStartedAt != null &&
         DateTime.now().difference(widget.listenStartedAt!) <
             const Duration(milliseconds: 500);
 
     setState(() {
       for (var i = 0; i < 5; i++) {
-        final sim = 0.18 +
-            (math.sin(_idleTick * (1.6 + i * 0.35) + _phaseOffset[i]) * 0.5 + 0.5) * 0.35;
+        final sim =
+            0.18 +
+            (math.sin(_idleTick * (1.6 + i * 0.35) + _phaseOffset[i]) * 0.5 +
+                    0.5) *
+                0.35;
 
         final boosted = (normalized * _sensitivityFactor[i]).clamp(0.0, 1.0);
         final target = (sim * 0.55 + boosted * 0.75).clamp(0.04, 1.0);
@@ -1340,19 +1425,25 @@ class _PreparingDotsState extends State<PreparingDots>
   void initState() {
     super.initState();
     _ctrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 900))
-      ..repeat();
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..repeat();
     _dotOpacity = List.generate(3, (i) {
       final start = i * 0.2;
       return TweenSequence<double>([
         TweenSequenceItem(tween: Tween(begin: 0.3, end: 1.0), weight: 30),
         TweenSequenceItem(tween: Tween(begin: 1.0, end: 0.3), weight: 30),
         TweenSequenceItem(tween: ConstantTween(0.3), weight: 40),
-      ]).animate(CurvedAnimation(
-        parent: _ctrl,
-        curve: Interval(start, (start + 0.6).clamp(0.0, 1.0),
-            curve: Curves.easeInOut),
-      ));
+      ]).animate(
+        CurvedAnimation(
+          parent: _ctrl,
+          curve: Interval(
+            start,
+            (start + 0.6).clamp(0.0, 1.0),
+            curve: Curves.easeInOut,
+          ),
+        ),
+      );
     });
   }
 
@@ -1381,7 +1472,9 @@ class _PreparingDotsState extends State<PreparingDots>
                   width: 6,
                   height: 6,
                   decoration: BoxDecoration(
-                      color: widget.skin.primary, shape: BoxShape.circle),
+                    color: widget.skin.primary,
+                    shape: BoxShape.circle,
+                  ),
                 ),
               ),
             ),
@@ -1420,8 +1513,7 @@ class RevealingText extends StatelessWidget {
               position: Tween<Offset>(
                 begin: const Offset(0, 0.15),
                 end: Offset.zero,
-              ).animate(
-                  CurvedAnimation(parent: anim, curve: Curves.easeOut)),
+              ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOut)),
               child: child,
             ),
           ),

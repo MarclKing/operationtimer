@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:device_calendar/device_calendar.dart';
 import 'package:timezone/timezone.dart' as tz;
@@ -40,6 +41,7 @@ class AppleCalendarSyncService {
   // zwei parallele Aufrufe je einen eigenen Apple-Termin anlegen, bevor
   // der erste sein Mapping gespeichert hat.
 final Set<String> _pushInFlight = {};
+  final Map<String, int> _massDeleteStreak = {};
 
   final Map<String, Future<void>> _calendarLocks = {};
 
@@ -77,6 +79,28 @@ final Set<String> _pushInFlight = {};
   /// Ersetzt die alte "ein App-Gruppe pro Apple-Kalender"-Logik.
   static const appleImportGroupKey = 'apple_import';
 
+  // ── Android-Unterstützung (gleiche Logik, nur lokal) ──
+  static bool get _isAndroid => !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+  static String get deviceImportName => _isAndroid ? 'Android' : 'Apple';
+  static String get deviceCalendarName => _isAndroid ? 'Android-Kalender' : 'Apple-Kalender';
+  static IconData get deviceCalendarIcon => _isAndroid ? Icons.event_available_rounded : Icons.apple;
+  /// Android: aus dem Geräte-Kalender importierte Termine werden NIE per Firestore geteilt.
+  static bool isDeviceImported(CalendarEvent e) => _isAndroid && e.id.startsWith('apple_');
+  void _pushToFirestore(String id) {
+    // Android: aus dem Geräte-Kalender importierte Termine (ID beginnt mit apple_) bleiben
+    // lokal. In OpTimes angelegte Termine syncen Änderung/Löschung aus dem Kalender normal.
+    if (_isAndroid && id.startsWith('apple_')) return;
+    SyncService.instance.pushCalendarEvent(id);
+  }
+  static DateTime _allDayDate(int ms) {
+    if (_isAndroid) {
+      final utc = DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true);
+      if (utc.hour == 0 && utc.minute == 0) return DateTime(utc.year, utc.month, utc.day);
+    }
+    final local = DateTime.fromMillisecondsSinceEpoch(ms);
+    return DateTime(local.year, local.month, local.day);
+  }
+
   Box get _box => Hive.box(_boxName);
 
   // ── read-only Kalender (Feiertage/Geburtstage) ───────────────────────────
@@ -113,10 +137,19 @@ final Set<String> _pushInFlight = {};
   }
 
   void _ensureAppleImportGroupExists() {
-    if (EventGroupStore.loadAll().any((g) => g.key == appleImportGroupKey)) return;
+    final existingGroups = EventGroupStore.loadAll();
+    final gi = existingGroups.indexWhere((g) => g.key == appleImportGroupKey);
+    if (gi != -1) {
+      final g = existingGroups[gi];
+      if (g.name != deviceImportName && (g.name == 'Apple' || g.name == 'Android')) {
+        g.name = deviceImportName;
+        EventGroupStore.update(g);
+      }
+      return;
+    }
     EventGroupStore.add(EventGroupDef(
       key: appleImportGroupKey,
-      name: 'Apple',
+      name: deviceImportName,
       colorValue: _appleImportFallbackColor,
       scope: GroupScope.local, // NIE über Firestore an andere Geräte weitergeben
     ));
@@ -357,9 +390,15 @@ final Set<String> _pushInFlight = {};
   }
 
   Future<bool> enableGlobalSync() async {
+    final known = _loadPulledCalendarIds().toSet();
     final ok = await _discoverAndPullForeignCalendars();
     if (!ok) return false;
-    _box.put(_globalEnabledKey, true);
+    await _box.put(_globalEnabledKey, true);
+    // Bereits bekannte Kalender (Wiedereinschalten, oder erster Abruf direkt nach
+    // der Berechtigung war leer) zwingend neu einlesen — ohne Cooldown.
+    for (final calId in known) {
+      await pullCalendar(appleImportGroupKey, calId, force: true);
+    }
     return true;
   }
 
@@ -549,7 +588,9 @@ final Set<String> _pushInFlight = {};
           ? tz.TZDateTime.utc(e.start.year, e.start.month, e.start.day)
           : tz.TZDateTime.from(e.start, loc);
       final tzEnd = e.allDay
-          ? tz.TZDateTime.utc(appleAllDayEnd.year, appleAllDayEnd.month, appleAllDayEnd.day)
+          ? (_isAndroid
+              ? (e.end.isAfter(e.start) ? tz.TZDateTime.utc(e.end.year, e.end.month, e.end.day - 2) : tz.TZDateTime.utc(e.start.year, e.start.month, e.start.day - 1))
+              : tz.TZDateTime.utc(appleAllDayEnd.year, appleAllDayEnd.month, appleAllDayEnd.day))
           : tz.TZDateTime.from(e.end, loc);
 
       final event = Event(
@@ -563,7 +604,20 @@ final Set<String> _pushInFlight = {};
         allDay: e.allDay,
       );
 
-      final result = await _plugin.createOrUpdateEvent(event);
+      var result = await _plugin.createOrUpdateEvent(event);
+      if ((result == null || !result.isSuccess || result.data == null) && existingAppleId != null) {
+        // Termin existiert drüben evtl. nicht mehr -> einmal neu anlegen.
+        debugPrint('$_tag: Update fehlgeschlagen für "${e.title}" — lege Termin neu an.');
+        result = await _plugin.createOrUpdateEvent(Event(
+          calendarId,
+          title: e.title,
+          description: e.notes.isEmpty ? null : e.notes,
+          location: e.location.isEmpty ? null : e.location,
+          start: tzStart,
+          end: tzEnd,
+          allDay: e.allDay,
+        ));
+      }
       if (result == null || !result.isSuccess || result.data == null) {
         debugPrint('$_tag: createOrUpdateEvent FEHLGESCHLAGEN für "${e.title}" '
             '(calendarId=$calendarId): ${result?.errors}');
@@ -626,9 +680,10 @@ static void purgeInvalidLocalIds() {
   }
 }
   /// Beim App-Start / Foreground für alle verknüpften Gruppen aufrufen.
-  Future<void> pullAllLinkedGroups({bool force = false}) async {
+  Future<void> pullAllLinkedGroups({bool force = false, bool onResume = false}) async {
+    if (onResume) force = true;
     final now = DateTime.now();
-    if (!force && _lastPullAllAt != null && now.difference(_lastPullAllAt!) < const Duration(minutes: 5)) {
+    if (!force && _lastPullAllAt != null && now.difference(_lastPullAllAt!) < (_isAndroid ? const Duration(seconds: 15) : const Duration(minutes: 5))) {
       debugPrint('$_tag: pullAllLinkedGroups übersprungen (Cooldown).');
       return;
     }
@@ -647,7 +702,7 @@ static void purgeInvalidLocalIds() {
       // neuesten Termine bekommen.
       await _discoverAndPullForeignCalendars();
       for (final calId in _loadPulledCalendarIds()) {
-        await pullCalendar(appleImportGroupKey, calId);
+        await pullCalendar(appleImportGroupKey, calId, force: force);
       }
     }
     // Push-verknüpfte Gruppen (manuell ODER automatisch) — bleiben
@@ -656,14 +711,14 @@ static void purgeInvalidLocalIds() {
     final map = _loadMap(_calendarMapKey);
     for (final entry in map.entries) {
       if (_isAutoPushGroup(entry.key) && !isGloballyEnabled) continue;
-      await pullCalendar(entry.key, entry.value);
+      await pullCalendar(entry.key, entry.value, force: force);
     }
   }
 
   Future<void> pullCalendar(String groupKey, String calendarId, {bool force = false}) async {
     final key = '$groupKey/$calendarId';
     final now = DateTime.now();
-    if (!force && _lastPullByCalendar[key] != null && now.difference(_lastPullByCalendar[key]!) < const Duration(minutes: 5)) {
+    if (!force && _lastPullByCalendar[key] != null && now.difference(_lastPullByCalendar[key]!) < (_isAndroid ? const Duration(seconds: 15) : const Duration(minutes: 5))) {
       return;
     }
     _lastPullByCalendar[key] = now;
@@ -675,13 +730,36 @@ static void purgeInvalidLocalIds() {
     final now = DateTime.now();
     final rangeStart = now.subtract(const Duration(days: 365));
     final rangeEnd = now.add(const Duration(days: 730));
-    final result = await _plugin.retrieveEvents(
+    var result = await _plugin.retrieveEvents(
       calendarId,
       RetrieveEventsParams(startDate: rangeStart, endDate: rangeEnd),
     );
     debugPrint('$_tag: retrieveEvents($calendarId) isSuccess=${result.isSuccess}, '
         'Anzahl=${result.data?.length}, Fehler=${result.errors}');
     if (!result.isSuccess || result.data == null) return;
+
+    // SCHUTZ: Termine ohne eventId = unvollständige Plugin-Antwort (z.B. R8/Proguard).
+    // Dann darf NICHTS abgeglichen werden, sonst gilt jeder Termin als "drüben gelöscht".
+    if (_isAndroid && result.data!.any((ev) => ev.eventId == null)) {
+      debugPrint('$_tag: ABBRUCH pullCalendar($calendarId): Termine ohne eventId — nichts wird gelöscht.');
+      return;
+    }
+
+    // SCHUTZ 2 (Android): Leere Antwort trotz lokaler Termine dieses Kalenders
+    // sofort noch einmal abfragen — nur wenn auch das leer ist, gilt sie als echte Leerung.
+    if (_isAndroid &&
+        result.data!.isEmpty &&
+        CalendarEventStore.loadAllRaw().any((e) => e.appleCalendarId == calendarId)) {
+      await Future.delayed(const Duration(seconds: 2));
+      final retry = await _plugin.retrieveEvents(
+        calendarId,
+        RetrieveEventsParams(startDate: rangeStart, endDate: rangeEnd),
+      );
+      debugPrint('$_tag: Leere Antwort für $calendarId — Wiederholung: Anzahl=${retry.data?.length}');
+      if (!retry.isSuccess || retry.data == null) return;
+      if (retry.data!.any((ev) => ev.eventId == null)) return;
+      result = retry;
+    }
 
     final isReadOnlyCal = _loadReadOnlyCalendarSet().contains(calendarId);
 
@@ -699,6 +777,7 @@ static void purgeInvalidLocalIds() {
       if (e.appleSourceKey != null) existingBySourceKey[e.appleSourceKey!] = e;
     }
     final seenSourceKeys = <String>{};
+    final newEvents = <CalendarEvent>[]; // am Ende EINMAL gespeichert
 
     _isApplyingRemote = true;
     try {
@@ -706,6 +785,7 @@ static void purgeInvalidLocalIds() {
         final appleId = ev.eventId;
         if (appleId == null) continue;
         final isAllDay = ev.allDay ?? false;
+        if (isAllDay && _isAndroid) debugPrint('$_tag: ALLDAY raw start=${ev.start} end=${ev.end}');
 
         // NEU: Bei ganztägigen Terminen NIE .toLocal() anwenden — EventKit
         // liefert hier reine Kalenderdaten ohne echte Uhrzeit. Eine
@@ -730,8 +810,7 @@ static void purgeInvalidLocalIds() {
             // UTC-Mitternacht. Die bisherige UTC-Normalisierung hat den
             // Kalendertag bei positivem UTC-Offset (z.B. Deutschland)
             // fälschlich einen Tag zu früh berechnet.
-            final local = DateTime.fromMillisecondsSinceEpoch(startMs);
-            occStart = DateTime(local.year, local.month, local.day);
+            occStart = _allDayDate(startMs);
           } else {
             occStart = DateTime.fromMillisecondsSinceEpoch(startMs);
           }
@@ -739,8 +818,12 @@ static void purgeInvalidLocalIds() {
         if (ev.end != null) {
           final endMs = ev.end!.millisecondsSinceEpoch;
           if (isAllDay) {
-            final local = DateTime.fromMillisecondsSinceEpoch(endMs);
-            occEnd = DateTime(local.year, local.month, local.day).add(const Duration(days: 1));
+            final endDay = _allDayDate(endMs);
+            // ENDE-REGEL: Android liefert bei ganztägigen Terminen den LETZTEN Tag (inklusive).
+            occEnd = endDay.add(const Duration(days: 1));
+            if (_isAndroid && occStart != null && !occEnd.isAfter(occStart)) {
+              occEnd = occStart.add(const Duration(days: 1));
+            }
           } else {
             occEnd = DateTime.fromMillisecondsSinceEpoch(endMs);
           }
@@ -756,7 +839,7 @@ static void purgeInvalidLocalIds() {
         // nativ crasht. Daher hier alle Pfad-kritischen Zeichen ersetzen.
         final safeAppleId = appleId.replaceAll(RegExp(r'[/#\[\]]'), '-');
         final sourceKey = '${safeAppleId}_${occStart.millisecondsSinceEpoch}';
-        seenSourceKeys.add(sourceKey);
+        if (!seenSourceKeys.add(sourceKey)) continue; // doppelte Vorkommen ignorieren
 
         final existing = existingBySourceKey[sourceKey];
         if (existing == null) {
@@ -774,26 +857,72 @@ static void purgeInvalidLocalIds() {
             appleReadOnly: isReadOnlyCal,
             appleCalendarId: calendarId,
           );
-          CalendarEventStore.addExternal(newEvent);
+          newEvents.add(newEvent);
           // NEU: Direkt in Apple Kalender neu angelegte Termine müssen auch
           // bei anderen synchronisierten Geräten ankommen — addExternal()
           // selbst löst bewusst KEINEN Push aus (Loop-Schutz Richtung
           // Apple), das darf aber nicht auch den Firestore-Sync blockieren.
-          SyncService.instance.pushCalendarEvent(newEvent.id);
         } else {
           final changed = existing.title != (ev.title ?? existing.title) ||
               existing.location != (ev.location ?? existing.location) ||
-              existing.end != (occEnd ?? existing.end) ||
+              (!(_isAndroid && isAllDay && !existing.id.startsWith('apple_')) && existing.end != (occEnd ?? existing.end)) ||
               existing.notes != (ev.description ?? existing.notes);
           if (changed) {
             existing.title = ev.title ?? existing.title;
             existing.location = ev.location ?? existing.location;
-            existing.end = occEnd ?? existing.end;
+            if (!(_isAndroid && isAllDay && !existing.id.startsWith('apple_'))) existing.end = occEnd ?? existing.end;
             existing.allDay = isAllDay;
             existing.notes = ev.description ?? existing.notes;
             CalendarEventStore.updateExternal(existing);
-            SyncService.instance.pushCalendarEvent(existing.id); // NEU
+            _pushToFirestore(existing.id); // NEU
           }
+        }
+      }
+      if (newEvents.isNotEmpty) {
+        CalendarEventStore.addAllExternal(newEvents);
+        for (final ne in newEvents) {
+          _pushToFirestore(ne.id);
+        }
+      }
+
+
+      // SICHERHEITSNETZ gegen Massenlöschung: Würde dieser Pull viele lokale Termine
+      // auf einmal als "drüben gelöscht" entfernen, wird erst beim zweiten Pull in
+      // Folge wirklich gelöscht.
+      var allowDeletes = true;
+      {
+        final remoteIds = <String>{
+          for (final ev in result.data!)
+            if (ev.eventId != null) ev.eventId!,
+        };
+        var candidates = 0;
+        for (final entry in existingBySourceKey.entries) {
+          final e = entry.value;
+          if (e.appleCalendarId != calendarId) continue;
+          if (!e.groupKeys.contains(groupKey)) continue;
+          if (e.start.isBefore(rangeStart) || e.start.isAfter(rangeEnd)) continue;
+          if (!seenSourceKeys.contains(entry.key)) candidates++;
+        }
+        for (final e in CalendarEventStore.loadAllRaw()) {
+          if (e.appleSourceKey != null) continue;
+          if (e.primaryGroupKey != groupKey) continue;
+          final mapped = _appleEventIdFor(e.id);
+          if (mapped != null && !remoteIds.contains(mapped)) candidates++;
+        }
+        final base = CalendarEventStore.loadAllRaw()
+            .where((e) => e.groupKeys.contains(groupKey))
+            .length;
+        if (candidates >= 4 && candidates * 2 > base) {
+          final n = (_massDeleteStreak[calendarId] ?? 0) + 1;
+          if (n < 2) {
+            _massDeleteStreak[calendarId] = n;
+            allowDeletes = false;
+            debugPrint('$_tag: SICHERHEITSNETZ $groupKey/$calendarId: $candidates von $base Terminen würden entfernt — wird erst beim nächsten Pull bestätigt.');
+          } else {
+            _massDeleteStreak.remove(calendarId);
+          }
+        } else {
+          _massDeleteStreak.remove(calendarId);
         }
       }
 
@@ -808,9 +937,10 @@ static void purgeInvalidLocalIds() {
         if (e.appleCalendarId != calendarId) continue;
         if (!e.groupKeys.contains(groupKey)) continue;
         if (e.start.isBefore(rangeStart) || e.start.isAfter(rangeEnd)) continue;
-        if (!seenSourceKeys.contains(entry.key)) {
+        if (allowDeletes && !seenSourceKeys.contains(entry.key)) {
+          debugPrint('$_tag: Auf Android-Seite gelöscht → lokal entfernt: "${e.title}"');
           CalendarEventStore.deleteExternal(e.id);
-          SyncService.instance.pushCalendarEvent(e.id); // NEU — propagiert die Löschung nach Firestore
+          _pushToFirestore(e.id); // NEU — propagiert die Löschung nach Firestore
         }
       }
 
@@ -829,10 +959,11 @@ static void purgeInvalidLocalIds() {
         if (e.primaryGroupKey != groupKey) continue;
         final mappedAppleId = _appleEventIdFor(e.id);
         if (mappedAppleId == null) continue;
-        if (!seenAppleEventIds.contains(mappedAppleId)) {
+        if (allowDeletes && !seenAppleEventIds.contains(mappedAppleId)) {
+          debugPrint('$_tag: Auf Android-Seite gelöscht → lokal entfernt: "${e.title}"');
           CalendarEventStore.deleteExternal(e.id);
           _removeEventMapping(e.id);
-          SyncService.instance.pushCalendarEvent(e.id); // NEU
+          _pushToFirestore(e.id); // NEU
         }
       }
 

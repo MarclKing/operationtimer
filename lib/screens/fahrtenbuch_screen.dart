@@ -17,6 +17,8 @@ import 'km_scanner_screen.dart';
 import 'fuel_scanner_screen.dart';
 import '../services/fahrt_export_service.dart';
 import '../services/sync_service.dart';
+import '../tutorial/tutorial_controller.dart';
+import '../tutorial/tutorial_demos.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // FAHRT MODEL
@@ -577,6 +579,7 @@ class FahrtenbuchScreenState extends State<FahrtenbuchScreen>
 
   // ── Mehrfachauswahl ───────────────────────────────────────────────────────
   bool _selectionMode = false;
+  bool _tutorialDemo = false; // Tutorial: Export-Demo
   final Set<String> _selectedIds = {};
 
   late AnimationController _draftBannerCtrl;
@@ -820,6 +823,115 @@ class FahrtenbuchScreenState extends State<FahrtenbuchScreen>
     }
   }
 
+  String? _tutorialFahrtId;
+
+  void _tutorialAfterSave(Fahrt f) {
+    if (f.isComplete) {
+      _tutorialFahrtId = f.id;
+      TutorialTriggers.maybeStart(TutorialKind.export,
+          delay: const Duration(milliseconds: 1000));
+    }
+  }
+
+  void tutorialSetDemo(bool on) {
+    if (!mounted || _tutorialDemo == on) return;
+    if (!on) _tutorialFahrtId = null;
+    setState(() => _tutorialDemo = on);
+  }
+
+  /// Tutorial: "Fahrt eintragen"-Sheet mit eigenem Wegwerf-Entwurf.
+  void tutorialOpenSheet() {
+    if (!mounted) return;
+    final skin = AppTheme.of(context);
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      isDismissible: false,
+      enableDrag: false,
+      useSafeArea: false,
+      builder: (_) => Padding(
+        padding: EdgeInsets.only(top: MediaQuery.sizeOf(context).height * 0.08),
+        child: _FahrtEintragenSheet(
+          skin: skin,
+          draft: FahrtDraft(),
+          isEdit: false,
+          tutorialDemo: true,
+          onSave: (f, {editingId}) {},
+          onDiscard: () {},
+          onMinimize: () {},
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTutorialExportDemo(AppSkin skin, double bottomNavHeight) {
+    final all = _getAllFahrten();
+    Fahrt? f;
+    if (_tutorialFahrtId != null) {
+      f = all.where((x) => x.id == _tutorialFahrtId).firstOrNull;
+    }
+    f ??= all.isNotEmpty ? all.first : null;
+    if (f == null) {
+      final now = DateTime.now();
+      f = Fahrt(
+        id: 'tut1',
+        datum: now,
+        kmStart: 48210,
+        kmEnd: 48248,
+        kennzeichen: 'B-UX 157',
+        abfahrtZeit: now,
+        ankunftDatum: now,
+        ankunftZeit: now,
+        fahrtTyp: '1111',
+        fahrtZiel: 'BKA Berlin',
+      );
+    }
+    final sel = f;
+    final others = all.where((x) => x.id != sel.id).take(4).toList();
+    Widget card(Fahrt x, bool selected) => Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: _FahrtCard(
+            fahrt: x,
+            skin: skin,
+            selectionMode: true,
+            isSelected: selected,
+            onDelete: () {},
+            onToggleUebertragen: () {},
+            onEdit: () {},
+            onExport: () {},
+            onCardSwiped: (_) {},
+          ),
+        );
+    return ListView(
+      physics: const NeverScrollableScrollPhysics(),
+      padding: EdgeInsets.fromLTRB(24, 4, 24, bottomNavHeight + 16),
+      children: [
+        KeyedSubtree(
+          key: TutorialKeys.fahrtExportSel,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              card(sel, true),
+              _ExportButtonAnimated(
+                skin: skin,
+                animation: const AlwaysStoppedAnimation<double>(1.0),
+                selectedCount: 1,
+                uebertragenState: sel.uebertragen,
+                onExportSelected: () {},
+                onExitSelection: () {},
+                onToggleUebertragen: () {},
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        for (final o in others) card(o, false),
+      ],
+    );
+  }
+
   void closeOverlays() {
     if (_openSwipedFahrtId != null) {
       setState(() => _openSwipedFahrtId = null);
@@ -852,6 +964,7 @@ class FahrtenbuchScreenState extends State<FahrtenbuchScreen>
           isEdit: false,
           onSave: (fahrt, {editingId}) {
             _saveFahrt(fahrt);
+            _tutorialAfterSave(fahrt);
             _draft.reset();
             setState(() {
               _sheetOpen = false;
@@ -933,6 +1046,7 @@ class FahrtenbuchScreenState extends State<FahrtenbuchScreen>
           autoScanKmStart: autoScanKmStart,
           onSave: (fahrt, {editingId}) {
             _saveFahrt(fahrt);
+            _tutorialAfterSave(fahrt);
             _draft.reset();
             setState(() {
               _sheetOpen = false;
@@ -1291,7 +1405,9 @@ class FahrtenbuchScreenState extends State<FahrtenbuchScreen>
                   ),
                   const SizedBox(height: 12),
                   Expanded(
-                    child: (fahrten.isEmpty)
+                    child: _tutorialDemo
+                        ? _buildTutorialExportDemo(skin, bottomNavHeight)
+                        : (fahrten.isEmpty)
                         ? Center(
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
@@ -1690,7 +1806,7 @@ class _DraftBannerState extends State<_DraftBanner>
                         child: Container(
                           margin: const EdgeInsets.only(left: 6),
                           decoration: BoxDecoration(
-                            color: skin.deleteColor.withValues(alpha: 0.14),
+                            color: Color.alphaBlend(skin.deleteColor.withValues(alpha: 0.22), (skin.isLight ? Colors.white : skin.bgCard).withValues(alpha: 0.94)),
                             borderRadius: BorderRadius.circular(22),
                             border: Border.all(
                               color: skin.deleteColor.withValues(alpha: 0.30),
@@ -1731,8 +1847,8 @@ class _DraftBannerState extends State<_DraftBanner>
                       height: 52,
                       decoration: BoxDecoration(
                         color: skin.isLight
-                            ? Colors.white.withValues(alpha: 0.72)
-                            : Colors.black.withValues(alpha: 0.55),
+                            ? Colors.white.withValues(alpha: 0.95)
+                            : skin.bgCard.withValues(alpha: 0.95),
                         borderRadius: BorderRadius.circular(22),
                         border: Border.all(
                           color: skin.isLight
@@ -3268,6 +3384,7 @@ class _FahrtEintragenSheet extends StatefulWidget {
   final VoidCallback onDiscard, onMinimize;
   final VoidCallback? onDelete;
   final bool autoScanKmStart;
+  final bool tutorialDemo;
 
   const _FahrtEintragenSheet({
     required this.skin,
@@ -3279,6 +3396,7 @@ class _FahrtEintragenSheet extends StatefulWidget {
     this.editingId,
     this.onDelete,
     this.autoScanKmStart = false,
+    this.tutorialDemo = false,
   });
 
   @override
@@ -3331,6 +3449,10 @@ class _FahrtEintragenSheetState extends State<_FahrtEintragenSheet> {
   @override
   void initState() {
     super.initState();
+    if (!widget.tutorialDemo && !widget.isEdit && !widget.autoScanKmStart) {
+      TutorialTriggers.maybeStart(TutorialKind.fahrtenbuch,
+          delay: const Duration(milliseconds: 900));
+    }
     _kennzeichenCtrl.text = _d.kennzeichen;
     _abfahrtDatum = _d.abfahrtDatum;
     _abfahrtZeit = _d.abfahrtZeit;
@@ -4222,16 +4344,22 @@ class _FahrtEintragenSheetState extends State<_FahrtEintragenSheet> {
 
                             _SectionLabel(label: 'FAHRZEUG', skin: skin),
                             const SizedBox(height: 8),
-                            _KennzeichenInputRow(
-                              skin: skin,
-                              ctrl: _kennzeichenCtrl,
+                            KeyedSubtree(
+                              key: widget.tutorialDemo ? TutorialKeys.fahrtKennzeichen : null,
+                              child: _KennzeichenInputRow(
+                                skin: skin,
+                                ctrl: _kennzeichenCtrl,
+                                demoChips: widget.tutorialDemo,
+                              ),
                             ),
                             _hint('Doppeltipp'),
                             const SizedBox(height: 20),
 
                             _SectionLabel(label: 'KILOMETERSTAND', skin: skin),
                             const SizedBox(height: 8),
-                            Row(
+                            KeyedSubtree(
+                              key: widget.tutorialDemo ? TutorialKeys.fahrtKm : null,
+                              child: Row(
                               children: [
                                 Expanded(
                                   child: _KmInputCard(
@@ -4247,6 +4375,7 @@ class _FahrtEintragenSheetState extends State<_FahrtEintragenSheet> {
                                       isStart: true,
                                     ),
                                     onCameraPressed: () => _pickPhoto(true),
+                                    pulseCamera: widget.tutorialDemo,
                                     onDoubleTap: () {
                                       HapticFeedback.lightImpact();
                                       if (_kmStartCtrl.text.isEmpty &&
@@ -4278,6 +4407,7 @@ class _FahrtEintragenSheetState extends State<_FahrtEintragenSheet> {
                                       'Ankunftkilometer',
                                     ),
                                     onCameraPressed: () => _pickPhoto(false),
+                                    pulseCamera: widget.tutorialDemo,
                                     onDoubleTap: () {
                                       HapticFeedback.lightImpact();
                                       _set(() {
@@ -4289,7 +4419,7 @@ class _FahrtEintragenSheetState extends State<_FahrtEintragenSheet> {
                                   ),
                                 ),
                               ],
-                            ),
+                            )),
                             if (kmStart != null &&
                                 kmEnd != null &&
                                 kmEnd >= kmStart) ...[
@@ -5205,7 +5335,8 @@ class _KmCandidate {
 class _KennzeichenInputRow extends StatefulWidget {
   final AppSkin skin;
   final TextEditingController ctrl;
-  const _KennzeichenInputRow({required this.skin, required this.ctrl});
+  final bool demoChips;
+  const _KennzeichenInputRow({required this.skin, required this.ctrl, this.demoChips = false});
 
   @override
   State<_KennzeichenInputRow> createState() => _KennzeichenInputRowState();
@@ -5227,7 +5358,9 @@ class _KennzeichenInputRowState extends State<_KennzeichenInputRow> {
   @override
   void initState() {
     super.initState();
-    _known = KennzeichenHelper.loadKnownKennzeichen();
+    _known = widget.demoChips
+        ? const ['B-UX 157', 'B-KT 2210', 'B-PR 845']
+        : KennzeichenHelper.loadKnownKennzeichen();
 
     // Beim Start: vorhandenen Wert aus ctrl aufsplitten
     _splitIntoFields(widget.ctrl.text);
@@ -6059,6 +6192,7 @@ class _KmInputCard extends StatefulWidget {
   final VoidCallback onTap, onCameraPressed;
   final VoidCallback? onDoubleTap;
   final int? hintKm;
+  final bool pulseCamera;
 
   const _KmInputCard({
     required this.label,
@@ -6070,6 +6204,7 @@ class _KmInputCard extends StatefulWidget {
     this.onDoubleTap,
     this.fotoPath,
     this.hintKm,
+    this.pulseCamera = false,
   });
 
   @override
@@ -6326,10 +6461,14 @@ class _KmInputCardState extends State<_KmInputCard> {
                                     color: widget.skin.surface(0.06),
                                     borderRadius: BorderRadius.circular(8),
                                   ),
-                                  child: Icon(
-                                    Icons.camera_alt_outlined,
-                                    size: 14,
-                                    color: widget.skin.surface(0.4),
+                                  child: TutorialPulse(
+                                    active: widget.pulseCamera,
+                                    maxScale: 1.7,
+                                    child: Icon(
+                                      Icons.camera_alt_outlined,
+                                      size: 14,
+                                      color: widget.pulseCamera ? widget.color : widget.skin.surface(0.4),
+                                    ),
                                   ),
                                 ),
                         ),

@@ -917,7 +917,7 @@ Widget build(BuildContext context) {
                 const SizedBox(height: 10),
               ],
               ...calendarEntries.map((e) => _DayEntryCard(
-                    skin: skin,
+                    skin: skin, day: selectedDay,
                     event: e,
                     onTap: () => onOpenDetail(context, e),
                   )),
@@ -1051,13 +1051,34 @@ class _DayEntryCard extends StatelessWidget {
   final CalendarEvent event;
   final VoidCallback? onTap;
 
-  const _DayEntryCard({required this.skin, required this.event, this.onTap});
+  final DateTime? day;
+
+  const _DayEntryCard({required this.skin, required this.event, this.onTap, this.day});
 
   @override
   Widget build(BuildContext context) {
-    final timeLabel = event.allDay
-        ? 'Ganztägig'
-        : '${DateFormat('HH:mm').format(event.start)} – ${DateFormat('HH:mm').format(event.end)}';
+    final fmt = DateFormat('HH:mm');
+    final d = day;
+    String timeLabel;
+    if (event.allDay) {
+      timeLabel = 'Ganztägig';
+    } else if (d == null) {
+      timeLabel = '${fmt.format(event.start)} – ${fmt.format(event.end)}';
+    } else {
+      final dayStart = DateTime(d.year, d.month, d.day);
+      final dayEnd = dayStart.add(const Duration(days: 1));
+      final startsToday = !event.start.isBefore(dayStart);
+      final endsToday = !event.end.isAfter(dayEnd);
+      if (startsToday && endsToday) {
+        timeLabel = '${fmt.format(event.start)} – ${fmt.format(event.end)}';
+      } else if (startsToday) {
+        timeLabel = 'ab ${fmt.format(event.start)}';
+      } else if (endsToday) {
+        timeLabel = 'bis ${fmt.format(event.end)}';
+      } else {
+        timeLabel = 'Ganztägig';
+      }
+    }
 
     return GestureDetector(
       onTap: onTap,
@@ -1294,21 +1315,7 @@ bool get _isForeignOwnedSync {
         onEventSaved: (events) {
           final updated = events.first;
           CalendarEventStore.update(updated);
-          NotificationService.instance.cancelEventReminders(updated.id);
-          final options = ReminderManager.optionsFor(ReminderMode.beforeDeadline);
-          for (int i = 0; i < updated.reminderOptionIds.length; i++) {
-            final opt = options.firstWhere(
-              (o) => o.id == updated.reminderOptionIds[i],
-              orElse: () => options.first,
-            );
-            NotificationService.instance.scheduleEventReminder(
-              eventId: updated.id,
-              reminderIndex: i,
-              eventTitle: updated.title,
-              eventStart: updated.start,
-              reminderAt: updated.start.subtract(opt.duration),
-            );
-          }
+          // Erinnerungen plant CalendarEventStore.update() selbst
         },
       ),
     );
@@ -1467,21 +1474,7 @@ bool get _isForeignOwnedSync {
                           onChanged: (ids) {
                             e.reminderOptionIds = ids;
                             CalendarEventStore.update(e);
-                            NotificationService.instance.cancelEventReminders(e.id);
-                            final options = ReminderManager.optionsFor(ReminderMode.beforeDeadline);
-                            for (int i = 0; i < e.reminderOptionIds.length; i++) {
-                              final opt = options.firstWhere(
-                                (o) => o.id == e.reminderOptionIds[i],
-                                orElse: () => options.first,
-                              );
-                              NotificationService.instance.scheduleEventReminder(
-                                eventId: e.id,
-                                reminderIndex: i,
-                                eventTitle: e.title,
-                                eventStart: e.start,
-                                reminderAt: e.start.subtract(opt.duration),
-                              );
-                            }
+                            // Erinnerungen plant CalendarEventStore.update() selbst
                           },
                         ),
                       ),

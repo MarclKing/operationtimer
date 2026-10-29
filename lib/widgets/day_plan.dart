@@ -16,6 +16,8 @@ import '../services/favorite_place_store.dart';
 import '../services/user_position.dart';
 import '../services/recent_places.dart';
 import 'favorite_suggestions.dart';
+import '../tutorial/tutorial_controller.dart';
+import '../tutorial/tutorial_demos.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MODEL
@@ -161,6 +163,9 @@ class DayPlanItemSheet extends StatefulWidget {
   final String? initialLocation;
   final LocationInfo? initialLoc;
 
+  /// Tutorial: Demo-Modus (Tipp-Animation, Platzhalter-Vorschlag, nichts wird gespeichert)
+  final bool tutorialDemo;
+
   const DayPlanItemSheet({
     super.key,
     required this.skin,
@@ -172,6 +177,7 @@ class DayPlanItemSheet extends StatefulWidget {
     this.initialTitle,
     this.initialLocation,
     this.initialLoc,
+    this.tutorialDemo = false,
   });
 
   @override
@@ -211,6 +217,14 @@ class _DayPlanItemSheetState extends State<DayPlanItemSheet> {
     _prevLocLength = _locationCtrl.text.length;
     _locationCtrl.addListener(_onLocationChanged);
     _locFocus.addListener(_onLocFocusChanged);
+    if (widget.tutorialDemo) {
+      TutorialDemo.eventStage.addListener(_onDemoStage);
+      WidgetsBinding.instance.addPostFrameCallback((_) => _tutorialLoop());
+    }
+    if (!widget.tutorialDemo && e == null) {
+      TutorialTriggers.maybeStart(TutorialKind.event,
+          delay: const Duration(milliseconds: 900));
+    }
     if (e != null) {
       _start = e.start;
       _end = e.end;
@@ -228,6 +242,7 @@ class _DayPlanItemSheetState extends State<DayPlanItemSheet> {
        _debounce?.cancel();
     _locationCtrl.removeListener(_onLocationChanged);
     _locFocus.removeListener(_onLocFocusChanged);
+    TutorialDemo.eventStage.removeListener(_onDemoStage);
     _suggDebounce?.cancel();
     _locationCtrl.dispose();
     _locFocus.dispose();
@@ -236,6 +251,71 @@ class _DayPlanItemSheetState extends State<DayPlanItemSheet> {
   }
 
   // ── Ort: Auswertung ─────────────────────────────────────────────────────
+
+  // ── Tutorial-Demo ───────────────────────────────────────────────────────
+  void _setDemoText(String t) {
+    if (!mounted) return;
+    _suppressLocListener = true;
+    _locationCtrl.value = TextEditingValue(
+      text: t,
+      selection: TextSelection.collapsed(offset: t.length),
+    );
+    _suppressLocListener = false;
+  }
+
+  void _onDemoStage() {
+    if (!mounted) return;
+    if (TutorialDemo.eventStage.value == 1) {
+      _setDemoText(TutorialDemo.bundestagLine);
+      setState(() => _loc = TutorialDemo.bundestag());
+    } else {
+      setState(() => _loc = null);
+      _setDemoText('');
+    }
+  }
+
+  Future<void> _tutorialLoop() async {
+    const word = 'Bundestag';
+    while (mounted && widget.tutorialDemo) {
+      if (TutorialDemo.eventStage.value != 0) {
+        await Future.delayed(const Duration(milliseconds: 300));
+        continue;
+      }
+      for (int i = 0; i <= word.length; i++) {
+        if (!mounted || TutorialDemo.eventStage.value != 0) break;
+        _setDemoText(word.substring(0, i));
+        await Future.delayed(const Duration(milliseconds: 150));
+      }
+      await Future.delayed(const Duration(milliseconds: 1600));
+      if (mounted && TutorialDemo.eventStage.value == 0) _setDemoText('');
+      await Future.delayed(const Duration(milliseconds: 500));
+    }
+  }
+
+  Widget _tutorialSuggestion(AppSkin skin) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Container(
+        width: double.infinity,
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          color: skin.primary.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: skin.primary.withValues(alpha: 0.55), width: 1.5),
+        ),
+        child: _suggTile(
+          skin,
+          icon: Icons.place_outlined,
+          title: 'Bundestag',
+          subtitle: TutorialDemo.bundestagLine,
+          trailing: Text('2,4 km',
+              style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w500, color: skin.surface(0.45))),
+          onTap: () {},
+          last: true,
+        ),
+      ),
+    );
+  }
 
   void _onLocationChanged() {
     if (_suppressLocListener) return;
@@ -708,6 +788,8 @@ class _DayPlanItemSheetState extends State<DayPlanItemSheet> {
                 loc: loc,
                 onNavigate: _navigate,
                 onLocationChanged: _applyPickedLocation,
+                expandIconKey: widget.tutorialDemo ? TutorialKeys.eventMapExpand : null,
+                pulseExpandIcon: widget.tutorialDemo,
               ),
             ),
         ],
@@ -946,7 +1028,7 @@ class _DayPlanItemSheetState extends State<DayPlanItemSheet> {
                     TextField(
                       controller: _titleCtrl,
                       focusNode: _titleFocus,
-                      autofocus: !_isEditing && (widget.initialTitle ?? '').isEmpty,
+                      autofocus: !_isEditing && !widget.tutorialDemo && (widget.initialTitle ?? '').isEmpty,
                       maxLines: 3,
                       minLines: 1,
                       textCapitalization: TextCapitalization.sentences,
@@ -1003,7 +1085,15 @@ class _DayPlanItemSheetState extends State<DayPlanItemSheet> {
                     const SizedBox(height: 12),
 
                     // ── Ort ──
-                    TextField(
+                    KeyedSubtree(
+                      key: widget.tutorialDemo ? TutorialKeys.eventLocation : null,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+KeyedSubtree(
+                      key: widget.tutorialDemo ? TutorialKeys.eventLocationRow : null,
+                      child: TextField(
                       controller: _locationCtrl,
                       focusNode: _locFocus,
                       keyboardType: TextInputType.streetAddress,
@@ -1027,7 +1117,18 @@ class _DayPlanItemSheetState extends State<DayPlanItemSheet> {
                                   onTap: _pickOnMap,
                                   child: Padding(
                                     padding: const EdgeInsets.symmetric(horizontal: 10),
-                                    child: Icon(Icons.map_outlined, size: 20, color: skin.primary),
+                                    child: SizedBox(
+                                      key: widget.tutorialDemo ? TutorialKeys.eventMapExpand : null,
+                                      width: 32,
+                                      height: 32,
+                                      child: Center(
+                                        child: TutorialPulse(
+                                          active: widget.tutorialDemo && TutorialDemo.eventStage.value == 2,
+                                          maxScale: 1.45,
+                                          child: Icon(Icons.map_outlined, size: 20, color: skin.primary),
+                                        ),
+                                      ),
+                                    ),
                                   ),
                                 )
                               : GestureDetector(
@@ -1040,15 +1141,22 @@ class _DayPlanItemSheetState extends State<DayPlanItemSheet> {
                             borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
                                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
                       ),
-                    ),
+                    )),
                     AnimatedSize(
                       duration: const Duration(milliseconds: 180),
                       curve: Curves.easeOut,
                       alignment: Alignment.topCenter,
                                             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        _buildPlaceSuggestions(skin),
-                        _buildLocationStatus(skin),
+                        if (widget.tutorialDemo && TutorialDemo.eventStage.value == 0)
+                          _tutorialSuggestion(skin)
+                        else ...[
+                          _buildPlaceSuggestions(skin),
+                          _buildLocationStatus(skin),
+                        ],
                       ]),
+                    ),
+                        ],
+                      ),
                     ),
 
                     const SizedBox(height: 14),

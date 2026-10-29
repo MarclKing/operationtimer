@@ -459,29 +459,6 @@ class TasksScreenState extends State<TasksScreen> with TickerProviderStateMixin 
     _showEntrySheet(mode: EntryMode.event, initialDate: selected);
   }
 
-  void _scheduleEventReminders(CalendarEvent event) {
-    NotificationService.instance.cancelEventReminders(event.id);
-    final options = ReminderManager.optionsFor(ReminderMode.beforeDeadline);
-    for (int i = 0; i < event.reminderOptionIds.length; i++) {
-      final opt = options.firstWhere(
-        (o) => o.id == event.reminderOptionIds[i],
-        orElse: () => options.first,
-      );
-      NotificationService.instance.scheduleEventReminder(
-        eventId: event.id,
-        reminderIndex: i,
-        eventTitle: event.title,
-        eventStart: event.start,
-        reminderAt: event.start.subtract(opt.duration),
-      );
-    }
-    // NEU (Punkt 5): garantierte Erinnerung exakt zum Start.
-    NotificationService.instance.scheduleGuaranteedEventReminder(
-      eventId: event.id,
-      eventTitle: event.title,
-      eventStart: event.start,
-    );
-  }
 
   void openQuickAdd({String? initialTitle, DateTime? initialDate}) {
     closeOverlays();
@@ -524,7 +501,6 @@ class TasksScreenState extends State<TasksScreen> with TickerProviderStateMixin 
         onEventSaved: (events) {
           for (final event in events) {
             CalendarEventStore.add(event);
-            _scheduleEventReminders(event);
           }
           _draft.reset();
           setState(() { _entrySheetOpen = false; _draftVisible = false; });
