@@ -28,13 +28,21 @@ class PdfService {
     }
   }
 
+  static bool _isEntryComplete(Map<String, dynamic> entry) {
+    final kommen = (entry['kommen'] ?? '').toString().trim();
+    final gehen = (entry['gehen'] ?? '').toString().trim();
+    final tkf = (entry['TKF'] ?? '').toString().trim();
+    if (kommen.isNotEmpty && gehen.isNotEmpty) return true;
+    if (tkf.isNotEmpty) return true;
+    return false;
+  }
+
   static String _shortTz(String tzId) {
     final parts = tzId.split('/');
     return parts.last.replaceAll('_', ' ');
   }
 
-  static Future<void> exportMonth(
-      BuildContext context, DateTime month) async {
+  static Future<void> exportMonth(BuildContext context, DateTime month) async {
     final box = Hive.box('arbeitszeiten');
     final settingsBox = Hive.box('einstellungen');
     final fullName =
@@ -90,9 +98,11 @@ class PdfService {
       try {
         final prev = DateTime.parse(entries[i - 1]['datum']);
         final curr = DateTime.parse(entries[i]['datum']);
-        final dayDiff = DateTime(curr.year, curr.month, curr.day)
-            .difference(DateTime(prev.year, prev.month, prev.day))
-            .inDays;
+        final dayDiff = DateTime(
+          curr.year,
+          curr.month,
+          curr.day,
+        ).difference(DateTime(prev.year, prev.month, prev.day)).inDays;
         if (dayDiff > 1) block++;
       } catch (_) {
         block++;
@@ -115,8 +125,11 @@ class PdfService {
     final fontBold = _fontBold!;
 
     final blocks = _computeBlocks(entries);
+    final completeCount = entries.where(_isEntryComplete).length;
+    final openCount = entries.length - completeCount;
     final hasAnyZoneEntry = entries.any(
-        (e) => e['gehenRaw'] != null && e['gehenRawTz'] != null);
+      (e) => e['gehenRaw'] != null && e['gehenRawTz'] != null,
+    );
 
     pdf.addPage(
       pw.MultiPage(
@@ -124,7 +137,10 @@ class PdfService {
         margin: const pw.EdgeInsets.all(40),
         build: (context) => [
           pw.Container(
-            padding: const pw.EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            padding: const pw.EdgeInsets.symmetric(
+              horizontal: 20,
+              vertical: 16,
+            ),
             decoration: pw.BoxDecoration(
               color: const PdfColor.fromInt(0xFF0A0A0A),
               borderRadius: pw.BorderRadius.circular(12),
@@ -136,59 +152,99 @@ class PdfService {
                 pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
-                    pw.Text('OpTimes',
-                        style: pw.TextStyle(
-                            font: fontBold,
-                            fontSize: 20,
-                            color: PdfColors.white)),
+                    pw.Text(
+                      'OpTimes',
+                      style: pw.TextStyle(
+                        font: fontBold,
+                        fontSize: 20,
+                        color: PdfColors.white,
+                      ),
+                    ),
                     pw.SizedBox(height: 3),
-                    pw.Text('Arbeitszeiterfassung  ·  $title',
-                        style: pw.TextStyle(
-                            font: font,
-                            fontSize: 11,
-                            color: const PdfColor.fromInt(0xFF888888))),
+                    pw.Text(
+                      'Arbeitszeiterfassung  ·  $title',
+                      style: pw.TextStyle(
+                        font: font,
+                        fontSize: 11,
+                        color: const PdfColor.fromInt(0xFF888888),
+                      ),
+                    ),
                   ],
                 ),
                 pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.end,
                   children: [
-                    pw.Text(fullName,
-                        style: pw.TextStyle(
-                            font: fontBold,
-                            fontSize: 13,
-                            color: PdfColors.white)),
+                    pw.Text(
+                      fullName,
+                      style: pw.TextStyle(
+                        font: fontBold,
+                        fontSize: 13,
+                        color: PdfColors.white,
+                      ),
+                    ),
                     pw.SizedBox(height: 3),
-                     pw.Row(children: [
-                      pw.Text('${entries.length} Einträge',
-                          style: pw.TextStyle(
-                              font: font,
-                              fontSize: 10,
-                              color: const PdfColor.fromInt(0xFF888888))),
-                      pw.Text('  ·  ', style: pw.TextStyle(font: font, fontSize: 10,
-                          color: const PdfColor.fromInt(0xFF555555))),
-                      pw.Text('${entries.where((e) => (e['gehen'] ?? '').isNotEmpty).length} vollst.',
-                          style: pw.TextStyle(
-                              font: font,
-                              fontSize: 10,
-                              color: const PdfColor.fromInt(0xFF888888))),
-                      pw.Text('  ·  ', style: pw.TextStyle(font: font, fontSize: 10,
-                          color: const PdfColor.fromInt(0xFF555555))),
-                      pw.Text('${entries.where((e) => (e['gehen'] ?? '').isEmpty).length} offen',
-                          style: pw.TextStyle(
-                              font: font,
-                              fontSize: 10,
-                              color: const PdfColor.fromInt(0xFF888888))),
-                      if (hasAnyZoneEntry) ...[
-                        pw.Text('  ·  ', style: pw.TextStyle(font: font, fontSize: 10,
-                            color: const PdfColor.fromInt(0xFF555555))),
+                    pw.Row(
+                      children: [
                         pw.Text(
+                          '${entries.length} Einträge',
+                          style: pw.TextStyle(
+                            font: font,
+                            fontSize: 10,
+                            color: const PdfColor.fromInt(0xFF888888),
+                          ),
+                        ),
+                        pw.Text(
+                          '  ·  ',
+                          style: pw.TextStyle(
+                            font: font,
+                            fontSize: 10,
+                            color: const PdfColor.fromInt(0xFF555555),
+                          ),
+                        ),
+                        pw.Text(
+                          '$completeCount abgeschl.',
+                          style: pw.TextStyle(
+                            font: font,
+                            fontSize: 10,
+                            color: const PdfColor.fromInt(0xFF888888),
+                          ),
+                        ),
+                        pw.Text(
+                          '  ·  ',
+                          style: pw.TextStyle(
+                            font: font,
+                            fontSize: 10,
+                            color: const PdfColor.fromInt(0xFF555555),
+                          ),
+                        ),
+                        pw.Text(
+                          '$openCount offen',
+                          style: pw.TextStyle(
+                            font: font,
+                            fontSize: 10,
+                            color: const PdfColor.fromInt(0xFF888888),
+                          ),
+                        ),
+                        if (hasAnyZoneEntry) ...[
+                          pw.Text(
+                            '  ·  ',
+                            style: pw.TextStyle(
+                              font: font,
+                              fontSize: 10,
+                              color: const PdfColor.fromInt(0xFF555555),
+                            ),
+                          ),
+                          pw.Text(
                             '${entries.where((e) => e['gehenRaw'] != null && e['gehenRawTz'] != null).length} Zonen-Wechsel',
                             style: pw.TextStyle(
-                                font: font,
-                                fontSize: 10,
-                                color: const PdfColor.fromInt(0xFF5B8DEF))),
+                              font: font,
+                              fontSize: 10,
+                              color: const PdfColor.fromInt(0xFF5B8DEF),
+                            ),
+                          ),
+                        ],
                       ],
-                    ]),
+                    ),
                   ],
                 ),
               ],
@@ -196,50 +252,74 @@ class PdfService {
           ),
           pw.SizedBox(height: 20),
           pw.Container(
-            padding:
-                const pw.EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            padding: const pw.EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: const pw.BoxDecoration(
-                color: PdfColor.fromInt(0xFF1A1A2E)),
+              color: PdfColor.fromInt(0xFF1A1A2E),
+            ),
             child: pw.Row(
               children: [
                 pw.Expanded(
-                    flex: 2,
-                    child: pw.Text('Datum',
-                        style: pw.TextStyle(
-                            font: fontBold,
-                            fontSize: 10,
-                            color: PdfColors.white))),
+                  flex: 2,
+                  child: pw.Text(
+                    'Datum',
+                    style: pw.TextStyle(
+                      font: fontBold,
+                      fontSize: 10,
+                      color: PdfColors.white,
+                    ),
+                  ),
+                ),
                 pw.Expanded(
-                    child: pw.Text('Kommen',
-                        style: pw.TextStyle(
-                            font: fontBold,
-                            fontSize: 10,
-                            color: PdfColors.white))),
+                  child: pw.Text(
+                    'Kommen',
+                    style: pw.TextStyle(
+                      font: fontBold,
+                      fontSize: 10,
+                      color: PdfColors.white,
+                    ),
+                  ),
+                ),
                 pw.Expanded(
-                    child: pw.Text('Gehen',
-                        style: pw.TextStyle(
-                            font: fontBold,
-                            fontSize: 10,
-                            color: PdfColors.white))),
+                  child: pw.Text(
+                    'Gehen',
+                    style: pw.TextStyle(
+                      font: fontBold,
+                      fontSize: 10,
+                      color: PdfColors.white,
+                    ),
+                  ),
+                ),
                 pw.Expanded(
-                    child: pw.Text('Dauer',
-                        style: pw.TextStyle(
-                            font: fontBold,
-                            fontSize: 10,
-                            color: PdfColors.white))),
+                  child: pw.Text(
+                    'Dauer',
+                    style: pw.TextStyle(
+                      font: fontBold,
+                      fontSize: 10,
+                      color: PdfColors.white,
+                    ),
+                  ),
+                ),
                 pw.Expanded(
-                    child: pw.Text('TKF',
-                        style: pw.TextStyle(
-                            font: fontBold,
-                            fontSize: 10,
-                            color: PdfColors.white))),
+                  child: pw.Text(
+                    'TKF',
+                    style: pw.TextStyle(
+                      font: fontBold,
+                      fontSize: 10,
+                      color: PdfColors.white,
+                    ),
+                  ),
+                ),
                 pw.Expanded(
-                    flex: 2,
-                    child: pw.Text('Bemerkung',
-                        style: pw.TextStyle(
-                            font: fontBold,
-                            fontSize: 10,
-                            color: PdfColors.white))),
+                  flex: 2,
+                  child: pw.Text(
+                    'Bemerkung',
+                    style: pw.TextStyle(
+                      font: fontBold,
+                      fontSize: 10,
+                      color: PdfColors.white,
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
@@ -261,8 +341,7 @@ class PdfService {
 
               final entry = entries[i];
               final datum = DateTime.parse(entry['datum']);
-              final datumStr =
-                  DateFormat('EEE dd.MM.yy', 'de').format(datum);
+              final datumStr = DateFormat('EEE dd.MM.yy', 'de').format(datum);
               final kommen = entry['kommen'] ?? '';
               final gehen = entry['gehen'] ?? '';
               final tkf = entry['TKF'] ?? '';
@@ -282,60 +361,82 @@ class PdfService {
               final bgColor = hasZoneCrossing
                   ? const PdfColor.fromInt(0xFFEAF1FF)
                   : (rowInBlock.isEven
-                      ? const PdfColor.fromInt(0xFFF2F4FF)
-                      : PdfColors.white);
+                        ? const PdfColor.fromInt(0xFFF2F4FF)
+                        : PdfColors.white);
 
               widgets.add(
                 pw.Container(
                   padding: const pw.EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 8),
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
                   decoration: pw.BoxDecoration(color: bgColor),
                   child: pw.Row(
                     children: [
                       pw.Expanded(
-                          flex: 2,
-                          child: pw.Text(datumStr,
-                              style:
-                                  pw.TextStyle(font: font, fontSize: 10))),
+                        flex: 2,
+                        child: pw.Text(
+                          datumStr,
+                          style: pw.TextStyle(font: font, fontSize: 10),
+                        ),
+                      ),
                       pw.Expanded(
-                          child: pw.Text(
-                              kommen.isEmpty ? '--:--' : kommen,
-                              style:
-                                  pw.TextStyle(font: font, fontSize: 10))),
-                       pw.Expanded(
-                          child: hasZoneCrossing
-                              ? pw.Column(
-                                  crossAxisAlignment: pw.CrossAxisAlignment.start,
-                                  children: [
-                                    pw.Text(gehen.isEmpty ? '--:--' : gehen,
-                                        style: pw.TextStyle(font: font, fontSize: 10)),
-                                    pw.SizedBox(height: 1),
-                                    pw.Text(
-                                        '$gehenRaw ${_shortTz(gehenRawTz!)}',
-                                        style: pw.TextStyle(
-                                            font: font,
-                                            fontSize: 7.5,
-                                            color: const PdfColor.fromInt(0xFF5B8DEF))),
-                                  ],
-                                )
-                              : pw.Text(gehen.isEmpty ? '--:--' : gehen,
-                                  style:
-                                      pw.TextStyle(font: font, fontSize: 10))),
+                        child: pw.Text(
+                          kommen.isEmpty ? '--:--' : kommen,
+                          style: pw.TextStyle(font: font, fontSize: 10),
+                        ),
+                      ),
                       pw.Expanded(
-                          child: pw.Text(duration,
-                              style: pw.TextStyle(
-                                  font: fontBold, fontSize: 10))),
+                        child: hasZoneCrossing
+                            ? pw.Column(
+                                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                                children: [
+                                  pw.Text(
+                                    gehen.isEmpty ? '--:--' : gehen,
+                                    style: pw.TextStyle(
+                                      font: font,
+                                      fontSize: 10,
+                                    ),
+                                  ),
+                                  pw.SizedBox(height: 1),
+                                  pw.Text(
+                                    '$gehenRaw ${_shortTz(gehenRawTz!)}',
+                                    style: pw.TextStyle(
+                                      font: font,
+                                      fontSize: 7.5,
+                                      color: const PdfColor.fromInt(0xFF5B8DEF),
+                                    ),
+                                  ),
+                                ],
+                              )
+                            : pw.Text(
+                                gehen.isEmpty ? '--:--' : gehen,
+                                style: pw.TextStyle(font: font, fontSize: 10),
+                              ),
+                      ),
                       pw.Expanded(
-                          child: pw.Text(tkf,
-                              style:
-                                  pw.TextStyle(font: font, fontSize: 10))),
+                        child: pw.Text(
+                          duration,
+                          style: pw.TextStyle(font: fontBold, fontSize: 10),
+                        ),
+                      ),
                       pw.Expanded(
-                          flex: 2,
-                          child: pw.Text(notiz,
-                              style: pw.TextStyle(
-                                  font: font,
-                                  fontSize: 10,
-                                  color: PdfColors.grey600))),
+                        child: pw.Text(
+                          tkf,
+                          style: pw.TextStyle(font: font, fontSize: 10),
+                        ),
+                      ),
+                      pw.Expanded(
+                        flex: 2,
+                        child: pw.Text(
+                          notiz,
+                          style: pw.TextStyle(
+                            font: font,
+                            fontSize: 10,
+                            color: PdfColors.grey600,
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -350,7 +451,10 @@ class PdfService {
           pw.Text(
             'Erstellt mit OpTimes · ${DateFormat('dd.MM.yyyy HH:mm').format(DateTime.now())}',
             style: pw.TextStyle(
-                font: font, fontSize: 9, color: const PdfColor.fromInt(0xFF8B8B9E)),
+              font: font,
+              fontSize: 9,
+              color: const PdfColor.fromInt(0xFF8B8B9E),
+            ),
           ),
         ],
       ),
@@ -366,7 +470,10 @@ class PdfService {
   // ── Month picker als Glass-Dialog mit PDF-Export ───────────────────────────
   static Future<void> showMonthPickerAndExport(BuildContext context) async {
     final skin = AppTheme.of(context);
-    DateTime selectedMonth = DateTime(DateTime.now().year, DateTime.now().month);
+    DateTime selectedMonth = DateTime(
+      DateTime.now().year,
+      DateTime.now().month,
+    );
 
     await showGeneralDialog(
       context: context,
@@ -388,8 +495,12 @@ class PdfService {
       pageBuilder: (ctx, _, __) => StatefulBuilder(
         builder: (ctx, setSheet) {
           void changeMonth(int delta) {
-            setSheet(() => selectedMonth =
-                DateTime(selectedMonth.year, selectedMonth.month + delta));
+            setSheet(
+              () => selectedMonth = DateTime(
+                selectedMonth.year,
+                selectedMonth.month + delta,
+              ),
+            );
           }
 
           void showPicker() async {
@@ -402,8 +513,7 @@ class PdfService {
             if (picked != null) setSheet(() => selectedMonth = picked);
           }
 
-          final monthName =
-              DateFormat('MMMM yyyy', 'de').format(selectedMonth);
+          final monthName = DateFormat('MMMM yyyy', 'de').format(selectedMonth);
 
           return Center(
             child: Material(
@@ -414,7 +524,9 @@ class PdfService {
                   borderRadius: BorderRadius.circular(28),
                   child: PlatformBackdropFilter(
                     filter: ImageFilter.blur(
-                        sigmaX: skin.glassBlur, sigmaY: skin.glassBlur),
+                      sigmaX: skin.glassBlur,
+                      sigmaY: skin.glassBlur,
+                    ),
                     child: Container(
                       decoration: BoxDecoration(
                         color: skin.isLight
@@ -424,14 +536,16 @@ class PdfService {
                         border: Border.all(color: skin.glassBorder, width: 1.0),
                         boxShadow: [
                           BoxShadow(
-                              color: skin.glassShadow,
-                              blurRadius: 40,
-                              offset: const Offset(0, 12)),
+                            color: skin.glassShadow,
+                            blurRadius: 40,
+                            offset: const Offset(0, 12),
+                          ),
                           BoxShadow(
-                              color: skin.glassHighlight,
-                              blurRadius: 0,
-                              spreadRadius: -1,
-                              offset: const Offset(0, 1)),
+                            color: skin.glassHighlight,
+                            blurRadius: 0,
+                            spreadRadius: -1,
+                            offset: const Offset(0, 1),
+                          ),
                         ],
                       ),
                       padding: const EdgeInsets.all(24),
@@ -439,17 +553,22 @@ class PdfService {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Container(
-                            width: 36, height: 4,
+                            width: 36,
+                            height: 4,
                             decoration: BoxDecoration(
-                                color: skin.surface(0.18),
-                                borderRadius: BorderRadius.circular(2)),
+                              color: skin.surface(0.18),
+                              borderRadius: BorderRadius.circular(2),
+                            ),
                           ),
                           const SizedBox(height: 20),
-                          Text('Monat auswählen',
-                              style: TextStyle(
-                                  fontSize: 17,
-                                  fontWeight: FontWeight.w600,
-                                  color: skin.textPrimary)),
+                          Text(
+                            'Monat auswählen',
+                            style: TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w600,
+                              color: skin.textPrimary,
+                            ),
+                          ),
                           const SizedBox(height: 16),
 
                           // ── Monats-Navigation ──
@@ -457,83 +576,112 @@ class PdfService {
                             borderRadius: BorderRadius.circular(20),
                             child: PlatformBackdropFilter(
                               filter: ImageFilter.blur(
-                                  sigmaX: skin.glassBlur,
-                                  sigmaY: skin.glassBlur),
+                                sigmaX: skin.glassBlur,
+                                sigmaY: skin.glassBlur,
+                              ),
                               child: Container(
                                 decoration: BoxDecoration(
                                   color: skin.isLight
-                                      ? Colors.white
-                                          .withValues(alpha: skin.glassOpacity)
-                                      : skin.bgCard
-                                          .withValues(alpha: skin.glassOpacity),
+                                      ? Colors.white.withValues(
+                                          alpha: skin.glassOpacity,
+                                        )
+                                      : skin.bgCard.withValues(
+                                          alpha: skin.glassOpacity,
+                                        ),
                                   borderRadius: BorderRadius.circular(20),
                                   border: Border.all(
-                                      color: skin.glassBorder, width: 1.0),
+                                    color: skin.glassBorder,
+                                    width: 1.0,
+                                  ),
                                   boxShadow: [
                                     BoxShadow(
-                                        color: skin.glassShadow,
-                                        blurRadius: 24,
-                                        offset: const Offset(0, 6)),
+                                      color: skin.glassShadow,
+                                      blurRadius: 24,
+                                      offset: const Offset(0, 6),
+                                    ),
                                     BoxShadow(
-                                        color: skin.glassHighlight,
-                                        blurRadius: 0,
-                                        spreadRadius: -1,
-                                        offset: const Offset(0, 1)),
+                                      color: skin.glassHighlight,
+                                      blurRadius: 0,
+                                      spreadRadius: -1,
+                                      offset: const Offset(0, 1),
+                                    ),
                                   ],
                                 ),
-                                child: Row(children: [
-                                  GestureDetector(
-                                    onTap: () => changeMonth(-1),
-                                    child: const SizedBox(
-                                        width: 44, height: 52,
+                                child: Row(
+                                  children: [
+                                    GestureDetector(
+                                      onTap: () => changeMonth(-1),
+                                      child: const SizedBox(
+                                        width: 44,
+                                        height: 52,
                                         child: Center(
-                                            child: Icon(Icons.chevron_left,
-                                                size: 22))),
-                                  ),
-                                  Expanded(
-                                    child: GestureDetector(
-                                      onTap: showPicker,
-                                      onDoubleTap: () {
-                                        final now = DateTime.now();
-                                        setSheet(() => selectedMonth =
-                                            DateTime(now.year, now.month));
-                                      },
-                                      onHorizontalDragEnd: (d) {
-                                        final v = d.primaryVelocity ?? 0;
-                                        if (v < -300) changeMonth(1);
-                                        if (v > 300) changeMonth(-1);
-                                      },
-                                      child: Padding(
-                                        padding: const EdgeInsets.symmetric(
-                                            vertical: 12),
-                                        child: Row(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.center,
-                                          children: [
-                                            Text(monthName,
-                                                style: TextStyle(
-                                                    fontSize: 16,
-                                                    fontWeight: FontWeight.w600,
-                                                    color: skin.textPrimary)),
-                                            const SizedBox(width: 6),
-                                            Icon(Icons.expand_more,
-                                                color: skin.surface(0.4),
-                                                size: 18),
-                                          ],
+                                          child: Icon(
+                                            Icons.chevron_left,
+                                            size: 22,
+                                          ),
                                         ),
                                       ),
                                     ),
-                                  ),
-                                  GestureDetector(
-                                    onTap: () => changeMonth(1),
-                                    child: SizedBox(
-                                        width: 44, height: 52,
+                                    Expanded(
+                                      child: GestureDetector(
+                                        onTap: showPicker,
+                                        onDoubleTap: () {
+                                          final now = DateTime.now();
+                                          setSheet(
+                                            () => selectedMonth = DateTime(
+                                              now.year,
+                                              now.month,
+                                            ),
+                                          );
+                                        },
+                                        onHorizontalDragEnd: (d) {
+                                          final v = d.primaryVelocity ?? 0;
+                                          if (v < -300) changeMonth(1);
+                                          if (v > 300) changeMonth(-1);
+                                        },
+                                        child: Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                            vertical: 12,
+                                          ),
+                                          child: Row(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.center,
+                                            children: [
+                                              Text(
+                                                monthName,
+                                                style: TextStyle(
+                                                  fontSize: 16,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: skin.textPrimary,
+                                                ),
+                                              ),
+                                              const SizedBox(width: 6),
+                                              Icon(
+                                                Icons.expand_more,
+                                                color: skin.surface(0.4),
+                                                size: 18,
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    GestureDetector(
+                                      onTap: () => changeMonth(1),
+                                      child: SizedBox(
+                                        width: 44,
+                                        height: 52,
                                         child: Center(
-                                            child: Icon(Icons.chevron_right,
-                                                size: 22,
-                                                color: skin.surface(0.5)))),
-                                  ),
-                                ]),
+                                          child: Icon(
+                                            Icons.chevron_right,
+                                            size: 22,
+                                            color: skin.surface(0.5),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
                           ),
@@ -541,106 +689,150 @@ class PdfService {
                           const SizedBox(height: 20),
 
                           // ── Buttons ──
-                          Row(children: [
-                            Expanded(
-                              child: GestureDetector(
-                                onTap: () {
-                                  final now = DateTime.now();
-                                  setSheet(() => selectedMonth =
-                                      DateTime(now.year, now.month));
-                                },
-                                child: Container(
-                                  padding:
-                                      const EdgeInsets.symmetric(vertical: 14),
-                                  decoration: BoxDecoration(
-                                    color: skin.isLight
-                                        ? Colors.white.withValues(alpha: 0.75)
-                                        : Colors.white.withValues(alpha: 0.08),
-                                    borderRadius: BorderRadius.circular(14),
-                                    border: Border.all(
-                                        color: skin.glassBorder, width: 1.0),
-                                  ),
-                                  child: Center(
-                                    child: Text('Aktuell',
+                          Row(
+                            children: [
+                              Expanded(
+                                child: GestureDetector(
+                                  onTap: () {
+                                    final now = DateTime.now();
+                                    setSheet(
+                                      () => selectedMonth = DateTime(
+                                        now.year,
+                                        now.month,
+                                      ),
+                                    );
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 14,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: skin.isLight
+                                          ? Colors.white.withValues(alpha: 0.75)
+                                          : Colors.white.withValues(
+                                              alpha: 0.08,
+                                            ),
+                                      borderRadius: BorderRadius.circular(14),
+                                      border: Border.all(
+                                        color: skin.glassBorder,
+                                        width: 1.0,
+                                      ),
+                                    ),
+                                    child: Center(
+                                      child: Text(
+                                        'Aktuell',
                                         style: TextStyle(
-                                            fontSize: 15,
-                                            fontWeight: FontWeight.w600,
-                                            color: skin.textPrimary)),
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w600,
+                                          color: skin.textPrimary,
+                                        ),
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: GestureDetector(
-                                onTap: () async {
-                                  Navigator.pop(ctx);
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Row(children: [
-                                        const SizedBox(width: 2, height: 2),
-                                        SizedBox(
-                                          width: 16, height: 16,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                            color: Colors.white,
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: GestureDetector(
+                                  onTap: () async {
+                                    Navigator.pop(ctx);
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Row(
+                                          children: [
+                                            const SizedBox(width: 2, height: 2),
+                                            SizedBox(
+                                              width: 16,
+                                              height: 16,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                                color: Colors.white,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 12),
+                                            const Text('PDF wird erstellt…'),
+                                          ],
+                                        ),
+                                        backgroundColor: skin.textMuted,
+                                        behavior: SnackBarBehavior.floating,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            12,
                                           ),
                                         ),
-                                        const SizedBox(width: 12),
-                                        const Text('PDF wird erstellt…'),
-                                      ]),
-                                      backgroundColor: skin.textMuted,
-                                      behavior: SnackBarBehavior.floating,
-                                      shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(12)),
-                                      margin: const EdgeInsets.fromLTRB(16, 0, 16, 100),
-                                      duration: const Duration(seconds: 10),
+                                        margin: const EdgeInsets.fromLTRB(
+                                          16,
+                                          0,
+                                          16,
+                                          100,
+                                        ),
+                                        duration: const Duration(seconds: 10),
+                                      ),
+                                    );
+                                    await PdfService.exportMonth(
+                                      context,
+                                      selectedMonth,
+                                    );
+                                    ScaffoldMessenger.of(
+                                      context,
+                                    ).hideCurrentSnackBar();
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 14,
                                     ),
-                                  );
-                                  await PdfService.exportMonth(context, selectedMonth);
-                                  ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                                },
-                                child: Container(
-                                  padding:
-                                      const EdgeInsets.symmetric(vertical: 14),
-                                  decoration: BoxDecoration(
-                                    color: skin.isLight
-                                        ? skin.primary.withValues(alpha: 0.13)
-                                        : skin.primary.withValues(alpha: 0.22),
-                                    borderRadius: BorderRadius.circular(14),
-                                    border: Border.all(
+                                    decoration: BoxDecoration(
                                       color: skin.isLight
-                                          ? skin.primary.withValues(alpha: 0.28)
-                                          : skin.primary.withValues(alpha: 0.45),
-                                      width: 1.5,
-                                    ),
-                                    boxShadow: [
-                                      BoxShadow(
+                                          ? skin.primary.withValues(alpha: 0.13)
+                                          : skin.primary.withValues(
+                                              alpha: 0.22,
+                                            ),
+                                      borderRadius: BorderRadius.circular(14),
+                                      border: Border.all(
+                                        color: skin.isLight
+                                            ? skin.primary.withValues(
+                                                alpha: 0.28,
+                                              )
+                                            : skin.primary.withValues(
+                                                alpha: 0.45,
+                                              ),
+                                        width: 1.5,
+                                      ),
+                                      boxShadow: [
+                                        BoxShadow(
                                           color: skin.glassShadow,
                                           blurRadius: 16,
-                                          offset: const Offset(0, 4)),
-                                      BoxShadow(
+                                          offset: const Offset(0, 4),
+                                        ),
+                                        BoxShadow(
                                           color: skin.glassHighlight,
                                           blurRadius: 0,
                                           spreadRadius: -1,
-                                          offset: const Offset(0, 1)),
-                                    ],
-                                  ),
-                                  child: Center(
-                                    child: Text('PDF erstellen',
+                                          offset: const Offset(0, 1),
+                                        ),
+                                      ],
+                                    ),
+                                    child: Center(
+                                      child: Text(
+                                        'PDF erstellen',
                                         style: TextStyle(
-                                            fontSize: 15,
-                                            fontWeight: FontWeight.w700,
-                                            color: skin.isLight
-                                                ? skin.primary
-                                                    .withValues(alpha: 0.90)
-                                                : skin.primary
-                                                    .withValues(alpha: 0.85))),
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w700,
+                                          color: skin.isLight
+                                              ? skin.primary.withValues(
+                                                  alpha: 0.90,
+                                                )
+                                              : skin.primary.withValues(
+                                                  alpha: 0.85,
+                                                ),
+                                        ),
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ),
-                            ),
-                          ]),
+                            ],
+                          ),
                         ],
                       ),
                     ),
